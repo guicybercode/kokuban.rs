@@ -1,0 +1,21 @@
+[package]
+name = "kokuban"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSRunLoop", "NSString", "NSNotification", "NSThread", "NSProcessInfo", "NSDictionary", "NSArray"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWindow", "NSView", "NSEvent", "NSResponder", "NSScreen", "NSMenu", "NSMenuItem", "NSRunningApplication", "NSGraphics", "NSColor", "NSText"] }
+objc2-metal = { version = "0.3", features = ["MTLDevice", "MTLCommandQueue", "MTLCommandBuffer", "MTLRenderCommandEncoder", "MTLRenderPipeline", "MTLLibrary", "MTLBuffer", "MTLTexture", "MTLResource", "MTLVertexDescriptor", "MTLSampler", "MTLRenderPass", "MTLPixelFormat", "MTLDrawable"] }
+objc2-quartz-core = { version = "0.3", features = ["CAMetalLayer", "CALayer", "objc2-metal"] }
+block2 = "0.6"
+font-kit = "0.14"
+pathfinder_geometry = "0.5"
+nix = { version = "0.29", features = ["term", "fs", "process", "signal"] }
+toml = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+thiserror = "2"
+bitflags = "2"

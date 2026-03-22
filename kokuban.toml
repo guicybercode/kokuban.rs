@@ -1,0 +1,11 @@
+[font]
+family = "Menlo"
+size = 14.0
+
+[window]
+columns = 80
+rows = 24
+
+[colors]
+foreground = "#c0c0c0"
+background = "#1a1a2e"
