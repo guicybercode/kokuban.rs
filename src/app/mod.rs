@@ -216,15 +216,15 @@ pub fn launch(config: Config) {
                 let mut any_data = false;
                 let mut dead_panes = Vec::new();
 
+                // Lock atlas FIRST (canonical order: atlas → tree → image_store)
+                let (cell_w, cell_h) = {
+                    let atlas = reader_atlas.lock().unwrap();
+                    (atlas.cell_width, atlas.cell_height)
+                };
+
                 {
                     let mut tree = reader_tree.lock().unwrap();
                     let pane_ids = tree.pane_ids();
-
-                    // Get cell dimensions for image placement calculations
-                    let (cell_w, cell_h) = {
-                        let atlas = reader_atlas.lock().unwrap();
-                        (atlas.cell_width, atlas.cell_height)
-                    };
 
                     for id in pane_ids {
                         if let Some(pane) = tree.pane_mut(id) {
