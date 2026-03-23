@@ -100,7 +100,8 @@ impl Parser {
                 // RIS - full reset
                 let cols = grid.cols();
                 let rows = grid.rows();
-                *grid = Grid::new(cols, rows);
+                let scrollback_max = grid.scrollback_max();
+                *grid = Grid::new(cols, rows, scrollback_max);
                 self.state = State::Ground;
             }
             0x20..=0x2f => {
@@ -369,10 +370,37 @@ impl Parser {
                 grid.scroll_down(n);
             }
             b'h' | b'l' => {
-                // Set/reset mode — silently ignore private modes for now
+                let set = final_byte == b'h';
                 if has_question {
-                    // DEC private modes (cursor visibility, etc)
-                    log::trace!("Ignoring DEC private mode CSI ?{:?}{}", params, final_byte as char);
+                    for &param in params.iter() {
+                        match param {
+                            1049 => {
+                                if set {
+                                    grid.save_cursor();
+                                    grid.enter_alt_screen();
+                                } else {
+                                    grid.leave_alt_screen();
+                                    grid.restore_cursor();
+                                }
+                            }
+                            47 | 1047 => {
+                                if set {
+                                    grid.enter_alt_screen();
+                                } else {
+                                    grid.leave_alt_screen();
+                                }
+                            }
+                            25 => {
+                                grid.cursor_visible = set;
+                            }
+                            2004 => {
+                                grid.bracketed_paste = set;
+                            }
+                            _ => {
+                                log::trace!("Ignoring DEC private mode {param}");
+                            }
+                        }
+                    }
                 }
             }
             b'n' => {

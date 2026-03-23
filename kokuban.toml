@@ -9,3 +9,7 @@ rows = 24
 [colors]
 foreground = "#c0c0c0"
 background = "#1a1a2e"
+
+[selection]
+foreground = "#000000"
+background = "#b4d5fe"

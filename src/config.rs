@@ -7,6 +7,7 @@ pub struct Config {
     pub font: FontConfig,
     pub window: WindowConfig,
     pub colors: ColorConfig,
+    pub selection: SelectionConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +22,14 @@ pub struct FontConfig {
 pub struct WindowConfig {
     pub columns: u16,
     pub rows: u16,
+    pub scrollback_lines: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct SelectionConfig {
+    pub foreground: String,
+    pub background: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +45,7 @@ impl Default for Config {
             font: FontConfig::default(),
             window: WindowConfig::default(),
             colors: ColorConfig::default(),
+            selection: SelectionConfig::default(),
         }
     }
 }
@@ -54,6 +64,16 @@ impl Default for WindowConfig {
         Self {
             columns: 80,
             rows: 24,
+            scrollback_lines: 10000,
+        }
+    }
+}
+
+impl Default for SelectionConfig {
+    fn default() -> Self {
+        Self {
+            foreground: "#000000".to_string(),
+            background: "#b4d5fe".to_string(),
         }
     }
 }

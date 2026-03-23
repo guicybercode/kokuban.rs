@@ -3,6 +3,14 @@ pub mod cell;
 
 use buffer::Buffer;
 use cell::{Cell, CellFlags, Color};
+use std::collections::VecDeque;
+
+const DEFAULT_CELL: Cell = Cell {
+    c: ' ',
+    fg: Color::Default,
+    bg: Color::Default,
+    flags: CellFlags::empty(),
+};
 
 #[derive(Debug)]
 pub struct Grid {
@@ -17,10 +25,21 @@ pub struct Grid {
     pub bg: Color,
     pub flags: CellFlags,
     pub dirty: Vec<bool>,
+    // Scrollback
+    scrollback: VecDeque<Vec<Cell>>,
+    scrollback_max: usize,
+    pub scroll_offset: usize,
+    // Alternate screen
+    alt_buffer: Option<Buffer>,
+    alt_cursor: (usize, usize),
+    pub using_alt_screen: bool,
+    // Mode flags
+    pub cursor_visible: bool,
+    pub bracketed_paste: bool,
 }
 
 impl Grid {
-    pub fn new(cols: usize, rows: usize) -> Self {
+    pub fn new(cols: usize, rows: usize, scrollback_max: usize) -> Self {
         Self {
             buffer: Buffer::new(cols, rows),
             cursor_row: 0,
@@ -33,6 +52,14 @@ impl Grid {
             bg: Color::Default,
             flags: CellFlags::empty(),
             dirty: vec![true; rows],
+            scrollback: VecDeque::new(),
+            scrollback_max,
+            scroll_offset: 0,
+            alt_buffer: None,
+            alt_cursor: (0, 0),
+            using_alt_screen: false,
+            cursor_visible: true,
+            bracketed_paste: false,
         }
     }
 
@@ -42,6 +69,24 @@ impl Grid {
 
     pub fn rows(&self) -> usize {
         self.buffer.rows()
+    }
+
+    pub fn scrollback_len(&self) -> usize {
+        self.scrollback.len()
+    }
+
+    pub fn scrollback_max(&self) -> usize {
+        self.scrollback_max
+    }
+
+    /// Read a character from the scrollback buffer by absolute row index.
+    pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
+        if let Some(row_data) = self.scrollback.get(row) {
+            if col < row_data.len() {
+                return row_data[col].c;
+            }
+        }
+        ' '
     }
 
     pub fn template_cell(&self) -> Cell {
@@ -93,6 +138,17 @@ impl Grid {
     }
 
     pub fn scroll_up(&mut self, count: usize) {
+        // Push lines into scrollback when scrolling at the top of the screen
+        if !self.using_alt_screen && self.scroll_top == 0 {
+            for i in 0..count.min(self.rows()) {
+                let row_data = self.buffer.extract_row(i);
+                self.scrollback.push_back(row_data);
+                if self.scrollback.len() > self.scrollback_max {
+                    self.scrollback.pop_front();
+                }
+            }
+        }
+
         let template = self.template_cell();
         self.buffer
             .scroll_up(self.scroll_top, self.scroll_bottom, count, template);
@@ -108,6 +164,85 @@ impl Grid {
         for row in self.scroll_top..=self.scroll_bottom {
             self.dirty[row] = true;
         }
+    }
+
+    /// Maps a viewport row+col to the appropriate cell, considering scroll_offset.
+    pub fn visible_cell(&self, vis_row: usize, col: usize) -> &Cell {
+        if self.scroll_offset == 0 {
+            return self.buffer.cell(vis_row, col);
+        }
+        let sb_len = self.scrollback.len();
+        let start = sb_len.saturating_sub(self.scroll_offset);
+        let abs_row = start + vis_row;
+        if abs_row < sb_len {
+            let row_data = &self.scrollback[abs_row];
+            if col < row_data.len() {
+                &row_data[col]
+            } else {
+                &DEFAULT_CELL
+            }
+        } else {
+            let buffer_row = abs_row - sb_len;
+            if buffer_row < self.buffer.rows() {
+                self.buffer.cell(buffer_row, col)
+            } else {
+                &DEFAULT_CELL
+            }
+        }
+    }
+
+    pub fn scroll_viewport_up(&mut self, lines: usize) {
+        let max = self.scrollback.len();
+        self.scroll_offset = (self.scroll_offset + lines).min(max);
+        self.mark_all_dirty();
+    }
+
+    pub fn scroll_viewport_down(&mut self, lines: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+        self.mark_all_dirty();
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        if self.scroll_offset != 0 {
+            self.scroll_offset = 0;
+            self.mark_all_dirty();
+        }
+    }
+
+    // Alternate screen buffer
+    pub fn enter_alt_screen(&mut self) {
+        if self.using_alt_screen {
+            return;
+        }
+        self.using_alt_screen = true;
+        self.scroll_offset = 0;
+        self.alt_cursor = (self.cursor_row, self.cursor_col);
+
+        let cols = self.cols();
+        let rows = self.rows();
+        let primary = std::mem::replace(&mut self.buffer, Buffer::new(cols, rows));
+        self.alt_buffer = Some(primary);
+
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.scroll_top = 0;
+        self.scroll_bottom = rows.saturating_sub(1);
+        self.mark_all_dirty();
+    }
+
+    pub fn leave_alt_screen(&mut self) {
+        if !self.using_alt_screen {
+            return;
+        }
+        if let Some(primary) = self.alt_buffer.take() {
+            self.buffer = primary;
+        }
+        self.using_alt_screen = false;
+        self.cursor_row = self.alt_cursor.0;
+        self.cursor_col = self.alt_cursor.1;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows().saturating_sub(1);
+        self.mark_all_dirty();
     }
 
     pub fn erase_in_line(&mut self, mode: u16) {
@@ -221,6 +356,9 @@ impl Grid {
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
         self.buffer.resize(cols, rows);
+        if let Some(ref mut alt) = self.alt_buffer {
+            alt.resize(cols, rows);
+        }
         self.scroll_top = 0;
         self.scroll_bottom = rows.saturating_sub(1);
         self.cursor_row = self.cursor_row.min(rows.saturating_sub(1));

@@ -1,6 +1,7 @@
 use super::atlas::{GlyphAtlas, GlyphKey};
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
+use crate::app::selection::SelectionState;
 use crate::grid::cell::{CellFlags, Color};
 use crate::grid::Grid;
 use objc2::rc::Retained;
@@ -210,6 +211,9 @@ impl MetalRenderer {
         texture: &ProtocolObject<dyn MTLTexture>,
         viewport_width: f32,
         viewport_height: f32,
+        selection: Option<&SelectionState>,
+        selection_fg: (u8, u8, u8),
+        selection_bg: (u8, u8, u8),
     ) {
         let mut vertices: Vec<Vertex> = Vec::with_capacity(grid.rows() * grid.cols() * 12);
 
@@ -220,7 +224,7 @@ impl MetalRenderer {
 
         for row in 0..grid.rows() {
             for col in 0..grid.cols() {
-                let cell = grid.buffer.cell(row, col);
+                let cell = grid.visible_cell(row, col);
                 let bold = cell.flags.contains(CellFlags::BOLD);
                 let reverse = cell.flags.contains(CellFlags::REVERSE);
 
@@ -236,8 +240,21 @@ impl MetalRenderer {
                     )
                 };
 
-                let fg_packed = Self::pack_color(fg.0, fg.1, fg.2, 255);
-                let bg_packed = Self::pack_color(bg.0, bg.1, bg.2, 255);
+                let is_selected = selection
+                    .map(|s| s.contains(row, col, grid.scroll_offset, grid.scrollback_len()))
+                    .unwrap_or(false);
+
+                let (fg_packed, bg_packed) = if is_selected {
+                    (
+                        Self::pack_color(selection_fg.0, selection_fg.1, selection_fg.2, 255),
+                        Self::pack_color(selection_bg.0, selection_bg.1, selection_bg.2, 255),
+                    )
+                } else {
+                    (
+                        Self::pack_color(fg.0, fg.1, fg.2, 255),
+                        Self::pack_color(bg.0, bg.1, bg.2, 255),
+                    )
+                };
 
                 let x0 = col as f32 * cell_w;
                 let y0 = row as f32 * cell_h;

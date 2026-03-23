@@ -1,3 +1,4 @@
+pub mod selection;
 pub mod window;
 
 use crate::config::Config;
@@ -33,7 +34,8 @@ pub fn launch(config: Config) {
     // Create grid
     let cols = config.window.columns as usize;
     let rows = config.window.rows as usize;
-    let grid = Arc::new(Mutex::new(Grid::new(cols, rows)));
+    let scrollback_max = config.window.scrollback_lines;
+    let grid = Arc::new(Mutex::new(Grid::new(cols, rows, scrollback_max)));
 
     // Default to 2.0 for Retina; viewDidChangeBackingProperties adjusts if needed
     let scale_factor = 2.0f32;
@@ -55,6 +57,8 @@ pub fn launch(config: Config) {
     // Parse colors
     let default_fg = crate::config::ColorConfig::parse_hex(&config.colors.foreground);
     let default_bg = crate::config::ColorConfig::parse_hex(&config.colors.background);
+    let selection_fg = crate::config::ColorConfig::parse_hex(&config.selection.foreground);
+    let selection_bg = crate::config::ColorConfig::parse_hex(&config.selection.background);
 
     // Get cell dimensions for window sizing
     let (cell_w, cell_h) = {
@@ -105,6 +109,8 @@ pub fn launch(config: Config) {
         scale_factor,
         config.font.family.clone(),
         config.font.size,
+        selection_fg,
+        selection_bg,
     );
 
     window.setContentView(Some(&view));

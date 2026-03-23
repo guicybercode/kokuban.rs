@@ -69,6 +69,11 @@ impl Buffer {
         }
     }
 
+    pub fn extract_row(&self, row: usize) -> Vec<Cell> {
+        let start = row * self.cols;
+        self.cells[start..start + self.cols].to_vec()
+    }
+
     pub fn resize(&mut self, new_cols: usize, new_rows: usize) {
         let mut new_cells = vec![Cell::default(); new_cols * new_rows];
         let copy_rows = self.rows.min(new_rows);
