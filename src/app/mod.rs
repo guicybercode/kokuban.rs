@@ -130,6 +130,12 @@ pub fn launch(config: Config) {
         window.setHasShadow(true);
     }
 
+    let prompt_indicator_color = if config.prompt_marks.enabled && config.prompt_marks.show_indicator {
+        Some(ColorConfig::parse_hex(&config.prompt_marks.indicator_color))
+    } else {
+        None
+    };
+
     let view = create_terminal_view(
         mtm,
         &device,
@@ -142,13 +148,18 @@ pub fn launch(config: Config) {
         scale_factor,
         config.font.family.clone(),
         config.font.size,
+        config.font.zoom_step,
+        config.font.min_size,
+        config.font.max_size,
         selection_fg,
         selection_bg,
         chrome,
         keybinds,
         bg_opacity,
         status_bar_height,
+        config.status_bar.enabled,
         resize_step,
+        prompt_indicator_color,
     );
 
     window.setContentView(Some(&view));

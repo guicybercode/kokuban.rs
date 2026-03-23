@@ -155,6 +155,12 @@ define_class!(
                 return Bool::NO;
             }
 
+            // Cmd+Shift+= (i.e. Cmd++) should also zoom in
+            if key_code == 24 && has_shift {
+                handle_pane_action(PaneAction::ZoomIn);
+                return Bool::YES;
+            }
+
             // Check configurable keybinds
             let action = VIEW_STATE.with(|state| {
                 let state = state.borrow();
@@ -316,6 +322,7 @@ define_class!(
                             state.metal_layer.setContentsScale(new_scale as f64);
                             let mut atlas = state.atlas.lock().unwrap();
                             *atlas = GlyphAtlas::new(&state.font_family, state.font_size, new_scale);
+                            drop(atlas);
                             state.dirty.store(true, Ordering::Relaxed);
                         }
                     }
@@ -464,11 +471,114 @@ fn handle_pane_action(action: PaneAction) {
                 let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
+            PaneAction::ZoomIn => {
+                drop(tree);
+                let new_size = (state.font_size + state.zoom_step).min(state.max_font_size);
+                perform_zoom(state, new_size);
+                return;
+            }
+            PaneAction::ZoomOut => {
+                drop(tree);
+                let new_size = (state.font_size - state.zoom_step).max(state.min_font_size);
+                perform_zoom(state, new_size);
+                return;
+            }
+            PaneAction::ZoomReset => {
+                drop(tree);
+                perform_zoom(state, state.base_font_size);
+                return;
+            }
+            PaneAction::PrevPrompt => {
+                if let Some(pane) = tree.focused_pane_mut() {
+                    let current_abs = if pane.grid.scroll_offset > 0 {
+                        let sb_len = pane.grid.scrollback_len();
+                        sb_len.saturating_sub(pane.grid.scroll_offset)
+                    } else {
+                        pane.grid.current_absolute_row()
+                    };
+                    if let Some(target_row) = pane.grid.marks.prev_prompt(current_abs) {
+                        let sb_len = pane.grid.scrollback_len();
+                        let total_pushed = pane.grid.total_lines_pushed;
+                        // target_row is absolute. Convert to scroll_offset.
+                        // absolute row in scrollback = target_row, but scrollback may have evicted lines.
+                        // scrollback stores the last sb_len lines. The absolute range in scrollback is
+                        // [total_pushed - sb_len .. total_pushed). The visible buffer starts at total_pushed.
+                        let evicted = total_pushed.saturating_sub(sb_len);
+                        if target_row >= evicted {
+                            let sb_index = target_row - evicted;
+                            // scroll_offset = sb_len - sb_index (with 2 lines context)
+                            let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
+                            pane.grid.scroll_offset = offset.min(sb_len);
+                            pane.grid.mark_all_dirty();
+                        }
+                    }
+                }
+            }
+            PaneAction::NextPrompt => {
+                if let Some(pane) = tree.focused_pane_mut() {
+                    let current_abs = if pane.grid.scroll_offset > 0 {
+                        let sb_len = pane.grid.scrollback_len();
+                        sb_len.saturating_sub(pane.grid.scroll_offset)
+                    } else {
+                        pane.grid.current_absolute_row()
+                    };
+                    if let Some(target_row) = pane.grid.marks.next_prompt(current_abs) {
+                        let sb_len = pane.grid.scrollback_len();
+                        let total_pushed = pane.grid.total_lines_pushed;
+                        let evicted = total_pushed.saturating_sub(sb_len);
+                        if target_row >= evicted && target_row < total_pushed {
+                            let sb_index = target_row - evicted;
+                            let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
+                            pane.grid.scroll_offset = offset.min(sb_len);
+                            pane.grid.mark_all_dirty();
+                        } else {
+                            // Target is in the visible buffer or beyond — snap to bottom
+                            pane.grid.scroll_to_bottom();
+                        }
+                    } else {
+                        pane.grid.scroll_to_bottom();
+                    }
+                }
+            }
         }
 
         drop(tree);
         state.dirty.store(true, Ordering::Relaxed);
     });
+}
+
+fn perform_zoom(state: &mut ViewState, new_size: f32) {
+    if (new_size - state.font_size).abs() < 0.01 {
+        return;
+    }
+    state.font_size = new_size;
+    log::info!("Font zoom: {new_size}pt");
+
+    // Recreate atlas at new size
+    let mut atlas = state.atlas.lock().unwrap();
+    atlas.clear_and_resize(new_size);
+    let cell_w = atlas.cell_width;
+    let cell_h = atlas.cell_height;
+    drop(atlas);
+
+    // Recalculate status bar height
+    if state.status_bar_enabled {
+        state.status_bar_height = (cell_h * 1.5).ceil();
+    }
+
+    // Relayout all panes with new cell dimensions
+    let size = state.metal_layer.drawableSize();
+    let viewport = PixelRect {
+        x: 0.0,
+        y: 0.0,
+        width: size.width as f32,
+        height: size.height as f32,
+    };
+    let mut tree = state.pane_tree.lock().unwrap();
+    tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+    drop(tree);
+
+    state.dirty.store(true, Ordering::Relaxed);
 }
 
 fn pixel_to_grid_point(event: &NSEvent, state: &ViewState) -> Option<(crate::pane::PaneId, GridPoint)> {
@@ -562,6 +672,15 @@ fn render_frame() {
                 } else {
                     None
                 };
+                let prompt_mark_rows = if state.prompt_indicator_color.is_some() {
+                    pane.grid.marks.visible_prompt_rows(
+                        pane.grid.scroll_offset,
+                        pane.grid.scrollback_len(),
+                        pane.grid.rows(),
+                    )
+                } else {
+                    Vec::new()
+                };
                 pane_render_data.push(PaneRenderData {
                     grid: &pane.grid,
                     rect: *rect,
@@ -569,6 +688,7 @@ fn render_frame() {
                     is_focused: *id == focused_id,
                     pane_index: i,
                     cwd: &pane.grid.cwd,
+                    prompt_mark_rows,
                 });
             }
         }
@@ -586,6 +706,7 @@ fn render_frame() {
             state.selection_bg,
             &state.chrome,
             state.status_bar_height,
+            state.prompt_indicator_color,
         );
 
         drop(atlas);
@@ -612,13 +733,18 @@ pub fn create_terminal_view(
     scale_factor: f32,
     font_family: String,
     font_size: f32,
+    zoom_step: f32,
+    min_font_size: f32,
+    max_font_size: f32,
     selection_fg: (u8, u8, u8),
     selection_bg: (u8, u8, u8),
     chrome: ChromeColors,
     keybinds: KeybindMap,
     bg_opacity: f32,
     status_bar_height: f32,
+    status_bar_enabled: bool,
     resize_step: f32,
+    prompt_indicator_color: Option<(u8, u8, u8)>,
 ) -> Retained<TerminalView> {
     let view = mtm.alloc::<TerminalView>().set_ivars(());
     let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
@@ -667,13 +793,19 @@ pub fn create_terminal_view(
             scale_factor,
             font_family,
             font_size,
+            base_font_size: font_size,
+            zoom_step,
+            min_font_size,
+            max_font_size,
             selection_fg,
             selection_bg,
             chrome,
             keybinds,
             bg_opacity,
             status_bar_height,
+            status_bar_enabled,
             resize_step,
+            prompt_indicator_color,
         });
     });
 
