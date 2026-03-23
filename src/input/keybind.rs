@@ -30,6 +30,11 @@ pub enum PaneAction {
     ResizeDown,
     ResizeUp,
     ResizeRight,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
+    PrevPrompt,
+    NextPrompt,
 }
 
 pub struct KeybindMap {
@@ -50,6 +55,11 @@ impl KeybindMap {
             (&config.resize_down, PaneAction::ResizeDown),
             (&config.resize_up, PaneAction::ResizeUp),
             (&config.resize_right, PaneAction::ResizeRight),
+            (&config.zoom_in, PaneAction::ZoomIn),
+            (&config.zoom_out, PaneAction::ZoomOut),
+            (&config.zoom_reset, PaneAction::ZoomReset),
+            (&config.prev_prompt, PaneAction::PrevPrompt),
+            (&config.next_prompt, PaneAction::NextPrompt),
         ];
 
         let mut bindings = Vec::new();
@@ -118,6 +128,25 @@ fn key_name_to_code(name: &str) -> Option<u16> {
         "k" => Some(40),
         "n" => Some(45),
         "m" => Some(46),
+        // Numbers
+        "0" => Some(29),
+        "1" => Some(18),
+        "2" => Some(19),
+        "3" => Some(20),
+        "4" => Some(21),
+        "5" => Some(23),
+        "6" => Some(22),
+        "7" => Some(26),
+        "8" => Some(28),
+        "9" => Some(25),
+        // Symbols
+        "=" => Some(24),
+        "-" => Some(27),
+        // Arrow keys
+        "up" => Some(126),
+        "down" => Some(125),
+        "left" => Some(123),
+        "right" => Some(124),
         _ => None,
     }
 }

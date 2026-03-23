@@ -29,13 +29,19 @@ struct ViewState {
     scale_factor: f32,
     font_family: String,
     font_size: f32,
+    base_font_size: f32,
+    zoom_step: f32,
+    min_font_size: f32,
+    max_font_size: f32,
     selection_fg: (u8, u8, u8),
     selection_bg: (u8, u8, u8),
     chrome: ChromeColors,
     keybinds: KeybindMap,
     bg_opacity: f32,
     status_bar_height: f32,
+    status_bar_enabled: bool,
     resize_step: f32,
+    prompt_indicator_color: Option<(u8, u8, u8)>,
 }
 
 thread_local! {

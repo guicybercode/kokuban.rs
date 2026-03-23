@@ -1,6 +1,9 @@
 [font]
 family = "Menlo"
 size = 14.0
+zoom_step = 1.0
+min_size = 6.0
+max_size = 72.0
 
 [window]
 columns = 80
@@ -20,6 +23,11 @@ enabled = true
 show_shell = true
 show_cwd = true
 show_pane_index = true
+
+[prompt_marks]
+enabled = true
+show_indicator = true
+indicator_color = "#b5312c"
 
 [theme.chrome]
 sumi_black  = "#1a1a1a"
@@ -42,6 +50,11 @@ resize_left      = "cmd+shift+h"
 resize_down      = "cmd+shift+j"
 resize_up        = "cmd+shift+k"
 resize_right     = "cmd+shift+l"
+zoom_in          = "cmd+="
+zoom_out         = "cmd+-"
+zoom_reset       = "cmd+0"
+prev_prompt      = "cmd+up"
+next_prompt      = "cmd+down"
 
 [keybind.resize]
 step = 20

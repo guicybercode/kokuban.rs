@@ -11,6 +11,7 @@ pub struct Config {
     pub status_bar: StatusBarConfig,
     pub theme: ThemeConfig,
     pub keybind: KeybindConfig,
+    pub prompt_marks: PromptMarksConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -18,6 +19,9 @@ pub struct Config {
 pub struct FontConfig {
     pub family: String,
     pub size: f32,
+    pub zoom_step: f32,
+    pub min_size: f32,
+    pub max_size: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,7 +88,20 @@ pub struct KeybindConfig {
     pub resize_down: String,
     pub resize_up: String,
     pub resize_right: String,
+    pub zoom_in: String,
+    pub zoom_out: String,
+    pub zoom_reset: String,
+    pub prev_prompt: String,
+    pub next_prompt: String,
     pub resize: ResizeConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct PromptMarksConfig {
+    pub enabled: bool,
+    pub show_indicator: bool,
+    pub indicator_color: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +120,7 @@ impl Default for Config {
             status_bar: StatusBarConfig::default(),
             theme: ThemeConfig::default(),
             keybind: KeybindConfig::default(),
+            prompt_marks: PromptMarksConfig::default(),
         }
     }
 }
@@ -112,6 +130,9 @@ impl Default for FontConfig {
         Self {
             family: "Menlo".to_string(),
             size: 14.0,
+            zoom_step: 1.0,
+            min_size: 6.0,
+            max_size: 72.0,
         }
     }
 }
@@ -192,7 +213,22 @@ impl Default for KeybindConfig {
             resize_down: "cmd+shift+j".to_string(),
             resize_up: "cmd+shift+k".to_string(),
             resize_right: "cmd+shift+l".to_string(),
+            zoom_in: "cmd+=".to_string(),
+            zoom_out: "cmd+-".to_string(),
+            zoom_reset: "cmd+0".to_string(),
+            prev_prompt: "cmd+up".to_string(),
+            next_prompt: "cmd+down".to_string(),
             resize: ResizeConfig::default(),
+        }
+    }
+}
+
+impl Default for PromptMarksConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_indicator: true,
+            indicator_color: "#b5312c".to_string(),
         }
     }
 }

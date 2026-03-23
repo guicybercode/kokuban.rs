@@ -1,5 +1,6 @@
 use super::State;
 use crate::grid::cell::{CellFlags, Color};
+use crate::grid::marks::PromptMarkKind;
 use crate::grid::Grid;
 
 pub struct Parser {
@@ -263,6 +264,31 @@ impl Parser {
                         }
                     } else {
                         grid.cwd = pt.to_string();
+                    }
+                }
+                "133" => {
+                    // Semantic prompt marks (FinalTerm/Shell Integration)
+                    let abs_row = grid.current_absolute_row();
+                    match pt.chars().next() {
+                        Some('A') => {
+                            grid.marks.push(PromptMarkKind::PromptStart, abs_row);
+                        }
+                        Some('B') => {
+                            grid.marks.push(PromptMarkKind::CommandStart, abs_row);
+                        }
+                        Some('C') => {
+                            grid.marks.push(PromptMarkKind::CommandExecuted, abs_row);
+                        }
+                        Some('D') => {
+                            let exit_code = pt.get(2..)
+                                .and_then(|s| s.parse::<i32>().ok())
+                                .unwrap_or(0);
+                            grid.marks.push(
+                                PromptMarkKind::CommandFinished { exit_code },
+                                abs_row,
+                            );
+                        }
+                        _ => {}
                     }
                 }
                 _ => {

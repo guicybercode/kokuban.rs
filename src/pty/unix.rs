@@ -46,6 +46,7 @@ impl Pty {
                 // Set up environment
                 std::env::set_var("TERM", "xterm-256color");
                 std::env::set_var("COLORTERM", "truecolor");
+                std::env::set_var("TERM_PROGRAM", "kokuban");
 
                 // Exec shell
                 let shell = CString::new("/bin/zsh").unwrap();

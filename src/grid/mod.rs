@@ -1,8 +1,10 @@
 pub mod buffer;
 pub mod cell;
+pub mod marks;
 
 use buffer::Buffer;
 use cell::{Cell, CellFlags, Color};
+use marks::MarkIndex;
 use std::collections::VecDeque;
 
 const DEFAULT_CELL: Cell = Cell {
@@ -39,6 +41,10 @@ pub struct Grid {
     // Terminal state from OSC sequences
     pub title: String,
     pub cwd: String,
+    // Prompt marks
+    pub marks: MarkIndex,
+    /// Total lines ever pushed into scrollback (monotonically increasing, survives eviction)
+    pub total_lines_pushed: usize,
 }
 
 impl Grid {
@@ -65,6 +71,8 @@ impl Grid {
             bracketed_paste: false,
             title: String::new(),
             cwd: String::new(),
+            marks: MarkIndex::default(),
+            total_lines_pushed: 0,
         }
     }
 
@@ -142,16 +150,23 @@ impl Grid {
         self.cursor_col = next_tab.min(self.cols() - 1);
     }
 
+    /// Current absolute row for prompt marks: total_lines_pushed + cursor_row
+    pub fn current_absolute_row(&self) -> usize {
+        self.total_lines_pushed + self.cursor_row
+    }
+
     pub fn scroll_up(&mut self, count: usize) {
         // Push lines into scrollback when scrolling at the top of the screen
         if !self.using_alt_screen && self.scroll_top == 0 {
-            for i in 0..count.min(self.rows()) {
+            let pushed = count.min(self.rows());
+            for i in 0..pushed {
                 let row_data = self.buffer.extract_row(i);
                 self.scrollback.push_back(row_data);
                 if self.scrollback.len() > self.scrollback_max {
                     self.scrollback.pop_front();
                 }
             }
+            self.total_lines_pushed += pushed;
         }
 
         let template = self.template_cell();

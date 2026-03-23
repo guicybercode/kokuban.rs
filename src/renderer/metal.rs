@@ -39,6 +39,7 @@ pub struct PaneRenderData<'a> {
     pub is_focused: bool,
     pub pane_index: usize,
     pub cwd: &'a str,
+    pub prompt_mark_rows: Vec<usize>,
 }
 
 pub struct ChromeColors {
@@ -226,6 +227,7 @@ impl MetalRenderer {
         selection_fg: (u8, u8, u8),
         selection_bg: (u8, u8, u8),
         status_bar_height: f32,
+        prompt_indicator_color: Option<(u8, u8, u8)>,
         vertices: &mut Vec<Vertex>,
     ) {
         let grid = pane.grid;
@@ -318,6 +320,25 @@ impl MetalRenderer {
                         vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
                     }
                 }
+            }
+        }
+
+        // Prompt mark indicator dots (2×2 at left margin)
+        if let Some(color) = prompt_indicator_color {
+            let dot_color = Self::pack_color(color.0, color.1, color.2, 255);
+            let white_u = atlas.white_uv.0;
+            let white_v = atlas.white_uv.1;
+            for &vis_row in &pane.prompt_mark_rows {
+                let dx0 = rect.x + 1.0;
+                let dy0 = rect.y + vis_row as f32 * cell_h + cell_h * 0.4;
+                let dx1 = dx0 + 3.0;
+                let dy1 = dy0 + 3.0;
+                vertices.push(Vertex::new(dx0, dy0, white_u, white_v, dot_color, dot_color));
+                vertices.push(Vertex::new(dx1, dy0, white_u, white_v, dot_color, dot_color));
+                vertices.push(Vertex::new(dx0, dy1, white_u, white_v, dot_color, dot_color));
+                vertices.push(Vertex::new(dx1, dy0, white_u, white_v, dot_color, dot_color));
+                vertices.push(Vertex::new(dx1, dy1, white_u, white_v, dot_color, dot_color));
+                vertices.push(Vertex::new(dx0, dy1, white_u, white_v, dot_color, dot_color));
             }
         }
     }
@@ -506,11 +527,12 @@ impl MetalRenderer {
         selection_bg: (u8, u8, u8),
         chrome: &ChromeColors,
         status_bar_height: f32,
+        prompt_indicator_color: Option<(u8, u8, u8)>,
     ) {
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {
-            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, status_bar_height, &mut content_vertices);
+            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, status_bar_height, prompt_indicator_color, &mut content_vertices);
             self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut content_vertices);
         }
 
