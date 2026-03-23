@@ -746,14 +746,23 @@ impl MetalRenderer {
             }
         }
 
-        // Combine into single buffer: content, dividers, then image vertices
+        // Build confirm overlay vertices (uses atlas texture, drawn last)
+        let mut overlay_vertices: Vec<Vertex> = Vec::new();
+        if let Some(overlay) = confirm_overlay {
+            self.build_confirm_overlay(overlay, atlas, chrome, &mut overlay_vertices);
+        }
+
+        // Combine ALL vertices into single buffer: content, dividers, images, overlay
         let content_count = content_vertices.len();
         let divider_count = divider_vertices.len();
         let image_base_offset = content_count + divider_count;
+        let overlay_offset = image_base_offset + image_vertices.len();
+        let overlay_count = overlay_vertices.len();
 
         let mut all_vertices = content_vertices;
         all_vertices.extend(divider_vertices);
         all_vertices.extend(image_vertices);
+        all_vertices.extend(overlay_vertices);
 
         if all_vertices.is_empty() {
             return;
@@ -863,40 +872,15 @@ impl MetalRenderer {
                 );
             }
 
-            // Draw confirm overlay ON TOP of everything
-            if let Some(overlay) = confirm_overlay {
-                let mut overlay_verts: Vec<Vertex> = Vec::new();
-                self.build_confirm_overlay(overlay, atlas, chrome, &mut overlay_verts);
-
-                if !overlay_verts.is_empty() {
-                    // Upload overlay vertices to a temporary region of the vertex buffer
-                    let overlay_start = all_vertices.len();
-                    let total_needed = (overlay_start + overlay_verts.len()) * std::mem::size_of::<Vertex>();
-                    if total_needed > self.vertex_buffer.length() {
-                        self.vertex_buffer = self
-                            .device
-                            .newBufferWithLength_options(total_needed * 2, MTLResourceOptions::StorageModeShared)
-                            .expect("Failed to resize vertex buffer");
-                        // Re-upload all vertices
-                        let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
-                        std::ptr::copy_nonoverlapping(all_vertices.as_ptr(), ptr, all_vertices.len());
-                    }
-                    let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
-                    std::ptr::copy_nonoverlapping(
-                        overlay_verts.as_ptr(),
-                        ptr.add(overlay_start),
-                        overlay_verts.len(),
-                    );
-
-                    encoder.setRenderPipelineState(&self.pipeline_state);
-                    encoder.setFragmentTexture_atIndex(Some(&self.atlas_texture), 0);
-                    encoder.setVertexBuffer_offset_atIndex(Some(&self.vertex_buffer), 0, 0);
-                    encoder.drawPrimitives_vertexStart_vertexCount(
-                        MTLPrimitiveType::Triangle,
-                        overlay_start,
-                        overlay_verts.len(),
-                    );
-                }
+            // Draw confirm overlay ON TOP of everything (uses atlas texture)
+            if overlay_count > 0 {
+                encoder.setRenderPipelineState(&self.pipeline_state);
+                encoder.setFragmentTexture_atIndex(Some(&self.atlas_texture), 0);
+                encoder.drawPrimitives_vertexStart_vertexCount(
+                    MTLPrimitiveType::Triangle,
+                    overlay_offset,
+                    overlay_count,
+                );
             }
 
             encoder.endEncoding();
@@ -927,17 +911,24 @@ impl MetalRenderer {
             region.x + region.width, region.y + region.height,
             white_u, white_v, dim_color);
 
-        // 2. Calculate dialog box dimensions
+        // 2. Calculate dialog box dimensions (account for CJK double-width)
         let title = &overlay.title;
-        let title_char_count = title.chars().count();
         let process_text = &overlay.process_text;
-        let process_char_count = process_text.as_ref().map_or(0, |t| t.chars().count());
 
+        let full_title = format!("\u{9589}\u{3058}\u{308B} \u{00B7} {}", title);
         let actions_text = "[Y] \u{9589} confirm      [N] \u{623B} cancel";
-        let actions_char_count = actions_text.chars().count();
 
-        let max_chars = title_char_count.max(actions_char_count).max(process_char_count);
-        let content_width = max_chars as f32 * cell_w;
+        let char_width = |s: &str| -> f32 {
+            s.chars().map(|c| {
+                if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) >= 2 { 2.0 } else { 1.0 }
+            }).sum::<f32>() * cell_w
+        };
+
+        let title_width = char_width(&full_title);
+        let actions_width = char_width(actions_text);
+        let process_width = process_text.as_ref().map_or(0.0, |t| char_width(t));
+
+        let content_width = title_width.max(actions_width).max(process_width);
 
         let padding_h = cell_w * 4.0;
         let padding_v = cell_h * 2.0;
@@ -980,11 +971,7 @@ impl MetalRenderer {
         let text_alpha = (alpha * 255.0) as u8;
         let title_color = Self::pack_color(chrome.sumi_light.0, chrome.sumi_light.1, chrome.sumi_light.2, text_alpha);
 
-        let full_title = format!("\u{9589}\u{3058}\u{308B} \u{00B7} {}", title);
-        let full_title_width: f32 = full_title.chars().map(|c| {
-            if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) == 2 { cell_w * 2.0 } else { cell_w }
-        }).sum();
-        let title_x = box_x + (box_width - full_title_width) / 2.0;
+        let title_x = box_x + (box_width - title_width) / 2.0;
         let title_y = box_y + padding_v;
 
         let mut cursor_x = title_x;
@@ -995,10 +982,7 @@ impl MetalRenderer {
         // 5b. Process text if present
         let actions_y_offset = if has_process {
             let proc_text = process_text.as_ref().unwrap();
-            let proc_width: f32 = proc_text.chars().map(|c| {
-                if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) == 2 { cell_w * 2.0 } else { cell_w }
-            }).sum();
-            let proc_x = box_x + (box_width - proc_width) / 2.0;
+            let proc_x = box_x + (box_width - process_width) / 2.0;
             let proc_y = title_y + cell_h * 1.5;
             let proc_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, text_alpha);
             let mut cx = proc_x;
@@ -1017,9 +1001,6 @@ impl MetalRenderer {
         let light_color = title_color;
 
         // Center the actions line
-        let actions_width: f32 = actions_text.chars().map(|c| {
-            if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) == 2 { cell_w * 2.0 } else { cell_w }
-        }).sum();
         let mut ax = box_x + (box_width - actions_width) / 2.0;
 
         // Render "[Y]" in hanko_red, " 閉 confirm" in light, "      " spacing, "[N]" in medium, " 戻 cancel" in light

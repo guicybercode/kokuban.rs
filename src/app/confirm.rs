@@ -41,17 +41,23 @@ impl ConfirmDialog {
         self.created_at.elapsed().as_secs_f32() < 0.15
     }
 
-    /// Handle a key code + character. Returns the result.
-    pub fn handle_key(&self, key_code: u16) -> ConfirmResult {
+    /// Handle input. Accepts both key_code (for Enter/Escape) and optional
+    /// character (for Y/N, layout-independent).
+    pub fn handle_input(&self, key_code: u16, character: Option<char>) -> ConfirmResult {
+        // Check character first (layout-independent Y/N)
+        if let Some(ch) = character {
+            match ch {
+                'y' | 'Y' => return ConfirmResult::Confirmed,
+                'n' | 'N' => return ConfirmResult::Cancelled,
+                '\r' | '\n' => return ConfirmResult::Confirmed,
+                _ => {}
+            }
+        }
+
+        // Fall back to key codes for special keys
         match key_code {
-            // Y key
-            16 => ConfirmResult::Confirmed,
-            // Enter/Return
-            36 => ConfirmResult::Confirmed,
-            // N key
-            45 => ConfirmResult::Cancelled,
-            // Escape
-            53 => ConfirmResult::Cancelled,
+            36 => ConfirmResult::Confirmed,  // Return
+            53 => ConfirmResult::Cancelled,   // Escape
             _ => ConfirmResult::Pending,
         }
     }

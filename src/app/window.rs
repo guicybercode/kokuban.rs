@@ -93,7 +93,9 @@ define_class!(
                 state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
             });
             if confirm_active {
-                handle_confirm_key(key_code);
+                let ch = event.charactersIgnoringModifiers()
+                    .and_then(|s| s.to_string().chars().next());
+                handle_confirm_key(key_code, ch);
                 return Bool::YES;
             }
 
@@ -215,9 +217,12 @@ define_class!(
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
+                    let atlas = state.atlas.lock().unwrap();
+                    let cell_w = atlas.cell_width;
+                    let cell_h = atlas.cell_height;
+                    drop(atlas);
                     let mut tree = state.pane_tree.lock().unwrap();
-                    // Get cell coords first (immutable borrow)
-                    let cell_info = pixel_to_cell(event, state, &tree);
+                    let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
                     if let (Some(mt), Some((_id, gc, gr))) = (tracking, cell_info) {
                         if mt.0 != MouseTracking::None {
@@ -250,8 +255,12 @@ define_class!(
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
+                    let atlas = state.atlas.lock().unwrap();
+                    let cell_w = atlas.cell_width;
+                    let cell_h = atlas.cell_height;
+                    drop(atlas);
                     let mut tree = state.pane_tree.lock().unwrap();
-                    let cell_info = pixel_to_cell(event, state, &tree);
+                    let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     if let Some((pane_id, gc, gr)) = cell_info {
                         tree.focused = pane_id;
                         let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
@@ -261,9 +270,12 @@ define_class!(
                                 if let Some(pane) = tree.pane(pane_id) {
                                     pane.pty.write_all(&seq).ok();
                                 }
-                            } else if let Some(pane) = tree.pane_mut(pane_id) {
-                                if let Some((_id, point)) = pixel_to_grid_point(event, state) {
-                                    pane.selection.start(point);
+                            } else {
+                                let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
+                                if let Some((_id, point)) = grid_pt {
+                                    if let Some(pane) = tree.pane_mut(pane_id) {
+                                        pane.selection.start(point);
+                                    }
                                 }
                             }
                         }
@@ -282,8 +294,12 @@ define_class!(
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
+                    let atlas = state.atlas.lock().unwrap();
+                    let cell_w = atlas.cell_width;
+                    let cell_h = atlas.cell_height;
+                    drop(atlas);
                     let mut tree = state.pane_tree.lock().unwrap();
-                    let cell_info = pixel_to_cell(event, state, &tree);
+                    let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     let focused = tree.focused;
                     let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
                     if let Some((mt, sgr)) = tracking {
@@ -295,9 +311,12 @@ define_class!(
                                     pane.pty.write_all(&seq).ok();
                                 }
                             }
-                        } else if let Some(pane) = tree.focused_pane_mut() {
-                            if let Some((_id, point)) = pixel_to_grid_point(event, state) {
-                                pane.selection.update(point);
+                        } else {
+                            let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
+                            if let Some((_id, point)) = grid_pt {
+                                if let Some(pane) = tree.focused_pane_mut() {
+                                    pane.selection.update(point);
+                                }
                             }
                         }
                     }
@@ -314,8 +333,12 @@ define_class!(
             VIEW_STATE.with(|state| {
                 let state = state.borrow();
                 if let Some(state) = state.as_ref() {
+                    let atlas = state.atlas.lock().unwrap();
+                    let cell_w = atlas.cell_width;
+                    let cell_h = atlas.cell_height;
+                    drop(atlas);
                     let tree = state.pane_tree.lock().unwrap();
-                    let cell_info = pixel_to_cell(event, state, &tree);
+                    let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     if let Some(pane) = tree.focused_pane() {
                         if pane.grid.mouse_tracking != MouseTracking::None {
                             if let Some((_id, gc, gr)) = cell_info {
@@ -339,7 +362,9 @@ define_class!(
             // If confirm dialog is active, route keys to it
             let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
             if confirm_active {
-                handle_confirm_key(key_code);
+                let ch = event.charactersIgnoringModifiers()
+                    .and_then(|s| s.to_string().chars().next());
+                handle_confirm_key(key_code, ch);
                 return;
             }
 
@@ -659,7 +684,7 @@ fn handle_pane_action(action: PaneAction) {
     });
 }
 
-fn handle_confirm_key(key_code: u16) {
+fn handle_confirm_key(key_code: u16, character: Option<char>) {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
         let state = match state.as_mut() {
@@ -668,7 +693,7 @@ fn handle_confirm_key(key_code: u16) {
         };
 
         let result = match &state.confirm_dialog {
-            Some(dialog) => dialog.handle_key(key_code),
+            Some(dialog) => dialog.handle_input(key_code, character),
             None => return,
         };
 
@@ -753,13 +778,9 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     state.dirty.store(true, Ordering::Relaxed);
 }
 
-fn pixel_to_cell(event: &NSEvent, state: &ViewState, tree: &PaneTree) -> Option<(crate::pane::PaneId, usize, usize)> {
+fn pixel_to_cell(event: &NSEvent, state: &ViewState, tree: &PaneTree, cell_w: f32, cell_h: f32) -> Option<(crate::pane::PaneId, usize, usize)> {
     let loc = event.locationInWindow();
     let scale = state.scale_factor;
-    let atlas = state.atlas.lock().unwrap();
-    let cell_w = atlas.cell_width;
-    let cell_h = atlas.cell_height;
-    drop(atlas);
     let size = state.metal_layer.drawableSize();
     let view_h = size.height as f32 / scale;
     let px = loc.x as f32 * scale;
@@ -788,13 +809,9 @@ fn encode_sgr_mouse(button: u8, col: usize, row: usize, press: bool, sgr: bool) 
     }
 }
 
-fn pixel_to_grid_point(event: &NSEvent, state: &ViewState) -> Option<(crate::pane::PaneId, GridPoint)> {
+fn pixel_to_grid_point(event: &NSEvent, state: &ViewState, tree: &PaneTree, cell_w: f32, cell_h: f32) -> Option<(crate::pane::PaneId, GridPoint)> {
     let loc = event.locationInWindow();
     let scale = state.scale_factor;
-    let atlas = state.atlas.lock().unwrap();
-    let cell_w = atlas.cell_width;
-    let cell_h = atlas.cell_height;
-    drop(atlas);
 
     let size = state.metal_layer.drawableSize();
     let view_h = size.height as f32 / scale;
@@ -802,7 +819,6 @@ fn pixel_to_grid_point(event: &NSEvent, state: &ViewState) -> Option<(crate::pan
     let px = loc.x as f32 * scale;
     let py = (view_h - loc.y as f32) * scale;
 
-    let tree = state.pane_tree.lock().unwrap();
     let pane_id = tree.pane_at(px, py).unwrap_or(tree.focused);
     let pane = tree.pane(pane_id)?;
     let rect = pane.rect;
@@ -858,8 +874,9 @@ fn render_frame() {
         };
         let texture = drawable.texture();
 
-        let tree = state.pane_tree.lock().unwrap();
+        // Lock atlas FIRST (canonical order: atlas → tree → image_store)
         let mut atlas = state.atlas.lock().unwrap();
+        let tree = state.pane_tree.lock().unwrap();
 
         let viewport = PixelRect {
             x: 0.0,
