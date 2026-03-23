@@ -56,37 +56,8 @@ define_class!(
 
         #[unsafe(method(updateLayer))]
         fn update_layer(&self) {
-            VIEW_STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                let state = match state.as_mut() {
-                    Some(s) => s,
-                    None => return,
-                };
-
-                let drawable = state.metal_layer.nextDrawable();
-                let drawable = match drawable {
-                    Some(d) => d,
-                    None => return,
-                };
-
-                let texture = drawable.texture();
-                let size = state.metal_layer.drawableSize();
-
-                let mut grid = state.grid.lock().unwrap();
-                let mut atlas = state.atlas.lock().unwrap();
-
-                state.renderer.draw(
-                    &grid,
-                    &mut atlas,
-                    ProtocolObject::from_ref(&*drawable),
-                    &texture,
-                    size.width as f32,
-                    size.height as f32,
-                );
-
-                grid.clear_dirty();
-                state.dirty.store(false, Ordering::Relaxed);
-            });
+            log::debug!("[render] updateLayer called");
+            render_frame();
         }
 
         #[unsafe(method(keyDown:))]
@@ -117,6 +88,17 @@ define_class!(
                             // Recreate atlas at new scale
                             let mut atlas = state.atlas.lock().unwrap();
                             *atlas = GlyphAtlas::new(&state.font_family, state.font_size, new_scale);
+
+                            // Update drawable size to match new atlas cell dimensions
+                            let grid = state.grid.lock().unwrap();
+                            let pixel_w = atlas.cell_width * grid.cols() as f32;
+                            let pixel_h = atlas.cell_height * grid.rows() as f32;
+                            log::debug!("[render] scale change: updating drawableSize to {pixel_w}x{pixel_h}");
+                            state.metal_layer.setDrawableSize(NSSize {
+                                width: pixel_w as f64,
+                                height: pixel_h as f64,
+                            });
+
                             state.dirty.store(true, Ordering::Relaxed);
                         }
                     }
@@ -169,6 +151,58 @@ define_class!(
         }
     }
 );
+
+/// Perform one render frame. Called from both `updateLayer` and the timer.
+fn render_frame() {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let state = match state.as_mut() {
+            Some(s) => s,
+            None => {
+                log::warn!("[render] VIEW_STATE is None");
+                return;
+            }
+        };
+
+        let size = state.metal_layer.drawableSize();
+        log::debug!("[render] drawableSize: {}x{}", size.width, size.height);
+
+        let drawable = state.metal_layer.nextDrawable();
+        let drawable = match drawable {
+            Some(d) => d,
+            None => {
+                log::warn!("[render] nextDrawable returned None");
+                return;
+            }
+        };
+
+        let texture = drawable.texture();
+
+        let mut grid = state.grid.lock().unwrap();
+        let mut atlas = state.atlas.lock().unwrap();
+
+        state.renderer.draw(
+            &grid,
+            &mut atlas,
+            ProtocolObject::from_ref(&*drawable),
+            &texture,
+            size.width as f32,
+            size.height as f32,
+        );
+
+        grid.clear_dirty();
+        state.dirty.store(false, Ordering::Relaxed);
+        log::debug!("[render] frame presented");
+    });
+}
+
+/// Called directly from the timer to render without relying on setNeedsDisplay.
+pub fn render_if_dirty(dirty: &AtomicBool) {
+    if dirty.load(Ordering::Relaxed) {
+        log::trace!("[render] timer tick: dirty, rendering directly");
+        render_frame();
+    }
+}
 
 pub fn create_terminal_view(
     mtm: MainThreadMarker,

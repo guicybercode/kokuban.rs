@@ -136,6 +136,7 @@ pub fn launch(config: Config) {
                         break;
                     }
                     Ok(n) => {
+                        log::debug!("[pty] read {n} bytes");
                         let mut grid = reader_grid.lock().unwrap();
                         parser.feed(&buf[..n], &mut grid);
                         drop(grid);
@@ -159,7 +160,6 @@ pub fn launch(config: Config) {
     // Set up render timer (60fps)
     let timer_dirty = dirty.clone();
     let timer_should_close = should_close.clone();
-    let view_for_timer = view.clone();
 
     unsafe {
         let interval = 1.0 / 60.0;
@@ -171,9 +171,10 @@ pub fn launch(config: Config) {
                 return;
             }
 
-            if timer_dirty.load(Ordering::Relaxed) {
-                view_for_timer.setNeedsDisplay(true);
-            }
+            // Render directly from the timer instead of relying on
+            // setNeedsDisplay -> updateLayer, which can be unreliable
+            // for layer-backed views with wantsUpdateLayer.
+            window::render_if_dirty(&timer_dirty);
         });
 
         let _timer = NSTimer::scheduledTimerWithTimeInterval_repeats_block(
