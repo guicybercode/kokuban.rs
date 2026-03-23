@@ -1,4 +1,6 @@
 pub mod ansi;
+pub mod kitty_graphics;
+pub mod sixel;
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -21,4 +23,6 @@ pub enum State {
     CsiParam,
     CsiIntermediate,
     OscString,
+    ApcString,
+    DcsPassthrough,
 }

@@ -7,6 +7,13 @@ pub struct Config {
     pub font: FontConfig,
     pub window: WindowConfig,
     pub colors: ColorConfig,
+    pub selection: SelectionConfig,
+    pub status_bar: StatusBarConfig,
+    pub theme: ThemeConfig,
+    pub keybind: KeybindConfig,
+    pub prompt_marks: PromptMarksConfig,
+    pub images: ImagesConfig,
+    pub confirm: ConfirmConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -14,6 +21,9 @@ pub struct Config {
 pub struct FontConfig {
     pub family: String,
     pub size: f32,
+    pub zoom_step: f32,
+    pub min_size: f32,
+    pub max_size: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +31,15 @@ pub struct FontConfig {
 pub struct WindowConfig {
     pub columns: u16,
     pub rows: u16,
+    pub scrollback_lines: usize,
+    pub opacity: f32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct SelectionConfig {
+    pub foreground: String,
+    pub background: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,12 +49,137 @@ pub struct ColorConfig {
     pub background: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct StatusBarConfig {
+    pub enabled: bool,
+    pub show_shell: bool,
+    pub show_cwd: bool,
+    pub show_pane_index: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ThemeConfig {
+    pub chrome: ChromeConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ChromeConfig {
+    pub sumi_black: String,
+    pub sumi_dark: String,
+    pub sumi_medium: String,
+    pub sumi_light: String,
+    pub sumi_ghost: String,
+    pub hanko_red: String,
+    pub hanko_dim: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct KeybindConfig {
+    pub split_vertical: String,
+    pub split_horizontal: String,
+    pub close_pane: String,
+    pub focus_left: String,
+    pub focus_down: String,
+    pub focus_up: String,
+    pub focus_right: String,
+    pub resize_left: String,
+    pub resize_down: String,
+    pub resize_up: String,
+    pub resize_right: String,
+    pub zoom_in: String,
+    pub zoom_out: String,
+    pub zoom_reset: String,
+    pub prev_prompt: String,
+    pub next_prompt: String,
+    pub resize: ResizeConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct PromptMarksConfig {
+    pub enabled: bool,
+    pub show_indicator: bool,
+    pub indicator_color: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ResizeConfig {
+    pub step: u32,
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ImagesConfig {
+    pub enabled: bool,
+    pub max_memory_mb: usize,
+    pub sixel_enabled: bool,
+    pub kitty_enabled: bool,
+    pub kitty: KittyImagesConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct KittyImagesConfig {
+    pub max_image_size_mb: usize,
+    pub allow_file_transfer: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ConfirmConfig {
+    pub on_close_pane: bool,
+    pub on_quit: bool,
+}
+
+impl Default for ConfirmConfig {
+    fn default() -> Self {
+        Self {
+            on_close_pane: true,
+            on_quit: true,
+        }
+    }
+}
+
+impl Default for ImagesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_memory_mb: 256,
+            sixel_enabled: true,
+            kitty_enabled: true,
+            kitty: KittyImagesConfig::default(),
+        }
+    }
+}
+
+impl Default for KittyImagesConfig {
+    fn default() -> Self {
+        Self {
+            max_image_size_mb: 50,
+            allow_file_transfer: true,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             font: FontConfig::default(),
             window: WindowConfig::default(),
             colors: ColorConfig::default(),
+            selection: SelectionConfig::default(),
+            status_bar: StatusBarConfig::default(),
+            theme: ThemeConfig::default(),
+            keybind: KeybindConfig::default(),
+            prompt_marks: PromptMarksConfig::default(),
+            images: ImagesConfig::default(),
+            confirm: ConfirmConfig::default(),
         }
     }
 }
@@ -45,6 +189,9 @@ impl Default for FontConfig {
         Self {
             family: "Menlo".to_string(),
             size: 14.0,
+            zoom_step: 1.0,
+            min_size: 6.0,
+            max_size: 72.0,
         }
     }
 }
@@ -54,6 +201,17 @@ impl Default for WindowConfig {
         Self {
             columns: 80,
             rows: 24,
+            scrollback_lines: 10000,
+            opacity: 1.0,
+        }
+    }
+}
+
+impl Default for SelectionConfig {
+    fn default() -> Self {
+        Self {
+            foreground: "#000000".to_string(),
+            background: "#b4d5fe".to_string(),
         }
     }
 }
@@ -64,6 +222,79 @@ impl Default for ColorConfig {
             foreground: "#c0c0c0".to_string(),
             background: "#1a1a2e".to_string(),
         }
+    }
+}
+
+impl Default for StatusBarConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_shell: true,
+            show_cwd: true,
+            show_pane_index: true,
+        }
+    }
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            chrome: ChromeConfig::default(),
+        }
+    }
+}
+
+impl Default for ChromeConfig {
+    fn default() -> Self {
+        Self {
+            sumi_black: "#1a1a1a".to_string(),
+            sumi_dark: "#2d2d2d".to_string(),
+            sumi_medium: "#4a4a4a".to_string(),
+            sumi_light: "#7a7a7a".to_string(),
+            sumi_ghost: "#3a3a3a".to_string(),
+            hanko_red: "#b5312c".to_string(),
+            hanko_dim: "#6b2320".to_string(),
+        }
+    }
+}
+
+impl Default for KeybindConfig {
+    fn default() -> Self {
+        Self {
+            split_vertical: "cmd+d".to_string(),
+            split_horizontal: "cmd+shift+d".to_string(),
+            close_pane: "cmd+w".to_string(),
+            focus_left: "cmd+h".to_string(),
+            focus_down: "cmd+j".to_string(),
+            focus_up: "cmd+k".to_string(),
+            focus_right: "cmd+l".to_string(),
+            resize_left: "cmd+shift+h".to_string(),
+            resize_down: "cmd+shift+j".to_string(),
+            resize_up: "cmd+shift+k".to_string(),
+            resize_right: "cmd+shift+l".to_string(),
+            zoom_in: "cmd+=".to_string(),
+            zoom_out: "cmd+-".to_string(),
+            zoom_reset: "cmd+0".to_string(),
+            prev_prompt: "cmd+up".to_string(),
+            next_prompt: "cmd+down".to_string(),
+            resize: ResizeConfig::default(),
+        }
+    }
+}
+
+impl Default for PromptMarksConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_indicator: true,
+            indicator_color: "#b5312c".to_string(),
+        }
+    }
+}
+
+impl Default for ResizeConfig {
+    fn default() -> Self {
+        Self { step: 20 }
     }
 }
 

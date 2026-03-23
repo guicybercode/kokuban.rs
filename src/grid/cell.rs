@@ -14,7 +14,19 @@ bitflags! {
         const ITALIC    = 0b0000_0010;
         const UNDERLINE = 0b0000_0100;
         const REVERSE   = 0b0000_1000;
+        const WIDE      = 0b0001_0000;
+        const WIDE_CONT = 0b0010_0000;
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnderlineStyle {
+    None,
+    Single,
+    Double,
+    Curly,
+    Dotted,
+    Dashed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -23,6 +35,8 @@ pub struct Cell {
     pub fg: Color,
     pub bg: Color,
     pub flags: CellFlags,
+    pub underline_style: UnderlineStyle,
+    pub underline_color: Color,
 }
 
 impl Default for Cell {
@@ -32,6 +46,8 @@ impl Default for Cell {
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),
+            underline_style: UnderlineStyle::None,
+            underline_color: Color::Default,
         }
     }
 }

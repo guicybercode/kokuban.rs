@@ -51,4 +51,13 @@ fragment float4 fragment_main(
     float coverage = atlas.sample(samp, in.uv).r;
     return mix(in.bg_color, in.fg_color, coverage);
 }
+
+// Image fragment shader: samples RGBA texture directly
+fragment float4 image_fragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> img [[texture(0)]],
+    sampler samp [[sampler(0)]]
+) {
+    return img.sample(samp, in.uv);
+}
 "#;

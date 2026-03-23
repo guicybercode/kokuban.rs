@@ -1,4 +1,9 @@
 pub mod atlas;
+pub mod box_drawing;
+pub mod braille;
+pub mod brush;
+pub mod image_store;
+pub mod kitty_handler;
 pub mod metal;
 pub mod shaders;
 

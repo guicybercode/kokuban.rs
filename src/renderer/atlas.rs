@@ -132,6 +132,50 @@ impl GlyphAtlas {
         atlas
     }
 
+    /// Clear all cached glyphs and reset the atlas. Glyphs will be re-rasterized lazily.
+    pub fn clear_and_resize(&mut self, new_font_size: f32) {
+        self.font_size = new_font_size;
+        let scaled_size = self.font_size * self.scale_factor;
+
+        let metrics = self.font.metrics();
+        let units_per_em = metrics.units_per_em as f32;
+        let ascent = metrics.ascent / units_per_em * scaled_size;
+        let descent = metrics.descent / units_per_em * scaled_size;
+        let leading = metrics.line_gap / units_per_em * scaled_size;
+
+        self.cell_height = (ascent - descent + leading).ceil();
+        let glyph_id = self.font.glyph_for_char('M').unwrap_or(0);
+        let advance = self.font.advance(glyph_id).unwrap_or_default();
+        self.cell_width = (advance.x() / units_per_em * scaled_size).ceil();
+        self.ascent = ascent;
+        self.descent = descent;
+
+        log::info!(
+            "Font resized: size={new_font_size} cell={}x{} ascent={:.1}",
+            self.cell_width,
+            self.cell_height,
+            self.ascent,
+        );
+
+        // Reset pixel buffer
+        self.pixels.fill(0);
+        self.pixels[0] = 255; // white pixel at (0,0)
+        self.glyphs.clear();
+        self.cursor_x = 2;
+        self.cursor_y = 0;
+        self.row_height = 0;
+        self.dirty = true;
+
+        // Pre-rasterize ASCII
+        for c in ' '..='~' {
+            self.get_or_insert(GlyphKey {
+                c,
+                bold: false,
+                italic: false,
+            });
+        }
+    }
+
     pub fn get_or_insert(&mut self, key: GlyphKey) -> GlyphEntry {
         if let Some(&entry) = self.glyphs.get(&key) {
             return entry;

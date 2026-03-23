@@ -1,11 +1,60 @@
 [font]
 family = "Menlo"
 size = 14.0
+zoom_step = 1.0
+min_size = 6.0
+max_size = 72.0
 
 [window]
 columns = 80
 rows = 24
+opacity = 1.0
 
 [colors]
 foreground = "#c0c0c0"
 background = "#1a1a2e"
+
+[selection]
+foreground = "#000000"
+background = "#b4d5fe"
+
+[status_bar]
+enabled = true
+show_shell = true
+show_cwd = true
+show_pane_index = true
+
+[prompt_marks]
+enabled = true
+show_indicator = true
+indicator_color = "#b5312c"
+
+[theme.chrome]
+sumi_black  = "#1a1a1a"
+sumi_dark   = "#2d2d2d"
+sumi_medium = "#4a4a4a"
+sumi_light  = "#7a7a7a"
+sumi_ghost  = "#3a3a3a"
+hanko_red   = "#b5312c"
+hanko_dim   = "#6b2320"
+
+[keybind]
+split_vertical   = "cmd+d"
+split_horizontal = "cmd+shift+d"
+close_pane       = "cmd+w"
+focus_left       = "cmd+h"
+focus_down       = "cmd+j"
+focus_up         = "cmd+k"
+focus_right      = "cmd+l"
+resize_left      = "cmd+shift+h"
+resize_down      = "cmd+shift+j"
+resize_up        = "cmd+shift+k"
+resize_right     = "cmd+shift+l"
+zoom_in          = "cmd+="
+zoom_out         = "cmd+-"
+zoom_reset       = "cmd+0"
+prev_prompt      = "cmd+up"
+next_prompt      = "cmd+down"
+
+[keybind.resize]
+step = 20

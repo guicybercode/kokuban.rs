@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod grid;
 mod input;
+mod pane;
 mod parser;
 mod pty;
 mod renderer;
