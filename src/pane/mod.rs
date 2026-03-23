@@ -95,12 +95,18 @@ impl PaneTree {
         // Calculate cols/rows for new pane from its rect
         let new_cols = (right_rect.width / cell_w).floor() as u16;
         let new_rows = (right_rect.height / cell_h).floor() as u16;
-        let new_pane = Pane::new(
+        let mut new_pane = Pane::new(
             new_id,
             new_cols.max(MIN_PANE_COLS as u16),
             new_rows.max(MIN_PANE_ROWS as u16),
             self.scrollback_max,
         )?;
+
+        // Copy color config from existing pane for OSC 10/11 queries
+        if let Some(existing) = self.panes.get(&target) {
+            new_pane.grid.default_fg_hex = existing.grid.default_fg_hex.clone();
+            new_pane.grid.default_bg_hex = existing.grid.default_bg_hex.clone();
+        }
 
         self.panes.insert(new_id, new_pane);
         self.root.split_leaf(target, new_id, direction);

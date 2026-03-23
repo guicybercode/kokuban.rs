@@ -3,16 +3,73 @@ pub mod cell;
 pub mod marks;
 
 use buffer::Buffer;
-use cell::{Cell, CellFlags, Color};
+use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use marks::MarkIndex;
 use std::collections::VecDeque;
+use unicode_width::UnicodeWidthChar;
 
 const DEFAULT_CELL: Cell = Cell {
     c: ' ',
     fg: Color::Default,
     bg: Color::Default,
     flags: CellFlags::empty(),
+    underline_style: UnderlineStyle::None,
+    underline_color: Color::Default,
 };
+
+// Mouse tracking modes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseTracking {
+    None,
+    Normal,      // 1000
+    ButtonEvent, // 1002
+    AnyEvent,    // 1003
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseEncoding {
+    Default,
+    Sgr, // 1006
+}
+
+// Cursor shape
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorShape {
+    Block,
+    Underline,
+    Bar,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CursorStyle {
+    pub shape: CursorShape,
+    pub blinking: bool,
+}
+
+impl Default for CursorStyle {
+    fn default() -> Self {
+        Self { shape: CursorShape::Block, blinking: true }
+    }
+}
+
+// DEC character set
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharSet {
+    Ascii,
+    DecSpecial,
+}
+
+pub fn dec_special_map(c: char) -> char {
+    match c {
+        'j' => '┘', 'k' => '┐', 'l' => '┌', 'm' => '└',
+        'n' => '┼', 'q' => '─', 't' => '├', 'u' => '┤',
+        'v' => '┴', 'w' => '┬', 'x' => '│', 'a' => '▒',
+        'f' => '°', 'g' => '±', 'h' => '▒', 'i' => '␋',
+        'y' => '≤', 'z' => '≥', '{' => 'π', '|' => '≠',
+        '}' => '£', '~' => '·',
+        _ => c,
+    }
+}
 
 #[derive(Debug)]
 pub struct Grid {
@@ -38,13 +95,26 @@ pub struct Grid {
     // Mode flags
     pub cursor_visible: bool,
     pub bracketed_paste: bool,
+    pub mouse_tracking: MouseTracking,
+    pub mouse_encoding: MouseEncoding,
+    pub focus_events: bool,
+    pub cursor_style: CursorStyle,
+    pub insert_mode: bool,
+    pub charset: CharSet,
+    // Underline state (current SGR)
+    pub underline_style: UnderlineStyle,
+    pub underline_color: Color,
     // Terminal state from OSC sequences
     pub title: String,
     pub cwd: String,
     // Prompt marks
     pub marks: MarkIndex,
-    /// Total lines ever pushed into scrollback (monotonically increasing, survives eviction)
     pub total_lines_pushed: usize,
+    // Pending responses to write back to PTY
+    pub pending_responses: Vec<Vec<u8>>,
+    // Colors for query responses
+    pub default_fg_hex: String,
+    pub default_bg_hex: String,
 }
 
 impl Grid {
@@ -69,30 +139,29 @@ impl Grid {
             using_alt_screen: false,
             cursor_visible: true,
             bracketed_paste: false,
+            mouse_tracking: MouseTracking::None,
+            mouse_encoding: MouseEncoding::Default,
+            focus_events: false,
+            cursor_style: CursorStyle::default(),
+            insert_mode: false,
+            charset: CharSet::Ascii,
+            underline_style: UnderlineStyle::None,
+            underline_color: Color::Default,
             title: String::new(),
             cwd: String::new(),
             marks: MarkIndex::default(),
             total_lines_pushed: 0,
+            pending_responses: Vec::new(),
+            default_fg_hex: String::new(),
+            default_bg_hex: String::new(),
         }
     }
 
-    pub fn cols(&self) -> usize {
-        self.buffer.cols()
-    }
+    pub fn cols(&self) -> usize { self.buffer.cols() }
+    pub fn rows(&self) -> usize { self.buffer.rows() }
+    pub fn scrollback_len(&self) -> usize { self.scrollback.len() }
+    pub fn scrollback_max(&self) -> usize { self.scrollback_max }
 
-    pub fn rows(&self) -> usize {
-        self.buffer.rows()
-    }
-
-    pub fn scrollback_len(&self) -> usize {
-        self.scrollback.len()
-    }
-
-    pub fn scrollback_max(&self) -> usize {
-        self.scrollback_max
-    }
-
-    /// Read a character from the scrollback buffer by absolute row index.
     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
         if let Some(row_data) = self.scrollback.get(row) {
             if col < row_data.len() {
@@ -108,23 +177,109 @@ impl Grid {
             fg: self.fg,
             bg: self.bg,
             flags: CellFlags::empty(),
+            underline_style: UnderlineStyle::None,
+            underline_color: Color::Default,
         }
     }
 
+    pub fn drain_responses(&mut self) -> Vec<Vec<u8>> {
+        std::mem::take(&mut self.pending_responses)
+    }
+
+    /// Place a character at the cursor, handling wide chars and DEC charset.
     pub fn put_char(&mut self, c: char) {
+        let c = if self.charset == CharSet::DecSpecial {
+            dec_special_map(c)
+        } else {
+            c
+        };
+
+        let char_width = c.width().unwrap_or(1);
+
+        // Wide char at last column: wrap first
+        if char_width == 2 && self.cursor_col >= self.cols().saturating_sub(1) {
+            // Pad the current cell with a space, then wrap
+            if self.cursor_col < self.cols() {
+                let row = self.cursor_row;
+                let col = self.cursor_col;
+                *self.buffer.cell_mut(row, col) = self.template_cell();
+            }
+            self.cursor_col = self.cols(); // trigger wrap on next line
+        }
+
         if self.cursor_col >= self.cols() {
             self.carriage_return();
             self.newline();
         }
+
         let row = self.cursor_row;
         let col = self.cursor_col;
+
+        // Insert mode: shift content right
+        if self.insert_mode {
+            let cols = self.cols();
+            let shift = char_width;
+            for c_idx in (col + shift..cols).rev() {
+                let src = *self.buffer.cell(row, c_idx - shift);
+                *self.buffer.cell_mut(row, c_idx) = src;
+            }
+        }
+
+        // Clear any wide char that we're overwriting
+        self.clear_wide_overlap(row, col, char_width);
+
         let cell = self.buffer.cell_mut(row, col);
         cell.c = c;
         cell.fg = self.fg;
         cell.bg = self.bg;
         cell.flags = self.flags;
+        cell.underline_style = self.underline_style;
+        cell.underline_color = self.underline_color;
+
+        if char_width == 2 {
+            cell.flags.insert(CellFlags::WIDE);
+            cell.flags.remove(CellFlags::WIDE_CONT);
+            // Set continuation cell
+            if col + 1 < self.cols() {
+                let cont = self.buffer.cell_mut(row, col + 1);
+                cont.c = '\0';
+                cont.fg = self.fg;
+                cont.bg = self.bg;
+                cont.flags = CellFlags::WIDE_CONT;
+                cont.underline_style = UnderlineStyle::None;
+                cont.underline_color = Color::Default;
+            }
+        } else {
+            cell.flags.remove(CellFlags::WIDE);
+            cell.flags.remove(CellFlags::WIDE_CONT);
+        }
+
         self.dirty[row] = true;
-        self.cursor_col += 1;
+        self.cursor_col += char_width;
+    }
+
+    /// Clear wide char overlap when overwriting cells.
+    fn clear_wide_overlap(&mut self, row: usize, col: usize, width: usize) {
+        // If we're overwriting the continuation half of a wide char, clear its first half
+        if col < self.cols() {
+            let cell = self.buffer.cell(row, col);
+            if cell.flags.contains(CellFlags::WIDE_CONT) && col > 0 {
+                let prev = self.buffer.cell_mut(row, col - 1);
+                prev.c = ' ';
+                prev.flags.remove(CellFlags::WIDE);
+            }
+        }
+        // If we're overwriting the first half of a wide char, clear continuation
+        for c in col..col + width {
+            if c < self.cols() {
+                let cell = self.buffer.cell(row, c);
+                if cell.flags.contains(CellFlags::WIDE) && c + 1 < self.cols() {
+                    let cont = self.buffer.cell_mut(row, c + 1);
+                    cont.c = ' ';
+                    cont.flags.remove(CellFlags::WIDE_CONT);
+                }
+            }
+        }
     }
 
     pub fn newline(&mut self) {
@@ -135,9 +290,7 @@ impl Grid {
         }
     }
 
-    pub fn carriage_return(&mut self) {
-        self.cursor_col = 0;
-    }
+    pub fn carriage_return(&mut self) { self.cursor_col = 0; }
 
     pub fn backspace(&mut self) {
         if self.cursor_col > 0 {
@@ -150,13 +303,11 @@ impl Grid {
         self.cursor_col = next_tab.min(self.cols() - 1);
     }
 
-    /// Current absolute row for prompt marks: total_lines_pushed + cursor_row
     pub fn current_absolute_row(&self) -> usize {
         self.total_lines_pushed + self.cursor_row
     }
 
     pub fn scroll_up(&mut self, count: usize) {
-        // Push lines into scrollback when scrolling at the top of the screen
         if !self.using_alt_screen && self.scroll_top == 0 {
             let pushed = count.min(self.rows());
             for i in 0..pushed {
@@ -168,10 +319,8 @@ impl Grid {
             }
             self.total_lines_pushed += pushed;
         }
-
         let template = self.template_cell();
-        self.buffer
-            .scroll_up(self.scroll_top, self.scroll_bottom, count, template);
+        self.buffer.scroll_up(self.scroll_top, self.scroll_bottom, count, template);
         for row in self.scroll_top..=self.scroll_bottom {
             self.dirty[row] = true;
         }
@@ -179,14 +328,12 @@ impl Grid {
 
     pub fn scroll_down(&mut self, count: usize) {
         let template = self.template_cell();
-        self.buffer
-            .scroll_down(self.scroll_top, self.scroll_bottom, count, template);
+        self.buffer.scroll_down(self.scroll_top, self.scroll_bottom, count, template);
         for row in self.scroll_top..=self.scroll_bottom {
             self.dirty[row] = true;
         }
     }
 
-    /// Maps a viewport row+col to the appropriate cell, considering scroll_offset.
     pub fn visible_cell(&self, vis_row: usize, col: usize) -> &Cell {
         if self.scroll_offset == 0 {
             return self.buffer.cell(vis_row, col);
@@ -196,18 +343,10 @@ impl Grid {
         let abs_row = start + vis_row;
         if abs_row < sb_len {
             let row_data = &self.scrollback[abs_row];
-            if col < row_data.len() {
-                &row_data[col]
-            } else {
-                &DEFAULT_CELL
-            }
+            if col < row_data.len() { &row_data[col] } else { &DEFAULT_CELL }
         } else {
             let buffer_row = abs_row - sb_len;
-            if buffer_row < self.buffer.rows() {
-                self.buffer.cell(buffer_row, col)
-            } else {
-                &DEFAULT_CELL
-            }
+            if buffer_row < self.buffer.rows() { self.buffer.cell(buffer_row, col) } else { &DEFAULT_CELL }
         }
     }
 
@@ -229,20 +368,15 @@ impl Grid {
         }
     }
 
-    // Alternate screen buffer
     pub fn enter_alt_screen(&mut self) {
-        if self.using_alt_screen {
-            return;
-        }
+        if self.using_alt_screen { return; }
         self.using_alt_screen = true;
         self.scroll_offset = 0;
         self.alt_cursor = (self.cursor_row, self.cursor_col);
-
         let cols = self.cols();
         let rows = self.rows();
         let primary = std::mem::replace(&mut self.buffer, Buffer::new(cols, rows));
         self.alt_buffer = Some(primary);
-
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.scroll_top = 0;
@@ -251,9 +385,7 @@ impl Grid {
     }
 
     pub fn leave_alt_screen(&mut self) {
-        if !self.using_alt_screen {
-            return;
-        }
+        if !self.using_alt_screen { return; }
         if let Some(primary) = self.alt_buffer.take() {
             self.buffer = primary;
         }
@@ -270,19 +402,9 @@ impl Grid {
         let cols = self.cols();
         let template = self.template_cell();
         match mode {
-            0 => {
-                for col in self.cursor_col..cols {
-                    *self.buffer.cell_mut(row, col) = template;
-                }
-            }
-            1 => {
-                for col in 0..=self.cursor_col.min(cols - 1) {
-                    *self.buffer.cell_mut(row, col) = template;
-                }
-            }
-            2 => {
-                self.buffer.clear_row(row, template);
-            }
+            0 => { for col in self.cursor_col..cols { *self.buffer.cell_mut(row, col) = template; } }
+            1 => { for col in 0..=self.cursor_col.min(cols - 1) { *self.buffer.cell_mut(row, col) = template; } }
+            2 => { self.buffer.clear_row(row, template); }
             _ => {}
         }
         self.dirty[row] = true;
@@ -320,21 +442,10 @@ impl Grid {
         self.cursor_col = col.min(self.cols() - 1);
     }
 
-    pub fn move_cursor_up(&mut self, n: usize) {
-        self.cursor_row = self.cursor_row.saturating_sub(n);
-    }
-
-    pub fn move_cursor_down(&mut self, n: usize) {
-        self.cursor_row = (self.cursor_row + n).min(self.rows() - 1);
-    }
-
-    pub fn move_cursor_forward(&mut self, n: usize) {
-        self.cursor_col = (self.cursor_col + n).min(self.cols() - 1);
-    }
-
-    pub fn move_cursor_backward(&mut self, n: usize) {
-        self.cursor_col = self.cursor_col.saturating_sub(n);
-    }
+    pub fn move_cursor_up(&mut self, n: usize) { self.cursor_row = self.cursor_row.saturating_sub(n); }
+    pub fn move_cursor_down(&mut self, n: usize) { self.cursor_row = (self.cursor_row + n).min(self.rows() - 1); }
+    pub fn move_cursor_forward(&mut self, n: usize) { self.cursor_col = (self.cursor_col + n).min(self.cols() - 1); }
+    pub fn move_cursor_backward(&mut self, n: usize) { self.cursor_col = self.cursor_col.saturating_sub(n); }
 
     pub fn set_scroll_region(&mut self, top: usize, bottom: usize) {
         let bottom = bottom.min(self.rows() - 1);
@@ -386,19 +497,7 @@ impl Grid {
         self.dirty = vec![true; rows];
     }
 
-    pub fn mark_all_dirty(&mut self) {
-        for d in &mut self.dirty {
-            *d = true;
-        }
-    }
-
-    pub fn clear_dirty(&mut self) {
-        for d in &mut self.dirty {
-            *d = false;
-        }
-    }
-
-    pub fn is_any_dirty(&self) -> bool {
-        self.dirty.iter().any(|&d| d)
-    }
+    pub fn mark_all_dirty(&mut self) { for d in &mut self.dirty { *d = true; } }
+    pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
+    pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
 }

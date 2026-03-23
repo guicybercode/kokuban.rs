@@ -1,4 +1,5 @@
 use crate::app::selection::GridPoint;
+use crate::grid::{MouseEncoding, MouseTracking};
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::keyboard::translate_key_event;
 use crate::pane::layout::PixelRect;
@@ -178,20 +179,30 @@ define_class!(
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
             let delta_y = event.scrollingDeltaY();
-            if delta_y.abs() < 0.01 {
-                return;
-            }
+            if delta_y.abs() < 0.01 { return; }
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
-                    let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
                     let mut tree = state.pane_tree.lock().unwrap();
-                    if let Some(pane) = tree.focused_pane_mut() {
-                        if delta_y > 0.0 {
-                            pane.grid.scroll_viewport_up(lines);
-                        } else {
-                            pane.grid.scroll_viewport_down(lines);
+                    // Get cell coords first (immutable borrow)
+                    let cell_info = pixel_to_cell(event, state, &tree);
+                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
+                    if let (Some(mt), Some((_id, gc, gr))) = (tracking, cell_info) {
+                        if mt.0 != MouseTracking::None {
+                            let button = if delta_y > 0.0 { 64u8 } else { 65u8 };
+                            let seq = encode_sgr_mouse(button, gc + 1, gr + 1, true, mt.1);
+                            if let Some(pane) = tree.focused_pane() {
+                                pane.pty.write_all(&seq).ok();
+                            }
+                        } else if let Some(pane) = tree.focused_pane_mut() {
+                            let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
+                            if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
+                            else { pane.grid.scroll_viewport_down(lines); }
                         }
+                    } else if let Some(pane) = tree.focused_pane_mut() {
+                        let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
+                        if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
+                        else { pane.grid.scroll_viewport_down(lines); }
                     }
                     drop(tree);
                     state.dirty.store(true, Ordering::Relaxed);
@@ -201,42 +212,83 @@ define_class!(
 
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, event: &NSEvent) {
+            let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
-                    if let Some((pane_id, point)) = pixel_to_grid_point(event, state) {
-                        let mut tree = state.pane_tree.lock().unwrap();
+                    let mut tree = state.pane_tree.lock().unwrap();
+                    let cell_info = pixel_to_cell(event, state, &tree);
+                    if let Some((pane_id, gc, gr)) = cell_info {
                         tree.focused = pane_id;
-                        if let Some(pane) = tree.pane_mut(pane_id) {
-                            pane.selection.start(point);
+                        let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
+                        if let Some((mt, sgr)) = tracking {
+                            if mt != MouseTracking::None && !has_shift {
+                                let seq = encode_sgr_mouse(0, gc + 1, gr + 1, true, sgr);
+                                if let Some(pane) = tree.pane(pane_id) {
+                                    pane.pty.write_all(&seq).ok();
+                                }
+                            } else if let Some(pane) = tree.pane_mut(pane_id) {
+                                if let Some((_id, point)) = pixel_to_grid_point(event, state) {
+                                    pane.selection.start(point);
+                                }
+                            }
                         }
-                        drop(tree);
-                        state.dirty.store(true, Ordering::Relaxed);
                     }
+                    drop(tree);
+                    state.dirty.store(true, Ordering::Relaxed);
                 }
             });
         }
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, event: &NSEvent) {
+            let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
-                    if let Some((_pane_id, point)) = pixel_to_grid_point(event, state) {
-                        let mut tree = state.pane_tree.lock().unwrap();
-                        if let Some(pane) = tree.focused_pane_mut() {
-                            pane.selection.update(point);
+                    let mut tree = state.pane_tree.lock().unwrap();
+                    let cell_info = pixel_to_cell(event, state, &tree);
+                    let focused = tree.focused;
+                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
+                    if let Some((mt, sgr)) = tracking {
+                        let forward = (mt == MouseTracking::ButtonEvent || mt == MouseTracking::AnyEvent) && !has_shift;
+                        if forward {
+                            if let Some((_id, gc, gr)) = cell_info {
+                                let seq = encode_sgr_mouse(32, gc + 1, gr + 1, true, sgr);
+                                if let Some(pane) = tree.pane(focused) {
+                                    pane.pty.write_all(&seq).ok();
+                                }
+                            }
+                        } else if let Some(pane) = tree.focused_pane_mut() {
+                            if let Some((_id, point)) = pixel_to_grid_point(event, state) {
+                                pane.selection.update(point);
+                            }
                         }
-                        drop(tree);
-                        state.dirty.store(true, Ordering::Relaxed);
                     }
+                    drop(tree);
+                    state.dirty.store(true, Ordering::Relaxed);
                 }
             });
         }
 
         #[unsafe(method(mouseUp:))]
-        fn mouse_up(&self, _event: &NSEvent) {
-            // Selection stays
+        fn mouse_up(&self, event: &NSEvent) {
+            VIEW_STATE.with(|state| {
+                let state = state.borrow();
+                if let Some(state) = state.as_ref() {
+                    let tree = state.pane_tree.lock().unwrap();
+                    let cell_info = pixel_to_cell(event, state, &tree);
+                    if let Some(pane) = tree.focused_pane() {
+                        if pane.grid.mouse_tracking != MouseTracking::None {
+                            if let Some((_id, gc, gr)) = cell_info {
+                                let sgr = pane.grid.mouse_encoding == MouseEncoding::Sgr;
+                                let seq = encode_sgr_mouse(0, gc + 1, gr + 1, false, sgr);
+                                pane.pty.write_all(&seq).ok();
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         #[unsafe(method(keyDown:))]
@@ -581,6 +633,41 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     state.dirty.store(true, Ordering::Relaxed);
 }
 
+fn pixel_to_cell(event: &NSEvent, state: &ViewState, tree: &PaneTree) -> Option<(crate::pane::PaneId, usize, usize)> {
+    let loc = event.locationInWindow();
+    let scale = state.scale_factor;
+    let atlas = state.atlas.lock().unwrap();
+    let cell_w = atlas.cell_width;
+    let cell_h = atlas.cell_height;
+    drop(atlas);
+    let size = state.metal_layer.drawableSize();
+    let view_h = size.height as f32 / scale;
+    let px = loc.x as f32 * scale;
+    let py = (view_h - loc.y as f32) * scale;
+    let pane_id = tree.pane_at(px, py).unwrap_or(tree.focused);
+    let pane = tree.pane(pane_id)?;
+    let col = ((px - pane.rect.x) / cell_w).max(0.0) as usize;
+    let row = ((py - pane.rect.y) / cell_h).max(0.0) as usize;
+    Some((pane_id, col.min(pane.grid.cols().saturating_sub(1)), row.min(pane.grid.rows().saturating_sub(1))))
+}
+
+fn encode_sgr_mouse(button: u8, col: usize, row: usize, press: bool, sgr: bool) -> Vec<u8> {
+    if sgr {
+        let suffix = if press { 'M' } else { 'm' };
+        format!("\x1b[<{button};{col};{row}{suffix}").into_bytes()
+    } else {
+        // Legacy X10 encoding
+        let cb = button + 32;
+        let cx = (col as u8).min(223) + 32;
+        let cy = (row as u8).min(223) + 32;
+        if press {
+            vec![0x1b, b'[', b'M', cb, cx, cy]
+        } else {
+            vec![0x1b, b'[', b'M', 3 + 32, cx, cy] // release = button 3
+        }
+    }
+}
+
 fn pixel_to_grid_point(event: &NSEvent, state: &ViewState) -> Option<(crate::pane::PaneId, GridPoint)> {
     let loc = event.locationInWindow();
     let scale = state.scale_factor;
@@ -689,6 +776,7 @@ fn render_frame() {
                     pane_index: i,
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
+                    show_cursor: pane.grid.cursor_visible && *id == focused_id,
                 });
             }
         }

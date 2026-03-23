@@ -1,10 +1,12 @@
 use super::atlas::{GlyphAtlas, GlyphKey};
+use super::box_drawing;
+use super::braille;
 use super::brush::BrushRenderer;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::app::selection::SelectionState;
-use crate::grid::cell::{CellFlags, Color};
-use crate::grid::Grid;
+use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
+use crate::grid::{CursorShape, Grid};
 use crate::pane::layout::{DividerInfo, PixelRect, DIVIDER_THICKNESS};
 use crate::pane::tree::SplitDirection;
 use objc2::rc::Retained;
@@ -40,6 +42,7 @@ pub struct PaneRenderData<'a> {
     pub pane_index: usize,
     pub cwd: &'a str,
     pub prompt_mark_rows: Vec<usize>,
+    pub show_cursor: bool,
 }
 
 pub struct ChromeColors {
@@ -237,54 +240,47 @@ impl MetalRenderer {
         let white_u = atlas.white_uv.0;
         let white_v = atlas.white_uv.1;
         let grid_height = rect.height - status_bar_height;
+        let line_thickness = 1.5;
 
         for row in 0..grid.rows() {
             for col in 0..grid.cols() {
                 let cell = grid.visible_cell(row, col);
+
+                // Skip continuation cells of wide chars (bg already drawn by wide cell)
+                if cell.flags.contains(CellFlags::WIDE_CONT) {
+                    continue;
+                }
+
                 let bold = cell.flags.contains(CellFlags::BOLD);
                 let reverse = cell.flags.contains(CellFlags::REVERSE);
+                let is_wide = cell.flags.contains(CellFlags::WIDE);
+                let render_width = if is_wide { 2.0 } else { 1.0 };
 
                 let (fg, bg) = if reverse {
-                    (
-                        self.resolve_color(cell.bg, false, false),
-                        self.resolve_color(cell.fg, true, bold),
-                    )
+                    (self.resolve_color(cell.bg, false, false), self.resolve_color(cell.fg, true, bold))
                 } else {
-                    (
-                        self.resolve_color(cell.fg, true, bold),
-                        self.resolve_color(cell.bg, false, false),
-                    )
+                    (self.resolve_color(cell.fg, true, bold), self.resolve_color(cell.bg, false, false))
                 };
 
-                let is_selected = pane
-                    .selection
+                let is_selected = pane.selection
                     .map(|s| s.contains(row, col, grid.scroll_offset, grid.scrollback_len()))
                     .unwrap_or(false);
 
                 let (fg_packed, bg_packed) = if is_selected {
-                    (
-                        Self::pack_color(selection_fg.0, selection_fg.1, selection_fg.2, 255),
-                        Self::pack_color(selection_bg.0, selection_bg.1, selection_bg.2, 255),
-                    )
+                    (Self::pack_color(selection_fg.0, selection_fg.1, selection_fg.2, 255),
+                     Self::pack_color(selection_bg.0, selection_bg.1, selection_bg.2, 255))
                 } else {
-                    (
-                        Self::pack_color(fg.0, fg.1, fg.2, 255),
-                        Self::pack_color(bg.0, bg.1, bg.2, 255),
-                    )
+                    (Self::pack_color(fg.0, fg.1, fg.2, 255),
+                     Self::pack_color(bg.0, bg.1, bg.2, 255))
                 };
 
                 let x0 = rect.x + col as f32 * cell_w;
                 let y0 = rect.y + row as f32 * cell_h;
-
-                // Clip to grid area
-                if y0 + cell_h > rect.y + grid_height {
-                    continue;
-                }
-
-                let x1 = x0 + cell_w;
+                if y0 + cell_h > rect.y + grid_height { continue; }
+                let x1 = x0 + cell_w * render_width;
                 let y1 = y0 + cell_h;
 
-                // Background quad
+                // Background quad (spans full width for wide chars)
                 vertices.push(Vertex::new(x0, y0, white_u, white_v, bg_packed, bg_packed));
                 vertices.push(Vertex::new(x1, y0, white_u, white_v, bg_packed, bg_packed));
                 vertices.push(Vertex::new(x0, y1, white_u, white_v, bg_packed, bg_packed));
@@ -292,55 +288,155 @@ impl MetalRenderer {
                 vertices.push(Vertex::new(x1, y1, white_u, white_v, bg_packed, bg_packed));
                 vertices.push(Vertex::new(x0, y1, white_u, white_v, bg_packed, bg_packed));
 
-                // Glyph quad
                 if cell.c != ' ' && cell.c != '\0' {
-                    let key = GlyphKey {
-                        c: cell.c,
-                        bold,
-                        italic: cell.flags.contains(CellFlags::ITALIC),
+                    let cw = cell_w * render_width;
+                    // Box drawing: geometric lines
+                    if let Some(segs) = box_drawing::box_drawing_lines(cell.c, cw, cell_h) {
+                        for (lx0, ly0, lx1, ly1) in segs {
+                            let is_horiz = (ly0 - ly1).abs() < 0.01;
+                            let half = line_thickness / 2.0;
+                            let (rx0, ry0, rx1, ry1) = if is_horiz {
+                                (x0 + lx0, y0 + ly0 - half, x0 + lx1, y0 + ly1 + half)
+                            } else {
+                                (x0 + lx0 - half, y0 + ly0, x0 + lx1 + half, y0 + ly1)
+                            };
+                            vertices.push(Vertex::new(rx0, ry0, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(rx1, ry0, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(rx1, ry0, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(rx1, ry1, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
+                        }
+                    } else if braille::is_braille(cell.c) {
+                        // Braille: render dots
+                        let dots = braille::braille_dots(cell.c);
+                        let dot_r = cell_w / 6.0;
+                        let col_spacing = cw / 2.0;
+                        let row_spacing = cell_h / 4.0;
+                        for (dc, dr) in dots {
+                            let dx = x0 + (dc as f32 + 0.5) * col_spacing - dot_r;
+                            let dy = y0 + (dr as f32 + 0.25) * row_spacing - dot_r;
+                            vertices.push(Vertex::new(dx, dy, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(dx + dot_r * 2.0, dy, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(dx, dy + dot_r * 2.0, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(dx + dot_r * 2.0, dy, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(dx + dot_r * 2.0, dy + dot_r * 2.0, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(dx, dy + dot_r * 2.0, white_u, white_v, fg_packed, fg_packed));
+                        }
+                    } else {
+                        // Normal glyph from atlas
+                        let key = GlyphKey { c: cell.c, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
+                        let glyph = atlas.get_or_insert(key);
+                        if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
+                            let gx0 = x0 + glyph.bearing_x;
+                            let gy0 = y0 + atlas.ascent + glyph.bearing_y;
+                            let gx1 = gx0 + glyph.pixel_w as f32;
+                            let gy1 = gy0 + glyph.pixel_h as f32;
+                            let u0 = glyph.uv_x;
+                            let v0 = glyph.uv_y;
+                            let u1 = glyph.uv_x + glyph.uv_w;
+                            let v1 = glyph.uv_y + glyph.uv_h;
+                            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                        }
+                    }
+                }
+
+                // Styled underlines
+                if cell.underline_style != UnderlineStyle::None {
+                    let ul_color = match cell.underline_color {
+                        Color::Default => fg,
+                        other => self.resolve_color(other, true, false),
                     };
-                    let glyph = atlas.get_or_insert(key);
-
-                    if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
-                        let gx0 = x0 + glyph.bearing_x;
-                        let gy0 = y0 + atlas.ascent + glyph.bearing_y;
-                        let gx1 = gx0 + glyph.pixel_w as f32;
-                        let gy1 = gy0 + glyph.pixel_h as f32;
-
-                        let u0 = glyph.uv_x;
-                        let v0 = glyph.uv_y;
-                        let u1 = glyph.uv_x + glyph.uv_w;
-                        let v1 = glyph.uv_y + glyph.uv_h;
-
-                        vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
-                        vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                        vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
-                        vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                        vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, bg_packed));
-                        vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                    let ul_packed = Self::pack_color(ul_color.0, ul_color.1, ul_color.2, 255);
+                    let ul_y = y0 + atlas.ascent + 2.0;
+                    let ul_h = line_thickness;
+                    match cell.underline_style {
+                        UnderlineStyle::Single => {
+                            Self::add_rect(vertices, x0, ul_y, x1, ul_y + ul_h, white_u, white_v, ul_packed);
+                        }
+                        UnderlineStyle::Double => {
+                            Self::add_rect(vertices, x0, ul_y, x1, ul_y + ul_h, white_u, white_v, ul_packed);
+                            Self::add_rect(vertices, x0, ul_y + ul_h + 1.0, x1, ul_y + ul_h * 2.0 + 1.0, white_u, white_v, ul_packed);
+                        }
+                        UnderlineStyle::Curly => {
+                            // Approximate curly underline with small segments
+                            let uw = cell_w * render_width;
+                            let steps = (uw / 3.0).max(2.0) as usize;
+                            let step_w = uw / steps as f32;
+                            for s in 0..steps {
+                                let sx = x0 + s as f32 * step_w;
+                                let sy = ul_y + ((s as f32 * std::f32::consts::PI).sin() * 2.0);
+                                Self::add_rect(vertices, sx, sy, sx + step_w, sy + ul_h, white_u, white_v, ul_packed);
+                            }
+                        }
+                        UnderlineStyle::Dotted => {
+                            let mut dx = x0;
+                            while dx < x1 {
+                                Self::add_rect(vertices, dx, ul_y, dx + ul_h, ul_y + ul_h, white_u, white_v, ul_packed);
+                                dx += ul_h + 2.0;
+                            }
+                        }
+                        UnderlineStyle::Dashed => {
+                            let mut dx = x0;
+                            while dx < x1 {
+                                let end = (dx + 4.0).min(x1);
+                                Self::add_rect(vertices, dx, ul_y, end, ul_y + ul_h, white_u, white_v, ul_packed);
+                                dx += 6.0;
+                            }
+                        }
+                        UnderlineStyle::None => {}
                     }
                 }
             }
         }
 
-        // Prompt mark indicator dots (2×2 at left margin)
+        // Cursor rendering
+        if pane.show_cursor && grid.scroll_offset == 0 {
+            let crow = grid.cursor_row;
+            let ccol = grid.cursor_col;
+            if crow < grid.rows() && ccol < grid.cols() {
+                let cx0 = rect.x + ccol as f32 * cell_w;
+                let cy0 = rect.y + crow as f32 * cell_h;
+                if cy0 + cell_h <= rect.y + grid_height {
+                    let cursor_color = Self::pack_color(192, 192, 192, 180);
+                    match grid.cursor_style.shape {
+                        CursorShape::Block => {
+                            Self::add_rect(vertices, cx0, cy0, cx0 + cell_w, cy0 + cell_h, white_u, white_v, cursor_color);
+                        }
+                        CursorShape::Bar => {
+                            Self::add_rect(vertices, cx0, cy0, cx0 + 2.0, cy0 + cell_h, white_u, white_v, cursor_color);
+                        }
+                        CursorShape::Underline => {
+                            Self::add_rect(vertices, cx0, cy0 + cell_h - 2.0, cx0 + cell_w, cy0 + cell_h, white_u, white_v, cursor_color);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Prompt mark indicator dots
         if let Some(color) = prompt_indicator_color {
             let dot_color = Self::pack_color(color.0, color.1, color.2, 255);
-            let white_u = atlas.white_uv.0;
-            let white_v = atlas.white_uv.1;
             for &vis_row in &pane.prompt_mark_rows {
                 let dx0 = rect.x + 1.0;
                 let dy0 = rect.y + vis_row as f32 * cell_h + cell_h * 0.4;
-                let dx1 = dx0 + 3.0;
-                let dy1 = dy0 + 3.0;
-                vertices.push(Vertex::new(dx0, dy0, white_u, white_v, dot_color, dot_color));
-                vertices.push(Vertex::new(dx1, dy0, white_u, white_v, dot_color, dot_color));
-                vertices.push(Vertex::new(dx0, dy1, white_u, white_v, dot_color, dot_color));
-                vertices.push(Vertex::new(dx1, dy0, white_u, white_v, dot_color, dot_color));
-                vertices.push(Vertex::new(dx1, dy1, white_u, white_v, dot_color, dot_color));
-                vertices.push(Vertex::new(dx0, dy1, white_u, white_v, dot_color, dot_color));
+                Self::add_rect(vertices, dx0, dy0, dx0 + 3.0, dy0 + 3.0, white_u, white_v, dot_color);
             }
         }
+    }
+
+    fn add_rect(vertices: &mut Vec<Vertex>, x0: f32, y0: f32, x1: f32, y1: f32, u: f32, v: f32, color: u32) {
+        vertices.push(Vertex::new(x0, y0, u, v, color, color));
+        vertices.push(Vertex::new(x1, y0, u, v, color, color));
+        vertices.push(Vertex::new(x0, y1, u, v, color, color));
+        vertices.push(Vertex::new(x1, y0, u, v, color, color));
+        vertices.push(Vertex::new(x1, y1, u, v, color, color));
+        vertices.push(Vertex::new(x0, y1, u, v, color, color));
     }
 
     fn build_status_bar_vertices(

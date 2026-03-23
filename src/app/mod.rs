@@ -80,6 +80,19 @@ pub fn launch(config: Config) {
         (a.cell_width, a.cell_height)
     };
 
+    // Set default colors on initial pane for OSC 10/11 query responses
+    {
+        let mut tree = pane_tree.lock().unwrap();
+        let fg_hex = config.colors.foreground.trim_start_matches('#').to_string();
+        let bg_hex = config.colors.background.trim_start_matches('#').to_string();
+        for id in tree.pane_ids() {
+            if let Some(pane) = tree.pane_mut(id) {
+                pane.grid.default_fg_hex = fg_hex.clone();
+                pane.grid.default_bg_hex = bg_hex.clone();
+            }
+        }
+    }
+
     // Initial layout
     {
         let mut tree = pane_tree.lock().unwrap();
@@ -198,6 +211,11 @@ pub fn launch(config: Config) {
                                 }
                                 Ok(n) => {
                                     pane.parser.feed(&buf[..n], &mut pane.grid);
+                                    // Drain and send any query responses back to PTY
+                                    let responses = pane.grid.drain_responses();
+                                    for resp in responses {
+                                        pane.pty.write_all(&resp).ok();
+                                    }
                                     any_data = true;
                                 }
                                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
