@@ -283,6 +283,13 @@ impl MetalRenderer {
             }
         }
 
+        log::debug!(
+            "[render] draw: {} vertices, viewport {}x{}",
+            vertices.len(),
+            viewport_width,
+            viewport_height
+        );
+
         if vertices.is_empty() {
             return;
         }
