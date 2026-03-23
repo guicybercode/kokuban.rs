@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSRunLoop", "NSString", "NSNotification", "NSThread", "NSProcessInfo", "NSDictionary", "NSArray"] }
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWindow", "NSView", "NSEvent", "NSResponder", "NSScreen", "NSMenu", "NSMenuItem", "NSRunningApplication", "NSGraphics", "NSColor", "NSText"] }
+objc2-foundation = { version = "0.3", features = ["NSRunLoop", "NSString", "NSNotification", "NSThread", "NSProcessInfo", "NSDictionary", "NSArray", "NSAttributedString", "NSGeometry"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWindow", "NSView", "NSEvent", "NSResponder", "NSScreen", "NSMenu", "NSMenuItem", "NSRunningApplication", "NSGraphics", "NSColor", "NSText", "NSTextInputClient", "NSTextInputContext"] }
 objc2-metal = { version = "0.3", features = ["MTLDevice", "MTLCommandQueue", "MTLCommandBuffer", "MTLRenderCommandEncoder", "MTLRenderPipeline", "MTLLibrary", "MTLBuffer", "MTLTexture", "MTLResource", "MTLVertexDescriptor", "MTLSampler", "MTLRenderPass", "MTLPixelFormat", "MTLDrawable"] }
 objc2-quartz-core = { version = "0.3", features = ["CAMetalLayer", "CALayer", "objc2-metal"] }
 block2 = "0.6"

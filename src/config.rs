@@ -24,6 +24,7 @@ pub struct FontConfig {
     pub zoom_step: f32,
     pub min_size: f32,
     pub max_size: f32,
+    pub fallback: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +193,7 @@ impl Default for FontConfig {
             zoom_step: 1.0,
             min_size: 6.0,
             max_size: 72.0,
+            fallback: vec!["Menlo".to_string()],
         }
     }
 }
