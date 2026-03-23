@@ -1,3 +1,4 @@
+use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::app::selection::GridPoint;
 use crate::grid::{MouseEncoding, MouseTracking};
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
@@ -6,7 +7,8 @@ use crate::pane::layout::PixelRect;
 use crate::pane::tree::SplitDirection;
 use crate::pane::PaneTree;
 use crate::renderer::atlas::GlyphAtlas;
-use crate::renderer::metal::{ChromeColors, MetalRenderer, PaneRenderData};
+use crate::renderer::image_store::ImageStore;
+use crate::renderer::metal::{ChromeColors, ConfirmOverlayInfo, MetalRenderer, PaneRenderData};
 
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, ProtocolObject};
@@ -43,6 +45,10 @@ struct ViewState {
     status_bar_enabled: bool,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
+    image_store: Arc<Mutex<ImageStore>>,
+    confirm_dialog: Option<ConfirmDialog>,
+    confirm_on_close_pane: bool,
+    confirm_on_quit: bool,
 }
 
 thread_local! {
@@ -82,6 +88,15 @@ define_class!(
             let modifiers = event.modifierFlags();
             let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
 
+            // If confirm dialog is active, route ALL keys to it (including Cmd+keys)
+            let confirm_active = VIEW_STATE.with(|state| {
+                state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
+            });
+            if confirm_active {
+                handle_confirm_key(key_code);
+                return Bool::YES;
+            }
+
             if !has_cmd {
                 return Bool::NO;
             }
@@ -92,6 +107,25 @@ define_class!(
             let mut km = KeyModifiers::CMD;
             if has_shift {
                 km.insert(KeyModifiers::SHIFT);
+            }
+
+            // Cmd+Q: show quit confirmation (or quit immediately if disabled)
+            if key_code == 12 && !has_shift {
+                VIEW_STATE.with(|state| {
+                    let mut state = state.borrow_mut();
+                    if let Some(state) = state.as_mut() {
+                        if state.confirm_on_quit {
+                            state.confirm_dialog = Some(ConfirmDialog::new(
+                                ConfirmAction::QuitApp,
+                                None,
+                            ));
+                            state.dirty.store(true, Ordering::Relaxed);
+                        } else {
+                            state.should_close.store(true, Ordering::Relaxed);
+                        }
+                    }
+                });
+                return Bool::YES;
             }
 
             // Cmd+C: copy or ctrl-c
@@ -151,11 +185,6 @@ define_class!(
                 return Bool::YES;
             }
 
-            // Cmd+Q: let system handle quit
-            if key_code == 12 && !has_shift {
-                return Bool::NO;
-            }
-
             // Cmd+Shift+= (i.e. Cmd++) should also zoom in
             if key_code == 24 && has_shift {
                 handle_pane_action(PaneAction::ZoomIn);
@@ -178,6 +207,9 @@ define_class!(
 
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
+            // Block input while confirm dialog is active
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            if blocked { return; }
             let delta_y = event.scrollingDeltaY();
             if delta_y.abs() < 0.01 { return; }
             VIEW_STATE.with(|state| {
@@ -212,6 +244,8 @@ define_class!(
 
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, event: &NSEvent) {
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
@@ -242,6 +276,8 @@ define_class!(
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, event: &NSEvent) {
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
@@ -273,6 +309,8 @@ define_class!(
 
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, event: &NSEvent) {
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            if blocked { return; }
             VIEW_STATE.with(|state| {
                 let state = state.borrow();
                 if let Some(state) = state.as_ref() {
@@ -297,6 +335,13 @@ define_class!(
             let modifiers = event.modifierFlags();
             let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
             let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
+
+            // If confirm dialog is active, route keys to it
+            let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            if confirm_active {
+                handle_confirm_key(key_code);
+                return;
+            }
 
             // Cmd keys are handled in performKeyEquivalent
             if has_cmd {
@@ -467,6 +512,21 @@ fn handle_pane_action(action: PaneAction) {
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ClosePane => {
+                if state.confirm_on_close_pane {
+                    let id = tree.focused;
+                    // Get foreground process name for the dialog
+                    let proc_name = tree.pane(id).and_then(|p| {
+                        confirm::foreground_process_name(p.pty.master_fd())
+                    });
+                    drop(tree);
+                    state.confirm_dialog = Some(ConfirmDialog::new(
+                        ConfirmAction::ClosePane(id),
+                        proc_name,
+                    ));
+                    state.dirty.store(true, Ordering::Relaxed);
+                    return;
+                }
+                // No confirmation — close immediately
                 let id = tree.focused;
                 let should_terminate = tree.close(id);
                 if should_terminate {
@@ -597,6 +657,66 @@ fn handle_pane_action(action: PaneAction) {
         drop(tree);
         state.dirty.store(true, Ordering::Relaxed);
     });
+}
+
+fn handle_confirm_key(key_code: u16) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let state = match state.as_mut() {
+            Some(s) => s,
+            None => return,
+        };
+
+        let result = match &state.confirm_dialog {
+            Some(dialog) => dialog.handle_key(key_code),
+            None => return,
+        };
+
+        match result {
+            ConfirmResult::Confirmed => {
+                let action = state.confirm_dialog.take().unwrap().action;
+                state.dirty.store(true, Ordering::Relaxed);
+                execute_confirm_action(state, action);
+            }
+            ConfirmResult::Cancelled => {
+                state.confirm_dialog = None;
+                state.dirty.store(true, Ordering::Relaxed);
+            }
+            ConfirmResult::Pending => {
+                // Ignore unrecognized keys
+            }
+        }
+    });
+}
+
+fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
+    match action {
+        ConfirmAction::ClosePane(pane_id) => {
+            let atlas = state.atlas.lock().unwrap();
+            let cell_w = atlas.cell_width;
+            let cell_h = atlas.cell_height;
+            drop(atlas);
+
+            let mut tree = state.pane_tree.lock().unwrap();
+            let should_terminate = tree.close(pane_id);
+            if should_terminate {
+                drop(tree);
+                state.should_close.store(true, Ordering::Relaxed);
+                return;
+            }
+            let size = state.metal_layer.drawableSize();
+            let viewport = PixelRect {
+                x: 0.0,
+                y: 0.0,
+                width: size.width as f32,
+                height: size.height as f32,
+            };
+            tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+        }
+        ConfirmAction::QuitApp => {
+            state.should_close.store(true, Ordering::Relaxed);
+        }
+    }
 }
 
 fn perform_zoom(state: &mut ViewState, new_size: f32) {
@@ -781,6 +901,27 @@ fn render_frame() {
             }
         }
 
+        // Build confirm overlay info if dialog is active
+        let confirm_overlay = state.confirm_dialog.as_ref().map(|dialog| {
+            let region = match &dialog.action {
+                ConfirmAction::ClosePane(pane_id) => {
+                    // Find the pane rect for this pane
+                    layouts.iter()
+                        .find(|(id, _)| id == pane_id)
+                        .map(|(_, r)| *r)
+                        .unwrap_or(viewport)
+                }
+                ConfirmAction::QuitApp => viewport,
+            };
+            ConfirmOverlayInfo {
+                region,
+                title: dialog.title_text().to_string(),
+                process_text: dialog.process_text(),
+                opacity: dialog.opacity(),
+            }
+        });
+
+        let img_store = state.image_store.lock().unwrap();
         state.renderer.draw_frame(
             &pane_render_data,
             &dividers,
@@ -795,11 +936,21 @@ fn render_frame() {
             &state.chrome,
             state.status_bar_height,
             state.prompt_indicator_color,
+            Some(&img_store),
+            confirm_overlay.as_ref(),
         );
+        drop(img_store);
 
         drop(atlas);
         drop(tree);
-        state.dirty.store(false, Ordering::Relaxed);
+
+        // Keep rendering during fade-in animation
+        let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
+        if still_animating {
+            state.dirty.store(true, Ordering::Relaxed);
+        } else {
+            state.dirty.store(false, Ordering::Relaxed);
+        }
     });
 }
 
@@ -833,6 +984,9 @@ pub fn create_terminal_view(
     status_bar_enabled: bool,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
+    image_store: Arc<Mutex<ImageStore>>,
+    confirm_on_close_pane: bool,
+    confirm_on_quit: bool,
 ) -> Retained<TerminalView> {
     let view = mtm.alloc::<TerminalView>().set_ivars(());
     let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
@@ -894,6 +1048,10 @@ pub fn create_terminal_view(
             status_bar_enabled,
             resize_step,
             prompt_indicator_color,
+            image_store,
+            confirm_dialog: None,
+            confirm_on_close_pane,
+            confirm_on_quit,
         });
     });
 

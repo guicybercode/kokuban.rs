@@ -12,6 +12,8 @@ pub struct Config {
     pub theme: ThemeConfig,
     pub keybind: KeybindConfig,
     pub prompt_marks: PromptMarksConfig,
+    pub images: ImagesConfig,
+    pub confirm: ConfirmConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +112,61 @@ pub struct ResizeConfig {
     pub step: u32,
 }
 
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ImagesConfig {
+    pub enabled: bool,
+    pub max_memory_mb: usize,
+    pub sixel_enabled: bool,
+    pub kitty_enabled: bool,
+    pub kitty: KittyImagesConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct KittyImagesConfig {
+    pub max_image_size_mb: usize,
+    pub allow_file_transfer: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ConfirmConfig {
+    pub on_close_pane: bool,
+    pub on_quit: bool,
+}
+
+impl Default for ConfirmConfig {
+    fn default() -> Self {
+        Self {
+            on_close_pane: true,
+            on_quit: true,
+        }
+    }
+}
+
+impl Default for ImagesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_memory_mb: 256,
+            sixel_enabled: true,
+            kitty_enabled: true,
+            kitty: KittyImagesConfig::default(),
+        }
+    }
+}
+
+impl Default for KittyImagesConfig {
+    fn default() -> Self {
+        Self {
+            max_image_size_mb: 50,
+            allow_file_transfer: true,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -121,6 +178,8 @@ impl Default for Config {
             theme: ThemeConfig::default(),
             keybind: KeybindConfig::default(),
             prompt_marks: PromptMarksConfig::default(),
+            images: ImagesConfig::default(),
+            confirm: ConfirmConfig::default(),
         }
     }
 }

@@ -2,6 +2,8 @@ use super::atlas::{GlyphAtlas, GlyphKey};
 use super::box_drawing;
 use super::braille;
 use super::brush::BrushRenderer;
+use super::image_store::ImageStore;
+use super::kitty_handler::PlacementMode;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::app::selection::SelectionState;
@@ -45,6 +47,13 @@ pub struct PaneRenderData<'a> {
     pub show_cursor: bool,
 }
 
+pub struct ConfirmOverlayInfo {
+    pub region: PixelRect,
+    pub title: String,
+    pub process_text: Option<String>,
+    pub opacity: f32,
+}
+
 pub struct ChromeColors {
     pub sumi_dark: (u8, u8, u8),
     pub sumi_medium: (u8, u8, u8),
@@ -58,6 +67,7 @@ pub struct MetalRenderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    image_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     vertex_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
     uniform_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
     atlas_texture: Retained<ProtocolObject<dyn MTLTexture>>,
@@ -140,6 +150,28 @@ impl MetalRenderer {
                 .newRenderPipelineStateWithDescriptor_error(&pipeline_desc)
                 .expect("Failed to create render pipeline state");
 
+            // Image pipeline: same vertex format, different fragment shader
+            let image_fragment_fn_name = NSString::from_str("image_fragment");
+            let image_fragment_fn = library
+                .newFunctionWithName(&image_fragment_fn_name)
+                .expect("image_fragment not found");
+            let image_pipeline_desc = MTLRenderPipelineDescriptor::new();
+            image_pipeline_desc.setVertexFunction(Some(&vertex_fn));
+            image_pipeline_desc.setFragmentFunction(Some(&image_fragment_fn));
+            image_pipeline_desc.setVertexDescriptor(Some(&vertex_desc));
+            let image_color_attachment = image_pipeline_desc
+                .colorAttachments()
+                .objectAtIndexedSubscript(0);
+            image_color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
+            image_color_attachment.setBlendingEnabled(true);
+            image_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::SourceAlpha);
+            image_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::OneMinusSourceAlpha);
+            image_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
+            image_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::OneMinusSourceAlpha);
+            let image_pipeline_state = device
+                .newRenderPipelineStateWithDescriptor_error(&image_pipeline_desc)
+                .expect("Failed to create image render pipeline state");
+
             let max_vertices = 200 * 100 * 12;
             let buffer_size = max_vertices * std::mem::size_of::<Vertex>();
             let vertex_buffer = device
@@ -176,6 +208,7 @@ impl MetalRenderer {
                 device,
                 command_queue,
                 pipeline_state,
+                image_pipeline_state,
                 vertex_buffer,
                 uniform_buffer,
                 atlas_texture,
@@ -624,6 +657,8 @@ impl MetalRenderer {
         chrome: &ChromeColors,
         status_bar_height: f32,
         prompt_indicator_color: Option<(u8, u8, u8)>,
+        image_store: Option<&ImageStore>,
+        confirm_overlay: Option<&ConfirmOverlayInfo>,
     ) {
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
@@ -639,11 +674,86 @@ impl MetalRenderer {
             divider_vertices.extend(self.build_divider_vertices(div, bg_packed, chrome));
         }
 
-        // Combine into single buffer, content first, then dividers
+        // Build image quad vertices for each pane
+        struct ImageDrawCall {
+            vertex_start: usize,
+            vertex_count: usize,
+            image_id: super::image_store::ImageId,
+        }
+        let mut image_vertices: Vec<Vertex> = Vec::new();
+        let mut image_draw_calls: Vec<ImageDrawCall> = Vec::new();
+
+        if let Some(store) = image_store {
+            let cell_w = atlas.cell_width;
+            let cell_h = atlas.cell_height;
+            let white = 0xFFFFFFFFu32; // dummy, unused by image shader
+
+            for pane in panes {
+                let rect = pane.rect;
+                let grid_height = rect.height - status_bar_height;
+
+                for placement in &pane.grid.image_placements {
+                    if store.get(placement.image_id).is_none() {
+                        continue;
+                    }
+
+                    let (x0, y0, w, h) = match &placement.mode {
+                        PlacementMode::Inline { row, col, cols, rows } => {
+                            let x = rect.x + *col as f32 * cell_w;
+                            let y = rect.y + *row as f32 * cell_h;
+                            let w = *cols as f32 * cell_w;
+                            let h = *rows as f32 * cell_h;
+                            (x, y, w, h)
+                        }
+                        PlacementMode::Overlay { x, y, width, height } => {
+                            (rect.x + x, rect.y + y, *width, *height)
+                        }
+                    };
+
+                    // Clip to pane bounds
+                    if y0 + h <= rect.y || y0 >= rect.y + grid_height {
+                        continue;
+                    }
+                    if x0 + w <= rect.x || x0 >= rect.x + rect.width {
+                        continue;
+                    }
+
+                    let x1 = (x0 + w).min(rect.x + rect.width);
+                    let y1 = (y0 + h).min(rect.y + grid_height);
+
+                    // Compute UV coordinates (clipped)
+                    let u0 = if x0 < rect.x { (rect.x - x0) / w } else { 0.0 };
+                    let v0 = if y0 < rect.y { (rect.y - y0) / h } else { 0.0 };
+                    let u1 = (x1 - x0) / w;
+                    let v1 = (y1 - y0) / h;
+                    let x0 = x0.max(rect.x);
+                    let y0 = y0.max(rect.y);
+
+                    let start = image_vertices.len();
+                    image_vertices.push(Vertex::new(x0, y0, u0, v0, white, white));
+                    image_vertices.push(Vertex::new(x1, y0, u1, v0, white, white));
+                    image_vertices.push(Vertex::new(x0, y1, u0, v1, white, white));
+                    image_vertices.push(Vertex::new(x1, y0, u1, v0, white, white));
+                    image_vertices.push(Vertex::new(x1, y1, u1, v1, white, white));
+                    image_vertices.push(Vertex::new(x0, y1, u0, v1, white, white));
+
+                    image_draw_calls.push(ImageDrawCall {
+                        vertex_start: start,
+                        vertex_count: 6,
+                        image_id: placement.image_id,
+                    });
+                }
+            }
+        }
+
+        // Combine into single buffer: content, dividers, then image vertices
         let content_count = content_vertices.len();
         let divider_count = divider_vertices.len();
+        let image_base_offset = content_count + divider_count;
+
         let mut all_vertices = content_vertices;
         all_vertices.extend(divider_vertices);
+        all_vertices.extend(image_vertices);
 
         if all_vertices.is_empty() {
             return;
@@ -725,8 +835,26 @@ impl MetalRenderer {
                 );
             }
 
+            // Draw images with image pipeline (after text, so they overlay)
+            if !image_draw_calls.is_empty() {
+                if let Some(store) = image_store {
+                    encoder.setRenderPipelineState(&self.image_pipeline_state);
+                    for call in &image_draw_calls {
+                        if let Some(img) = store.get(call.image_id) {
+                            encoder.setFragmentTexture_atIndex(Some(&img.texture), 0);
+                            encoder.drawPrimitives_vertexStart_vertexCount(
+                                MTLPrimitiveType::Triangle,
+                                image_base_offset + call.vertex_start,
+                                call.vertex_count,
+                            );
+                        }
+                    }
+                }
+            }
+
             // Draw dividers with brush texture
             if divider_count > 0 {
+                encoder.setRenderPipelineState(&self.pipeline_state);
                 encoder.setFragmentTexture_atIndex(Some(&self.brush.texture), 0);
                 encoder.drawPrimitives_vertexStart_vertexCount(
                     MTLPrimitiveType::Triangle,
@@ -735,10 +863,215 @@ impl MetalRenderer {
                 );
             }
 
+            // Draw confirm overlay ON TOP of everything
+            if let Some(overlay) = confirm_overlay {
+                let mut overlay_verts: Vec<Vertex> = Vec::new();
+                self.build_confirm_overlay(overlay, atlas, chrome, &mut overlay_verts);
+
+                if !overlay_verts.is_empty() {
+                    // Upload overlay vertices to a temporary region of the vertex buffer
+                    let overlay_start = all_vertices.len();
+                    let total_needed = (overlay_start + overlay_verts.len()) * std::mem::size_of::<Vertex>();
+                    if total_needed > self.vertex_buffer.length() {
+                        self.vertex_buffer = self
+                            .device
+                            .newBufferWithLength_options(total_needed * 2, MTLResourceOptions::StorageModeShared)
+                            .expect("Failed to resize vertex buffer");
+                        // Re-upload all vertices
+                        let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
+                        std::ptr::copy_nonoverlapping(all_vertices.as_ptr(), ptr, all_vertices.len());
+                    }
+                    let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
+                    std::ptr::copy_nonoverlapping(
+                        overlay_verts.as_ptr(),
+                        ptr.add(overlay_start),
+                        overlay_verts.len(),
+                    );
+
+                    encoder.setRenderPipelineState(&self.pipeline_state);
+                    encoder.setFragmentTexture_atIndex(Some(&self.atlas_texture), 0);
+                    encoder.setVertexBuffer_offset_atIndex(Some(&self.vertex_buffer), 0, 0);
+                    encoder.drawPrimitives_vertexStart_vertexCount(
+                        MTLPrimitiveType::Triangle,
+                        overlay_start,
+                        overlay_verts.len(),
+                    );
+                }
+            }
+
             encoder.endEncoding();
 
             command_buffer.presentDrawable(drawable);
             command_buffer.commit();
         }
+    }
+
+    fn build_confirm_overlay(
+        &self,
+        overlay: &ConfirmOverlayInfo,
+        atlas: &mut GlyphAtlas,
+        chrome: &ChromeColors,
+        vertices: &mut Vec<Vertex>,
+    ) {
+        let region = overlay.region;
+        let alpha = overlay.opacity;
+        let cell_w = atlas.cell_width;
+        let cell_h = atlas.cell_height;
+        let white_u = atlas.white_uv.0;
+        let white_v = atlas.white_uv.1;
+
+        // 1. Dimming overlay — semi-transparent black covering the region
+        let dim_alpha = (0.85 * alpha * 255.0) as u8;
+        let dim_color = Self::pack_color(0x1a, 0x1a, 0x1a, dim_alpha);
+        Self::add_rect(vertices, region.x, region.y,
+            region.x + region.width, region.y + region.height,
+            white_u, white_v, dim_color);
+
+        // 2. Calculate dialog box dimensions
+        let title = &overlay.title;
+        let title_char_count = title.chars().count();
+        let process_text = &overlay.process_text;
+        let process_char_count = process_text.as_ref().map_or(0, |t| t.chars().count());
+
+        let actions_text = "[Y] \u{9589} confirm      [N] \u{623B} cancel";
+        let actions_char_count = actions_text.chars().count();
+
+        let max_chars = title_char_count.max(actions_char_count).max(process_char_count);
+        let content_width = max_chars as f32 * cell_w;
+
+        let padding_h = cell_w * 4.0;
+        let padding_v = cell_h * 2.0;
+
+        let has_process = process_text.is_some();
+        let line_count = if has_process { 5.0 } else { 4.0 };
+
+        let box_width = content_width + padding_h * 2.0;
+        let box_height = cell_h * line_count + padding_v * 2.0;
+
+        let box_x = region.x + (region.width - box_width) / 2.0;
+        let box_y = region.y + (region.height - box_height) / 2.0;
+
+        // 3. Dialog background
+        let bg_alpha = (0.95 * alpha * 255.0) as u8;
+        let bg_color = Self::pack_color(chrome.sumi_dark.0, chrome.sumi_dark.1, chrome.sumi_dark.2, bg_alpha);
+        Self::add_rect(vertices, box_x, box_y, box_x + box_width, box_y + box_height,
+            white_u, white_v, bg_color);
+
+        // 4. Corner brush marks — short L-shaped strokes at each corner
+        let corner_len = cell_h * 1.5;
+        let corner_thickness = 2.0;
+        let mark_alpha = (alpha * 255.0) as u8;
+        let mark_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, mark_alpha);
+
+        // Top-left: horizontal right + vertical down
+        Self::add_rect(vertices, box_x, box_y, box_x + corner_len, box_y + corner_thickness, white_u, white_v, mark_color);
+        Self::add_rect(vertices, box_x, box_y, box_x + corner_thickness, box_y + corner_len, white_u, white_v, mark_color);
+        // Top-right: horizontal left + vertical down
+        Self::add_rect(vertices, box_x + box_width - corner_len, box_y, box_x + box_width, box_y + corner_thickness, white_u, white_v, mark_color);
+        Self::add_rect(vertices, box_x + box_width - corner_thickness, box_y, box_x + box_width, box_y + corner_len, white_u, white_v, mark_color);
+        // Bottom-left: horizontal right + vertical up
+        Self::add_rect(vertices, box_x, box_y + box_height - corner_thickness, box_x + corner_len, box_y + box_height, white_u, white_v, mark_color);
+        Self::add_rect(vertices, box_x, box_y + box_height - corner_len, box_x + corner_thickness, box_y + box_height, white_u, white_v, mark_color);
+        // Bottom-right: horizontal left + vertical up
+        Self::add_rect(vertices, box_x + box_width - corner_len, box_y + box_height - corner_thickness, box_x + box_width, box_y + box_height, white_u, white_v, mark_color);
+        Self::add_rect(vertices, box_x + box_width - corner_thickness, box_y + box_height - corner_len, box_x + box_width, box_y + box_height, white_u, white_v, mark_color);
+
+        // 5. Title text: "閉じる · <title>"
+        let text_alpha = (alpha * 255.0) as u8;
+        let title_color = Self::pack_color(chrome.sumi_light.0, chrome.sumi_light.1, chrome.sumi_light.2, text_alpha);
+
+        let full_title = format!("\u{9589}\u{3058}\u{308B} \u{00B7} {}", title);
+        let full_title_width: f32 = full_title.chars().map(|c| {
+            if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) == 2 { cell_w * 2.0 } else { cell_w }
+        }).sum();
+        let title_x = box_x + (box_width - full_title_width) / 2.0;
+        let title_y = box_y + padding_v;
+
+        let mut cursor_x = title_x;
+        for c in full_title.chars() {
+            cursor_x = self.render_char_with_alpha(c, cursor_x, title_y, title_color, bg_color, atlas, vertices);
+        }
+
+        // 5b. Process text if present
+        let actions_y_offset = if has_process {
+            let proc_text = process_text.as_ref().unwrap();
+            let proc_width: f32 = proc_text.chars().map(|c| {
+                if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) == 2 { cell_w * 2.0 } else { cell_w }
+            }).sum();
+            let proc_x = box_x + (box_width - proc_width) / 2.0;
+            let proc_y = title_y + cell_h * 1.5;
+            let proc_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, text_alpha);
+            let mut cx = proc_x;
+            for c in proc_text.chars() {
+                cx = self.render_char_with_alpha(c, cx, proc_y, proc_color, bg_color, atlas, vertices);
+            }
+            cell_h * 1.5
+        } else {
+            0.0
+        };
+
+        // 6. Action keys line
+        let actions_y = title_y + cell_h * 2.0 + actions_y_offset;
+        let hanko_color = Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, text_alpha);
+        let medium_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, text_alpha);
+        let light_color = title_color;
+
+        // Center the actions line
+        let actions_width: f32 = actions_text.chars().map(|c| {
+            if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) == 2 { cell_w * 2.0 } else { cell_w }
+        }).sum();
+        let mut ax = box_x + (box_width - actions_width) / 2.0;
+
+        // Render "[Y]" in hanko_red, " 閉 confirm" in light, "      " spacing, "[N]" in medium, " 戻 cancel" in light
+        for c in "[Y]".chars() {
+            ax = self.render_char_with_alpha(c, ax, actions_y, hanko_color, bg_color, atlas, vertices);
+        }
+        for c in " \u{9589} confirm".chars() {
+            ax = self.render_char_with_alpha(c, ax, actions_y, light_color, bg_color, atlas, vertices);
+        }
+        for c in "      ".chars() {
+            ax = self.render_char_with_alpha(c, ax, actions_y, bg_color, bg_color, atlas, vertices);
+        }
+        for c in "[N]".chars() {
+            ax = self.render_char_with_alpha(c, ax, actions_y, medium_color, bg_color, atlas, vertices);
+        }
+        for c in " \u{623B} cancel".chars() {
+            ax = self.render_char_with_alpha(c, ax, actions_y, light_color, bg_color, atlas, vertices);
+        }
+    }
+
+    fn render_char_with_alpha(
+        &self,
+        c: char,
+        x: f32,
+        y: f32,
+        fg: u32,
+        bg: u32,
+        atlas: &mut GlyphAtlas,
+        vertices: &mut Vec<Vertex>,
+    ) -> f32 {
+        let key = GlyphKey { c, bold: false, italic: false };
+        let glyph = atlas.get_or_insert(key);
+        let char_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
+        let advance = atlas.cell_width * char_width as f32;
+
+        if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
+            let gx0 = x + glyph.bearing_x;
+            let gy0 = y + atlas.ascent + glyph.bearing_y;
+            let gx1 = gx0 + glyph.pixel_w as f32;
+            let gy1 = gy0 + glyph.pixel_h as f32;
+            let u0 = glyph.uv_x;
+            let v0 = glyph.uv_y;
+            let u1 = glyph.uv_x + glyph.uv_w;
+            let v1 = glyph.uv_y + glyph.uv_h;
+            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg, bg));
+            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg, bg));
+            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg, bg));
+            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg, bg));
+            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg, bg));
+            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg, bg));
+        }
+
+        x + advance
     }
 }

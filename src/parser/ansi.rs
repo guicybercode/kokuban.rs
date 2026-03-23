@@ -2,6 +2,8 @@ use super::State;
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::marks::PromptMarkKind;
 use crate::grid::{CharSet, CursorShape, CursorStyle, Grid, MouseEncoding, MouseTracking};
+use crate::parser::kitty_graphics;
+use crate::parser::sixel;
 
 pub struct Parser {
     state: State,
@@ -12,6 +14,8 @@ pub struct Parser {
     current_is_sub: bool,
     intermediates: Vec<u8>,
     osc_data: Vec<u8>,
+    apc_data: Vec<u8>,
+    dcs_data: Vec<u8>,
 }
 
 impl Parser {
@@ -24,6 +28,8 @@ impl Parser {
             current_is_sub: false,
             intermediates: Vec::new(),
             osc_data: Vec::new(),
+            apc_data: Vec::new(),
+            dcs_data: Vec::new(),
         }
     }
 
@@ -42,6 +48,8 @@ impl Parser {
             State::CsiParam => self.csi_param(byte, grid),
             State::CsiIntermediate => self.csi_intermediate(byte, grid),
             State::OscString => self.osc_string(byte, grid),
+            State::ApcString => self.apc_string(byte, grid),
+            State::DcsPassthrough => self.dcs_passthrough(byte, grid),
         }
     }
 
@@ -62,10 +70,25 @@ impl Parser {
     fn escape(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
             b'\\' => {
+                // ST (String Terminator) — dispatch whatever string we were accumulating
                 if !self.osc_data.is_empty() {
                     self.dispatch_osc(grid);
+                } else if !self.apc_data.is_empty() {
+                    self.dispatch_apc(grid);
+                } else if !self.dcs_data.is_empty() {
+                    self.dispatch_dcs(grid);
                 }
                 self.state = State::Ground;
+            }
+            b'_' => {
+                // APC — Application Program Command (used by Kitty graphics)
+                self.apc_data.clear();
+                self.state = State::ApcString;
+            }
+            b'P' => {
+                // DCS — Device Control String (used by Sixel)
+                self.dcs_data.clear();
+                self.state = State::DcsPassthrough;
             }
             b'[' => {
                 self.params.clear();
@@ -214,6 +237,81 @@ impl Parser {
             0x07 => { self.dispatch_osc(grid); self.state = State::Ground; }
             0x1b => { self.state = State::Escape; }
             _ => { self.osc_data.push(byte); }
+        }
+    }
+
+    fn apc_string(&mut self, byte: u8, _grid: &mut Grid) {
+        match byte {
+            0x1b => { self.state = State::Escape; } // Will see '\' next for ST
+            _ => {
+                // Cap APC data at 64MB to prevent OOM
+                if self.apc_data.len() < 64 * 1024 * 1024 {
+                    self.apc_data.push(byte);
+                }
+            }
+        }
+    }
+
+    fn dcs_passthrough(&mut self, byte: u8, _grid: &mut Grid) {
+        match byte {
+            0x1b => { self.state = State::Escape; } // Will see '\' next for ST
+            _ => {
+                // Cap DCS data at 64MB
+                if self.dcs_data.len() < 64 * 1024 * 1024 {
+                    self.dcs_data.push(byte);
+                }
+            }
+        }
+    }
+
+    fn dispatch_apc(&mut self, grid: &mut Grid) {
+        let data = std::mem::take(&mut self.apc_data);
+        if data.is_empty() {
+            return;
+        }
+
+        // Check if this is a Kitty graphics command (starts with 'G')
+        if data.first() == Some(&b'G') {
+            if let Some(cmd) = kitty_graphics::parse_kitty_command(&data[1..]) {
+                grid.pending_kitty_commands.push(cmd);
+            }
+        } else {
+            log::trace!("Unknown APC sequence, first byte: {:?}", data.first());
+        }
+    }
+
+    fn dispatch_dcs(&mut self, grid: &mut Grid) {
+        let data = std::mem::take(&mut self.dcs_data);
+        if data.is_empty() {
+            return;
+        }
+
+        // Check for Sixel: DCS data starts with optional params then 'q'
+        // Format: [params]q[sixel_data]
+        // Also handle XTVERSION response: DCS > | ...
+        if data.first() == Some(&b'>') && data.get(1) == Some(&b'|') {
+            // This is a DCS response string (XTVERSION), ignore
+            return;
+        }
+
+        // Find 'q' to identify Sixel
+        let mut i = 0;
+        while i < data.len() && (data[i].is_ascii_digit() || data[i] == b';') {
+            i += 1;
+        }
+        if i < data.len() && data[i] == b'q' {
+            // This is a Sixel image
+            let sixel_data = &data[i + 1..]; // Everything after 'q'
+            match sixel::decode_sixel(sixel_data) {
+                Ok(image) => {
+                    grid.pending_sixel_images.push(image);
+                }
+                Err(e) => {
+                    log::warn!("Failed to decode Sixel image: {e}");
+                }
+            }
+        } else {
+            log::trace!("Unknown DCS sequence");
         }
     }
 
@@ -417,8 +515,8 @@ impl Parser {
                     // DA2
                     grid.pending_responses.push(b"\x1b[>1;0;0c".to_vec());
                 } else if params.is_empty() || params.first().copied().unwrap_or(0) == 0 {
-                    // DA1
-                    grid.pending_responses.push(b"\x1b[?62;22c".to_vec());
+                    // DA1 (62=VT220, 4=Sixel, 22=color)
+                    grid.pending_responses.push(b"\x1b[?62;4;22c".to_vec());
                 }
             }
 
@@ -427,15 +525,17 @@ impl Parser {
                 let ps = params.first().copied().unwrap_or(0);
                 match ps {
                     14 => {
-                        // Report terminal size in pixels (approximate)
-                        let h = grid.rows() * 16; // approximate
-                        let w = grid.cols() * 8;
+                        // Report terminal size in pixels
+                        let h = grid.rows() as u16 * grid.cell_pixel_height;
+                        let w = grid.cols() as u16 * grid.cell_pixel_width;
                         let resp = format!("\x1b[4;{h};{w}t");
                         grid.pending_responses.push(resp.into_bytes());
                     }
                     16 => {
-                        // Report cell size in pixels (approximate)
-                        let resp = format!("\x1b[6;16;8t");
+                        // Report cell size in pixels
+                        let ch = grid.cell_pixel_height;
+                        let cw = grid.cell_pixel_width;
+                        let resp = format!("\x1b[6;{ch};{cw}t");
                         grid.pending_responses.push(resp.into_bytes());
                     }
                     _ => {}

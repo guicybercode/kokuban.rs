@@ -2,6 +2,7 @@ use crate::app::selection::SelectionState;
 use crate::grid::Grid;
 use crate::parser::ansi::Utf8Parser;
 use crate::pty::Pty;
+use crate::renderer::kitty_handler::KittyHandler;
 
 use super::layout::PixelRect;
 use super::PaneId;
@@ -13,6 +14,7 @@ pub struct Pane {
     pub grid: Grid,
     pub selection: SelectionState,
     pub rect: PixelRect,
+    pub kitty_handler: KittyHandler,
 }
 
 impl Pane {
@@ -26,6 +28,7 @@ impl Pane {
             grid,
             selection: SelectionState::default(),
             rect: PixelRect::ZERO,
+            kitty_handler: KittyHandler::new(),
         })
     }
 

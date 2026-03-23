@@ -8,6 +8,10 @@ use marks::MarkIndex;
 use std::collections::VecDeque;
 use unicode_width::UnicodeWidthChar;
 
+use crate::parser::kitty_graphics::KittyCommand;
+use crate::parser::sixel::SixelImage;
+use crate::renderer::kitty_handler::ImagePlacement;
+
 const DEFAULT_CELL: Cell = Cell {
     c: ' ',
     fg: Color::Default,
@@ -115,6 +119,14 @@ pub struct Grid {
     // Colors for query responses
     pub default_fg_hex: String,
     pub default_bg_hex: String,
+    // Image protocol pending commands
+    pub pending_kitty_commands: Vec<KittyCommand>,
+    pub pending_sixel_images: Vec<SixelImage>,
+    // Active image placements for this grid
+    pub image_placements: Vec<ImagePlacement>,
+    // Cell pixel dimensions (set by renderer for accurate CSI t responses)
+    pub cell_pixel_width: u16,
+    pub cell_pixel_height: u16,
 }
 
 impl Grid {
@@ -154,6 +166,11 @@ impl Grid {
             pending_responses: Vec::new(),
             default_fg_hex: String::new(),
             default_bg_hex: String::new(),
+            pending_kitty_commands: Vec::new(),
+            pending_sixel_images: Vec::new(),
+            image_placements: Vec::new(),
+            cell_pixel_width: 8,
+            cell_pixel_height: 16,
         }
     }
 
@@ -184,6 +201,14 @@ impl Grid {
 
     pub fn drain_responses(&mut self) -> Vec<Vec<u8>> {
         std::mem::take(&mut self.pending_responses)
+    }
+
+    pub fn drain_kitty_commands(&mut self) -> Vec<KittyCommand> {
+        std::mem::take(&mut self.pending_kitty_commands)
+    }
+
+    pub fn drain_sixel_images(&mut self) -> Vec<SixelImage> {
+        std::mem::take(&mut self.pending_sixel_images)
     }
 
     /// Place a character at the cursor, handling wide chars and DEC charset.
@@ -394,6 +419,8 @@ impl Grid {
         self.cursor_col = self.alt_cursor.1;
         self.scroll_top = 0;
         self.scroll_bottom = self.rows().saturating_sub(1);
+        // Clear all image placements when leaving alt screen
+        self.image_placements.clear();
         self.mark_all_dirty();
     }
 

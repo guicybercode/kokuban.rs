@@ -1,3 +1,4 @@
+pub mod confirm;
 pub mod selection;
 pub mod window;
 
@@ -6,9 +7,10 @@ use crate::input::keybind::KeybindMap;
 use crate::pane::layout::PixelRect;
 use crate::pane::PaneTree;
 use crate::renderer::atlas::GlyphAtlas;
+use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::metal::ChromeColors;
 
-use objc2::MainThreadMarker;
+use objc2::{MainThreadMarker, Message};
 use objc2_app_kit::*;
 use objc2_foundation::*;
 use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
@@ -66,6 +68,15 @@ pub fn launch(config: Config) {
     let keybinds = KeybindMap::from_config(&config.keybind);
     let resize_step = config.keybind.resize.step as f32;
 
+    // Create shared image store for Kitty/Sixel image rendering
+    let image_store = Arc::new(Mutex::new(ImageStore::new(
+        device.retain(),
+        config.images.max_memory_mb,
+    )));
+    let images_enabled = config.images.enabled;
+    let kitty_enabled = config.images.kitty_enabled;
+    let sixel_enabled = config.images.sixel_enabled;
+
     // Status bar height = 1.5× line height
     let status_bar_height = if config.status_bar.enabled {
         let a = atlas.lock().unwrap();
@@ -80,7 +91,7 @@ pub fn launch(config: Config) {
         (a.cell_width, a.cell_height)
     };
 
-    // Set default colors on initial pane for OSC 10/11 query responses
+    // Set default colors and cell dimensions on initial pane
     {
         let mut tree = pane_tree.lock().unwrap();
         let fg_hex = config.colors.foreground.trim_start_matches('#').to_string();
@@ -89,6 +100,8 @@ pub fn launch(config: Config) {
             if let Some(pane) = tree.pane_mut(id) {
                 pane.grid.default_fg_hex = fg_hex.clone();
                 pane.grid.default_bg_hex = bg_hex.clone();
+                pane.grid.cell_pixel_width = cell_w as u16;
+                pane.grid.cell_pixel_height = cell_h as u16;
             }
         }
     }
@@ -173,6 +186,9 @@ pub fn launch(config: Config) {
         config.status_bar.enabled,
         resize_step,
         prompt_indicator_color,
+        image_store.clone(),
+        config.confirm.on_close_pane,
+        config.confirm.on_quit,
     );
 
     window.setContentView(Some(&view));
@@ -184,6 +200,8 @@ pub fn launch(config: Config) {
     let reader_tree = pane_tree.clone();
     let reader_dirty = dirty.clone();
     let reader_should_close = should_close.clone();
+    let reader_image_store = image_store.clone();
+    let reader_atlas = atlas.clone();
 
     std::thread::Builder::new()
         .name("pty-reader".to_string())
@@ -202,6 +220,12 @@ pub fn launch(config: Config) {
                     let mut tree = reader_tree.lock().unwrap();
                     let pane_ids = tree.pane_ids();
 
+                    // Get cell dimensions for image placement calculations
+                    let (cell_w, cell_h) = {
+                        let atlas = reader_atlas.lock().unwrap();
+                        (atlas.cell_width, atlas.cell_height)
+                    };
+
                     for id in pane_ids {
                         if let Some(pane) = tree.pane_mut(id) {
                             match pane.pty.read(&mut buf) {
@@ -216,6 +240,80 @@ pub fn launch(config: Config) {
                                     for resp in responses {
                                         pane.pty.write_all(&resp).ok();
                                     }
+
+                                    // Process Kitty graphics commands
+                                    if kitty_enabled || images_enabled {
+                                        let kitty_cmds = pane.grid.drain_kitty_commands();
+                                        if !kitty_cmds.is_empty() {
+                                            let mut store = reader_image_store.lock().unwrap();
+                                            for cmd in kitty_cmds {
+                                                let cursor_row = pane.grid.cursor_row;
+                                                let cursor_col = pane.grid.cursor_col;
+                                                let grid_cols = pane.grid.cols();
+                                                let grid_rows = pane.grid.rows();
+                                                let (resp, advance) = pane.kitty_handler.process(
+                                                    cmd,
+                                                    &mut store,
+                                                    cursor_row,
+                                                    cursor_col,
+                                                    cell_w,
+                                                    cell_h,
+                                                    grid_cols,
+                                                    grid_rows,
+                                                    &mut pane.grid.image_placements,
+                                                );
+                                                if let Some(resp) = resp {
+                                                    pane.pty.write_all(&resp).ok();
+                                                }
+                                                // Advance cursor for inline images
+                                                if let Some(adv) = advance {
+                                                    for _ in 0..adv.rows {
+                                                        pane.grid.newline();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Process Sixel images
+                                    if sixel_enabled || images_enabled {
+                                        let sixel_imgs = pane.grid.drain_sixel_images();
+                                        if !sixel_imgs.is_empty() {
+                                            let mut store = reader_image_store.lock().unwrap();
+                                            for sixel_img in sixel_imgs {
+                                                let img_id = store.next_id();
+                                                if let Some(stored_id) = store.store(
+                                                    &sixel_img.pixels,
+                                                    sixel_img.width,
+                                                    sixel_img.height,
+                                                    ImageFormat::Rgba,
+                                                    Some(img_id),
+                                                ) {
+                                                    // Place inline at cursor
+                                                    let display_cols = ((sixel_img.width as f32) / cell_w).ceil() as u32;
+                                                    let display_rows = ((sixel_img.height as f32) / cell_h).ceil() as u32;
+                                                    pane.grid.image_placements.push(
+                                                        crate::renderer::kitty_handler::ImagePlacement {
+                                                            image_id: stored_id,
+                                                            placement_id: 0,
+                                                            mode: crate::renderer::kitty_handler::PlacementMode::Inline {
+                                                                row: pane.grid.cursor_row,
+                                                                col: pane.grid.cursor_col,
+                                                                cols: display_cols,
+                                                                rows: display_rows,
+                                                            },
+                                                            z_index: 0,
+                                                        },
+                                                    );
+                                                    // Advance cursor past image
+                                                    for _ in 0..display_rows {
+                                                        pane.grid.newline();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     any_data = true;
                                 }
                                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}

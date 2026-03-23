@@ -48,6 +48,8 @@ impl Pty {
                 std::env::set_var("COLORTERM", "truecolor");
                 std::env::set_var("TERM_PROGRAM", "kokuban");
                 std::env::set_var("TERM_PROGRAM_VERSION", "0.1.0");
+                std::env::set_var("KOKUBAN_VERSION", "0.1.0");
+                std::env::set_var("KOKUBAN_GRAPHICS", "kitty,sixel");
 
                 // Exec shell
                 let shell = CString::new("/bin/zsh").unwrap();
