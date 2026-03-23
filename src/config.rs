@@ -8,6 +8,9 @@ pub struct Config {
     pub window: WindowConfig,
     pub colors: ColorConfig,
     pub selection: SelectionConfig,
+    pub status_bar: StatusBarConfig,
+    pub theme: ThemeConfig,
+    pub keybind: KeybindConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -23,6 +26,7 @@ pub struct WindowConfig {
     pub columns: u16,
     pub rows: u16,
     pub scrollback_lines: usize,
+    pub opacity: f32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +43,56 @@ pub struct ColorConfig {
     pub background: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct StatusBarConfig {
+    pub enabled: bool,
+    pub show_shell: bool,
+    pub show_cwd: bool,
+    pub show_pane_index: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ThemeConfig {
+    pub chrome: ChromeConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ChromeConfig {
+    pub sumi_black: String,
+    pub sumi_dark: String,
+    pub sumi_medium: String,
+    pub sumi_light: String,
+    pub sumi_ghost: String,
+    pub hanko_red: String,
+    pub hanko_dim: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct KeybindConfig {
+    pub split_vertical: String,
+    pub split_horizontal: String,
+    pub close_pane: String,
+    pub focus_left: String,
+    pub focus_down: String,
+    pub focus_up: String,
+    pub focus_right: String,
+    pub resize_left: String,
+    pub resize_down: String,
+    pub resize_up: String,
+    pub resize_right: String,
+    pub resize: ResizeConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ResizeConfig {
+    pub step: u32,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -46,6 +100,9 @@ impl Default for Config {
             window: WindowConfig::default(),
             colors: ColorConfig::default(),
             selection: SelectionConfig::default(),
+            status_bar: StatusBarConfig::default(),
+            theme: ThemeConfig::default(),
+            keybind: KeybindConfig::default(),
         }
     }
 }
@@ -65,6 +122,7 @@ impl Default for WindowConfig {
             columns: 80,
             rows: 24,
             scrollback_lines: 10000,
+            opacity: 1.0,
         }
     }
 }
@@ -84,6 +142,64 @@ impl Default for ColorConfig {
             foreground: "#c0c0c0".to_string(),
             background: "#1a1a2e".to_string(),
         }
+    }
+}
+
+impl Default for StatusBarConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_shell: true,
+            show_cwd: true,
+            show_pane_index: true,
+        }
+    }
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            chrome: ChromeConfig::default(),
+        }
+    }
+}
+
+impl Default for ChromeConfig {
+    fn default() -> Self {
+        Self {
+            sumi_black: "#1a1a1a".to_string(),
+            sumi_dark: "#2d2d2d".to_string(),
+            sumi_medium: "#4a4a4a".to_string(),
+            sumi_light: "#7a7a7a".to_string(),
+            sumi_ghost: "#3a3a3a".to_string(),
+            hanko_red: "#b5312c".to_string(),
+            hanko_dim: "#6b2320".to_string(),
+        }
+    }
+}
+
+impl Default for KeybindConfig {
+    fn default() -> Self {
+        Self {
+            split_vertical: "cmd+d".to_string(),
+            split_horizontal: "cmd+shift+d".to_string(),
+            close_pane: "cmd+w".to_string(),
+            focus_left: "cmd+h".to_string(),
+            focus_down: "cmd+j".to_string(),
+            focus_up: "cmd+k".to_string(),
+            focus_right: "cmd+l".to_string(),
+            resize_left: "cmd+shift+h".to_string(),
+            resize_down: "cmd+shift+j".to_string(),
+            resize_up: "cmd+shift+k".to_string(),
+            resize_right: "cmd+shift+l".to_string(),
+            resize: ResizeConfig::default(),
+        }
+    }
+}
+
+impl Default for ResizeConfig {
+    fn default() -> Self {
+        Self { step: 20 }
     }
 }
 

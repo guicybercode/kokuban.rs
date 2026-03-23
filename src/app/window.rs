@@ -1,9 +1,11 @@
-use crate::app::selection::{GridPoint, SelectionState};
-use crate::grid::Grid;
+use crate::app::selection::GridPoint;
+use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::keyboard::translate_key_event;
-use crate::pty::Pty;
+use crate::pane::layout::PixelRect;
+use crate::pane::tree::SplitDirection;
+use crate::pane::PaneTree;
 use crate::renderer::atlas::GlyphAtlas;
-use crate::renderer::metal::MetalRenderer;
+use crate::renderer::metal::{ChromeColors, MetalRenderer, PaneRenderData};
 
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, ProtocolObject};
@@ -18,18 +20,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 struct ViewState {
-    grid: Arc<Mutex<Grid>>,
+    pane_tree: Arc<Mutex<PaneTree>>,
     atlas: Arc<Mutex<GlyphAtlas>>,
-    pty: Arc<Pty>,
     dirty: Arc<AtomicBool>,
+    should_close: Arc<AtomicBool>,
     renderer: MetalRenderer,
     metal_layer: Retained<CAMetalLayer>,
     scale_factor: f32,
     font_family: String,
     font_size: f32,
-    selection: SelectionState,
     selection_fg: (u8, u8, u8),
     selection_bg: (u8, u8, u8),
+    chrome: ChromeColors,
+    keybinds: KeybindMap,
+    bg_opacity: f32,
+    status_bar_height: f32,
+    resize_step: f32,
 }
 
 thread_local! {
@@ -60,8 +66,101 @@ define_class!(
 
         #[unsafe(method(updateLayer))]
         fn update_layer(&self) {
-            log::debug!("[render] updateLayer called");
             render_frame();
+        }
+
+        #[unsafe(method(performKeyEquivalent:))]
+        fn perform_key_equivalent(&self, event: &NSEvent) -> Bool {
+            let key_code = event.keyCode();
+            let modifiers = event.modifierFlags();
+            let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
+
+            if !has_cmd {
+                return Bool::NO;
+            }
+
+            let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
+
+            // Build modifier flags for keybind lookup
+            let mut km = KeyModifiers::CMD;
+            if has_shift {
+                km.insert(KeyModifiers::SHIFT);
+            }
+
+            // Cmd+C: copy or ctrl-c
+            if key_code == 8 && !has_shift {
+                let handled = VIEW_STATE.with(|state| {
+                    let mut state = state.borrow_mut();
+                    if let Some(state) = state.as_mut() {
+                        let mut tree = state.pane_tree.lock().unwrap();
+                        if let Some(pane) = tree.focused_pane_mut() {
+                            if pane.selection.is_active() {
+                                let text = pane.selection.get_text(&pane.grid);
+                                pane.selection.clear();
+                                drop(tree);
+                                if !text.is_empty() {
+                                    copy_to_clipboard(&text);
+                                }
+                                state.dirty.store(true, Ordering::Relaxed);
+                                return true;
+                            }
+                            // No selection: send Ctrl-C
+                            if let Err(e) = pane.pty.write_all(&[0x03]) {
+                                log::error!("Failed to write to PTY: {e}");
+                            }
+                        }
+                    }
+                    true // Always consume Cmd+C
+                });
+                if handled {
+                    return Bool::YES;
+                }
+            }
+
+            // Cmd+V: paste
+            if key_code == 9 && !has_shift {
+                VIEW_STATE.with(|state| {
+                    let state = state.borrow();
+                    if let Some(state) = state.as_ref() {
+                        if let Some(text) = paste_from_clipboard() {
+                            let tree = state.pane_tree.lock().unwrap();
+                            if let Some(pane) = tree.focused_pane() {
+                                let bracketed = pane.grid.bracketed_paste;
+                                let mut bytes = Vec::new();
+                                if bracketed {
+                                    bytes.extend_from_slice(b"\x1b[200~");
+                                }
+                                bytes.extend_from_slice(text.as_bytes());
+                                if bracketed {
+                                    bytes.extend_from_slice(b"\x1b[201~");
+                                }
+                                if let Err(e) = pane.pty.write_all(&bytes) {
+                                    log::error!("Failed to write to PTY: {e}");
+                                }
+                            }
+                        }
+                    }
+                });
+                return Bool::YES;
+            }
+
+            // Cmd+Q: let system handle quit
+            if key_code == 12 && !has_shift {
+                return Bool::NO;
+            }
+
+            // Check configurable keybinds
+            let action = VIEW_STATE.with(|state| {
+                let state = state.borrow();
+                state.as_ref().and_then(|s| s.keybinds.lookup(key_code, km))
+            });
+
+            if let Some(action) = action {
+                handle_pane_action(action);
+                return Bool::YES;
+            }
+
+            Bool::NO
         }
 
         #[unsafe(method(scrollWheel:))]
@@ -74,13 +173,15 @@ define_class!(
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
                     let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
-                    let mut grid = state.grid.lock().unwrap();
-                    if delta_y > 0.0 {
-                        grid.scroll_viewport_up(lines);
-                    } else {
-                        grid.scroll_viewport_down(lines);
+                    let mut tree = state.pane_tree.lock().unwrap();
+                    if let Some(pane) = tree.focused_pane_mut() {
+                        if delta_y > 0.0 {
+                            pane.grid.scroll_viewport_up(lines);
+                        } else {
+                            pane.grid.scroll_viewport_down(lines);
+                        }
                     }
-                    drop(grid);
+                    drop(tree);
                     state.dirty.store(true, Ordering::Relaxed);
                 }
             });
@@ -91,8 +192,13 @@ define_class!(
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
-                    if let Some(point) = pixel_to_grid_point(event, state) {
-                        state.selection.start(point);
+                    if let Some((pane_id, point)) = pixel_to_grid_point(event, state) {
+                        let mut tree = state.pane_tree.lock().unwrap();
+                        tree.focused = pane_id;
+                        if let Some(pane) = tree.pane_mut(pane_id) {
+                            pane.selection.start(point);
+                        }
+                        drop(tree);
                         state.dirty.store(true, Ordering::Relaxed);
                     }
                 }
@@ -104,8 +210,12 @@ define_class!(
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
-                    if let Some(point) = pixel_to_grid_point(event, state) {
-                        state.selection.update(point);
+                    if let Some((_pane_id, point)) = pixel_to_grid_point(event, state) {
+                        let mut tree = state.pane_tree.lock().unwrap();
+                        if let Some(pane) = tree.focused_pane_mut() {
+                            pane.selection.update(point);
+                        }
+                        drop(tree);
                         state.dirty.store(true, Ordering::Relaxed);
                     }
                 }
@@ -114,7 +224,7 @@ define_class!(
 
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, _event: &NSEvent) {
-            // Selection stays until cleared by keypress
+            // Selection stays
         }
 
         #[unsafe(method(keyDown:))]
@@ -124,88 +234,29 @@ define_class!(
             let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
             let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
 
-            // Cmd+C: copy
-            if has_cmd && key_code == 8 {
-                VIEW_STATE.with(|state| {
-                    let mut state = state.borrow_mut();
-                    if let Some(state) = state.as_mut() {
-                        if state.selection.is_active() {
-                            let grid = state.grid.lock().unwrap();
-                            let text = state.selection.get_text(&grid);
-                            drop(grid);
-                            if !text.is_empty() {
-                                copy_to_clipboard(&text);
-                            }
-                            state.selection.clear();
-                            state.dirty.store(true, Ordering::Relaxed);
-                            return;
-                        }
-                        // No selection — send Ctrl-C
-                        if let Err(e) = state.pty.write_all(&[0x03]) {
-                            log::error!("Failed to write to PTY: {e}");
-                        }
-                    }
-                });
+            // Cmd keys are handled in performKeyEquivalent
+            if has_cmd {
                 return;
             }
 
-            // Cmd+V: paste
-            if has_cmd && key_code == 9 {
-                VIEW_STATE.with(|state| {
-                    let state = state.borrow();
-                    if let Some(state) = state.as_ref() {
-                        if let Some(text) = paste_from_clipboard() {
-                            let grid = state.grid.lock().unwrap();
-                            let bracketed = grid.bracketed_paste;
-                            drop(grid);
-
-                            let mut bytes = Vec::new();
-                            if bracketed {
-                                bytes.extend_from_slice(b"\x1b[200~");
-                            }
-                            bytes.extend_from_slice(text.as_bytes());
-                            if bracketed {
-                                bytes.extend_from_slice(b"\x1b[201~");
-                            }
-                            if let Err(e) = state.pty.write_all(&bytes) {
-                                log::error!("Failed to write to PTY: {e}");
-                            }
-                        }
-                    }
-                });
-                return;
-            }
-
-            // Shift+PageUp/PageDown/Home/End: viewport scrolling
+            // Shift+PageUp/Down/Home/End: viewport scrolling
             if has_shift {
                 let handled = VIEW_STATE.with(|state| {
                     let mut state = state.borrow_mut();
                     if let Some(state) = state.as_mut() {
-                        let mut grid = state.grid.lock().unwrap();
-                        let rows = grid.rows();
-                        match key_code {
-                            116 => { // PageUp
-                                grid.scroll_viewport_up(rows.saturating_sub(1));
-                                state.dirty.store(true, Ordering::Relaxed);
-                                return true;
+                        let mut tree = state.pane_tree.lock().unwrap();
+                        if let Some(pane) = tree.focused_pane_mut() {
+                            let rows = pane.grid.rows();
+                            match key_code {
+                                116 => { pane.grid.scroll_viewport_up(rows.saturating_sub(1)); }
+                                121 => { pane.grid.scroll_viewport_down(rows.saturating_sub(1)); }
+                                115 => { let max = pane.grid.scrollback_len(); pane.grid.scroll_viewport_up(max); }
+                                119 => { pane.grid.scroll_to_bottom(); }
+                                _ => return false,
                             }
-                            121 => { // PageDown
-                                grid.scroll_viewport_down(rows.saturating_sub(1));
-                                state.dirty.store(true, Ordering::Relaxed);
-                                return true;
-                            }
-                            115 => { // Home
-                                let max = grid.scrollback_len();
-                                grid.scroll_viewport_up(max);
-                                state.dirty.store(true, Ordering::Relaxed);
-                                return true;
-                            }
-                            119 => { // End
-                                grid.scroll_to_bottom();
-                                state.dirty.store(true, Ordering::Relaxed);
-                                return true;
-                            }
-                            _ => {}
+                            drop(tree);
+                            state.dirty.store(true, Ordering::Relaxed);
+                            return true;
                         }
                     }
                     false
@@ -215,27 +266,31 @@ define_class!(
                 }
             }
 
-            // Any non-modifier keypress: snap to bottom and clear selection
+            // Snap to bottom and clear selection on any keypress
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
-                    let mut grid = state.grid.lock().unwrap();
-                    grid.scroll_to_bottom();
-                    drop(grid);
-                    if state.selection.is_active() {
-                        state.selection.clear();
-                        state.dirty.store(true, Ordering::Relaxed);
+                    let mut tree = state.pane_tree.lock().unwrap();
+                    if let Some(pane) = tree.focused_pane_mut() {
+                        pane.grid.scroll_to_bottom();
+                        if pane.selection.is_active() {
+                            pane.selection.clear();
+                            state.dirty.store(true, Ordering::Relaxed);
+                        }
                     }
                 }
             });
 
-            // Normal key handling
+            // Forward to focused pane's PTY
             if let Some(bytes) = translate_key_event(event) {
                 VIEW_STATE.with(|state| {
                     let state = state.borrow();
                     if let Some(state) = state.as_ref() {
-                        if let Err(e) = state.pty.write_all(&bytes) {
-                            log::error!("Failed to write to PTY: {e}");
+                        let tree = state.pane_tree.lock().unwrap();
+                        if let Some(pane) = tree.focused_pane() {
+                            if let Err(e) = pane.pty.write_all(&bytes) {
+                                log::error!("Failed to write to PTY: {e}");
+                            }
                         }
                     }
                 });
@@ -253,20 +308,8 @@ define_class!(
                             log::info!("Scale factor changed to {new_scale}");
                             state.scale_factor = new_scale;
                             state.metal_layer.setContentsScale(new_scale as f64);
-                            // Recreate atlas at new scale
                             let mut atlas = state.atlas.lock().unwrap();
                             *atlas = GlyphAtlas::new(&state.font_family, state.font_size, new_scale);
-
-                            // Update drawable size to match new atlas cell dimensions
-                            let grid = state.grid.lock().unwrap();
-                            let pixel_w = atlas.cell_width * grid.cols() as f32;
-                            let pixel_h = atlas.cell_height * grid.rows() as f32;
-                            log::debug!("[render] scale change: updating drawableSize to {pixel_w}x{pixel_h}");
-                            state.metal_layer.setDrawableSize(NSSize {
-                                width: pixel_w as f64,
-                                height: pixel_h as f64,
-                            });
-
                             state.dirty.store(true, Ordering::Relaxed);
                         }
                     }
@@ -299,55 +342,159 @@ define_class!(
                 let cell_h = atlas.cell_height;
                 drop(atlas);
 
-                let new_cols = (pixel_w / cell_w).floor() as usize;
-                let new_rows = (pixel_h / cell_h).floor() as usize;
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: pixel_w,
+                    height: pixel_h,
+                };
 
-                if new_cols > 0 && new_rows > 0 {
-                    let mut grid = state.grid.lock().unwrap();
-                    if new_cols != grid.cols() || new_rows != grid.rows() {
-                        grid.resize(new_cols, new_rows);
-                        log::debug!("Grid resized to {new_cols}x{new_rows}");
-                        drop(grid);
-
-                        if let Err(e) = state.pty.resize(new_cols as u16, new_rows as u16) {
-                            log::error!("Failed to resize PTY: {e}");
-                        }
-                        state.dirty.store(true, Ordering::Relaxed);
-                    }
-                }
+                let mut tree = state.pane_tree.lock().unwrap();
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+                drop(tree);
+                state.dirty.store(true, Ordering::Relaxed);
             });
         }
     }
 );
 
-fn pixel_to_grid_point(event: &NSEvent, state: &ViewState) -> Option<GridPoint> {
+fn handle_pane_action(action: PaneAction) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let state = match state.as_mut() {
+            Some(s) => s,
+            None => return,
+        };
+
+        let atlas = state.atlas.lock().unwrap();
+        let cell_w = atlas.cell_width;
+        let cell_h = atlas.cell_height;
+        drop(atlas);
+
+        let mut tree = state.pane_tree.lock().unwrap();
+
+        match action {
+            PaneAction::SplitVertical => {
+                if let Err(e) = tree.split(SplitDirection::Vertical, cell_w, cell_h) {
+                    log::error!("Failed to split vertical: {e}");
+                }
+                // Relayout
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+            PaneAction::SplitHorizontal => {
+                if let Err(e) = tree.split(SplitDirection::Horizontal, cell_w, cell_h) {
+                    log::error!("Failed to split horizontal: {e}");
+                }
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+            PaneAction::ClosePane => {
+                let id = tree.focused;
+                let should_terminate = tree.close(id);
+                if should_terminate {
+                    drop(tree);
+                    state.should_close.store(true, Ordering::Relaxed);
+                    return;
+                }
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+            PaneAction::FocusLeft => {
+                tree.focus_neighbor(SplitDirection::Vertical, false);
+            }
+            PaneAction::FocusRight => {
+                tree.focus_neighbor(SplitDirection::Vertical, true);
+            }
+            PaneAction::FocusUp => {
+                tree.focus_neighbor(SplitDirection::Horizontal, false);
+            }
+            PaneAction::FocusDown => {
+                tree.focus_neighbor(SplitDirection::Horizontal, true);
+            }
+            PaneAction::ResizeLeft => {
+                let delta = -(state.resize_step / cell_w) * 0.01;
+                tree.resize_focused(delta);
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+            PaneAction::ResizeRight => {
+                let delta = (state.resize_step / cell_w) * 0.01;
+                tree.resize_focused(delta);
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+            PaneAction::ResizeUp => {
+                let delta = -(state.resize_step / cell_h) * 0.01;
+                tree.resize_focused(delta);
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+            PaneAction::ResizeDown => {
+                let delta = (state.resize_step / cell_h) * 0.01;
+                tree.resize_focused(delta);
+                let size = state.metal_layer.drawableSize();
+                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
+            }
+        }
+
+        drop(tree);
+        state.dirty.store(true, Ordering::Relaxed);
+    });
+}
+
+fn pixel_to_grid_point(event: &NSEvent, state: &ViewState) -> Option<(crate::pane::PaneId, GridPoint)> {
     let loc = event.locationInWindow();
-    // NSView is flipped, but locationInWindow is in window coords (origin bottom-left).
-    // We need to convert to view coords.
     let scale = state.scale_factor;
     let atlas = state.atlas.lock().unwrap();
     let cell_w = atlas.cell_width;
     let cell_h = atlas.cell_height;
     drop(atlas);
 
-    // locationInWindow has Y=0 at bottom. Our view is flipped so Y=0 is at top.
-    // Get the view frame height to flip.
-    let grid = state.grid.lock().unwrap();
-    let view_pixel_h = cell_h * grid.rows() as f32 / scale;
-    let scroll_offset = grid.scroll_offset;
-    let sb_len = grid.scrollback_len();
-    drop(grid);
+    let size = state.metal_layer.drawableSize();
+    let view_h = size.height as f32 / scale;
 
-    let x = loc.x as f32 * scale;
-    let y = (view_pixel_h - loc.y as f32) * scale;
+    let px = loc.x as f32 * scale;
+    let py = (view_h - loc.y as f32) * scale;
 
-    let col = (x / cell_w) as usize;
-    let vis_row = (y / cell_h) as usize;
+    let tree = state.pane_tree.lock().unwrap();
+    let pane_id = tree.pane_at(px, py).unwrap_or(tree.focused);
+    let pane = tree.pane(pane_id)?;
+    let rect = pane.rect;
 
-    // Convert to absolute row
+    let local_x = px - rect.x;
+    let local_y = py - rect.y;
+
+    let col = (local_x / cell_w) as usize;
+    let vis_row = (local_y / cell_h) as usize;
+
+    let sb_len = pane.grid.scrollback_len();
+    let scroll_offset = pane.grid.scroll_offset;
     let abs_row = sb_len as i64 - scroll_offset as i64 + vis_row as i64;
 
-    Some(GridPoint { row: abs_row, col })
+    Some((pane_id, GridPoint { row: abs_row, col }))
 }
 
 fn copy_to_clipboard(text: &str) {
@@ -373,64 +520,76 @@ fn paste_from_clipboard() -> Option<String> {
     }
 }
 
-/// Perform one render frame. Called from both `updateLayer` and the timer.
 fn render_frame() {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
         let state = match state.as_mut() {
             Some(s) => s,
-            None => {
-                log::warn!("[render] VIEW_STATE is None");
-                return;
-            }
+            None => return,
         };
 
         let size = state.metal_layer.drawableSize();
-        log::debug!("[render] drawableSize: {}x{}", size.width, size.height);
-
-        let drawable = state.metal_layer.nextDrawable();
-        let drawable = match drawable {
+        let drawable = match state.metal_layer.nextDrawable() {
             Some(d) => d,
-            None => {
-                log::warn!("[render] nextDrawable returned None");
-                return;
-            }
+            None => return,
         };
-
         let texture = drawable.texture();
 
-        let grid = state.grid.lock().unwrap();
+        let tree = state.pane_tree.lock().unwrap();
         let mut atlas = state.atlas.lock().unwrap();
 
-        let sel = if state.selection.is_active() {
-            Some(&state.selection)
-        } else {
-            None
+        let viewport = PixelRect {
+            x: 0.0,
+            y: 0.0,
+            width: size.width as f32,
+            height: size.height as f32,
         };
+        let (layouts, dividers) = tree.layout_info(viewport);
 
-        state.renderer.draw(
-            &grid,
+        let focused_id = tree.focused;
+        let mut pane_render_data: Vec<PaneRenderData> = Vec::new();
+
+        for (i, (id, rect)) in layouts.iter().enumerate() {
+            if let Some(pane) = tree.pane(*id) {
+                let sel = if pane.selection.is_active() {
+                    Some(&pane.selection)
+                } else {
+                    None
+                };
+                pane_render_data.push(PaneRenderData {
+                    grid: &pane.grid,
+                    rect: *rect,
+                    selection: sel,
+                    is_focused: *id == focused_id,
+                    pane_index: i,
+                    cwd: &pane.grid.cwd,
+                });
+            }
+        }
+
+        state.renderer.draw_frame(
+            &pane_render_data,
+            &dividers,
             &mut atlas,
             ProtocolObject::from_ref(&*drawable),
             &texture,
             size.width as f32,
             size.height as f32,
-            sel,
+            state.bg_opacity,
             state.selection_fg,
             state.selection_bg,
+            &state.chrome,
+            state.status_bar_height,
         );
 
         drop(atlas);
-        drop(grid);
+        drop(tree);
         state.dirty.store(false, Ordering::Relaxed);
-        log::debug!("[render] frame presented");
     });
 }
 
-/// Called directly from the timer to render without relying on setNeedsDisplay.
 pub fn render_if_dirty(dirty: &AtomicBool) {
     if dirty.load(Ordering::Relaxed) {
-        log::trace!("[render] timer tick: dirty, rendering directly");
         render_frame();
     }
 }
@@ -438,10 +597,10 @@ pub fn render_if_dirty(dirty: &AtomicBool) {
 pub fn create_terminal_view(
     mtm: MainThreadMarker,
     device: &ProtocolObject<dyn MTLDevice>,
-    grid: Arc<Mutex<Grid>>,
+    pane_tree: Arc<Mutex<PaneTree>>,
     atlas: Arc<Mutex<GlyphAtlas>>,
-    pty: Arc<Pty>,
     dirty: Arc<AtomicBool>,
+    should_close: Arc<AtomicBool>,
     default_fg: (u8, u8, u8),
     default_bg: (u8, u8, u8),
     scale_factor: f32,
@@ -449,53 +608,66 @@ pub fn create_terminal_view(
     font_size: f32,
     selection_fg: (u8, u8, u8),
     selection_bg: (u8, u8, u8),
+    chrome: ChromeColors,
+    keybinds: KeybindMap,
+    bg_opacity: f32,
+    status_bar_height: f32,
+    resize_step: f32,
 ) -> Retained<TerminalView> {
     let view = mtm.alloc::<TerminalView>().set_ivars(());
-    let view: Retained<TerminalView> = unsafe {
-        msg_send![super(view), init]
-    };
+    let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
 
     view.setWantsLayer(true);
 
-    // Create and configure CAMetalLayer
     let metal_layer = CAMetalLayer::new();
     metal_layer.setDevice(Some(device));
     metal_layer.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
     metal_layer.setContentsScale(scale_factor as f64);
     metal_layer.setFramebufferOnly(true);
 
+    if bg_opacity < 1.0 {
+        metal_layer.setOpaque(false);
+    }
+
     view.setLayer(Some(&metal_layer));
 
     // Set initial drawable size
     {
         let atlas = atlas.lock().unwrap();
-        let grid = grid.lock().unwrap();
-        let pixel_w = atlas.cell_width * grid.cols() as f32;
-        let pixel_h = atlas.cell_height * grid.rows() as f32;
-        metal_layer.setDrawableSize(NSSize {
-            width: pixel_w as f64,
-            height: pixel_h as f64,
-        });
+        let tree = pane_tree.lock().unwrap();
+        // Use first pane's grid size for initial window
+        let pane_ids = tree.pane_ids();
+        if let Some(pane) = pane_ids.first().and_then(|id| tree.pane(*id)) {
+            let pixel_w = atlas.cell_width * pane.grid.cols() as f32;
+            let pixel_h = atlas.cell_height * pane.grid.rows() as f32 + status_bar_height;
+            metal_layer.setDrawableSize(NSSize {
+                width: pixel_w as f64,
+                height: pixel_h as f64,
+            });
+        }
     }
 
-    // Create renderer
     let retained_device: Retained<ProtocolObject<dyn MTLDevice>> = device.retain();
     let renderer = MetalRenderer::new(retained_device, default_fg, default_bg);
 
     VIEW_STATE.with(|state| {
         *state.borrow_mut() = Some(ViewState {
-            grid,
+            pane_tree,
             atlas,
-            pty,
             dirty,
+            should_close,
             renderer,
             metal_layer,
             scale_factor,
             font_family,
             font_size,
-            selection: SelectionState::default(),
             selection_fg,
             selection_bg,
+            chrome,
+            keybinds,
+            bg_opacity,
+            status_bar_height,
+            resize_step,
         });
     });
 

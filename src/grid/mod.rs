@@ -36,6 +36,9 @@ pub struct Grid {
     // Mode flags
     pub cursor_visible: bool,
     pub bracketed_paste: bool,
+    // Terminal state from OSC sequences
+    pub title: String,
+    pub cwd: String,
 }
 
 impl Grid {
@@ -60,6 +63,8 @@ impl Grid {
             using_alt_screen: false,
             cursor_visible: true,
             bracketed_paste: false,
+            title: String::new(),
+            cwd: String::new(),
         }
     }
 

@@ -66,6 +66,13 @@ impl Parser {
 
     fn escape(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
+            b'\\' => {
+                // ST (String Terminator) — terminates OSC
+                if !self.osc_data.is_empty() {
+                    self.dispatch_osc(grid);
+                }
+                self.state = State::Ground;
+            }
             b'[' => {
                 self.params.clear();
                 self.current_param = None;
@@ -218,18 +225,49 @@ impl Parser {
         }
     }
 
-    fn osc_string(&mut self, byte: u8, _grid: &mut Grid) {
+    fn osc_string(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
             0x07 => {
                 // BEL terminates OSC
+                self.dispatch_osc(grid);
                 self.state = State::Ground;
             }
             0x1b => {
-                // ESC might start ST (ESC \)
+                // ESC might start ST (ESC \) — dispatch will happen there
                 self.state = State::Escape;
             }
             _ => {
                 self.osc_data.push(byte);
+            }
+        }
+    }
+
+    fn dispatch_osc(&mut self, grid: &mut Grid) {
+        let data = std::mem::take(&mut self.osc_data);
+        let data_str = match std::str::from_utf8(&data) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if let Some(sep_pos) = data_str.find(';') {
+            let ps = &data_str[..sep_pos];
+            let pt = &data_str[sep_pos + 1..];
+            match ps {
+                "0" | "2" => {
+                    grid.title = pt.to_string();
+                }
+                "7" => {
+                    // file://hostname/path
+                    if let Some(path) = pt.strip_prefix("file://") {
+                        if let Some(slash_pos) = path.find('/') {
+                            grid.cwd = path[slash_pos..].to_string();
+                        }
+                    } else {
+                        grid.cwd = pt.to_string();
+                    }
+                }
+                _ => {
+                    log::trace!("Ignoring OSC {ps}");
+                }
             }
         }
     }

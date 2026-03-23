@@ -1,4 +1,5 @@
 pub mod atlas;
+pub mod brush;
 pub mod metal;
 pub mod shaders;
 
