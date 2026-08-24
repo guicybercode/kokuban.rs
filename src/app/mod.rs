@@ -8,6 +8,7 @@ use crate::pane::layout::PixelRect;
 use crate::pane::PaneTree;
 use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
+use crate::renderer::kitty_handler::KittyHandlerOptions;
 use crate::renderer::metal::ChromeColors;
 
 use objc2::{MainThreadMarker, Message};
@@ -36,9 +37,14 @@ pub fn launch(config: Config) {
     let rows = config.window.rows;
     let scrollback_max = config.window.scrollback_lines;
     let bg_opacity = config.window.opacity.clamp(0.0, 1.0);
+    let kitty_options = KittyHandlerOptions::from_megabytes(
+        config.images.kitty.max_image_size_mb,
+        config.images.kitty.allow_file_transfer,
+    );
 
     let pane_tree = Arc::new(Mutex::new(
-        PaneTree::new(cols, rows, scrollback_max).expect("Failed to create initial pane"),
+        PaneTree::new(cols, rows, scrollback_max, kitty_options)
+            .expect("Failed to create initial pane"),
     ));
 
     let scale_factor = 2.0f32;
