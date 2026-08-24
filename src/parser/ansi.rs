@@ -716,6 +716,16 @@ impl Utf8Parser {
 
     pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
         for &byte in input {
+            // OSC, APC and DCS payloads are byte-oriented. Decoding their UTF-8
+            // here would print the decoded character into the terminal grid
+            // instead of keeping it inside the control string.
+            if self.parser.state != State::Ground {
+                self.utf8_len = 0;
+                self.utf8_expected = 0;
+                self.parser.advance(byte, grid);
+                continue;
+            }
+
             if self.utf8_expected > 0 {
                 if byte & 0xc0 == 0x80 {
                     self.utf8_buf[self.utf8_len] = byte;
@@ -745,5 +755,52 @@ impl Utf8Parser {
                 self.parser.advance(byte, grid);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Utf8Parser;
+    use crate::grid::Grid;
+
+    fn grid() -> Grid {
+        Grid::new(40, 4, 100)
+    }
+
+    #[test]
+    fn prints_utf8_split_across_reads() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(&[0xe6, 0x97], &mut grid);
+        parser.feed(&[0xa5], &mut grid);
+
+        assert_eq!(grid.buffer.cell(0, 0).c, '日');
+        assert_eq!(grid.cursor_col, 2);
+    }
+
+    #[test]
+    fn keeps_utf8_inside_bell_terminated_osc() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed("\x1b]2;Kokuban 日本\x07".as_bytes(), &mut grid);
+
+        assert_eq!(grid.title, "Kokuban 日本");
+        assert_eq!(grid.buffer.cell(0, 0).c, ' ');
+        assert_eq!(grid.cursor_col, 0);
+    }
+
+    #[test]
+    fn keeps_utf8_inside_st_terminated_osc_split_across_reads() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed("\x1b]0;黒".as_bytes(), &mut grid);
+        parser.feed("板\x1b\\".as_bytes(), &mut grid);
+
+        assert_eq!(grid.title, "黒板");
+        assert_eq!(grid.buffer.cell(0, 0).c, ' ');
+        assert_eq!(grid.cursor_col, 0);
     }
 }
