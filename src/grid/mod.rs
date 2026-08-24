@@ -9,8 +9,10 @@ use std::collections::VecDeque;
 use unicode_width::UnicodeWidthChar;
 
 use crate::parser::kitty_graphics::KittyCommand;
-use crate::parser::sixel::SixelImage;
+use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES};
 use crate::renderer::kitty_handler::ImagePlacement;
+
+const MAX_PENDING_SIXEL_IMAGES: usize = 256;
 
 const DEFAULT_CELL: Cell = Cell {
     c: ' ',
@@ -122,7 +124,8 @@ pub struct Grid {
     pub default_bg_hex: String,
     // Image protocol pending commands
     pub pending_kitty_commands: Vec<KittyCommand>,
-    pub pending_sixel_images: Vec<SixelImage>,
+    pending_sixel_images: Vec<SixelImage>,
+    pending_sixel_bytes: usize,
     // Active image placements for this grid
     pub image_placements: Vec<ImagePlacement>,
     // Cell pixel dimensions (set by renderer for accurate CSI t responses)
@@ -174,6 +177,7 @@ impl Grid {
             default_bg_hex: String::new(),
             pending_kitty_commands: Vec::new(),
             pending_sixel_images: Vec::new(),
+            pending_sixel_bytes: 0,
             image_placements: Vec::new(),
             cell_pixel_width: 8,
             cell_pixel_height: 16,
@@ -214,7 +218,46 @@ impl Grid {
     }
 
     pub fn drain_sixel_images(&mut self) -> Vec<SixelImage> {
+        self.pending_sixel_bytes = 0;
         std::mem::take(&mut self.pending_sixel_images)
+    }
+
+    pub(crate) fn queue_sixel_image(&mut self, image: SixelImage) -> bool {
+        self.queue_sixel_image_with_limit(image, MAX_PENDING_SIXEL_BYTES)
+    }
+
+    pub(crate) fn remaining_sixel_bytes(&self) -> usize {
+        MAX_PENDING_SIXEL_BYTES.saturating_sub(self.pending_sixel_bytes)
+    }
+
+    pub(crate) fn has_sixel_queue_slot(&self) -> bool {
+        self.pending_sixel_images.len() < MAX_PENDING_SIXEL_IMAGES
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_pending_sixel_bytes_for_test(&mut self, bytes: usize) {
+        assert!(bytes <= MAX_PENDING_SIXEL_BYTES);
+        self.pending_sixel_bytes = bytes;
+    }
+
+    fn queue_sixel_image_with_limit(&mut self, image: SixelImage, limit: usize) -> bool {
+        if !self.has_sixel_queue_slot() {
+            return false;
+        }
+
+        let Some(pending_bytes) = self
+            .pending_sixel_bytes
+            .checked_add(image.pixels.capacity())
+        else {
+            return false;
+        };
+        if pending_bytes > limit {
+            return false;
+        }
+
+        self.pending_sixel_images.push(image);
+        self.pending_sixel_bytes = pending_bytes;
+        true
     }
 
     /// Place a character at the cursor, handling wide chars and DEC charset.
@@ -551,6 +594,15 @@ impl Grid {
 #[cfg(test)]
 mod tests {
     use super::Grid;
+    use crate::parser::sixel::SixelImage;
+
+    fn sixel_image(byte_len: usize) -> SixelImage {
+        SixelImage {
+            width: 1,
+            height: (byte_len / 4) as u32,
+            pixels: vec![0; byte_len],
+        }
+    }
 
     #[test]
     fn resize_clamps_active_and_saved_cursors() {
@@ -612,6 +664,46 @@ mod tests {
 
         assert_eq!(grid.buffer.cell(0, 1).c, 'b');
         assert_eq!(grid.buffer.cell(1, 0).c, 'c');
+    }
+
+    #[test]
+    fn pending_sixel_queue_enforces_and_resets_its_byte_budget() {
+        let mut grid = Grid::new(2, 2, 0);
+
+        assert!(grid.queue_sixel_image_with_limit(sixel_image(8), 12));
+        assert!(grid.queue_sixel_image_with_limit(sixel_image(4), 12));
+        assert_eq!(grid.pending_sixel_bytes, 12);
+        assert_eq!(
+            grid.remaining_sixel_bytes(),
+            super::MAX_PENDING_SIXEL_BYTES - 12
+        );
+        assert!(!grid.queue_sixel_image_with_limit(sixel_image(4), 12));
+        assert_eq!(grid.pending_sixel_images.len(), 2);
+
+        let drained = grid.drain_sixel_images();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(grid.pending_sixel_bytes, 0);
+        assert!(grid.queue_sixel_image_with_limit(sixel_image(8), 12));
+
+        grid.pending_sixel_bytes = usize::MAX;
+        assert!(!grid.queue_sixel_image_with_limit(sixel_image(4), usize::MAX));
+    }
+
+    #[test]
+    fn pending_sixel_queue_bounds_per_image_metadata() {
+        let mut grid = Grid::new(2, 2, 0);
+
+        for _ in 0..super::MAX_PENDING_SIXEL_IMAGES {
+            assert!(grid.queue_sixel_image(sixel_image(4)));
+        }
+        assert!(!grid.has_sixel_queue_slot());
+        assert!(!grid.queue_sixel_image(sixel_image(4)));
+
+        assert_eq!(
+            grid.drain_sixel_images().len(),
+            super::MAX_PENDING_SIXEL_IMAGES
+        );
+        assert!(grid.has_sixel_queue_slot());
     }
 
     #[test]
