@@ -365,66 +365,144 @@ impl KittyHandler {
     }
 
     fn handle_query(&self, cmd: &KittyCommand) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
-        let image_id = cmd.image_id.unwrap_or(0);
-        // For queries, we try to process the tiny test image and respond OK
-        if !cmd.payload.is_empty() || cmd.transmission != KittyTransmission::Direct {
-            let format = match cmd.format {
-                KittyFormat::Rgb => ImageFormat::Rgb,
-                KittyFormat::Rgba => ImageFormat::Rgba,
-                KittyFormat::Png => ImageFormat::Png,
-            };
-            let w = cmd.width.unwrap_or(1);
-            let h = cmd.height.unwrap_or(1);
-            let transmission_data = match cmd.transmission {
-                KittyTransmission::Direct => Cow::Borrowed(cmd.payload.as_slice()),
-                KittyTransmission::File | KittyTransmission::TempFile => {
-                    match load_file_data(
-                        &cmd.payload,
-                        cmd.transmission == KittyTransmission::TempFile,
-                        self.options,
-                    ) {
-                        Ok(data) => Cow::Owned(data),
-                        Err(error) => {
-                            return (file_load_error_response(image_id, cmd.quiet, error), None);
-                        }
-                    }
-                }
-                KittyTransmission::SharedMemory => {
-                    let response = (cmd.quiet < 2).then(|| {
-                        format!("\x1b_Gi={image_id};ENOSYS:shared memory not supported\x1b\\")
-                            .into_bytes()
-                    });
-                    return (response, None);
-                }
-            };
-            // Store the test image briefly. A failed decompression must not be
-            // interpreted as raw pixels: doing so would make corrupt streams
-            // appear supported and could retain attacker-controlled data.
-            let data = match maybe_decompress_with_limit(
-                transmission_data.as_ref(),
-                cmd.compression,
-                self.options.max_image_bytes,
-            ) {
-                Ok(data) => data,
-                Err(error) => {
+        let Some(image_id) = cmd.image_id.filter(|id| *id != 0) else {
+            log::warn!("Ignoring Kitty query without a non-zero image ID");
+            return (None, None);
+        };
+        if cmd.image_number.is_some() {
+            return (
+                query_error_response(
+                    image_id,
+                    cmd.quiet,
+                    "EINVAL:image ID and image number are mutually exclusive",
+                ),
+                None,
+            );
+        }
+
+        let (width, height, format, expected_raw_bytes) = match cmd.format {
+            KittyFormat::Png => (0, 0, ImageFormat::Png, None),
+            KittyFormat::Rgb | KittyFormat::Rgba => {
+                let width = cmd.width.unwrap_or(0);
+                let height = cmd.height.unwrap_or(0);
+                if width == 0 || height == 0 {
                     return (
-                        decompression_error_response(image_id, cmd.quiet, error),
+                        query_error_response(
+                            image_id,
+                            cmd.quiet,
+                            "EINVAL:missing image dimensions",
+                        ),
                         None,
                     );
                 }
-            };
-            if !probe_image_data(data.as_ref(), w, h, format, self.options.max_image_bytes) {
-                let response = if cmd.quiet < 2 {
-                    Some(
-                        format!("\x1b_Gi={image_id};ENOMEM:failed to load query image\x1b\\")
-                            .into_bytes(),
-                    )
-                } else {
-                    None
+                let (format, bytes_per_pixel) = match cmd.format {
+                    KittyFormat::Rgb => (ImageFormat::Rgb, 3u64),
+                    KittyFormat::Rgba => (ImageFormat::Rgba, 4u64),
+                    KittyFormat::Png => unreachable!(),
                 };
-                return (response, None);
+                let expected = u64::from(width)
+                    .checked_mul(u64::from(height))
+                    .and_then(|pixels| pixels.checked_mul(bytes_per_pixel))
+                    .and_then(|bytes| usize::try_from(bytes).ok());
+                let Some(expected) = expected else {
+                    return (
+                        query_error_response(
+                            image_id,
+                            cmd.quiet,
+                            "E2BIG:image dimensions exceed size limit",
+                        ),
+                        None,
+                    );
+                };
+                if expected > self.options.max_image_bytes {
+                    return (
+                        query_error_response(
+                            image_id,
+                            cmd.quiet,
+                            "E2BIG:image dimensions exceed size limit",
+                        ),
+                        None,
+                    );
+                }
+                (width, height, format, Some(expected))
+            }
+        };
+
+        let transmission_data = match cmd.transmission {
+            KittyTransmission::Direct => Cow::Borrowed(cmd.payload.as_slice()),
+            KittyTransmission::File | KittyTransmission::TempFile => {
+                match load_file_data(
+                    &cmd.payload,
+                    cmd.transmission == KittyTransmission::TempFile,
+                    self.options,
+                ) {
+                    Ok(data) => Cow::Owned(data),
+                    Err(error) => {
+                        return (file_load_error_response(image_id, cmd.quiet, error), None);
+                    }
+                }
+            }
+            KittyTransmission::SharedMemory => {
+                return (
+                    query_error_response(image_id, cmd.quiet, "ENOSYS:shared memory not supported"),
+                    None,
+                );
+            }
+        };
+        let data = match maybe_decompress_with_limit(
+            transmission_data.as_ref(),
+            cmd.compression,
+            self.options.max_image_bytes,
+        ) {
+            Ok(data) => data,
+            Err(error) => {
+                return (
+                    decompression_error_response(image_id, cmd.quiet, error),
+                    None,
+                );
+            }
+        };
+        if data.is_empty() {
+            return (
+                query_error_response(image_id, cmd.quiet, "ENODATA:missing image data"),
+                None,
+            );
+        }
+        if let Some(expected) = expected_raw_bytes {
+            if data.len() < expected {
+                return (
+                    query_error_response(image_id, cmd.quiet, "ENODATA:insufficient image data"),
+                    None,
+                );
+            }
+            if data.len() > expected {
+                return (
+                    query_error_response(
+                        image_id,
+                        cmd.quiet,
+                        "EINVAL:image data exceeds declared dimensions",
+                    ),
+                    None,
+                );
             }
         }
+        if !probe_image_data(
+            data.as_ref(),
+            width,
+            height,
+            format,
+            self.options.max_image_bytes,
+        ) {
+            return (
+                query_error_response(
+                    image_id,
+                    cmd.quiet,
+                    "EINVAL:invalid or oversized image data",
+                ),
+                None,
+            );
+        }
+
         let resp = if cmd.quiet < 1 {
             Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
         } else {
@@ -900,6 +978,11 @@ fn decompression_error_response(
     (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
 }
 
+fn query_error_response(image_id: ImageId, quiet: u8, reason: &str) -> Option<Vec<u8>> {
+    log::warn!("Rejected Kitty query for image {image_id}: {reason}");
+    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileLoadError {
     Disabled,
@@ -1348,22 +1431,143 @@ mod tests {
         }
     }
 
+    fn direct_query(image_id: Option<u32>, payload: &[u8]) -> KittyCommand {
+        KittyCommand {
+            action: KittyAction::Query,
+            image_id,
+            width: Some(1),
+            height: Some(1),
+            payload: payload.to_vec(),
+            ..KittyCommand::default()
+        }
+    }
+
     #[test]
     fn direct_query_validates_without_an_image_store() {
         let handler = KittyHandler::new(file_options(64, true));
-        let cmd = KittyCommand {
-            action: KittyAction::Query,
-            image_id: Some(17),
-            width: Some(1),
-            height: Some(1),
-            payload: vec![255, 0, 0, 255],
-            ..KittyCommand::default()
-        };
+        let cmd = direct_query(Some(17), &[255, 0, 0, 255]);
 
         let (response, advance) = handler.handle_query(&cmd);
 
         assert_eq!(response, Some(b"\x1b_Gi=17;OK\x1b\\".to_vec()));
         assert!(advance.is_none());
+    }
+
+    #[test]
+    fn query_requires_a_nonzero_image_id() {
+        let handler = KittyHandler::new(file_options(64, true));
+        let mut image_number_only = direct_query(None, &[255, 0, 0, 255]);
+        image_number_only.image_number = Some(7);
+        let mut zero_id_with_number = direct_query(Some(0), &[255, 0, 0, 255]);
+        zero_id_with_number.image_number = Some(7);
+
+        for cmd in [
+            direct_query(None, &[255, 0, 0, 255]),
+            direct_query(Some(0), &[255, 0, 0, 255]),
+            image_number_only,
+            zero_id_with_number,
+        ] {
+            let (response, advance) = handler.handle_query(&cmd);
+            assert!(response.is_none());
+            assert!(advance.is_none());
+        }
+    }
+
+    #[test]
+    fn query_rejects_an_image_id_combined_with_an_image_number() {
+        let handler = KittyHandler::new(file_options(64, true));
+        for image_number in [0, 9] {
+            let mut cmd = direct_query(Some(17), &[255, 0, 0, 255]);
+            cmd.image_number = Some(image_number);
+
+            let (response, advance) = handler.handle_query(&cmd);
+
+            assert_eq!(
+                response,
+                Some(
+                    b"\x1b_Gi=17;EINVAL:image ID and image number are mutually exclusive\x1b\\"
+                        .to_vec()
+                )
+            );
+            assert!(advance.is_none());
+
+            cmd.quiet = 2;
+            assert!(handler.handle_query(&cmd).0.is_none());
+        }
+    }
+
+    #[test]
+    fn query_rejects_empty_data_and_missing_raw_dimensions() {
+        let handler = KittyHandler::new(file_options(64, true));
+        let empty = direct_query(Some(21), &[]);
+        assert_eq!(
+            handler.handle_query(&empty).0,
+            Some(b"\x1b_Gi=21;ENODATA:missing image data\x1b\\".to_vec())
+        );
+
+        for format in [KittyFormat::Rgb, KittyFormat::Rgba] {
+            for (width, height) in [
+                (None, Some(1)),
+                (Some(1), None),
+                (Some(0), Some(1)),
+                (Some(1), Some(0)),
+            ] {
+                let mut missing_dimensions = direct_query(Some(22), &[255, 0, 0, 255]);
+                missing_dimensions.format = format;
+                missing_dimensions.width = width;
+                missing_dimensions.height = height;
+                assert_eq!(
+                    handler.handle_query(&missing_dimensions).0,
+                    Some(b"\x1b_Gi=22;EINVAL:missing image dimensions\x1b\\".to_vec())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn query_requires_exact_raw_payload_sizes() {
+        let handler = KittyHandler::new(file_options(64, true));
+        let valid_rgb = KittyCommand {
+            format: KittyFormat::Rgb,
+            ..direct_query(Some(23), &[255, 0, 0])
+        };
+        assert_eq!(
+            handler.handle_query(&valid_rgb).0,
+            Some(b"\x1b_Gi=23;OK\x1b\\".to_vec())
+        );
+
+        let trailing_rgba = direct_query(Some(24), &[255, 0, 0, 255, 1]);
+        assert_eq!(
+            handler.handle_query(&trailing_rgba).0,
+            Some(b"\x1b_Gi=24;EINVAL:image data exceeds declared dimensions\x1b\\".to_vec())
+        );
+
+        let short_rgb = KittyCommand {
+            format: KittyFormat::Rgb,
+            ..direct_query(Some(25), &[255, 0])
+        };
+        assert_eq!(
+            handler.handle_query(&short_rgb).0,
+            Some(b"\x1b_Gi=25;ENODATA:insufficient image data\x1b\\".to_vec())
+        );
+    }
+
+    #[test]
+    fn query_quiet_levels_suppress_only_the_expected_responses() {
+        let handler = KittyHandler::new(file_options(64, true));
+        let mut valid = direct_query(Some(31), &[255, 0, 0, 255]);
+        valid.quiet = 1;
+        assert!(handler.handle_query(&valid).0.is_none());
+
+        let mut invalid = direct_query(Some(32), &[]);
+        invalid.quiet = 1;
+        assert_eq!(
+            handler.handle_query(&invalid).0,
+            Some(b"\x1b_Gi=32;ENODATA:missing image data\x1b\\".to_vec())
+        );
+
+        invalid.quiet = 2;
+        assert!(handler.handle_query(&invalid).0.is_none());
     }
 
     fn chunk(data: &[u8], more_chunks: bool, image_id: Option<u32>) -> KittyCommand {
@@ -1383,6 +1587,57 @@ mod tests {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(data).expect("zlib input should encode");
         encoder.finish().expect("zlib stream should finish")
+    }
+
+    fn rgba_png(width: u32, height: u32, pixels: &[u8]) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut encoded, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("PNG header should encode");
+            writer
+                .write_image_data(pixels)
+                .expect("PNG pixels should encode");
+        }
+        encoded
+    }
+
+    #[test]
+    fn png_query_uses_embedded_dimensions() {
+        let handler = KittyHandler::new(file_options(1024, true));
+        let cmd = KittyCommand {
+            format: KittyFormat::Png,
+            width: None,
+            height: None,
+            ..direct_query(Some(41), &rgba_png(1, 1, &[255, 0, 0, 255]))
+        };
+
+        assert_eq!(
+            handler.handle_query(&cmd).0,
+            Some(b"\x1b_Gi=41;OK\x1b\\".to_vec())
+        );
+    }
+
+    #[test]
+    fn png_query_rejects_empty_and_corrupt_data() {
+        let handler = KittyHandler::new(file_options(1024, true));
+        for (payload, expected) in [
+            (
+                Vec::new(),
+                b"\x1b_Gi=42;ENODATA:missing image data\x1b\\".as_slice(),
+            ),
+            (
+                b"not a PNG".to_vec(),
+                b"\x1b_Gi=42;EINVAL:invalid or oversized image data\x1b\\".as_slice(),
+            ),
+        ] {
+            let cmd = KittyCommand {
+                format: KittyFormat::Png,
+                ..direct_query(Some(42), &payload)
+            };
+            assert_eq!(handler.handle_query(&cmd).0, Some(expected.to_vec()));
+        }
     }
 
     #[test]
