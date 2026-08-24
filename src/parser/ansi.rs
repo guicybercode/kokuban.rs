@@ -5,6 +5,9 @@ use crate::grid::{CharSet, CursorShape, CursorStyle, Grid, MouseEncoding, MouseT
 use crate::parser::kitty_graphics;
 use crate::parser::sixel;
 
+const MAX_CSI_PARAMS: usize = 32;
+const MAX_INTERMEDIATES: usize = 2;
+
 pub struct Parser {
     state: State,
     params: Vec<u16>,
@@ -44,9 +47,11 @@ impl Parser {
             State::Ground => self.ground(byte, grid),
             State::Escape => self.escape(byte, grid),
             State::EscapeIntermediate => self.escape_intermediate(byte, grid),
+            State::EscapeIgnore => self.escape_ignore(byte),
             State::CsiEntry => self.csi_entry(byte, grid),
             State::CsiParam => self.csi_param(byte, grid),
             State::CsiIntermediate => self.csi_intermediate(byte, grid),
+            State::CsiIgnore => self.csi_ignore(byte),
             State::OscString => self.osc_string(byte, grid),
             State::ApcString => self.apc_string(byte, grid),
             State::DcsPassthrough => self.dcs_passthrough(byte, grid),
@@ -122,7 +127,7 @@ impl Parser {
             }
             0x20..=0x2f => {
                 self.intermediates.clear();
-                self.intermediates.push(byte);
+                self.push_intermediate(byte);
                 self.state = State::EscapeIntermediate;
             }
             _ => { self.state = State::Ground; }
@@ -132,7 +137,9 @@ impl Parser {
     fn escape_intermediate(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
             0x20..=0x2f => {
-                self.intermediates.push(byte);
+                if !self.push_intermediate(byte) {
+                    self.state = State::EscapeIgnore;
+                }
             }
             0x30..=0x7e => {
                 // Handle DEC charset designation: ESC ( 0 / ESC ( B
@@ -145,7 +152,16 @@ impl Parser {
                 }
                 self.state = State::Ground;
             }
+            0x1b => { self.state = State::Escape; }
             _ => { self.state = State::Ground; }
+        }
+    }
+
+    fn escape_ignore(&mut self, byte: u8) {
+        match byte {
+            0x1b => { self.state = State::Escape; }
+            0x18 | 0x1a | 0x30..=0x7e => { self.state = State::Ground; }
+            _ => {}
         }
     }
 
@@ -157,17 +173,25 @@ impl Parser {
                 self.state = State::CsiParam;
             }
             b';' => {
-                self.params.push(0);
-                self.param_is_sub.push(false);
-                self.state = State::CsiParam;
+                if self.push_param(0, false) {
+                    self.state = State::CsiParam;
+                } else {
+                    self.state = State::CsiIgnore;
+                }
             }
             b'?' | b'>' | b'!' => {
-                self.intermediates.push(byte);
-                self.state = State::CsiParam;
+                if self.push_intermediate(byte) {
+                    self.state = State::CsiParam;
+                } else {
+                    self.state = State::CsiIgnore;
+                }
             }
             0x20..=0x2f => {
-                self.intermediates.push(byte);
-                self.state = State::CsiIntermediate;
+                if self.push_intermediate(byte) {
+                    self.state = State::CsiIntermediate;
+                } else {
+                    self.state = State::CsiIgnore;
+                }
             }
             0x40..=0x7e => {
                 self.dispatch_csi(byte, grid);
@@ -182,34 +206,56 @@ impl Parser {
         match byte {
             b'0'..=b'9' => {
                 let digit = (byte - b'0') as u16;
-                self.current_param = Some(self.current_param.unwrap_or(0) * 10 + digit);
+                self.current_param = Some(
+                    self.current_param
+                        .unwrap_or(0)
+                        .saturating_mul(10)
+                        .saturating_add(digit),
+                );
             }
             b';' => {
-                self.params.push(self.current_param.unwrap_or(0));
-                self.param_is_sub.push(self.current_is_sub);
+                let accepted = self.push_param(
+                    self.current_param.unwrap_or(0),
+                    self.current_is_sub,
+                );
                 self.current_param = None;
                 self.current_is_sub = false;
+                if !accepted {
+                    self.state = State::CsiIgnore;
+                }
             }
             b':' => {
-                self.params.push(self.current_param.unwrap_or(0));
-                self.param_is_sub.push(self.current_is_sub);
+                let accepted = self.push_param(
+                    self.current_param.unwrap_or(0),
+                    self.current_is_sub,
+                );
                 self.current_param = None;
                 self.current_is_sub = true; // next param is a sub-param
+                if !accepted {
+                    self.state = State::CsiIgnore;
+                }
             }
             0x20..=0x2f => {
-                if let Some(p) = self.current_param.take() {
-                    self.params.push(p);
-                    self.param_is_sub.push(self.current_is_sub);
+                if let Some(param) = self.current_param.take() {
+                    if !self.push_param(param, self.current_is_sub) {
+                        self.state = State::CsiIgnore;
+                        return;
+                    }
                 }
-                self.intermediates.push(byte);
-                self.state = State::CsiIntermediate;
+                if self.push_intermediate(byte) {
+                    self.state = State::CsiIntermediate;
+                } else {
+                    self.state = State::CsiIgnore;
+                }
             }
             0x40..=0x7e => {
-                if let Some(p) = self.current_param.take() {
-                    self.params.push(p);
-                    self.param_is_sub.push(self.current_is_sub);
+                let accepted = match self.current_param.take() {
+                    Some(param) => self.push_param(param, self.current_is_sub),
+                    None => true,
+                };
+                if accepted {
+                    self.dispatch_csi(byte, grid);
                 }
-                self.dispatch_csi(byte, grid);
                 self.state = State::Ground;
             }
             0x1b => { self.state = State::Escape; }
@@ -219,17 +265,48 @@ impl Parser {
 
     fn csi_intermediate(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
-            0x20..=0x2f => { self.intermediates.push(byte); }
-            0x40..=0x7e => {
-                if let Some(p) = self.current_param.take() {
-                    self.params.push(p);
-                    self.param_is_sub.push(self.current_is_sub);
+            0x20..=0x2f => {
+                if !self.push_intermediate(byte) {
+                    self.state = State::CsiIgnore;
                 }
-                self.dispatch_csi(byte, grid);
+            }
+            0x40..=0x7e => {
+                let accepted = match self.current_param.take() {
+                    Some(param) => self.push_param(param, self.current_is_sub),
+                    None => true,
+                };
+                if accepted {
+                    self.dispatch_csi(byte, grid);
+                }
                 self.state = State::Ground;
             }
             _ => { self.state = State::Ground; }
         }
+    }
+
+    fn csi_ignore(&mut self, byte: u8) {
+        match byte {
+            0x1b => { self.state = State::Escape; }
+            0x18 | 0x1a | 0x40..=0x7e => { self.state = State::Ground; }
+            _ => {}
+        }
+    }
+
+    fn push_param(&mut self, value: u16, is_sub: bool) -> bool {
+        if self.params.len() >= MAX_CSI_PARAMS {
+            return false;
+        }
+        self.params.push(value);
+        self.param_is_sub.push(is_sub);
+        true
+    }
+
+    fn push_intermediate(&mut self, byte: u8) -> bool {
+        if self.intermediates.len() >= MAX_INTERMEDIATES {
+            return false;
+        }
+        self.intermediates.push(byte);
+        true
     }
 
     fn osc_string(&mut self, byte: u8, grid: &mut Grid) {
@@ -761,8 +838,10 @@ impl Utf8Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::Utf8Parser;
+    use super::{Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES};
+    use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::Grid;
+    use crate::parser::State;
     use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 
     fn grid() -> Grid {
@@ -848,5 +927,98 @@ mod tests {
             encode_terminal_key(TerminalKey::Up, grid.application_cursor_keys),
             Some(b"\x1b[A".to_vec())
         );
+    }
+
+    #[test]
+    fn saturates_oversized_numeric_parameters_across_reads() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[655", &mut grid);
+        parser.feed(b"35A", &mut grid);
+        assert_eq!(parser.parser.params, vec![u16::MAX]);
+
+        parser.feed(b"\x1b[?6553", &mut grid);
+        parser.feed(b"799999h", &mut grid);
+        assert_eq!(parser.parser.params, vec![u16::MAX]);
+        assert!(!grid.application_cursor_keys);
+    }
+
+    #[test]
+    fn accepts_parameter_limit_and_ignores_excess_sequence() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        let mut at_limit = String::from("\x1b[?");
+        for index in 0..MAX_CSI_PARAMS {
+            if index > 0 {
+                at_limit.push(';');
+            }
+            at_limit.push(if index + 1 == MAX_CSI_PARAMS { '1' } else { '0' });
+        }
+        at_limit.push('h');
+        parser.feed(at_limit.as_bytes(), &mut grid);
+        assert!(grid.application_cursor_keys);
+
+        parser.feed(b"\x1b[?1l", &mut grid);
+        let mut over_limit = String::from("\x1b[?1");
+        for _ in 0..MAX_CSI_PARAMS {
+            over_limit.push_str(";0");
+        }
+        over_limit.push('h');
+        parser.feed(over_limit.as_bytes(), &mut grid);
+
+        assert!(!grid.application_cursor_keys);
+        assert_eq!(parser.parser.params.len(), MAX_CSI_PARAMS);
+        assert_eq!(parser.parser.param_is_sub.len(), MAX_CSI_PARAMS);
+        assert_eq!(parser.parser.state, State::Ground);
+
+        parser.feed(b"\x1b[?1h", &mut grid);
+        assert!(grid.application_cursor_keys);
+    }
+
+    #[test]
+    fn subparameters_count_toward_limit_without_dispatching_prefix() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let mut sequence = String::from("\x1b[4");
+        for _ in 0..MAX_CSI_PARAMS {
+            sequence.push_str(":1");
+        }
+        sequence.push('m');
+
+        parser.feed(sequence.as_bytes(), &mut grid);
+
+        assert_eq!(grid.underline_style, UnderlineStyle::None);
+        assert!(!grid.flags.contains(CellFlags::UNDERLINE));
+        assert_eq!(parser.parser.params.len(), MAX_CSI_PARAMS);
+        assert_eq!(parser.parser.params.len(), parser.parser.param_is_sub.len());
+
+        parser.feed(b"\x1b[4:3m", &mut grid);
+        assert_eq!(grid.underline_style, UnderlineStyle::Curly);
+    }
+
+    #[test]
+    fn ignores_excess_intermediates_and_recovers() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[31   m", &mut grid);
+        assert_eq!(grid.fg, Color::Default);
+        assert_eq!(parser.parser.intermediates.len(), MAX_INTERMEDIATES);
+        assert_eq!(parser.parser.state, State::Ground);
+
+        parser.feed(b"\x1b[31m", &mut grid);
+        assert_eq!(grid.fg, Color::Indexed(1));
+
+        let excess = vec![b'('; 1_000];
+        parser.feed(b"\x1b((", &mut grid);
+        parser.feed(&excess, &mut grid);
+        assert_eq!(parser.parser.intermediates.len(), MAX_INTERMEDIATES);
+        assert_eq!(parser.parser.state, State::EscapeIgnore);
+
+        parser.feed(b"Bz", &mut grid);
+        assert_eq!(parser.parser.state, State::Ground);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'z');
     }
 }
