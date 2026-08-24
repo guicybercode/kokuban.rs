@@ -132,6 +132,10 @@ pub struct Grid {
 
 impl Grid {
     pub fn new(cols: usize, rows: usize, scrollback_max: usize) -> Self {
+        assert!(
+            cols > 0 && rows > 0,
+            "terminal grid dimensions must be non-zero"
+        );
         Self {
             buffer: Buffer::new(cols, rows),
             cursor_row: 0,
@@ -417,8 +421,8 @@ impl Grid {
             self.buffer = primary;
         }
         self.using_alt_screen = false;
-        self.cursor_row = self.alt_cursor.0;
-        self.cursor_col = self.alt_cursor.1;
+        self.cursor_row = self.alt_cursor.0.min(self.rows().saturating_sub(1));
+        self.cursor_col = self.alt_cursor.1.min(self.cols().saturating_sub(1));
         self.scroll_top = 0;
         self.scroll_bottom = self.rows().saturating_sub(1);
         // Clear all image placements when leaving alt screen
@@ -510,23 +514,82 @@ impl Grid {
     }
 
     pub fn restore_cursor(&mut self) {
-        self.cursor_row = self.saved_cursor_row;
-        self.cursor_col = self.saved_cursor_col;
+        self.cursor_row = self.saved_cursor_row.min(self.rows().saturating_sub(1));
+        self.cursor_col = self.saved_cursor_col.min(self.cols().saturating_sub(1));
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
+        assert!(
+            cols > 0 && rows > 0,
+            "terminal grid dimensions must be non-zero"
+        );
         self.buffer.resize(cols, rows);
         if let Some(ref mut alt) = self.alt_buffer {
             alt.resize(cols, rows);
         }
+        let max_row = rows - 1;
+        let max_col = cols - 1;
         self.scroll_top = 0;
-        self.scroll_bottom = rows.saturating_sub(1);
-        self.cursor_row = self.cursor_row.min(rows.saturating_sub(1));
-        self.cursor_col = self.cursor_col.min(cols.saturating_sub(1));
+        self.scroll_bottom = max_row;
+        self.cursor_row = self.cursor_row.min(max_row);
+        self.cursor_col = self.cursor_col.min(max_col);
+        self.saved_cursor_row = self.saved_cursor_row.min(max_row);
+        self.saved_cursor_col = self.saved_cursor_col.min(max_col);
+        self.alt_cursor.0 = self.alt_cursor.0.min(max_row);
+        self.alt_cursor.1 = self.alt_cursor.1.min(max_col);
         self.dirty = vec![true; rows];
     }
 
     pub fn mark_all_dirty(&mut self) { for d in &mut self.dirty { *d = true; } }
     pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
     pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Grid;
+
+    #[test]
+    fn resize_clamps_active_and_saved_cursors() {
+        let mut grid = Grid::new(12, 8, 100);
+        grid.set_cursor_pos(7, 11);
+        grid.save_cursor();
+
+        grid.resize(4, 3);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 3));
+
+        grid.resize(20, 10);
+        grid.restore_cursor();
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 3));
+        grid.put_char('x');
+        assert_eq!(grid.buffer.cell(2, 3).c, 'x');
+    }
+
+    #[test]
+    fn resize_clamps_primary_cursor_saved_by_alt_screen() {
+        let mut grid = Grid::new(12, 8, 100);
+        grid.set_cursor_pos(7, 11);
+        grid.enter_alt_screen();
+
+        grid.resize(4, 3);
+        grid.resize(20, 10);
+        grid.leave_alt_screen();
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 3));
+        grid.put_char('x');
+        assert_eq!(grid.buffer.cell(2, 3).c, 'x');
+    }
+
+    #[test]
+    #[should_panic(expected = "terminal grid dimensions must be non-zero")]
+    fn construction_rejects_zero_dimensions() {
+        let _ = Grid::new(1, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "terminal grid dimensions must be non-zero")]
+    fn resize_rejects_zero_dimensions() {
+        let mut grid = Grid::new(1, 1, 0);
+        grid.resize(0, 1);
+    }
 }
