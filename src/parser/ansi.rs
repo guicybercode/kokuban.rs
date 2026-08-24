@@ -548,6 +548,7 @@ impl Parser {
                     // DEC private modes
                     for &param in params.iter() {
                         match param {
+                            1 => { grid.application_cursor_keys = set; }
                             1049 => {
                                 if set { grid.save_cursor(); grid.enter_alt_screen(); }
                                 else { grid.leave_alt_screen(); grid.restore_cursor(); }
@@ -762,6 +763,7 @@ impl Utf8Parser {
 mod tests {
     use super::Utf8Parser;
     use crate::grid::Grid;
+    use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
@@ -802,5 +804,49 @@ mod tests {
         assert_eq!(grid.title, "黒板");
         assert_eq!(grid.buffer.cell(0, 0).c, ' ');
         assert_eq!(grid.cursor_col, 0);
+    }
+
+    #[test]
+    fn toggles_application_cursor_keys_with_decckm() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        assert!(!grid.application_cursor_keys);
+
+        parser.feed(b"\x1b[?25l", &mut grid);
+        assert!(!grid.cursor_visible);
+
+        parser.feed(b"\x1b[?1;", &mut grid);
+        assert!(!grid.application_cursor_keys);
+        parser.feed(b"25h", &mut grid);
+        assert!(grid.application_cursor_keys);
+        assert!(grid.cursor_visible);
+
+        parser.feed(b"\x1b[?1l", &mut grid);
+        assert!(!grid.application_cursor_keys);
+
+        parser.feed(b"\x1b[?1h\x1bc", &mut grid);
+        assert!(!grid.application_cursor_keys);
+    }
+
+    #[test]
+    fn decckm_mode_drives_cursor_key_encoding() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        assert_eq!(
+            encode_terminal_key(TerminalKey::Up, grid.application_cursor_keys),
+            Some(b"\x1b[A".to_vec())
+        );
+        parser.feed(b"\x1b[?1h", &mut grid);
+        assert_eq!(
+            encode_terminal_key(TerminalKey::Up, grid.application_cursor_keys),
+            Some(b"\x1bOA".to_vec())
+        );
+        parser.feed(b"\x1b[?1l", &mut grid);
+        assert_eq!(
+            encode_terminal_key(TerminalKey::Up, grid.application_cursor_keys),
+            Some(b"\x1b[A".to_vec())
+        );
     }
 }

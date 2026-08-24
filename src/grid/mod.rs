@@ -98,6 +98,7 @@ pub struct Grid {
     pub using_alt_screen: bool,
     // Mode flags
     pub cursor_visible: bool,
+    pub application_cursor_keys: bool,
     pub bracketed_paste: bool,
     pub mouse_tracking: MouseTracking,
     pub mouse_encoding: MouseEncoding,
@@ -150,6 +151,7 @@ impl Grid {
             alt_cursor: (0, 0),
             using_alt_screen: false,
             cursor_visible: true,
+            application_cursor_keys: false,
             bracketed_paste: false,
             mouse_tracking: MouseTracking::None,
             mouse_encoding: MouseEncoding::Default,
