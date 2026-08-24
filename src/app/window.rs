@@ -2,7 +2,7 @@ use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::app::selection::GridPoint;
 use crate::grid::{MouseEncoding, MouseTracking};
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
-use crate::input::keyboard::translate_key_event;
+use crate::input::macos::translate_key_event;
 use crate::pane::layout::PixelRect;
 use crate::pane::tree::SplitDirection;
 use crate::pane::PaneTree;
@@ -400,7 +400,7 @@ define_class!(
                 }
             }
 
-            // Snap to bottom and clear selection on any keypress
+            // Forward to the focused pane using that pane's current input mode.
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
@@ -411,24 +411,16 @@ define_class!(
                             pane.selection.clear();
                             state.dirty.store(true, Ordering::Relaxed);
                         }
-                    }
-                }
-            });
-
-            // Forward to focused pane's PTY
-            if let Some(bytes) = translate_key_event(event) {
-                VIEW_STATE.with(|state| {
-                    let state = state.borrow();
-                    if let Some(state) = state.as_ref() {
-                        let tree = state.pane_tree.lock().unwrap();
-                        if let Some(pane) = tree.focused_pane() {
+                        if let Some(bytes) =
+                            translate_key_event(event, pane.grid.application_cursor_keys)
+                        {
                             if let Err(e) = pane.pty.write_all(&bytes) {
                                 log::error!("Failed to write to PTY: {e}");
                             }
                         }
                     }
-                });
-            }
+                }
+            });
         }
 
         #[unsafe(method(viewDidChangeBackingProperties))]
