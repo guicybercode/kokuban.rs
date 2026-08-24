@@ -315,23 +315,29 @@ impl KittyHandler {
         let z_index = cmd.z_index.unwrap_or(0);
         let cursor_movement = cmd.cursor_movement.unwrap_or(0);
 
-        let mode = if cursor_movement == 1 {
+        let (mode, cursor_advance) = if cursor_movement == 1 {
             // Don't move cursor → overlay mode
             let x = cursor_col as f32 * cell_width + cmd.x_offset.unwrap_or(0) as f32;
             let y = cursor_row as f32 * cell_height + cmd.y_offset.unwrap_or(0) as f32;
-            PlacementMode::Overlay {
-                x,
-                y,
-                width: display_cols as f32 * cell_width,
-                height: display_rows as f32 * cell_height,
-            }
+            (
+                PlacementMode::Overlay {
+                    x,
+                    y,
+                    width: display_cols as f32 * cell_width,
+                    height: display_rows as f32 * cell_height,
+                },
+                None,
+            )
         } else {
-            PlacementMode::Inline {
-                row: cursor_row,
-                col: cursor_col,
-                cols: display_cols.min(grid_cols as u32),
-                rows: display_rows.min(grid_rows as u32),
-            }
+            let (mode, advance) = inline_placement_and_advance(
+                cursor_row,
+                cursor_col,
+                display_cols,
+                display_rows,
+                grid_cols,
+                grid_rows,
+            );
+            (mode, Some(advance))
         };
 
         placements.push(ImagePlacement {
@@ -341,15 +347,7 @@ impl KittyHandler {
             z_index,
         });
 
-        // Return cursor advance for inline mode
-        if cursor_movement != 1 {
-            Some(CursorAdvance {
-                rows: display_rows as usize,
-                cols: display_cols as usize,
-            })
-        } else {
-            None
-        }
+        cursor_advance
     }
 
     fn handle_delete(
@@ -409,6 +407,41 @@ impl KittyHandler {
 pub struct CursorAdvance {
     pub rows: usize,
     pub cols: usize,
+}
+
+fn bounded_inline_dimensions(
+    display_cols: u32,
+    display_rows: u32,
+    grid_cols: usize,
+    grid_rows: usize,
+) -> (u32, u32) {
+    let max_cols = u32::try_from(grid_cols).unwrap_or(u32::MAX);
+    let max_rows = u32::try_from(grid_rows).unwrap_or(u32::MAX);
+    (display_cols.min(max_cols), display_rows.min(max_rows))
+}
+
+fn inline_placement_and_advance(
+    row: usize,
+    col: usize,
+    display_cols: u32,
+    display_rows: u32,
+    grid_cols: usize,
+    grid_rows: usize,
+) -> (PlacementMode, CursorAdvance) {
+    let (cols, rows) =
+        bounded_inline_dimensions(display_cols, display_rows, grid_cols, grid_rows);
+    (
+        PlacementMode::Inline {
+            row,
+            col,
+            cols,
+            rows,
+        },
+        CursorAdvance {
+            rows: rows as usize,
+            cols: cols as usize,
+        },
+    )
 }
 
 fn maybe_decompress(data: &[u8], compression: KittyCompression) -> Vec<u8> {
@@ -476,4 +509,37 @@ fn is_safe_path(path: &std::path::Path) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{inline_placement_and_advance, PlacementMode};
+
+    #[test]
+    fn clamps_inline_dimensions_and_cursor_advance_to_the_grid() {
+        let (mode, advance) =
+            inline_placement_and_advance(3, 7, u32::MAX, u32::MAX, 80, 24);
+
+        match mode {
+            PlacementMode::Inline {
+                row,
+                col,
+                cols,
+                rows,
+            } => assert_eq!((row, col, cols, rows), (3, 7, 80, 24)),
+            PlacementMode::Overlay { .. } => panic!("expected inline placement"),
+        }
+        assert_eq!((advance.cols, advance.rows), (80, 24));
+
+        let (mode, advance) = inline_placement_and_advance(0, 0, 10, 5, 80, 24);
+        assert!(matches!(
+            mode,
+            PlacementMode::Inline {
+                cols: 10,
+                rows: 5,
+                ..
+            }
+        ));
+        assert_eq!((advance.cols, advance.rows), (10, 5));
+    }
 }
