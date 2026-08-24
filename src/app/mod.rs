@@ -302,6 +302,7 @@ pub fn launch(config: Config) {
                                                         crate::renderer::kitty_handler::ImagePlacement {
                                                             image_id: stored_id,
                                                             placement_id: 0,
+                                                            client_placement_id: None,
                                                             mode: crate::renderer::kitty_handler::PlacementMode::Inline {
                                                                 row: pane.grid.cursor_row,
                                                                 col: pane.grid.cursor_col,

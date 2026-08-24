@@ -62,14 +62,15 @@ pub enum KittyCompression {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KittyDeleteSpec {
+    NoOp,
     All,
-    ById(u32),
     AllImages,
-    ByNumber(u32),
-    AtCursor,
-    ByColumn(u32),
-    ByRow(u32),
-    ByZIndex(i32),
+    ById { id: u32, delete_data: bool },
+    ByNumber { number: u32, delete_data: bool },
+    AtCursor { delete_data: bool },
+    ByColumn { column: u32, delete_data: bool },
+    ByRow { row: u32, delete_data: bool },
+    ByZIndex { z_index: i32, delete_data: bool },
 }
 
 impl Default for KittyCommand {
@@ -108,6 +109,12 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
 
     let control_str = std::str::from_utf8(control_data).ok()?;
     let mut cmd = KittyCommand::default();
+    let mut delete_selector = None;
+    let mut delete_x = None;
+    let mut delete_y = None;
+    let mut invalid_placement_id = false;
+    let mut image_id_key_seen = false;
+    let mut image_number_key_seen = false;
 
     // Parse comma-separated key=value pairs
     for pair in control_str.split(',') {
@@ -137,14 +144,27 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
                 cmd.quiet = value.parse().unwrap_or(0);
             }
             "i" => {
+                image_id_key_seen = true;
                 cmd.image_id = value.parse().ok();
             }
             "I" => {
+                image_number_key_seen = true;
                 cmd.image_number = value.parse().ok();
             }
-            "p" => {
-                cmd.placement_id = value.parse().ok();
-            }
+            "p" => match value.parse::<u32>() {
+                Ok(0) => {
+                    cmd.placement_id = None;
+                    invalid_placement_id = false;
+                }
+                Ok(placement_id) => {
+                    cmd.placement_id = Some(placement_id);
+                    invalid_placement_id = false;
+                }
+                Err(_) => {
+                    cmd.placement_id = None;
+                    invalid_placement_id = true;
+                }
+            },
             "f" => {
                 cmd.format = match value {
                     "24" => KittyFormat::Rgb,
@@ -183,6 +203,12 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
             "r" => {
                 cmd.rows = value.parse().ok();
             }
+            "x" => {
+                delete_x = value.parse().ok();
+            }
+            "y" => {
+                delete_y = value.parse().ok();
+            }
             "X" => {
                 cmd.x_offset = value.parse().ok();
             }
@@ -196,12 +222,30 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
                 cmd.cursor_movement = value.parse().ok();
             }
             "d" => {
-                cmd.delete_specifier = Some(parse_delete_spec(value, &cmd));
+                delete_selector = Some(value);
             }
             _ => {
                 log::trace!("Unknown kitty graphics key: {key}={value}");
             }
         }
+    }
+
+    let invalid_delete_command = cmd.action == KittyAction::Delete
+        && (invalid_placement_id || (image_id_key_seen && image_number_key_seen));
+
+    if let Some(selector) = delete_selector {
+        let specifier = if invalid_delete_command {
+            KittyDeleteSpec::NoOp
+        } else {
+            parse_delete_spec(selector, &cmd, delete_x, delete_y)
+        };
+        if specifier == KittyDeleteSpec::NoOp {
+            log::warn!("Ignoring invalid or unsupported Kitty delete selector: {selector}");
+        }
+        cmd.delete_specifier = Some(specifier);
+    } else if invalid_delete_command {
+        log::warn!("Ignoring invalid Kitty delete command");
+        cmd.delete_specifier = Some(KittyDeleteSpec::NoOp);
     }
 
     // Decode base64 payload
@@ -222,47 +266,61 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
     Some(cmd)
 }
 
-fn parse_delete_spec(value: &str, cmd: &KittyCommand) -> KittyDeleteSpec {
+fn parse_delete_spec(
+    value: &str,
+    cmd: &KittyCommand,
+    delete_x: Option<u32>,
+    delete_y: Option<u32>,
+) -> KittyDeleteSpec {
     match value {
         "a" => KittyDeleteSpec::All,
-        "I" => KittyDeleteSpec::AllImages,
-        "i" => {
-            if let Some(id) = cmd.image_id {
-                KittyDeleteSpec::ById(id)
-            } else {
-                KittyDeleteSpec::All
-            }
-        }
-        "n" => {
-            if let Some(num) = cmd.image_number {
-                KittyDeleteSpec::ByNumber(num)
-            } else {
-                KittyDeleteSpec::All
-            }
-        }
-        "c" => KittyDeleteSpec::AtCursor,
-        "x" => {
-            if let Some(col) = cmd.columns {
-                KittyDeleteSpec::ByColumn(col)
-            } else {
-                KittyDeleteSpec::AtCursor
-            }
-        }
-        "y" => {
-            if let Some(row) = cmd.rows {
-                KittyDeleteSpec::ByRow(row)
-            } else {
-                KittyDeleteSpec::AtCursor
-            }
-        }
-        "z" => KittyDeleteSpec::ByZIndex(cmd.z_index.unwrap_or(0)),
-        _ => KittyDeleteSpec::All,
+        "A" => KittyDeleteSpec::AllImages,
+        "i" | "I" => KittyDeleteSpec::ById {
+            id: cmd.image_id.unwrap_or(0),
+            delete_data: value == "I",
+        },
+        "n" | "N" => KittyDeleteSpec::ByNumber {
+            number: cmd.image_number.unwrap_or(0),
+            delete_data: value == "N",
+        },
+        "c" | "C" => KittyDeleteSpec::AtCursor {
+            delete_data: value == "C",
+        },
+        "x" | "X" => delete_x
+            .filter(|column| *column != 0)
+            .map(|column| KittyDeleteSpec::ByColumn {
+                column,
+                delete_data: value == "X",
+            })
+            .unwrap_or(KittyDeleteSpec::NoOp),
+        "y" | "Y" => delete_y
+            .filter(|row| *row != 0)
+            .map(|row| KittyDeleteSpec::ByRow {
+                row,
+                delete_data: value == "Y",
+            })
+            .unwrap_or(KittyDeleteSpec::NoOp),
+        "z" | "Z" => cmd
+            .z_index
+            .map(|z_index| KittyDeleteSpec::ByZIndex {
+                z_index,
+                delete_data: value == "Z",
+            })
+            .unwrap_or(KittyDeleteSpec::NoOp),
+        _ => KittyDeleteSpec::NoOp,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_kitty_command, MAX_PAYLOAD_BASE64_BYTES};
+    use super::{parse_kitty_command, KittyDeleteSpec, MAX_PAYLOAD_BASE64_BYTES};
+
+    fn delete_spec(input: &[u8]) -> KittyDeleteSpec {
+        parse_kitty_command(input)
+            .expect("delete command should parse")
+            .delete_specifier
+            .expect("delete selector should resolve")
+    }
 
     #[test]
     fn enforces_the_kitty_encoded_chunk_limit() {
@@ -277,5 +335,128 @@ mod tests {
         let mut oversized = b"f=100,m=1;".to_vec();
         oversized.extend_from_slice(&oversized_payload);
         assert!(parse_kitty_command(&oversized).is_none());
+    }
+
+    #[test]
+    fn delete_id_selectors_are_order_independent() {
+        for input in [b"a=d,d=i,i=10".as_slice(), b"a=d,i=10,d=i".as_slice()] {
+            assert_eq!(
+                delete_spec(input),
+                KittyDeleteSpec::ById {
+                    id: 10,
+                    delete_data: false,
+                }
+            );
+        }
+
+        for input in [b"a=d,d=I,i=10".as_slice(), b"a=d,i=10,d=I".as_slice()] {
+            assert_eq!(
+                delete_spec(input),
+                KittyDeleteSpec::ById {
+                    id: 10,
+                    delete_data: true,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn delete_number_selectors_are_order_independent() {
+        for input in [b"a=d,d=n,I=20".as_slice(), b"a=d,I=20,d=n".as_slice()] {
+            assert_eq!(
+                delete_spec(input),
+                KittyDeleteSpec::ByNumber {
+                    number: 20,
+                    delete_data: false,
+                }
+            );
+        }
+
+        for input in [b"a=d,d=N,I=20".as_slice(), b"a=d,I=20,d=N".as_slice()] {
+            assert_eq!(
+                delete_spec(input),
+                KittyDeleteSpec::ByNumber {
+                    number: 20,
+                    delete_data: true,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn incomplete_or_unknown_delete_selectors_never_expand_to_all() {
+        assert_eq!(
+            delete_spec(b"a=d,d=i"),
+            KittyDeleteSpec::ById {
+                id: 0,
+                delete_data: false,
+            }
+        );
+        assert_eq!(
+            delete_spec(b"a=d,d=n"),
+            KittyDeleteSpec::ByNumber {
+                number: 0,
+                delete_data: false,
+            }
+        );
+        for selector in ["unknown", "p", "P", "q", "Q", "r", "R", "f", "F"] {
+            let command = format!("a=d,d={selector}");
+            assert_eq!(delete_spec(command.as_bytes()), KittyDeleteSpec::NoOp);
+        }
+        for command in [b"a=d,d=x".as_slice(), b"a=d,d=y,y=0".as_slice()] {
+            assert_eq!(delete_spec(command), KittyDeleteSpec::NoOp);
+        }
+    }
+
+    #[test]
+    fn invalid_delete_identifiers_become_safe_noop_events() {
+        for command in [
+            b"a=d,d=i,i=7,p=bad".as_slice(),
+            b"a=d,p=bad".as_slice(),
+            b"a=d,d=i,i=7,I=8".as_slice(),
+            b"a=d,d=n,I=8,i=7".as_slice(),
+            b"a=d,d=z".as_slice(),
+            b"a=d,d=Z,z=bad".as_slice(),
+        ] {
+            assert_eq!(delete_spec(command), KittyDeleteSpec::NoOp);
+        }
+
+        let p_zero = parse_kitty_command(b"a=d,d=i,i=7,p=0")
+            .expect("p=0 should parse as an unspecified placement ID");
+        assert!(p_zero.placement_id.is_none());
+        assert_eq!(
+            p_zero.delete_specifier,
+            Some(KittyDeleteSpec::ById {
+                id: 7,
+                delete_data: false,
+            })
+        );
+    }
+
+    #[test]
+    fn delete_capitalization_and_coordinates_are_preserved() {
+        assert_eq!(delete_spec(b"a=d,d=a"), KittyDeleteSpec::All);
+        assert_eq!(delete_spec(b"a=d,d=A"), KittyDeleteSpec::AllImages);
+        assert_eq!(
+            delete_spec(b"a=d,d=X,x=4,c=99"),
+            KittyDeleteSpec::ByColumn {
+                column: 4,
+                delete_data: true,
+            }
+        );
+        assert_eq!(
+            delete_spec(b"a=d,y=5,d=y,r=88"),
+            KittyDeleteSpec::ByRow {
+                row: 5,
+                delete_data: false,
+            }
+        );
+        assert_eq!(
+            delete_spec(b"a=d,d=Z,z=-3"),
+            KittyDeleteSpec::ByZIndex {
+                z_index: -3,
+                delete_data: true,
+            }
+        );
     }
 }
