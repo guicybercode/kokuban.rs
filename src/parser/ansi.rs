@@ -7,6 +7,35 @@ use crate::parser::sixel;
 
 const MAX_CSI_PARAMS: usize = 32;
 const MAX_INTERMEDIATES: usize = 2;
+const MAX_OSC_BYTES: usize = 64 * 1024;
+// Kitty requires direct payloads to be chunked at 4 KiB. Keep room for
+// control metadata and implementations that use a somewhat larger packet.
+const MAX_APC_BYTES: usize = 16 * 1024;
+const MAX_DCS_BYTES: usize = 16 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlStringKind {
+    Osc,
+    Apc,
+    Dcs,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ControlStringLimits {
+    osc: usize,
+    apc: usize,
+    dcs: usize,
+}
+
+impl Default for ControlStringLimits {
+    fn default() -> Self {
+        Self {
+            osc: MAX_OSC_BYTES,
+            apc: MAX_APC_BYTES,
+            dcs: MAX_DCS_BYTES,
+        }
+    }
+}
 
 pub struct Parser {
     state: State,
@@ -19,10 +48,17 @@ pub struct Parser {
     osc_data: Vec<u8>,
     apc_data: Vec<u8>,
     dcs_data: Vec<u8>,
+    active_control_string: Option<ControlStringKind>,
+    control_string_overflowed: bool,
+    control_string_limits: ControlStringLimits,
 }
 
 impl Parser {
     pub fn new() -> Self {
+        Self::with_control_string_limits(ControlStringLimits::default())
+    }
+
+    fn with_control_string_limits(control_string_limits: ControlStringLimits) -> Self {
         Self {
             state: State::Ground,
             params: Vec::new(),
@@ -33,6 +69,9 @@ impl Parser {
             osc_data: Vec::new(),
             apc_data: Vec::new(),
             dcs_data: Vec::new(),
+            active_control_string: None,
+            control_string_overflowed: false,
+            control_string_limits,
         }
     }
 
@@ -73,26 +112,23 @@ impl Parser {
     }
 
     fn escape(&mut self, byte: u8, grid: &mut Grid) {
+        if byte != b'\\' && self.active_control_string.is_some() {
+            self.cancel_active_control_string();
+        }
+
         match byte {
             b'\\' => {
-                // ST (String Terminator) — dispatch whatever string we were accumulating
-                if !self.osc_data.is_empty() {
-                    self.dispatch_osc(grid);
-                } else if !self.apc_data.is_empty() {
-                    self.dispatch_apc(grid);
-                } else if !self.dcs_data.is_empty() {
-                    self.dispatch_dcs(grid);
-                }
+                self.finish_active_control_string(grid);
                 self.state = State::Ground;
             }
             b'_' => {
                 // APC — Application Program Command (used by Kitty graphics)
-                self.apc_data.clear();
+                self.begin_control_string(ControlStringKind::Apc);
                 self.state = State::ApcString;
             }
             b'P' => {
                 // DCS — Device Control String (used by Sixel)
-                self.dcs_data.clear();
+                self.begin_control_string(ControlStringKind::Dcs);
                 self.state = State::DcsPassthrough;
             }
             b'[' => {
@@ -104,9 +140,10 @@ impl Parser {
                 self.state = State::CsiEntry;
             }
             b']' => {
-                self.osc_data.clear();
+                self.begin_control_string(ControlStringKind::Osc);
                 self.state = State::OscString;
             }
+            0x1b => { self.state = State::Escape; }
             b'7' => { grid.save_cursor(); self.state = State::Ground; }
             b'8' => { grid.restore_cursor(); self.state = State::Ground; }
             b'D' => { grid.newline(); self.state = State::Ground; }
@@ -309,35 +346,100 @@ impl Parser {
         true
     }
 
+    fn begin_control_string(&mut self, kind: ControlStringKind) {
+        self.cancel_active_control_string();
+        self.active_control_string = Some(kind);
+        self.control_string_overflowed = false;
+        *self.control_string_data_mut(kind) = Vec::new();
+    }
+
+    fn push_control_string_byte(&mut self, kind: ControlStringKind, byte: u8) {
+        if self.active_control_string != Some(kind) || self.control_string_overflowed {
+            return;
+        }
+
+        let limit = match kind {
+            ControlStringKind::Osc => self.control_string_limits.osc,
+            ControlStringKind::Apc => self.control_string_limits.apc,
+            ControlStringKind::Dcs => self.control_string_limits.dcs,
+        };
+        let data = self.control_string_data_mut(kind);
+        if data.len() >= limit {
+            // Release retained memory immediately and consume the rest of the
+            // string without ever dispatching a truncated prefix.
+            *data = Vec::new();
+            self.control_string_overflowed = true;
+        } else {
+            data.push(byte);
+        }
+    }
+
+    fn finish_active_control_string(&mut self, grid: &mut Grid) {
+        let Some(kind) = self.active_control_string.take() else {
+            return;
+        };
+        let overflowed = std::mem::replace(&mut self.control_string_overflowed, false);
+        if overflowed {
+            *self.control_string_data_mut(kind) = Vec::new();
+            return;
+        }
+
+        match kind {
+            ControlStringKind::Osc => self.dispatch_osc(grid),
+            ControlStringKind::Apc => self.dispatch_apc(grid),
+            ControlStringKind::Dcs => self.dispatch_dcs(grid),
+        }
+    }
+
+    fn cancel_active_control_string(&mut self) {
+        if let Some(kind) = self.active_control_string.take() {
+            *self.control_string_data_mut(kind) = Vec::new();
+        }
+        self.control_string_overflowed = false;
+    }
+
+    fn control_string_data_mut(&mut self, kind: ControlStringKind) -> &mut Vec<u8> {
+        match kind {
+            ControlStringKind::Osc => &mut self.osc_data,
+            ControlStringKind::Apc => &mut self.apc_data,
+            ControlStringKind::Dcs => &mut self.dcs_data,
+        }
+    }
+
     fn osc_string(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
-            0x07 => { self.dispatch_osc(grid); self.state = State::Ground; }
+            0x07 => {
+                self.finish_active_control_string(grid);
+                self.state = State::Ground;
+            }
             0x1b => { self.state = State::Escape; }
-            _ => { self.osc_data.push(byte); }
+            0x18 | 0x1a => {
+                self.cancel_active_control_string();
+                self.state = State::Ground;
+            }
+            _ => { self.push_control_string_byte(ControlStringKind::Osc, byte); }
         }
     }
 
     fn apc_string(&mut self, byte: u8, _grid: &mut Grid) {
         match byte {
             0x1b => { self.state = State::Escape; } // Will see '\' next for ST
-            _ => {
-                // Cap APC data at 64MB to prevent OOM
-                if self.apc_data.len() < 64 * 1024 * 1024 {
-                    self.apc_data.push(byte);
-                }
+            0x18 | 0x1a => {
+                self.cancel_active_control_string();
+                self.state = State::Ground;
             }
+            _ => { self.push_control_string_byte(ControlStringKind::Apc, byte); }
         }
     }
 
     fn dcs_passthrough(&mut self, byte: u8, _grid: &mut Grid) {
         match byte {
             0x1b => { self.state = State::Escape; } // Will see '\' next for ST
-            _ => {
-                // Cap DCS data at 64MB
-                if self.dcs_data.len() < 64 * 1024 * 1024 {
-                    self.dcs_data.push(byte);
-                }
+            0x18 | 0x1a => {
+                self.cancel_active_control_string();
+                self.state = State::Ground;
             }
+            _ => { self.push_control_string_byte(ControlStringKind::Dcs, byte); }
         }
     }
 
@@ -792,6 +894,16 @@ impl Utf8Parser {
         }
     }
 
+    #[cfg(test)]
+    fn with_control_string_limits(limits: ControlStringLimits) -> Self {
+        Self {
+            parser: Parser::with_control_string_limits(limits),
+            utf8_buf: [0; 4],
+            utf8_len: 0,
+            utf8_expected: 0,
+        }
+    }
+
     pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
         for &byte in input {
             // OSC, APC and DCS payloads are byte-oriented. Decoding their UTF-8
@@ -838,7 +950,9 @@ impl Utf8Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::{Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES};
+    use super::{
+        ControlStringLimits, Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES,
+    };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::Grid;
     use crate::parser::State;
@@ -846,6 +960,22 @@ mod tests {
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
+    }
+
+    fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
+        Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
+    }
+
+    fn feed_st_string(
+        parser: &mut Utf8Parser,
+        grid: &mut Grid,
+        introducer: &[u8],
+        data: &[u8],
+    ) {
+        parser.feed(introducer, grid);
+        parser.feed(data, grid);
+        parser.feed(b"\x1b", grid);
+        parser.feed(b"\\", grid);
     }
 
     #[test]
@@ -1020,5 +1150,88 @@ mod tests {
         parser.feed(b"Bz", &mut grid);
         assert_eq!(parser.parser.state, State::Ground);
         assert_eq!(grid.buffer.cell(0, 0).c, 'z');
+    }
+
+    #[test]
+    fn bounds_osc_and_discards_overflow_for_bell_and_st() {
+        let mut parser = limited_parser(8, 64, 64);
+        let mut grid = grid();
+        let exact = b"2;123456";
+        assert_eq!(exact.len(), 8);
+
+        parser.feed(b"\x1b]", &mut grid);
+        parser.feed(exact, &mut grid);
+        parser.feed(b"\x07", &mut grid);
+        assert_eq!(grid.title, "123456");
+
+        parser.feed(b"\x1b]2;1234567\x07", &mut grid);
+        assert_eq!(grid.title, "123456");
+        assert_eq!(parser.parser.osc_data.capacity(), 0);
+        assert!(parser.parser.active_control_string.is_none());
+        assert!(!parser.parser.control_string_overflowed);
+
+        parser.feed(b"\x1b]2;overflow", &mut grid);
+        parser.feed(b"\x1b", &mut grid);
+        assert!(parser.parser.control_string_overflowed);
+        parser.feed(b"\\z", &mut grid);
+        assert_eq!(grid.title, "123456");
+        assert_eq!(grid.buffer.cell(0, 0).c, 'z');
+
+        feed_st_string(&mut parser, &mut grid, b"\x1b]", b"2;next");
+        assert_eq!(grid.title, "next");
+    }
+
+    #[test]
+    fn bounds_kitty_apc_without_dispatching_truncated_command() {
+        let kitty = b"Gf=32,s=1,v=1,i=9;AAAAAA==";
+        let mut parser = limited_parser(64, kitty.len(), 64);
+        let mut grid = grid();
+
+        feed_st_string(&mut parser, &mut grid, b"\x1b_", kitty);
+        let commands = grid.drain_kitty_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].image_id, Some(9));
+        assert_eq!(commands[0].payload, vec![0; 4]);
+
+        parser.feed(b"\x1b_", &mut grid);
+        parser.feed(kitty, &mut grid);
+        parser.feed(b"x\x1b\\", &mut grid);
+        assert!(grid.drain_kitty_commands().is_empty());
+        assert_eq!(parser.parser.apc_data.capacity(), 0);
+    }
+
+    #[test]
+    fn bounds_sixel_dcs_without_decoding_truncated_payload() {
+        let sixel = b"q~";
+        let mut parser = limited_parser(64, 64, sixel.len());
+        let mut grid = grid();
+
+        feed_st_string(&mut parser, &mut grid, b"\x1bP", sixel);
+        let images = grid.drain_sixel_images();
+        assert_eq!(images.len(), 1);
+        assert_eq!((images[0].width, images[0].height), (1, 6));
+
+        parser.feed(b"\x1bP", &mut grid);
+        parser.feed(sixel, &mut grid);
+        parser.feed(b"~\x1b\\", &mut grid);
+        assert!(grid.drain_sixel_images().is_empty());
+        assert_eq!(parser.parser.dcs_data.capacity(), 0);
+    }
+
+    #[test]
+    fn aborted_osc_cannot_steal_later_apc_terminator() {
+        let kitty = b"Gf=32,s=1,v=1,i=7;AAAAAA==";
+        let mut parser = limited_parser(64, 64, 64);
+        let mut grid = grid();
+
+        parser.feed(b"\x1b]2;stale\x1b_", &mut grid);
+        parser.feed(kitty, &mut grid);
+        parser.feed(b"\x1b\\", &mut grid);
+
+        assert!(grid.title.is_empty());
+        let commands = grid.drain_kitty_commands();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].image_id, Some(7));
+        assert!(parser.parser.active_control_string.is_none());
     }
 }
