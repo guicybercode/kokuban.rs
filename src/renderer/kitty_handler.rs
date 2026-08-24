@@ -1,10 +1,36 @@
 use super::image_store::{ImageFormat, ImageId, ImageStore};
 use crate::parser::kitty_graphics::*;
+use nix::libc;
 use std::borrow::Cow;
+use std::ffi::{CString, OsStr};
+use std::fs::{File, Metadata};
+use std::io::{self, Read};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Component, Path, PathBuf};
 
 const MAX_PENDING_IMAGE_BYTES: usize = 64 * 1024 * 1024;
-const MAX_DECOMPRESSED_IMAGE_BYTES: usize = MAX_PENDING_IMAGE_BYTES;
 const DECOMPRESSION_CHUNK_BYTES: usize = 32 * 1024;
+const FILE_READ_CHUNK_BYTES: usize = 32 * 1024;
+const BYTES_PER_MEBIBYTE: usize = 1024 * 1024;
+const TEMP_FILE_MARKER: &str = "tty-graphics-protocol";
+
+#[derive(Debug, Clone, Copy)]
+pub struct KittyHandlerOptions {
+    max_image_bytes: usize,
+    allow_file_transfer: bool,
+}
+
+impl KittyHandlerOptions {
+    pub fn from_megabytes(max_image_size_mb: usize, allow_file_transfer: bool) -> Self {
+        let configured_bytes = max_image_size_mb.saturating_mul(BYTES_PER_MEBIBYTE);
+        Self {
+            max_image_bytes: configured_bytes.min(MAX_PENDING_IMAGE_BYTES),
+            allow_file_transfer,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ImagePlacement {
@@ -235,13 +261,15 @@ enum DecompressionError {
 pub struct KittyHandler {
     chunks: ChunkAssembler,
     next_placement_id: u32,
+    options: KittyHandlerOptions,
 }
 
 impl KittyHandler {
-    pub fn new() -> Self {
+    pub fn new(options: KittyHandlerOptions) -> Self {
         Self {
-            chunks: ChunkAssembler::new(MAX_PENDING_IMAGE_BYTES),
+            chunks: ChunkAssembler::new(options.max_image_bytes),
             next_placement_id: 1,
+            options,
         }
     }
 
@@ -343,7 +371,7 @@ impl KittyHandler {
     ) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
         let image_id = cmd.image_id.unwrap_or(0);
         // For queries, we try to process the tiny test image and respond OK
-        if !cmd.payload.is_empty() {
+        if !cmd.payload.is_empty() || cmd.transmission != KittyTransmission::Direct {
             let format = match cmd.format {
                 KittyFormat::Rgb => ImageFormat::Rgb,
                 KittyFormat::Rgba => ImageFormat::Rgba,
@@ -351,10 +379,36 @@ impl KittyHandler {
             };
             let w = cmd.width.unwrap_or(1);
             let h = cmd.height.unwrap_or(1);
+            let transmission_data = match cmd.transmission {
+                KittyTransmission::Direct => Cow::Borrowed(cmd.payload.as_slice()),
+                KittyTransmission::File | KittyTransmission::TempFile => {
+                    match load_file_data(
+                        &cmd.payload,
+                        cmd.transmission == KittyTransmission::TempFile,
+                        self.options,
+                    ) {
+                        Ok(data) => Cow::Owned(data),
+                        Err(error) => {
+                            return (file_load_error_response(image_id, cmd.quiet, error), None);
+                        }
+                    }
+                }
+                KittyTransmission::SharedMemory => {
+                    let response = (cmd.quiet < 2).then(|| {
+                        format!("\x1b_Gi={image_id};ENOSYS:shared memory not supported\x1b\\")
+                            .into_bytes()
+                    });
+                    return (response, None);
+                }
+            };
             // Store the test image briefly. A failed decompression must not be
             // interpreted as raw pixels: doing so would make corrupt streams
             // appear supported and could retain attacker-controlled data.
-            let data = match maybe_decompress(&cmd.payload, cmd.compression) {
+            let data = match maybe_decompress_with_limit(
+                transmission_data.as_ref(),
+                cmd.compression,
+                self.options.max_image_bytes,
+            ) {
                 Ok(data) => data,
                 Err(error) => {
                     return (
@@ -453,19 +507,15 @@ impl KittyHandler {
         // Handle file transmission
         let image_data = match transmission {
             KittyTransmission::File | KittyTransmission::TempFile => {
-                match load_file_data(&full_data, transmission == KittyTransmission::TempFile) {
-                    Some(data) => data,
-                    None => {
-                        let resp = if quiet < 2 {
-                            Some(
-                                format!("\x1b_Gi={image_id};ENOENT:file not found\x1b\\")
-                                    .into_bytes(),
-                            )
-                        } else {
-                            None
-                        };
+                match load_file_data(
+                    &full_data,
+                    transmission == KittyTransmission::TempFile,
+                    self.options,
+                ) {
+                    Ok(data) => data,
+                    Err(error) => {
                         return TransmitOutcome {
-                            response: resp,
+                            response: file_load_error_response(image_id, quiet, error),
                             stored: None,
                         };
                     }
@@ -490,7 +540,11 @@ impl KittyHandler {
 
         // Decompress if needed. Invalid or oversized streams fail closed and
         // never reach image storage or deferred placement.
-        let image_data = match maybe_decompress(&image_data, compression) {
+        let image_data = match maybe_decompress_with_limit(
+            &image_data,
+            compression,
+            self.options.max_image_bytes,
+        ) {
             Ok(data) => data,
             Err(error) => {
                 return TransmitOutcome {
@@ -737,13 +791,6 @@ fn inline_placement_and_advance(
     )
 }
 
-fn maybe_decompress(
-    data: &[u8],
-    compression: KittyCompression,
-) -> Result<Cow<'_, [u8]>, DecompressionError> {
-    maybe_decompress_with_limit(data, compression, MAX_DECOMPRESSED_IMAGE_BYTES)
-}
-
 fn maybe_decompress_with_limit(
     data: &[u8],
     compression: KittyCompression,
@@ -863,61 +910,398 @@ fn decompression_error_response(
     (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
 }
 
-fn load_file_data(path_data: &[u8], delete_after: bool) -> Option<Vec<u8>> {
-    let path_str = std::str::from_utf8(path_data).ok()?;
-    let path = std::path::Path::new(path_str);
-
-    // Security: only allow reads from safe directories
-    if !is_safe_path(path) {
-        log::warn!("Kitty file transfer blocked for path: {path_str}");
-        return None;
-    }
-
-    let data = std::fs::read(path).ok()?;
-
-    if delete_after {
-        let _ = std::fs::remove_file(path);
-    }
-
-    Some(data)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileLoadError {
+    Disabled,
+    InvalidPath,
+    UnsafePath,
+    NotRegular,
+    TooLarge,
+    Io,
+    DeleteFailed,
+    AllocationFailed,
 }
 
-fn is_safe_path(path: &std::path::Path) -> bool {
-    let path = match path.canonicalize() {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let path_str = path.to_string_lossy();
+struct TempFileDeletion {
+    path: PathBuf,
+    parent_fd: OwnedFd,
+    file_name: CString,
+    entry_device: u64,
+    entry_inode: u64,
+}
 
-    // Allow: $TMPDIR, /tmp, $HOME, current working directory
-    if let Ok(tmp) = std::env::var("TMPDIR") {
-        if path_str.starts_with(&tmp) {
-            return true;
+impl TempFileDeletion {
+    fn for_request(path: &Path, opened_metadata: &Metadata) -> Option<Self> {
+        let path = normalized_path_entry(path)?;
+        if !is_safe_temp_delete_path(&path) {
+            return None;
+        }
+
+        let (parent_fd, file_name) = open_canonical_parent(&path).ok()?;
+        let entry_metadata = stat_at(&parent_fd, &file_name, libc::AT_SYMLINK_NOFOLLOW).ok()?;
+        let followed_metadata = stat_at(&parent_fd, &file_name, 0).ok()?;
+        if followed_metadata.st_dev as u64 != opened_metadata.dev()
+            || followed_metadata.st_ino as u64 != opened_metadata.ino()
+        {
+            return None;
+        }
+
+        Some(Self {
+            path,
+            parent_fd,
+            file_name,
+            entry_device: entry_metadata.st_dev as u64,
+            entry_inode: entry_metadata.st_ino as u64,
+        })
+    }
+
+    fn delete_if_unchanged(self) -> Result<(), FileLoadError> {
+        let current = match stat_at(&self.parent_fd, &self.file_name, libc::AT_SYMLINK_NOFOLLOW) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                log::warn!(
+                    "Could not revalidate Kitty temporary file {}",
+                    self.path.display()
+                );
+                return Err(FileLoadError::DeleteFailed);
+            }
+        };
+
+        if current.st_dev as u64 != self.entry_device || current.st_ino as u64 != self.entry_inode {
+            log::warn!(
+                "Refused to delete changed Kitty temporary file: {}",
+                self.path.display()
+            );
+            return Err(FileLoadError::DeleteFailed);
+        }
+
+        let result =
+            unsafe { libc::unlinkat(self.parent_fd.as_raw_fd(), self.file_name.as_ptr(), 0) };
+        if result < 0 {
+            let error = io::Error::last_os_error();
+            log::warn!(
+                "Could not delete Kitty temporary file {}: {error}",
+                self.path.display()
+            );
+            return Err(FileLoadError::DeleteFailed);
+        }
+        Ok(())
+    }
+}
+
+fn load_file_data(
+    path_data: &[u8],
+    delete_after: bool,
+    options: KittyHandlerOptions,
+) -> Result<Vec<u8>, FileLoadError> {
+    if !options.allow_file_transfer {
+        return Err(FileLoadError::Disabled);
+    }
+
+    if path_data.is_empty() {
+        return Err(FileLoadError::InvalidPath);
+    }
+
+    let requested_path = Path::new(OsStr::from_bytes(path_data));
+    let canonical_path = requested_path.canonicalize().map_err(classify_path_error)?;
+    if !is_safe_read_path(&canonical_path) {
+        log::warn!(
+            "Kitty file transfer blocked for path: {}",
+            canonical_path.display()
+        );
+        return Err(FileLoadError::UnsafePath);
+    }
+
+    let (data, metadata) = read_regular_file(&canonical_path, options.max_image_bytes)?;
+    if delete_after {
+        let deletion = TempFileDeletion::for_request(requested_path, &metadata);
+        if let Some(deletion) = deletion {
+            deletion.delete_if_unchanged()?;
+        } else {
+            log::warn!(
+                "Refused unsafe Kitty temporary-file deletion: {}",
+                requested_path.display()
+            );
         }
     }
-    if path_str.starts_with("/tmp/") || path_str.starts_with("/var/folders/") {
+
+    Ok(data)
+}
+
+fn classify_path_error(error: io::Error) -> FileLoadError {
+    if error.kind() == io::ErrorKind::InvalidInput {
+        FileLoadError::InvalidPath
+    } else {
+        FileLoadError::Io
+    }
+}
+
+fn read_regular_file(path: &Path, max_bytes: usize) -> Result<(Vec<u8>, Metadata), FileLoadError> {
+    let (mut file, opened_metadata) = open_canonical_regular_file(path, max_bytes)?;
+
+    let initial_len =
+        usize::try_from(opened_metadata.len()).map_err(|_| FileLoadError::TooLarge)?;
+    let mut data = Vec::new();
+    reserve_file_buffer(&mut data, initial_len, max_bytes)?;
+    let mut chunk = [0u8; FILE_READ_CHUNK_BYTES];
+
+    loop {
+        let remaining = max_bytes
+            .checked_sub(data.len())
+            .ok_or(FileLoadError::TooLarge)?;
+        let read_limit = remaining.saturating_add(1).min(FILE_READ_CHUNK_BYTES);
+        let read = match file.read(&mut chunk[..read_limit]) {
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(FileLoadError::Io),
+        };
+        if read == 0 {
+            break;
+        }
+        append_file_bytes(&mut data, &chunk[..read], max_bytes)?;
+    }
+
+    Ok((data, opened_metadata))
+}
+
+fn open_canonical_regular_file(
+    path: &Path,
+    max_bytes: usize,
+) -> Result<(File, Metadata), FileLoadError> {
+    let (parent_fd, final_name) = open_canonical_parent(path)?;
+    let before_open = stat_at(&parent_fd, &final_name, libc::AT_SYMLINK_NOFOLLOW)?;
+    if (before_open.st_mode & libc::S_IFMT) != libc::S_IFREG {
+        return Err(FileLoadError::NotRegular);
+    }
+    let stat_len = u64::try_from(before_open.st_size).map_err(|_| FileLoadError::Io)?;
+    if stat_len > u64::try_from(max_bytes).unwrap_or(u64::MAX) {
+        return Err(FileLoadError::TooLarge);
+    }
+
+    let file_fd = unsafe {
+        libc::openat(
+            parent_fd.as_raw_fd(),
+            final_name.as_ptr(),
+            libc::O_RDONLY | libc::O_NONBLOCK | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if file_fd < 0 {
+        return Err(classify_path_error(io::Error::last_os_error()));
+    }
+    let file_fd = unsafe { OwnedFd::from_raw_fd(file_fd) };
+    let file = File::from(file_fd);
+    let opened_metadata = file.metadata().map_err(|_| FileLoadError::Io)?;
+    validate_regular_file(&opened_metadata, max_bytes)?;
+    if opened_metadata.dev() != before_open.st_dev as u64
+        || opened_metadata.ino() != before_open.st_ino as u64
+    {
+        return Err(FileLoadError::Io);
+    }
+
+    Ok((file, opened_metadata))
+}
+
+fn open_canonical_parent(path: &Path) -> Result<(OwnedFd, CString), FileLoadError> {
+    if !path.is_absolute() {
+        return Err(FileLoadError::InvalidPath);
+    }
+
+    let mut names = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::RootDir => {}
+            Component::Normal(name) => names.push(name),
+            Component::CurDir | Component::ParentDir | Component::Prefix(_) => {
+                return Err(FileLoadError::InvalidPath);
+            }
+        }
+    }
+    let final_name = names.pop().ok_or(FileLoadError::InvalidPath)?;
+
+    let root_fd = unsafe {
+        libc::open(
+            b"/\0".as_ptr().cast(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if root_fd < 0 {
+        return Err(classify_path_error(io::Error::last_os_error()));
+    }
+    let mut parent_fd = unsafe { OwnedFd::from_raw_fd(root_fd) };
+
+    for name in names {
+        let name = CString::new(name.as_bytes()).map_err(|_| FileLoadError::InvalidPath)?;
+        let directory_fd = unsafe {
+            libc::openat(
+                parent_fd.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if directory_fd < 0 {
+            return Err(classify_path_error(io::Error::last_os_error()));
+        }
+        parent_fd = unsafe { OwnedFd::from_raw_fd(directory_fd) };
+    }
+
+    let final_name = CString::new(final_name.as_bytes()).map_err(|_| FileLoadError::InvalidPath)?;
+    Ok((parent_fd, final_name))
+}
+
+fn stat_at(
+    parent_fd: &OwnedFd,
+    file_name: &CString,
+    flags: i32,
+) -> Result<libc::stat, FileLoadError> {
+    let mut before_open = std::mem::MaybeUninit::<libc::stat>::uninit();
+    let stat_result = unsafe {
+        libc::fstatat(
+            parent_fd.as_raw_fd(),
+            file_name.as_ptr(),
+            before_open.as_mut_ptr(),
+            flags,
+        )
+    };
+    if stat_result < 0 {
+        return Err(classify_path_error(io::Error::last_os_error()));
+    }
+    Ok(unsafe { before_open.assume_init() })
+}
+
+fn validate_regular_file(metadata: &Metadata, max_bytes: usize) -> Result<(), FileLoadError> {
+    if !metadata.file_type().is_file() {
+        return Err(FileLoadError::NotRegular);
+    }
+    let max_bytes = u64::try_from(max_bytes).unwrap_or(u64::MAX);
+    if metadata.len() > max_bytes {
+        return Err(FileLoadError::TooLarge);
+    }
+    Ok(())
+}
+
+fn append_file_bytes(
+    destination: &mut Vec<u8>,
+    chunk: &[u8],
+    max_bytes: usize,
+) -> Result<(), FileLoadError> {
+    let new_len = destination
+        .len()
+        .checked_add(chunk.len())
+        .ok_or(FileLoadError::TooLarge)?;
+    if new_len > max_bytes {
+        return Err(FileLoadError::TooLarge);
+    }
+    reserve_file_buffer(destination, new_len, max_bytes)?;
+    destination.extend_from_slice(chunk);
+    Ok(())
+}
+
+fn reserve_file_buffer(
+    destination: &mut Vec<u8>,
+    required_len: usize,
+    max_bytes: usize,
+) -> Result<(), FileLoadError> {
+    if required_len > max_bytes || destination.capacity() > max_bytes {
+        return Err(FileLoadError::TooLarge);
+    }
+    if required_len <= destination.capacity() {
+        return Ok(());
+    }
+
+    let doubled_capacity = destination.capacity().checked_mul(2).unwrap_or(max_bytes);
+    let target_capacity = required_len.max(doubled_capacity).min(max_bytes);
+    let additional = target_capacity
+        .checked_sub(destination.len())
+        .ok_or(FileLoadError::TooLarge)?;
+    destination
+        .try_reserve_exact(additional)
+        .map_err(|_| FileLoadError::AllocationFailed)?;
+    if destination.capacity() > max_bytes {
+        return Err(FileLoadError::TooLarge);
+    }
+    Ok(())
+}
+
+fn is_safe_read_path(path: &Path) -> bool {
+    let temporary_roots = known_temporary_roots();
+    if path_is_within_roots(path, &temporary_roots) {
         return true;
     }
-    if let Ok(home) = std::env::var("HOME") {
-        if path_str.starts_with(&home) {
-            return true;
-        }
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        if path.starts_with(&cwd) {
-            return true;
-        }
-    }
+    !is_sensitive_path(path)
+}
 
-    false
+fn is_safe_temp_delete_path(path: &Path) -> bool {
+    path.to_string_lossy().contains(TEMP_FILE_MARKER)
+        && path_is_within_roots(path, &known_temporary_roots())
+}
+
+fn normalized_path_entry(path: &Path) -> Option<PathBuf> {
+    let file_name = path.file_name()?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let parent = parent.canonicalize().ok()?;
+    Some(parent.join(file_name))
+}
+
+fn known_temporary_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    add_canonical_directory(&mut roots, &std::env::temp_dir());
+    if let Some(tmpdir) = std::env::var_os("TMPDIR") {
+        add_canonical_directory(&mut roots, Path::new(&tmpdir));
+    }
+    for path in ["/tmp", "/var/tmp", "/dev/shm"] {
+        add_canonical_directory(&mut roots, Path::new(path));
+    }
+    roots
+}
+
+fn add_canonical_directory(roots: &mut Vec<PathBuf>, path: &Path) {
+    let Ok(path) = path.canonicalize() else {
+        return;
+    };
+    if path.parent().is_some() && path.is_dir() && !roots.iter().any(|existing| existing == &path) {
+        roots.push(path);
+    }
+}
+
+fn path_is_within_roots(path: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root))
+}
+
+fn is_sensitive_path(path: &Path) -> bool {
+    let mut roots = Vec::new();
+    for path in ["/proc", "/sys", "/dev"] {
+        add_canonical_directory(&mut roots, Path::new(path));
+    }
+    path_is_within_roots(path, &roots)
+}
+
+fn file_load_error_response(image_id: ImageId, quiet: u8, error: FileLoadError) -> Option<Vec<u8>> {
+    let reason = match error {
+        FileLoadError::Disabled => "EPERM:file transmission disabled",
+        FileLoadError::InvalidPath => "EINVAL:invalid file path",
+        FileLoadError::UnsafePath => "EPERM:file path is not allowed",
+        FileLoadError::NotRegular => "EINVAL:not a regular file",
+        FileLoadError::TooLarge => "E2BIG:file exceeds image limit",
+        FileLoadError::Io => "EIO:failed to read file",
+        FileLoadError::DeleteFailed => "EIO:failed to delete temporary file",
+        FileLoadError::AllocationFailed => "ENOMEM:failed to buffer file",
+    };
+    log::warn!("Rejected Kitty file transmission for image {image_id}: {reason}");
+    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        append_bounded, decompression_error_response, inline_placement_and_advance,
-        maybe_decompress_with_limit, ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
-        DecompressionError, PlacementMode, DECOMPRESSION_CHUNK_BYTES,
+        append_bounded, decompression_error_response, file_load_error_response,
+        inline_placement_and_advance, is_safe_read_path, is_safe_temp_delete_path, load_file_data,
+        maybe_decompress_with_limit, normalized_path_entry, path_is_within_roots,
+        read_regular_file, ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
+        DecompressionError, FileLoadError, KittyHandler, KittyHandlerOptions, PlacementMode,
+        TempFileDeletion, DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
     };
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyFormat, KittyTransmission,
@@ -925,7 +1309,54 @@ mod tests {
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
     use std::borrow::Cow;
+    #[cfg(target_os = "linux")]
+    use std::ffi::OsString;
+    use std::fs;
     use std::io::Write;
+    use std::os::unix::ffi::OsStrExt;
+    #[cfg(target_os = "linux")]
+    use std::os::unix::ffi::OsStringExt;
+    use std::os::unix::fs::symlink;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new(label: &str) -> Self {
+            loop {
+                let sequence = NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+                let path = std::env::temp_dir()
+                    .join(format!("kokuban-{label}-{}-{sequence}", std::process::id()));
+                match fs::create_dir(&path) {
+                    Ok(()) => return Self(path),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => panic!("failed to create test directory: {error}"),
+                }
+            }
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn file_options(max_image_bytes: usize, allow_file_transfer: bool) -> KittyHandlerOptions {
+        KittyHandlerOptions {
+            max_image_bytes,
+            allow_file_transfer,
+        }
+    }
 
     fn chunk(data: &[u8], more_chunks: bool, image_id: Option<u32>) -> KittyCommand {
         KittyCommand {
@@ -944,6 +1375,255 @@ mod tests {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(data).expect("zlib input should encode");
         encoder.finish().expect("zlib stream should finish")
+    }
+
+    #[test]
+    fn applies_configured_image_limit_and_disables_file_access_early() {
+        let configured = KittyHandlerOptions::from_megabytes(50, true);
+        assert_eq!(configured.max_image_bytes, 50 * 1024 * 1024);
+
+        let clamped = KittyHandlerOptions::from_megabytes(usize::MAX, true);
+        assert_eq!(clamped.max_image_bytes, MAX_PENDING_IMAGE_BYTES);
+        let handler = KittyHandler::new(file_options(123, true));
+        assert_eq!(handler.chunks.max_bytes, 123);
+
+        let disabled = load_file_data(&[0xff], false, file_options(8, false));
+        assert!(matches!(disabled, Err(FileLoadError::Disabled)));
+    }
+
+    #[test]
+    fn reads_regular_files_at_the_exact_limit_and_rejects_larger_files() {
+        let directory = TestDirectory::new("file-limit");
+        let exact_path = directory.path().join("exact.bin");
+        fs::write(&exact_path, b"12345678").expect("exact test file should be written");
+
+        let loaded = load_file_data(
+            exact_path.as_os_str().as_bytes(),
+            false,
+            file_options(8, true),
+        )
+        .expect("a regular file at the exact limit should load");
+        assert_eq!(loaded, b"12345678");
+        assert!(loaded.capacity() <= 8);
+
+        assert!(matches!(
+            load_file_data(
+                exact_path.as_os_str().as_bytes(),
+                false,
+                file_options(7, true)
+            ),
+            Err(FileLoadError::TooLarge)
+        ));
+
+        let sparse_path = directory.path().join("sparse.bin");
+        let sparse = fs::File::create(&sparse_path).expect("sparse test file should be created");
+        sparse
+            .set_len(1024 * 1024 * 1024)
+            .expect("sparse test file should be extended");
+        assert!(matches!(
+            load_file_data(
+                sparse_path.as_os_str().as_bytes(),
+                false,
+                file_options(8, true)
+            ),
+            Err(FileLoadError::TooLarge)
+        ));
+    }
+
+    #[test]
+    fn rejects_directories_and_fifos_without_blocking() {
+        let directory = TestDirectory::new("special-files");
+        assert!(matches!(
+            load_file_data(
+                directory.path().as_os_str().as_bytes(),
+                false,
+                file_options(64, true)
+            ),
+            Err(FileLoadError::NotRegular)
+        ));
+
+        let fifo_path = directory.path().join("image.fifo");
+        nix::unistd::mkfifo(
+            &fifo_path,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .expect("test FIFO should be created");
+        let fifo_bytes = fifo_path.as_os_str().as_bytes().to_vec();
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = load_file_data(&fifo_bytes, false, file_options(64, true));
+            let _ = sender.send(matches!(result, Err(FileLoadError::NotRegular)));
+        });
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(1)),
+            Ok(true),
+            "FIFO validation must not wait for a writer"
+        );
+    }
+
+    #[test]
+    fn follows_regular_file_symlinks_and_rejects_symlink_loops() {
+        let directory = TestDirectory::new("symlinks");
+        let target = directory.path().join("target.bin");
+        let link = directory.path().join("link.bin");
+        fs::write(&target, b"image").expect("symlink target should be written");
+        symlink(&target, &link).expect("regular-file symlink should be created");
+
+        let loaded = load_file_data(link.as_os_str().as_bytes(), false, file_options(16, true))
+            .expect("regular-file symlinks are required by the protocol");
+        assert_eq!(loaded, b"image");
+
+        let first = directory.path().join("loop-a");
+        let second = directory.path().join("loop-b");
+        symlink(&second, &first).expect("first loop link should be created");
+        symlink(&first, &second).expect("second loop link should be created");
+        assert!(matches!(
+            load_file_data(first.as_os_str().as_bytes(), false, file_options(16, true)),
+            Err(FileLoadError::Io)
+        ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn supports_non_utf8_unix_file_names() {
+        let directory = TestDirectory::new("non-utf8");
+        let mut file_name = b"image-".to_vec();
+        file_name.push(0xff);
+        let path = directory.path().join(OsString::from_vec(file_name));
+        fs::write(&path, b"pixels").expect("non-UTF8 test file should be written");
+
+        let loaded = load_file_data(path.as_os_str().as_bytes(), false, file_options(16, true))
+            .expect("Unix file names must not require UTF-8");
+        assert_eq!(loaded, b"pixels");
+    }
+
+    #[test]
+    fn deletes_only_safe_temporary_entries_after_reading() {
+        let directory = TestDirectory::new("temp-delete");
+        let marked = directory.path().join("image-tty-graphics-protocol.bin");
+        fs::write(&marked, b"pixels").expect("marked temporary file should be written");
+        let loaded = load_file_data(marked.as_os_str().as_bytes(), true, file_options(16, true))
+            .expect("marked temporary file should load");
+        assert_eq!(loaded, b"pixels");
+        assert!(!marked.exists());
+
+        let unmarked = directory.path().join("ordinary-image.bin");
+        fs::write(&unmarked, b"pixels").expect("unmarked file should be written");
+        let loaded = load_file_data(
+            unmarked.as_os_str().as_bytes(),
+            true,
+            file_options(16, true),
+        )
+        .expect("unmarked file should still be readable");
+        assert_eq!(loaded, b"pixels");
+        assert!(unmarked.exists());
+    }
+
+    #[test]
+    fn temporary_symlink_deletion_removes_the_link_not_its_target() {
+        let directory = TestDirectory::new("temp-symlink");
+        let target = directory.path().join("preserved-target.bin");
+        let link = directory.path().join("link-tty-graphics-protocol.bin");
+        fs::write(&target, b"pixels").expect("temporary target should be written");
+        symlink(&target, &link).expect("temporary symlink should be created");
+
+        let loaded = load_file_data(link.as_os_str().as_bytes(), true, file_options(16, true))
+            .expect("temporary symlink should load its regular target");
+        assert_eq!(loaded, b"pixels");
+        assert!(!link.exists());
+        assert_eq!(fs::read(&target).expect("target must remain"), b"pixels");
+    }
+
+    #[test]
+    fn refuses_to_delete_a_replaced_temporary_entry() {
+        let directory = TestDirectory::new("temp-replaced");
+        let path = directory.path().join("replace-tty-graphics-protocol.bin");
+        let old_path = directory.path().join("old.bin");
+        fs::write(&path, b"old").expect("original file should be written");
+        let canonical_path = path.canonicalize().expect("path should canonicalize");
+        let (_, metadata) =
+            read_regular_file(&canonical_path, 16).expect("original file should load");
+        let deletion = TempFileDeletion::for_request(&path, &metadata)
+            .expect("original entry should have a deletion candidate");
+        fs::rename(&path, &old_path).expect("original file should move");
+        fs::write(&path, b"new").expect("replacement file should be written");
+
+        assert_eq!(
+            deletion.delete_if_unchanged(),
+            Err(FileLoadError::DeleteFailed)
+        );
+        assert_eq!(
+            fs::read(&path).expect("replacement must not be deleted"),
+            b"new"
+        );
+    }
+
+    #[test]
+    fn temporary_deletion_stays_bound_to_the_opened_parent_directory() {
+        let directory = TestDirectory::new("temp-parent-race");
+        let original_parent = directory.path().join("original");
+        let moved_parent = directory.path().join("moved");
+        fs::create_dir(&original_parent).expect("original parent should be created");
+        let file_name = "image-tty-graphics-protocol.bin";
+        let original_path = original_parent.join(file_name);
+        fs::write(&original_path, b"old").expect("original file should be written");
+
+        let canonical_path = original_path
+            .canonicalize()
+            .expect("original path should canonicalize");
+        let (_, metadata) =
+            read_regular_file(&canonical_path, 16).expect("original file should load");
+        let deletion = TempFileDeletion::for_request(&original_path, &metadata)
+            .expect("original entry should have a deletion candidate");
+
+        fs::rename(&original_parent, &moved_parent).expect("parent should move");
+        fs::create_dir(&original_parent).expect("replacement parent should be created");
+        let replacement = original_parent.join(file_name);
+        fs::write(&replacement, b"new").expect("replacement file should be written");
+
+        deletion
+            .delete_if_unchanged()
+            .expect("pinned original entry should be deleted");
+        assert!(!moved_parent.join(file_name).exists());
+        assert_eq!(
+            fs::read(&replacement).expect("replacement must remain"),
+            b"new"
+        );
+    }
+
+    #[test]
+    fn path_roots_are_component_aware_and_temp_errors_honor_quiet() {
+        let roots = vec![PathBuf::from("/tmp/kokuban-safe")];
+        assert!(path_is_within_roots(
+            Path::new("/tmp/kokuban-safe/image"),
+            &roots
+        ));
+        assert!(!path_is_within_roots(
+            Path::new("/tmp/kokuban-safe-evil/image"),
+            &roots
+        ));
+
+        let directory = TestDirectory::new("temp-root");
+        let marked = directory.path().join("tty-graphics-protocol-image.bin");
+        fs::write(&marked, b"pixels").expect("temporary path should exist");
+        let normalized = normalized_path_entry(&marked).expect("path should normalize");
+        assert!(is_safe_temp_delete_path(&normalized));
+        assert!(is_safe_read_path(Path::new("/usr/share/kokuban-image")));
+        assert!(!is_safe_read_path(Path::new("/dev/null")));
+
+        let expected = b"\x1b_Gi=9;E2BIG:file exceeds image limit\x1b\\".to_vec();
+        assert_eq!(
+            file_load_error_response(9, 0, FileLoadError::TooLarge),
+            Some(expected.clone())
+        );
+        assert_eq!(
+            file_load_error_response(9, 1, FileLoadError::TooLarge),
+            Some(expected)
+        );
+        assert_eq!(
+            file_load_error_response(9, 2, FileLoadError::TooLarge),
+            None
+        );
     }
 
     #[test]

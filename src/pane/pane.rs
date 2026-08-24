@@ -2,7 +2,7 @@ use crate::app::selection::SelectionState;
 use crate::grid::Grid;
 use crate::parser::ansi::Utf8Parser;
 use crate::pty::Pty;
-use crate::renderer::kitty_handler::KittyHandler;
+use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 
 use super::layout::PixelRect;
 use super::PaneId;
@@ -18,7 +18,13 @@ pub struct Pane {
 }
 
 impl Pane {
-    pub fn new(id: PaneId, cols: u16, rows: u16, scrollback_max: usize) -> Result<Self, crate::pty::PtyError> {
+    pub fn new(
+        id: PaneId,
+        cols: u16,
+        rows: u16,
+        scrollback_max: usize,
+        kitty_options: KittyHandlerOptions,
+    ) -> Result<Self, crate::pty::PtyError> {
         let pty = Pty::spawn(cols, rows)?;
         let grid = Grid::new(cols as usize, rows as usize, scrollback_max);
         Ok(Self {
@@ -28,7 +34,7 @@ impl Pane {
             grid,
             selection: SelectionState::default(),
             rect: PixelRect::ZERO,
-            kitty_handler: KittyHandler::new(),
+            kitty_handler: KittyHandler::new(kitty_options),
         })
     }
 
