@@ -1,7 +1,10 @@
 use super::image_store::{ImageFormat, ImageId, ImageStore};
 use crate::parser::kitty_graphics::*;
+use std::borrow::Cow;
 
 const MAX_PENDING_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_DECOMPRESSED_IMAGE_BYTES: usize = MAX_PENDING_IMAGE_BYTES;
+const DECOMPRESSION_CHUNK_BYTES: usize = 32 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct ImagePlacement {
@@ -222,6 +225,13 @@ struct TransmitOutcome {
     stored: Option<StoredTransmission>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DecompressionError {
+    TooLarge,
+    InvalidData,
+    AllocationFailed,
+}
+
 pub struct KittyHandler {
     chunks: ChunkAssembler,
     next_placement_id: u32,
@@ -341,15 +351,42 @@ impl KittyHandler {
             };
             let w = cmd.width.unwrap_or(1);
             let h = cmd.height.unwrap_or(1);
-            // Store the test image briefly
-            let data = maybe_decompress(&cmd.payload, cmd.compression);
-            if let Some(id) = store.store(&data, w, h, format, Some(image_id)) {
-                // Remove the test image immediately
-                store.remove(id);
+            // Store the test image briefly. A failed decompression must not be
+            // interpreted as raw pixels: doing so would make corrupt streams
+            // appear supported and could retain attacker-controlled data.
+            let data = match maybe_decompress(&cmd.payload, cmd.compression) {
+                Ok(data) => data,
+                Err(error) => {
+                    return (
+                        decompression_error_response(image_id, cmd.quiet, error),
+                        None,
+                    );
+                }
+            };
+            match store.store(data.as_ref(), w, h, format, Some(image_id)) {
+                Some(id) => {
+                    // Remove the test image immediately
+                    store.remove(id);
+                }
+                None => {
+                    let response = if cmd.quiet < 2 {
+                        Some(
+                            format!("\x1b_Gi={image_id};ENOMEM:failed to store query image\x1b\\")
+                                .into_bytes(),
+                        )
+                    } else {
+                        None
+                    };
+                    return (response, None);
+                }
             }
         }
-        let resp = format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes();
-        (Some(resp), None)
+        let resp = if cmd.quiet < 1 {
+            Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
+        } else {
+            None
+        };
+        (resp, None)
     }
 
     fn handle_transmit(
@@ -451,8 +488,17 @@ impl KittyHandler {
             KittyTransmission::Direct => full_data,
         };
 
-        // Decompress if needed
-        let image_data = maybe_decompress(&image_data, compression);
+        // Decompress if needed. Invalid or oversized streams fail closed and
+        // never reach image storage or deferred placement.
+        let image_data = match maybe_decompress(&image_data, compression) {
+            Ok(data) => data,
+            Err(error) => {
+                return TransmitOutcome {
+                    response: decompression_error_response(image_id, quiet, error),
+                    stored: None,
+                };
+            }
+        };
 
         // Determine dimensions for PNG
         let (w, h, img_format) = match format {
@@ -500,7 +546,7 @@ impl KittyHandler {
             }
         };
 
-        match store.store(&image_data, w, h, img_format, Some(image_id)) {
+        match store.store(image_data.as_ref(), w, h, img_format, Some(image_id)) {
             Some(_) => {
                 let resp = if quiet < 1 {
                     Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
@@ -691,22 +737,130 @@ fn inline_placement_and_advance(
     )
 }
 
-fn maybe_decompress(data: &[u8], compression: KittyCompression) -> Vec<u8> {
+fn maybe_decompress(
+    data: &[u8],
+    compression: KittyCompression,
+) -> Result<Cow<'_, [u8]>, DecompressionError> {
+    maybe_decompress_with_limit(data, compression, MAX_DECOMPRESSED_IMAGE_BYTES)
+}
+
+fn maybe_decompress_with_limit(
+    data: &[u8],
+    compression: KittyCompression,
+    max_bytes: usize,
+) -> Result<Cow<'_, [u8]>, DecompressionError> {
     match compression {
-        KittyCompression::None => data.to_vec(),
+        KittyCompression::None => {
+            if data.len() > max_bytes {
+                Err(DecompressionError::TooLarge)
+            } else {
+                Ok(Cow::Borrowed(data))
+            }
+        }
         KittyCompression::Zlib => {
-            use std::io::Read;
-            let mut decoder = flate2::read::ZlibDecoder::new(data);
+            use flate2::{Decompress, FlushDecompress, Status};
+
+            let mut decoder = Decompress::new(true);
             let mut decompressed = Vec::new();
-            match decoder.read_to_end(&mut decompressed) {
-                Ok(_) => decompressed,
-                Err(e) => {
-                    log::warn!("Failed to decompress zlib data: {e}");
-                    data.to_vec()
+            let mut input_offset = 0usize;
+            let mut output_chunk = [0u8; DECOMPRESSION_CHUNK_BYTES];
+
+            loop {
+                let remaining = max_bytes
+                    .checked_sub(decompressed.len())
+                    .ok_or(DecompressionError::TooLarge)?;
+                // Always leave room to observe one byte beyond the budget.
+                // That byte is rejected before it can be appended.
+                let output_limit = remaining.saturating_add(1).min(DECOMPRESSION_CHUNK_BYTES);
+                let before_in = decoder.total_in();
+                let before_out = decoder.total_out();
+                let status = decoder
+                    .decompress(
+                        data.get(input_offset..)
+                            .ok_or(DecompressionError::InvalidData)?,
+                        &mut output_chunk[..output_limit],
+                        FlushDecompress::None,
+                    )
+                    .map_err(|error| {
+                        log::warn!("Failed to decompress zlib data: {error}");
+                        DecompressionError::InvalidData
+                    })?;
+                let consumed = usize::try_from(decoder.total_in() - before_in)
+                    .map_err(|_| DecompressionError::InvalidData)?;
+                let produced = usize::try_from(decoder.total_out() - before_out)
+                    .map_err(|_| DecompressionError::TooLarge)?;
+                input_offset = input_offset
+                    .checked_add(consumed)
+                    .ok_or(DecompressionError::InvalidData)?;
+
+                append_decompressed(&mut decompressed, &output_chunk[..produced], max_bytes)?;
+
+                match status {
+                    Status::StreamEnd => {
+                        if input_offset != data.len() {
+                            return Err(DecompressionError::InvalidData);
+                        }
+                        return Ok(Cow::Owned(decompressed));
+                    }
+                    Status::Ok | Status::BufError => {
+                        if consumed == 0 && produced == 0 {
+                            // No StreamEnd and no possible progress means the
+                            // zlib wrapper or checksum was truncated.
+                            return Err(DecompressionError::InvalidData);
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+fn append_decompressed(
+    destination: &mut Vec<u8>,
+    chunk: &[u8],
+    max_bytes: usize,
+) -> Result<(), DecompressionError> {
+    if destination.capacity() > max_bytes {
+        return Err(DecompressionError::TooLarge);
+    }
+
+    let new_len = destination
+        .len()
+        .checked_add(chunk.len())
+        .ok_or(DecompressionError::TooLarge)?;
+    if new_len > max_bytes {
+        return Err(DecompressionError::TooLarge);
+    }
+
+    if new_len > destination.capacity() {
+        let doubled_capacity = destination.capacity().checked_mul(2).unwrap_or(max_bytes);
+        let target_capacity = new_len.max(doubled_capacity).min(max_bytes);
+        let additional = target_capacity
+            .checked_sub(destination.len())
+            .ok_or(DecompressionError::TooLarge)?;
+        destination
+            .try_reserve_exact(additional)
+            .map_err(|_| DecompressionError::AllocationFailed)?;
+        if destination.capacity() > max_bytes {
+            return Err(DecompressionError::TooLarge);
+        }
+    }
+    destination.extend_from_slice(chunk);
+    Ok(())
+}
+
+fn decompression_error_response(
+    image_id: ImageId,
+    quiet: u8,
+    error: DecompressionError,
+) -> Option<Vec<u8>> {
+    let reason = match error {
+        DecompressionError::TooLarge => "E2BIG:decompressed image exceeds limit",
+        DecompressionError::InvalidData => "EINVAL:invalid zlib stream",
+        DecompressionError::AllocationFailed => "ENOMEM:failed to buffer decompressed image",
+    };
+    log::warn!("Rejected Kitty transmission for image {image_id}: {reason}");
+    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
 }
 
 fn load_file_data(path_data: &[u8], delete_after: bool) -> Option<Vec<u8>> {
@@ -761,12 +915,17 @@ fn is_safe_path(path: &std::path::Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_bounded, inline_placement_and_advance, ChunkAssembler, ChunkAssemblyErrorKind,
-        CompletedImage, PlacementMode,
+        append_bounded, decompression_error_response, inline_placement_and_advance,
+        maybe_decompress_with_limit, ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
+        DecompressionError, PlacementMode, DECOMPRESSION_CHUNK_BYTES,
     };
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyFormat, KittyTransmission,
     };
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::borrow::Cow;
+    use std::io::Write;
 
     fn chunk(data: &[u8], more_chunks: bool, image_id: Option<u32>) -> KittyCommand {
         KittyCommand {
@@ -779,6 +938,12 @@ mod tests {
 
     fn complete(assembly: Option<CompletedImage>) -> CompletedImage {
         assembly.expect("expected a completed image")
+    }
+
+    fn zlib(data: &[u8]) -> Vec<u8> {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(data).expect("zlib input should encode");
+        encoder.finish().expect("zlib stream should finish")
     }
 
     #[test]
@@ -1083,5 +1248,92 @@ mod tests {
             }
         ));
         assert_eq!((advance.cols, advance.rows), (10, 5));
+    }
+
+    #[test]
+    fn accepts_exact_decompressed_limit_and_rejects_one_byte_over() {
+        let exact = zlib(b"1234");
+        let decoded = maybe_decompress_with_limit(&exact, KittyCompression::Zlib, 4)
+            .expect("exact decompressed limit should fit");
+        assert_eq!(decoded.as_ref(), b"1234");
+
+        let oversized = zlib(b"12345");
+        assert_eq!(
+            maybe_decompress_with_limit(&oversized, KittyCompression::Zlib, 4),
+            Err(DecompressionError::TooLarge)
+        );
+
+        let chunk_sized = vec![b'x'; DECOMPRESSION_CHUNK_BYTES];
+        let encoded = zlib(&chunk_sized);
+        let decoded = maybe_decompress_with_limit(
+            &encoded,
+            KittyCompression::Zlib,
+            DECOMPRESSION_CHUNK_BYTES,
+        )
+        .expect("an exact full output chunk should still reach StreamEnd");
+        assert_eq!(decoded.as_ref(), chunk_sized);
+    }
+
+    #[test]
+    fn decompresses_valid_streams_across_multiple_output_chunks() {
+        for size in [32_769usize, 65_536, 1_000_000] {
+            let original = vec![b'x'; size];
+            let encoded = zlib(&original);
+            let decoded = maybe_decompress_with_limit(&encoded, KittyCompression::Zlib, size)
+                .unwrap_or_else(|error| panic!("valid {size}-byte stream failed: {error:?}"));
+            assert_eq!(decoded.as_ref(), original);
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_truncated_and_trailing_zlib_data() {
+        assert_eq!(
+            maybe_decompress_with_limit(b"not zlib", KittyCompression::Zlib, 64),
+            Err(DecompressionError::InvalidData)
+        );
+
+        let mut truncated = zlib(b"complete stream");
+        truncated.pop();
+        assert_eq!(
+            maybe_decompress_with_limit(&truncated, KittyCompression::Zlib, 64),
+            Err(DecompressionError::InvalidData)
+        );
+
+        let mut trailing = zlib(b"complete stream");
+        trailing.push(0);
+        assert_eq!(
+            maybe_decompress_with_limit(&trailing, KittyCompression::Zlib, 64),
+            Err(DecompressionError::InvalidData)
+        );
+    }
+
+    #[test]
+    fn uncompressed_data_is_borrowed_and_still_obeys_the_limit() {
+        let data = b"borrowed";
+        let decoded = maybe_decompress_with_limit(data, KittyCompression::None, data.len())
+            .expect("uncompressed data at the exact limit should fit");
+        assert!(matches!(decoded, Cow::Borrowed(bytes) if std::ptr::eq(bytes, data)));
+
+        assert_eq!(
+            maybe_decompress_with_limit(data, KittyCompression::None, data.len() - 1),
+            Err(DecompressionError::TooLarge)
+        );
+    }
+
+    #[test]
+    fn decompression_errors_honor_quiet_level() {
+        let expected = b"\x1b_Gi=17;EINVAL:invalid zlib stream\x1b\\".to_vec();
+        assert_eq!(
+            decompression_error_response(17, 0, DecompressionError::InvalidData),
+            Some(expected.clone())
+        );
+        assert_eq!(
+            decompression_error_response(17, 1, DecompressionError::InvalidData),
+            Some(expected)
+        );
+        assert_eq!(
+            decompression_error_response(17, 2, DecompressionError::InvalidData),
+            None
+        );
     }
 }
