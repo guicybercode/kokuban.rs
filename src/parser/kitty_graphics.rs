@@ -1,5 +1,7 @@
 use base64::Engine;
 
+const MAX_PAYLOAD_BASE64_BYTES: usize = 4096;
+
 #[derive(Debug, Clone)]
 pub struct KittyCommand {
     pub action: KittyAction,
@@ -204,6 +206,10 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
 
     // Decode base64 payload
     if !payload_b64.is_empty() {
+        if payload_b64.len() > MAX_PAYLOAD_BASE64_BYTES {
+            log::warn!("Kitty graphics chunk exceeds {MAX_PAYLOAD_BASE64_BYTES} encoded bytes");
+            return None;
+        }
         match base64::engine::general_purpose::STANDARD.decode(payload_b64) {
             Ok(decoded) => cmd.payload = decoded,
             Err(e) => {
@@ -249,9 +255,27 @@ fn parse_delete_spec(value: &str, cmd: &KittyCommand) -> KittyDeleteSpec {
                 KittyDeleteSpec::AtCursor
             }
         }
-        "z" => {
-            KittyDeleteSpec::ByZIndex(cmd.z_index.unwrap_or(0))
-        }
+        "z" => KittyDeleteSpec::ByZIndex(cmd.z_index.unwrap_or(0)),
         _ => KittyDeleteSpec::All,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_kitty_command, MAX_PAYLOAD_BASE64_BYTES};
+
+    #[test]
+    fn enforces_the_kitty_encoded_chunk_limit() {
+        let exact_payload = vec![b'A'; MAX_PAYLOAD_BASE64_BYTES];
+        let mut exact = b"f=100,m=1;".to_vec();
+        exact.extend_from_slice(&exact_payload);
+
+        let command = parse_kitty_command(&exact).expect("4096-byte chunk should be accepted");
+        assert_eq!(command.payload.len(), MAX_PAYLOAD_BASE64_BYTES / 4 * 3);
+
+        let oversized_payload = vec![b'A'; MAX_PAYLOAD_BASE64_BYTES + 4];
+        let mut oversized = b"f=100,m=1;".to_vec();
+        oversized.extend_from_slice(&oversized_payload);
+        assert!(parse_kitty_command(&oversized).is_none());
     }
 }
