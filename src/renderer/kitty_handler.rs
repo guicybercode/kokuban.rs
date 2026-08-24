@@ -35,7 +35,10 @@ impl KittyHandlerOptions {
 #[derive(Debug, Clone)]
 pub struct ImagePlacement {
     pub image_id: ImageId,
+    /// Non-zero renderer-local identity. Sixel reserves zero as its source marker.
     pub placement_id: u32,
+    /// Protocol `p=` supplied by the Kitty client, distinct from local identity.
+    pub client_placement_id: Option<u32>,
     pub mode: PlacementMode,
     pub z_index: i32,
 }
@@ -354,7 +357,7 @@ impl KittyHandler {
                 }
             }
             KittyAction::Delete => {
-                self.handle_delete(&cmd, store, placements);
+                Self::handle_delete(&cmd, cell_width, cell_height, placements);
                 return (None, None);
             }
             KittyAction::Frame | KittyAction::Animate | KittyAction::Compose => {
@@ -714,11 +717,8 @@ impl KittyHandler {
         placements: &mut Vec<ImagePlacement>,
     ) -> Option<CursorAdvance> {
         let img = store.get(image_id)?;
-        let placement_id = cmd.placement_id.unwrap_or_else(|| {
-            let id = self.next_placement_id;
-            self.next_placement_id = self.next_placement_id.wrapping_add(1).max(1);
-            id
-        });
+        let placement_id = self.next_placement_id;
+        self.next_placement_id = self.next_placement_id.wrapping_add(1).max(1);
 
         // Calculate display dimensions in cells
         let display_cols = cmd
@@ -759,6 +759,7 @@ impl KittyHandler {
         placements.push(ImagePlacement {
             image_id,
             placement_id,
+            client_placement_id: cmd.placement_id,
             mode: mode.clone(),
             z_index,
         });
@@ -767,56 +768,155 @@ impl KittyHandler {
     }
 
     fn handle_delete(
-        &self,
         cmd: &KittyCommand,
-        _store: &mut ImageStore,
+        cell_width: f32,
+        cell_height: f32,
         placements: &mut Vec<ImagePlacement>,
     ) {
-        let spec = cmd.delete_specifier.unwrap_or(KittyDeleteSpec::All);
+        apply_delete_to_placements(cmd, placements, cell_width, cell_height);
+    }
+}
 
-        match spec {
-            KittyDeleteSpec::All => {
-                placements.clear();
+fn apply_delete_to_placements(
+    cmd: &KittyCommand,
+    placements: &mut Vec<ImagePlacement>,
+    cell_width: f32,
+    cell_height: f32,
+) {
+    let spec = cmd.delete_specifier.unwrap_or(KittyDeleteSpec::All);
+    if requests_image_data_deletion(spec) {
+        // The cache is shared by all panes, while this handler can see only
+        // the current pane's placements. Preserve cached data until image IDs
+        // are namespaced or references are tracked globally.
+        log::warn!("Preserving shared image data for uppercase Kitty delete selector");
+    }
+
+    match spec {
+        KittyDeleteSpec::NoOp => {}
+        KittyDeleteSpec::All | KittyDeleteSpec::AllImages => {
+            remove_matching_kitty_placements(placements, |_| true);
+        }
+        KittyDeleteSpec::ById { id, .. } => {
+            if id == 0 {
+                return;
             }
-            KittyDeleteSpec::ById(id) => {
-                placements.retain(|p| p.image_id != id);
-                // Optionally also remove the placement_id if specified
-                if let Some(pid) = cmd.placement_id {
-                    placements.retain(|p| !(p.image_id == id && p.placement_id == pid));
-                }
-            }
-            KittyDeleteSpec::AllImages => {
-                // Delete all images AND placements
-                placements.clear();
-                // Note: we can't easily iterate and remove all from store here
-                // since we don't have the full list. The store IDs are tracked internally.
-                // For now, just clear placements. Images will be evicted by LRU.
-            }
-            KittyDeleteSpec::ByNumber(num) => {
-                // Delete by image number (I=) — treat as image ID
-                placements.retain(|p| p.image_id != num);
-            }
-            KittyDeleteSpec::AtCursor => {
-                // Delete placements at cursor position - caller would need to provide cursor pos
-                // For simplicity, delete all placements (Yazi sends specific d=i commands)
-            }
-            KittyDeleteSpec::ByColumn(col) => {
-                placements.retain(|p| match &p.mode {
-                    PlacementMode::Inline { col: c, .. } => *c as u32 != col,
-                    _ => true,
-                });
-            }
-            KittyDeleteSpec::ByRow(row) => {
-                placements.retain(|p| match &p.mode {
-                    PlacementMode::Inline { row: r, .. } => *r as u32 != row,
-                    _ => true,
-                });
-            }
-            KittyDeleteSpec::ByZIndex(z) => {
-                placements.retain(|p| p.z_index != z);
-            }
+            let client_placement_id = cmd.placement_id;
+            remove_matching_kitty_placements(placements, |placement| {
+                placement.image_id == id
+                    && client_placement_id
+                        .map(|expected| placement.client_placement_id == Some(expected))
+                        .unwrap_or(true)
+            });
+        }
+        KittyDeleteSpec::ByNumber { number, .. } => {
+            // Image numbers are not image IDs. Until the handler tracks the
+            // number-to-ID mapping, leave unrelated images untouched.
+            log::warn!("Kitty delete by image number {number} is not supported yet");
+        }
+        KittyDeleteSpec::AtCursor { .. } => {
+            // Commands are currently drained after a complete PTY read, so the
+            // available cursor can be newer than this command. Fail closed
+            // until cursor coordinates are captured with each queued command.
+            log::warn!("Kitty delete at cursor requires command-time cursor coordinates");
+        }
+        KittyDeleteSpec::ByColumn { column, .. } => {
+            let Some(column) = column
+                .checked_sub(1)
+                .and_then(|column| usize::try_from(column).ok())
+            else {
+                return;
+            };
+            remove_matching_kitty_placements(placements, |placement| {
+                placement_intersects_column(placement, column, cell_width)
+            });
+        }
+        KittyDeleteSpec::ByRow { row, .. } => {
+            let Some(row) = row.checked_sub(1).and_then(|row| usize::try_from(row).ok()) else {
+                return;
+            };
+            remove_matching_kitty_placements(placements, |placement| {
+                placement_intersects_row(placement, row, cell_height)
+            });
+        }
+        KittyDeleteSpec::ByZIndex { z_index, .. } => {
+            remove_matching_kitty_placements(placements, |placement| placement.z_index == z_index);
         }
     }
+}
+
+fn requests_image_data_deletion(spec: KittyDeleteSpec) -> bool {
+    matches!(
+        spec,
+        KittyDeleteSpec::AllImages
+            | KittyDeleteSpec::ById {
+                delete_data: true,
+                ..
+            }
+            | KittyDeleteSpec::ByNumber {
+                delete_data: true,
+                ..
+            }
+            | KittyDeleteSpec::AtCursor { delete_data: true }
+            | KittyDeleteSpec::ByColumn {
+                delete_data: true,
+                ..
+            }
+            | KittyDeleteSpec::ByRow {
+                delete_data: true,
+                ..
+            }
+            | KittyDeleteSpec::ByZIndex {
+                delete_data: true,
+                ..
+            }
+    )
+}
+
+fn remove_matching_kitty_placements(
+    placements: &mut Vec<ImagePlacement>,
+    mut matches: impl FnMut(&ImagePlacement) -> bool,
+) {
+    // Sixel placements use the reserved placement ID zero. Kitty placements
+    // are always assigned non-zero IDs, including when the client sends p=0.
+    placements.retain(|placement| placement.placement_id == 0 || !matches(placement));
+}
+
+fn placement_intersects_column(placement: &ImagePlacement, column: usize, cell_width: f32) -> bool {
+    match &placement.mode {
+        PlacementMode::Inline { col, cols, .. } => integer_span_contains(*col, *cols, column),
+        PlacementMode::Overlay { x, width, .. } => {
+            pixel_span_intersects(*x, *width, column as f32 * cell_width, cell_width)
+        }
+    }
+}
+
+fn placement_intersects_row(placement: &ImagePlacement, row: usize, cell_height: f32) -> bool {
+    match &placement.mode {
+        PlacementMode::Inline {
+            row: placement_row,
+            rows,
+            ..
+        } => integer_span_contains(*placement_row, *rows, row),
+        PlacementMode::Overlay { y, height, .. } => {
+            pixel_span_intersects(*y, *height, row as f32 * cell_height, cell_height)
+        }
+    }
+}
+
+fn integer_span_contains(start: usize, length: u32, target: usize) -> bool {
+    let length = usize::try_from(length).unwrap_or(usize::MAX);
+    start <= target && target < start.saturating_add(length)
+}
+
+fn pixel_span_intersects(start: f32, length: f32, target_start: f32, target_length: f32) -> bool {
+    start.is_finite()
+        && length.is_finite()
+        && target_start.is_finite()
+        && target_length.is_finite()
+        && length > 0.0
+        && target_length > 0.0
+        && start < target_start + target_length
+        && target_start < start + length
 }
 
 /// How much to advance the cursor after placing an inline image.
@@ -1369,15 +1469,17 @@ fn file_load_error_response(image_id: ImageId, quiet: u8, error: FileLoadError) 
 #[cfg(test)]
 mod tests {
     use super::{
-        append_bounded, decompression_error_response, file_load_error_response,
-        inline_placement_and_advance, is_safe_read_path, is_safe_temp_delete_path, load_file_data,
-        maybe_decompress_with_limit, normalized_path_entry, path_is_within_roots,
-        read_regular_file, ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
-        DecompressionError, FileLoadError, KittyHandler, KittyHandlerOptions, PlacementMode,
-        TempFileDeletion, DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
+        append_bounded, apply_delete_to_placements, decompression_error_response,
+        file_load_error_response, inline_placement_and_advance, is_safe_read_path,
+        is_safe_temp_delete_path, load_file_data, maybe_decompress_with_limit,
+        normalized_path_entry, path_is_within_roots, read_regular_file, ChunkAssembler,
+        ChunkAssemblyErrorKind, CompletedImage, DecompressionError, FileLoadError, ImagePlacement,
+        KittyHandler, KittyHandlerOptions, PlacementMode, TempFileDeletion,
+        DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
     };
     use crate::parser::kitty_graphics::{
-        KittyAction, KittyCommand, KittyCompression, KittyFormat, KittyTransmission,
+        KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
+        KittyTransmission,
     };
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
@@ -1438,6 +1540,58 @@ mod tests {
             width: Some(1),
             height: Some(1),
             payload: payload.to_vec(),
+            ..KittyCommand::default()
+        }
+    }
+
+    fn inline_image(
+        image_id: u32,
+        placement_id: u32,
+        row: usize,
+        col: usize,
+        rows: u32,
+        cols: u32,
+    ) -> ImagePlacement {
+        ImagePlacement {
+            image_id,
+            placement_id,
+            client_placement_id: (placement_id != 0).then_some(placement_id),
+            mode: PlacementMode::Inline {
+                row,
+                col,
+                cols,
+                rows,
+            },
+            z_index: 0,
+        }
+    }
+
+    fn overlay_image(
+        image_id: u32,
+        placement_id: u32,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    ) -> ImagePlacement {
+        ImagePlacement {
+            image_id,
+            placement_id,
+            client_placement_id: (placement_id != 0).then_some(placement_id),
+            mode: PlacementMode::Overlay {
+                x,
+                y,
+                width,
+                height,
+            },
+            z_index: 0,
+        }
+    }
+
+    fn delete_command(specifier: KittyDeleteSpec) -> KittyCommand {
+        KittyCommand {
+            action: KittyAction::Delete,
+            delete_specifier: Some(specifier),
             ..KittyCommand::default()
         }
     }
@@ -2164,6 +2318,185 @@ mod tests {
         );
         assert_eq!(image.image_id, 73);
         assert!(image.place_after.is_some());
+    }
+
+    #[test]
+    fn delete_by_id_honors_the_optional_placement_id() {
+        let mut placements = vec![
+            inline_image(7, 1, 0, 0, 1, 1),
+            inline_image(7, 2, 1, 1, 1, 1),
+            inline_image(8, 1, 2, 2, 1, 1),
+        ];
+        let mut cmd = delete_command(KittyDeleteSpec::ById {
+            id: 7,
+            delete_data: false,
+        });
+        cmd.placement_id = Some(1);
+
+        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+
+        assert_eq!(
+            placements
+                .iter()
+                .map(|placement| (placement.image_id, placement.placement_id))
+                .collect::<Vec<_>>(),
+            vec![(7, 2), (8, 1)]
+        );
+    }
+
+    #[test]
+    fn client_placement_ids_never_match_synthetic_local_ids() {
+        let mut implicit = inline_image(19, 1, 0, 0, 1, 1);
+        implicit.client_placement_id = None;
+        let mut explicit = inline_image(19, 2, 1, 1, 1, 1);
+        explicit.client_placement_id = Some(1);
+        let mut placements = vec![implicit, explicit];
+        let mut cmd = delete_command(KittyDeleteSpec::ById {
+            id: 19,
+            delete_data: false,
+        });
+        cmd.placement_id = Some(1);
+
+        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+
+        assert_eq!(placements.len(), 1);
+        assert_eq!(placements[0].placement_id, 1);
+        assert!(placements[0].client_placement_id.is_none());
+    }
+
+    #[test]
+    fn uppercase_id_delete_uses_the_same_safe_placement_filter() {
+        let mut placements = vec![
+            inline_image(7, 1, 0, 0, 1, 1),
+            inline_image(7, 2, 1, 1, 1, 1),
+        ];
+        let mut cmd = delete_command(KittyDeleteSpec::ById {
+            id: 7,
+            delete_data: true,
+        });
+        cmd.placement_id = Some(1);
+
+        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        assert_eq!(placements.len(), 1);
+        assert_eq!(placements[0].placement_id, 2);
+
+        cmd.placement_id = Some(2);
+        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        assert!(placements.is_empty());
+    }
+
+    #[test]
+    fn missing_ids_and_image_numbers_never_alias_stored_image_ids() {
+        let original = vec![inline_image(7, 1, 0, 0, 1, 1)];
+
+        for specifier in [
+            KittyDeleteSpec::ById {
+                id: 0,
+                delete_data: true,
+            },
+            KittyDeleteSpec::ByNumber {
+                number: 7,
+                delete_data: true,
+            },
+        ] {
+            let mut placements = original.clone();
+            let cmd = delete_command(specifier);
+            apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+            assert_eq!(placements.len(), 1);
+            assert_eq!(placements[0].image_id, 7);
+        }
+    }
+
+    #[test]
+    fn column_and_row_deletes_use_one_based_intersection_coordinates() {
+        let mut columns = vec![
+            inline_image(1, 1, 0, 0, 2, 2),
+            inline_image(2, 1, 0, 2, 1, 1),
+            overlay_image(3, 1, 15.0, 0.0, 2.0, 5.0),
+            overlay_image(4, 1, 20.0, 0.0, 5.0, 5.0),
+        ];
+        let cmd = delete_command(KittyDeleteSpec::ByColumn {
+            column: 2,
+            delete_data: true,
+        });
+        apply_delete_to_placements(&cmd, &mut columns, 10.0, 20.0);
+        assert_eq!(
+            columns
+                .iter()
+                .map(|placement| placement.image_id)
+                .collect::<Vec<_>>(),
+            vec![2, 4]
+        );
+
+        let mut rows = vec![
+            inline_image(5, 1, 0, 0, 2, 1),
+            inline_image(6, 1, 2, 0, 1, 1),
+            overlay_image(7, 1, 0.0, 30.0, 5.0, 2.0),
+            overlay_image(8, 1, 0.0, 40.0, 5.0, 5.0),
+        ];
+        let cmd = delete_command(KittyDeleteSpec::ByRow {
+            row: 2,
+            delete_data: true,
+        });
+        apply_delete_to_placements(&cmd, &mut rows, 10.0, 20.0);
+        assert_eq!(
+            rows.iter()
+                .map(|placement| placement.image_id)
+                .collect::<Vec<_>>(),
+            vec![6, 8]
+        );
+    }
+
+    #[test]
+    fn cursor_delete_fails_closed_without_command_time_coordinates() {
+        let mut placements = vec![
+            inline_image(9, 1, 0, 0, 2, 2),
+            overlay_image(10, 1, 15.0, 25.0, 2.0, 2.0),
+            inline_image(11, 1, 2, 2, 1, 1),
+        ];
+        let cmd = delete_command(KittyDeleteSpec::AtCursor { delete_data: true });
+
+        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        assert_eq!(
+            placements
+                .iter()
+                .map(|placement| placement.image_id)
+                .collect::<Vec<_>>(),
+            vec![9, 10, 11]
+        );
+    }
+
+    #[test]
+    fn all_delete_variants_preserve_sixel_placements() {
+        for specifier in [KittyDeleteSpec::All, KittyDeleteSpec::AllImages] {
+            let mut placements = vec![
+                inline_image(12, 1, 0, 0, 1, 1),
+                inline_image(12, 0, 0, 0, 1, 1),
+            ];
+            let cmd = delete_command(specifier);
+
+            apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+
+            assert_eq!(placements.len(), 1);
+            assert_eq!(placements[0].placement_id, 0);
+        }
+    }
+
+    #[test]
+    fn selective_kitty_deletes_preserve_sixel_placements_with_the_same_id() {
+        let mut placements = vec![
+            inline_image(15, 1, 0, 0, 1, 1),
+            inline_image(15, 0, 0, 0, 1, 1),
+        ];
+        let cmd = delete_command(KittyDeleteSpec::ById {
+            id: 15,
+            delete_data: false,
+        });
+
+        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+
+        assert_eq!(placements.len(), 1);
+        assert_eq!(placements[0].placement_id, 0);
     }
 
     #[test]
