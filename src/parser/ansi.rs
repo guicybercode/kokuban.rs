@@ -481,9 +481,20 @@ impl Parser {
         if i < data.len() && data[i] == b'q' {
             // This is a Sixel image
             let sixel_data = &data[i + 1..]; // Everything after 'q'
-            match sixel::decode_sixel(sixel_data) {
+            if !grid.has_sixel_queue_slot() {
+                log::warn!("Discarding Sixel image: pending image count limit reached");
+                return;
+            }
+            let remaining_bytes = grid.remaining_sixel_bytes();
+            if remaining_bytes == 0 {
+                log::warn!("Discarding Sixel image: pending image budget exhausted");
+                return;
+            }
+            match sixel::decode_sixel_with_byte_limit(sixel_data, remaining_bytes) {
                 Ok(image) => {
-                    grid.pending_sixel_images.push(image);
+                    if !grid.queue_sixel_image(image) {
+                        log::warn!("Discarding Sixel image: pending image budget exceeded");
+                    }
                 }
                 Err(e) => {
                     log::warn!("Failed to decode Sixel image: {e}");
@@ -955,6 +966,7 @@ mod tests {
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::Grid;
+    use crate::parser::sixel::MAX_RGBA_BYTES;
     use crate::parser::State;
     use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 
@@ -964,6 +976,24 @@ mod tests {
 
     fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
         Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
+    }
+
+    #[test]
+    fn applies_remaining_queue_budget_before_decoding_sixel() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let raster = b"\x1bPq\"1;1;4;4\x1b\\";
+
+        grid.set_pending_sixel_bytes_for_test(MAX_RGBA_BYTES - 63);
+        parser.feed(raster, &mut grid);
+        assert!(grid.drain_sixel_images().is_empty());
+
+        grid.set_pending_sixel_bytes_for_test(MAX_RGBA_BYTES - 64);
+        parser.feed(raster, &mut grid);
+        let images = grid.drain_sixel_images();
+        assert_eq!(images.len(), 1);
+        assert_eq!((images[0].width, images[0].height), (4, 4));
+        assert_eq!(images[0].pixels.len(), 64);
     }
 
     fn feed_st_string(
