@@ -422,7 +422,9 @@ impl Grid {
         }
         self.using_alt_screen = false;
         self.cursor_row = self.alt_cursor.0.min(self.rows().saturating_sub(1));
-        self.cursor_col = self.alt_cursor.1.min(self.cols().saturating_sub(1));
+        // `cols` is a valid transient position: it means the next printable
+        // character must wrap before being written.
+        self.cursor_col = self.alt_cursor.1.min(self.cols());
         self.scroll_top = 0;
         self.scroll_bottom = self.rows().saturating_sub(1);
         // Clear all image placements when leaving alt screen
@@ -515,7 +517,8 @@ impl Grid {
 
     pub fn restore_cursor(&mut self) {
         self.cursor_row = self.saved_cursor_row.min(self.rows().saturating_sub(1));
-        self.cursor_col = self.saved_cursor_col.min(self.cols().saturating_sub(1));
+        // Preserve the pending-wrap sentinel at `cursor_col == cols`.
+        self.cursor_col = self.saved_cursor_col.min(self.cols());
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
@@ -578,6 +581,37 @@ mod tests {
         assert_eq!((grid.cursor_row, grid.cursor_col), (2, 3));
         grid.put_char('x');
         assert_eq!(grid.buffer.cell(2, 3).c, 'x');
+    }
+
+    #[test]
+    fn save_restore_preserves_pending_wrap() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.put_char('a');
+        grid.put_char('b');
+        assert_eq!(grid.cursor_col, grid.cols());
+        grid.save_cursor();
+        grid.set_cursor_pos(0, 0);
+
+        grid.restore_cursor();
+        grid.put_char('c');
+
+        assert_eq!(grid.buffer.cell(0, 1).c, 'b');
+        assert_eq!(grid.buffer.cell(1, 0).c, 'c');
+    }
+
+    #[test]
+    fn alt_screen_round_trip_preserves_pending_wrap() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.put_char('a');
+        grid.put_char('b');
+        assert_eq!(grid.cursor_col, grid.cols());
+
+        grid.enter_alt_screen();
+        grid.leave_alt_screen();
+        grid.put_char('c');
+
+        assert_eq!(grid.buffer.cell(0, 1).c, 'b');
+        assert_eq!(grid.buffer.cell(1, 0).c, 'c');
     }
 
     #[test]
