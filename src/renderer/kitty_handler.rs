@@ -1,4 +1,4 @@
-use super::image_store::{ImageFormat, ImageId, ImageStore};
+use super::image_store::{probe_image_data, ImageFormat, ImageId, ImageStore};
 use crate::parser::kitty_graphics::*;
 use nix::libc;
 use std::borrow::Cow;
@@ -298,7 +298,7 @@ impl KittyHandler {
 
         match cmd.action {
             KittyAction::Query => {
-                return self.handle_query(&cmd, store);
+                return self.handle_query(&cmd);
             }
             KittyAction::Transmit | KittyAction::TransmitAndPlace => {
                 let will_place = cmd.action == KittyAction::TransmitAndPlace;
@@ -364,11 +364,7 @@ impl KittyHandler {
         }
     }
 
-    fn handle_query(
-        &self,
-        cmd: &KittyCommand,
-        store: &mut ImageStore,
-    ) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
+    fn handle_query(&self, cmd: &KittyCommand) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
         let image_id = cmd.image_id.unwrap_or(0);
         // For queries, we try to process the tiny test image and respond OK
         if !cmd.payload.is_empty() || cmd.transmission != KittyTransmission::Direct {
@@ -417,22 +413,16 @@ impl KittyHandler {
                     );
                 }
             };
-            match store.store(data.as_ref(), w, h, format, Some(image_id)) {
-                Some(id) => {
-                    // Remove the test image immediately
-                    store.remove(id);
-                }
-                None => {
-                    let response = if cmd.quiet < 2 {
-                        Some(
-                            format!("\x1b_Gi={image_id};ENOMEM:failed to store query image\x1b\\")
-                                .into_bytes(),
-                        )
-                    } else {
-                        None
-                    };
-                    return (response, None);
-                }
+            if !probe_image_data(data.as_ref(), w, h, format, self.options.max_image_bytes) {
+                let response = if cmd.quiet < 2 {
+                    Some(
+                        format!("\x1b_Gi={image_id};ENOMEM:failed to load query image\x1b\\")
+                            .into_bytes(),
+                    )
+                } else {
+                    None
+                };
+                return (response, None);
             }
         }
         let resp = if cmd.quiet < 1 {
@@ -1356,6 +1346,24 @@ mod tests {
             max_image_bytes,
             allow_file_transfer,
         }
+    }
+
+    #[test]
+    fn direct_query_validates_without_an_image_store() {
+        let handler = KittyHandler::new(file_options(64, true));
+        let cmd = KittyCommand {
+            action: KittyAction::Query,
+            image_id: Some(17),
+            width: Some(1),
+            height: Some(1),
+            payload: vec![255, 0, 0, 255],
+            ..KittyCommand::default()
+        };
+
+        let (response, advance) = handler.handle_query(&cmd);
+
+        assert_eq!(response, Some(b"\x1b_Gi=17;OK\x1b\\".to_vec()));
+        assert!(advance.is_none());
     }
 
     fn chunk(data: &[u8], more_chunks: bool, image_id: Option<u32>) -> KittyCommand {

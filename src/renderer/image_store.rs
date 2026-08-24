@@ -210,6 +210,17 @@ impl ImageStore {
     }
 }
 
+/// Decode image data for a capability query without touching the cache or GPU.
+pub(super) fn probe_image_data(
+    data: &[u8],
+    width: u32,
+    height: u32,
+    format: ImageFormat,
+    max_bytes: usize,
+) -> bool {
+    prepare_image(data, width, height, format, max_bytes).is_some()
+}
+
 fn prepare_image(
     data: &[u8],
     width: u32,
