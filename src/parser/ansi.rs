@@ -452,7 +452,7 @@ impl Parser {
         // Check if this is a Kitty graphics command (starts with 'G')
         if data.first() == Some(&b'G') {
             if let Some(cmd) = kitty_graphics::parse_kitty_command(&data[1..]) {
-                grid.pending_kitty_commands.push(cmd);
+                grid.queue_kitty_command(cmd);
             }
         } else {
             log::trace!("Unknown APC sequence, first byte: {:?}", data.first());
@@ -534,7 +534,7 @@ impl Parser {
                         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(192);
                         let resp = format!("\x1b]10;rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
                             r, r, g, g, b, b);
-                        grid.pending_responses.push(resp.into_bytes());
+                        grid.queue_response(resp.into_bytes());
                     }
                 }
                 "11" => {
@@ -546,7 +546,7 @@ impl Parser {
                         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(46);
                         let resp = format!("\x1b]11;rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
                             r, r, g, g, b, b);
-                        grid.pending_responses.push(resp.into_bytes());
+                        grid.queue_response(resp.into_bytes());
                     }
                 }
                 "133" => {
@@ -605,7 +605,7 @@ impl Parser {
 
             // XTVERSION (CSI > q)
             b'q' if has_gt => {
-                grid.pending_responses.push(b"\x1bP>|Kokuban 0.1.0\x1b\\".to_vec());
+                grid.queue_response(b"\x1bP>|Kokuban 0.1.0\x1b\\".to_vec());
             }
 
             b'm' => self.handle_sgr(grid),
@@ -695,7 +695,7 @@ impl Parser {
                 if ps == 6 {
                     // Cursor position report
                     let resp = format!("\x1b[{};{}R", grid.cursor_row + 1, grid.cursor_col + 1);
-                    grid.pending_responses.push(resp.into_bytes());
+                    grid.queue_response(resp.into_bytes());
                 }
             }
 
@@ -703,10 +703,10 @@ impl Parser {
             b'c' => {
                 if has_gt {
                     // DA2
-                    grid.pending_responses.push(b"\x1b[>1;0;0c".to_vec());
+                    grid.queue_response(b"\x1b[>1;0;0c".to_vec());
                 } else if params.is_empty() || params.first().copied().unwrap_or(0) == 0 {
                     // DA1 (62=VT220, 4=Sixel, 22=color)
-                    grid.pending_responses.push(b"\x1b[?62;4;22c".to_vec());
+                    grid.queue_response(b"\x1b[?62;4;22c".to_vec());
                 }
             }
 
@@ -719,14 +719,14 @@ impl Parser {
                         let h = grid.rows() as u16 * grid.cell_pixel_height;
                         let w = grid.cols() as u16 * grid.cell_pixel_width;
                         let resp = format!("\x1b[4;{h};{w}t");
-                        grid.pending_responses.push(resp.into_bytes());
+                        grid.queue_response(resp.into_bytes());
                     }
                     16 => {
                         // Report cell size in pixels
                         let ch = grid.cell_pixel_height;
                         let cw = grid.cell_pixel_width;
                         let resp = format!("\x1b[6;{ch};{cw}t");
-                        grid.pending_responses.push(resp.into_bytes());
+                        grid.queue_response(resp.into_bytes());
                     }
                     _ => {}
                 }
@@ -965,7 +965,8 @@ mod tests {
         ControlStringLimits, Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
-    use crate::grid::Grid;
+    use crate::grid::{Grid, TerminalEvent};
+    use crate::parser::kitty_graphics::{KittyAction, KittyCommand};
     use crate::parser::sixel::MAX_RGBA_BYTES;
     use crate::parser::State;
     use crate::input::keyboard::{encode_terminal_key, TerminalKey};
@@ -976,6 +977,16 @@ mod tests {
 
     fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
         Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
+    }
+
+    fn drain_kitty_commands(grid: &mut Grid) -> Vec<KittyCommand> {
+        grid.drain_terminal_events()
+            .into_iter()
+            .filter_map(|event| match event {
+                TerminalEvent::KittyGraphics { command, .. } => Some(command),
+                TerminalEvent::Response(_) => None,
+            })
+            .collect()
     }
 
     #[test]
@@ -1218,7 +1229,7 @@ mod tests {
         let mut grid = grid();
 
         feed_st_string(&mut parser, &mut grid, b"\x1b_", kitty);
-        let commands = grid.drain_kitty_commands();
+        let commands = drain_kitty_commands(&mut grid);
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].image_id, Some(9));
         assert_eq!(commands[0].payload, vec![0; 4]);
@@ -1226,8 +1237,51 @@ mod tests {
         parser.feed(b"\x1b_", &mut grid);
         parser.feed(kitty, &mut grid);
         parser.feed(b"x\x1b\\", &mut grid);
-        assert!(grid.drain_kitty_commands().is_empty());
+        assert!(drain_kitty_commands(&mut grid).is_empty());
         assert_eq!(parser.parser.apc_data.capacity(), 0);
+    }
+
+    #[test]
+    fn preserves_terminal_event_order_and_kitty_cursor_snapshots() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let stream = b"\x1b[2;3H\x1b[6n\x1b_Ga=d,d=c\x1b\\\x1b[3;4H\x1b_Ga=q,f=32,s=1,v=1,i=7;AAAAAA==\x1b\\\x1b[>c\x1b[4;5H";
+
+        parser.feed(stream, &mut grid);
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (3, 4));
+        let events = grid.drain_terminal_events();
+        assert_eq!(events.len(), 4);
+        assert!(matches!(
+            &events[0],
+            TerminalEvent::Response(response) if response == b"\x1b[2;3R"
+        ));
+        match &events[1] {
+            TerminalEvent::KittyGraphics {
+                command,
+                cursor_row,
+                cursor_col,
+            } => {
+                assert_eq!(command.action, KittyAction::Delete);
+                assert_eq!((*cursor_row, *cursor_col), (1, 2));
+            }
+            TerminalEvent::Response(_) => panic!("expected a Kitty delete event"),
+        }
+        match &events[2] {
+            TerminalEvent::KittyGraphics {
+                command,
+                cursor_row,
+                cursor_col,
+            } => {
+                assert_eq!(command.action, KittyAction::Query);
+                assert_eq!((*cursor_row, *cursor_col), (2, 3));
+            }
+            TerminalEvent::Response(_) => panic!("expected a Kitty query event"),
+        }
+        assert!(matches!(
+            &events[3],
+            TerminalEvent::Response(response) if response == b"\x1b[>1;0;0c"
+        ));
     }
 
     #[test]
@@ -1259,7 +1313,7 @@ mod tests {
         parser.feed(b"\x1b\\", &mut grid);
 
         assert!(grid.title.is_empty());
-        let commands = grid.drain_kitty_commands();
+        let commands = drain_kitty_commands(&mut grid);
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].image_id, Some(7));
         assert!(parser.parser.active_control_string.is_none());

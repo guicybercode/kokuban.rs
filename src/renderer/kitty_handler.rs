@@ -357,7 +357,14 @@ impl KittyHandler {
                 }
             }
             KittyAction::Delete => {
-                Self::handle_delete(&cmd, cell_width, cell_height, placements);
+                Self::handle_delete(
+                    &cmd,
+                    cursor_row,
+                    cursor_col,
+                    cell_width,
+                    cell_height,
+                    placements,
+                );
                 return (None, None);
             }
             KittyAction::Frame | KittyAction::Animate | KittyAction::Compose => {
@@ -769,17 +776,28 @@ impl KittyHandler {
 
     fn handle_delete(
         cmd: &KittyCommand,
+        cursor_row: usize,
+        cursor_col: usize,
         cell_width: f32,
         cell_height: f32,
         placements: &mut Vec<ImagePlacement>,
     ) {
-        apply_delete_to_placements(cmd, placements, cell_width, cell_height);
+        apply_delete_to_placements(
+            cmd,
+            placements,
+            cursor_row,
+            cursor_col,
+            cell_width,
+            cell_height,
+        );
     }
 }
 
 fn apply_delete_to_placements(
     cmd: &KittyCommand,
     placements: &mut Vec<ImagePlacement>,
+    cursor_row: usize,
+    cursor_col: usize,
     cell_width: f32,
     cell_height: f32,
 ) {
@@ -814,10 +832,15 @@ fn apply_delete_to_placements(
             log::warn!("Kitty delete by image number {number} is not supported yet");
         }
         KittyDeleteSpec::AtCursor { .. } => {
-            // Commands are currently drained after a complete PTY read, so the
-            // available cursor can be newer than this command. Fail closed
-            // until cursor coordinates are captured with each queued command.
-            log::warn!("Kitty delete at cursor requires command-time cursor coordinates");
+            remove_matching_kitty_placements(placements, |placement| {
+                placement_intersects_cell(
+                    placement,
+                    cursor_row,
+                    cursor_col,
+                    cell_width,
+                    cell_height,
+                )
+            });
         }
         KittyDeleteSpec::ByColumn { column, .. } => {
             let Some(column) = column
@@ -879,6 +902,17 @@ fn remove_matching_kitty_placements(
     // Sixel placements use the reserved placement ID zero. Kitty placements
     // are always assigned non-zero IDs, including when the client sends p=0.
     placements.retain(|placement| placement.placement_id == 0 || !matches(placement));
+}
+
+fn placement_intersects_cell(
+    placement: &ImagePlacement,
+    row: usize,
+    column: usize,
+    cell_width: f32,
+    cell_height: f32,
+) -> bool {
+    placement_intersects_column(placement, column, cell_width)
+        && placement_intersects_row(placement, row, cell_height)
 }
 
 fn placement_intersects_column(placement: &ImagePlacement, column: usize, cell_width: f32) -> bool {
@@ -2333,7 +2367,7 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
         assert_eq!(
             placements
@@ -2357,7 +2391,7 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 1);
@@ -2376,12 +2410,12 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 2);
 
         cmd.placement_id = Some(2);
-        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
         assert!(placements.is_empty());
     }
 
@@ -2401,7 +2435,7 @@ mod tests {
         ] {
             let mut placements = original.clone();
             let cmd = delete_command(specifier);
-            apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
             assert_eq!(placements.len(), 1);
             assert_eq!(placements[0].image_id, 7);
         }
@@ -2419,7 +2453,7 @@ mod tests {
             column: 2,
             delete_data: true,
         });
-        apply_delete_to_placements(&cmd, &mut columns, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut columns, 0, 0, 10.0, 20.0);
         assert_eq!(
             columns
                 .iter()
@@ -2438,7 +2472,7 @@ mod tests {
             row: 2,
             delete_data: true,
         });
-        apply_delete_to_placements(&cmd, &mut rows, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut rows, 0, 0, 10.0, 20.0);
         assert_eq!(
             rows.iter()
                 .map(|placement| placement.image_id)
@@ -2448,7 +2482,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_delete_fails_closed_without_command_time_coordinates() {
+    fn cursor_delete_uses_command_time_coordinates() {
         let mut placements = vec![
             inline_image(9, 1, 0, 0, 2, 2),
             overlay_image(10, 1, 15.0, 25.0, 2.0, 2.0),
@@ -2456,13 +2490,13 @@ mod tests {
         ];
         let cmd = delete_command(KittyDeleteSpec::AtCursor { delete_data: true });
 
-        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut placements, 1, 1, 10.0, 20.0);
         assert_eq!(
             placements
                 .iter()
                 .map(|placement| placement.image_id)
                 .collect::<Vec<_>>(),
-            vec![9, 10, 11]
+            vec![11]
         );
     }
 
@@ -2475,7 +2509,7 @@ mod tests {
             ];
             let cmd = delete_command(specifier);
 
-            apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
             assert_eq!(placements.len(), 1);
             assert_eq!(placements[0].placement_id, 0);
@@ -2493,7 +2527,7 @@ mod tests {
             delete_data: false,
         });
 
-        apply_delete_to_placements(&cmd, &mut placements, 10.0, 20.0);
+        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 0);

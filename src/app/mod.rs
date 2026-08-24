@@ -3,6 +3,7 @@ pub mod selection;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
+use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::pane::layout::PixelRect;
 use crate::pane::PaneTree;
@@ -241,35 +242,39 @@ pub fn launch(config: Config) {
                                 }
                                 Ok(n) => {
                                     pane.parser.feed(&buf[..n], &mut pane.grid);
-                                    // Drain and send any query responses back to PTY
-                                    let responses = pane.grid.drain_responses();
-                                    for resp in responses {
-                                        pane.pty.write_all(&resp).ok();
-                                    }
-
-                                    // Process Kitty graphics commands
-                                    if kitty_enabled || images_enabled {
-                                        let kitty_cmds = pane.grid.drain_kitty_commands();
-                                        if !kitty_cmds.is_empty() {
-                                            let mut store = reader_image_store.lock().unwrap();
-                                            for cmd in kitty_cmds {
-                                                let cursor_row = pane.grid.cursor_row;
-                                                let cursor_col = pane.grid.cursor_col;
+                                    let terminal_events = pane.grid.drain_terminal_events();
+                                    for event in terminal_events {
+                                        match event {
+                                            TerminalEvent::Response(response) => {
+                                                pane.pty.write_all(&response).ok();
+                                            }
+                                            TerminalEvent::KittyGraphics {
+                                                command,
+                                                cursor_row,
+                                                cursor_col,
+                                            } => {
+                                                if !(kitty_enabled || images_enabled) {
+                                                    continue;
+                                                }
                                                 let grid_cols = pane.grid.cols();
                                                 let grid_rows = pane.grid.rows();
-                                                let (resp, advance) = pane.kitty_handler.process(
-                                                    cmd,
-                                                    &mut store,
-                                                    cursor_row,
-                                                    cursor_col,
-                                                    cell_w,
-                                                    cell_h,
-                                                    grid_cols,
-                                                    grid_rows,
-                                                    &mut pane.grid.image_placements,
-                                                );
-                                                if let Some(resp) = resp {
-                                                    pane.pty.write_all(&resp).ok();
+                                                let (response, advance) = {
+                                                    let mut store =
+                                                        reader_image_store.lock().unwrap();
+                                                    pane.kitty_handler.process(
+                                                        command,
+                                                        &mut store,
+                                                        cursor_row,
+                                                        cursor_col,
+                                                        cell_w,
+                                                        cell_h,
+                                                        grid_cols,
+                                                        grid_rows,
+                                                        &mut pane.grid.image_placements,
+                                                    )
+                                                };
+                                                if let Some(response) = response {
+                                                    pane.pty.write_all(&response).ok();
                                                 }
                                                 // Advance cursor for inline images
                                                 if let Some(adv) = advance {

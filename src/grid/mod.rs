@@ -14,6 +14,16 @@ use crate::renderer::kitty_handler::ImagePlacement;
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
 
+#[derive(Debug)]
+pub(crate) enum TerminalEvent {
+    Response(Vec<u8>),
+    KittyGraphics {
+        command: KittyCommand,
+        cursor_row: usize,
+        cursor_col: usize,
+    },
+}
+
 const DEFAULT_CELL: Cell = Cell {
     c: ' ',
     fg: Color::Default,
@@ -117,13 +127,11 @@ pub struct Grid {
     // Prompt marks
     pub marks: MarkIndex,
     pub total_lines_pushed: usize,
-    // Pending responses to write back to PTY
-    pub pending_responses: Vec<Vec<u8>>,
+    // Ordered protocol events to process after parsing this PTY read.
+    pending_terminal_events: Vec<TerminalEvent>,
     // Colors for query responses
     pub default_fg_hex: String,
     pub default_bg_hex: String,
-    // Image protocol pending commands
-    pub pending_kitty_commands: Vec<KittyCommand>,
     pending_sixel_images: Vec<SixelImage>,
     pending_sixel_bytes: usize,
     // Active image placements for this grid
@@ -172,10 +180,9 @@ impl Grid {
             cwd: String::new(),
             marks: MarkIndex::default(),
             total_lines_pushed: 0,
-            pending_responses: Vec::new(),
+            pending_terminal_events: Vec::new(),
             default_fg_hex: String::new(),
             default_bg_hex: String::new(),
-            pending_kitty_commands: Vec::new(),
             pending_sixel_images: Vec::new(),
             pending_sixel_bytes: 0,
             image_placements: Vec::new(),
@@ -209,12 +216,20 @@ impl Grid {
         }
     }
 
-    pub fn drain_responses(&mut self) -> Vec<Vec<u8>> {
-        std::mem::take(&mut self.pending_responses)
+    pub(crate) fn queue_response(&mut self, response: Vec<u8>) {
+        self.pending_terminal_events.push(TerminalEvent::Response(response));
     }
 
-    pub fn drain_kitty_commands(&mut self) -> Vec<KittyCommand> {
-        std::mem::take(&mut self.pending_kitty_commands)
+    pub(crate) fn queue_kitty_command(&mut self, command: KittyCommand) {
+        self.pending_terminal_events.push(TerminalEvent::KittyGraphics {
+            command,
+            cursor_row: self.cursor_row,
+            cursor_col: self.cursor_col,
+        });
+    }
+
+    pub(crate) fn drain_terminal_events(&mut self) -> Vec<TerminalEvent> {
+        std::mem::take(&mut self.pending_terminal_events)
     }
 
     pub fn drain_sixel_images(&mut self) -> Vec<SixelImage> {
