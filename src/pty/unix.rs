@@ -10,11 +10,13 @@ use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub struct Pty {
     master: Option<OwnedFd>,
     pub child_pid: nix::unistd::Pid,
+    output_lock: Mutex<()>,
 }
 
 impl Pty {
@@ -122,6 +124,7 @@ impl Pty {
                 Ok(Self {
                     master: Some(master),
                     child_pid: child,
+                    output_lock: Mutex::new(()),
                 })
             }
             Err(e) => Err(PtyError::Fork(e.to_string())),
@@ -164,19 +167,9 @@ impl Pty {
     }
 
     pub fn write_all(&self, data: &[u8]) -> std::io::Result<()> {
-        let mut written = 0;
-        while written < data.len() {
-            match nix::unistd::write(self.master(), &data[written..]) {
-                Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero)),
-                Ok(n) => written += n,
-                Err(nix::Error::EINTR) => continue,
-                Err(nix::Error::EAGAIN) => {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-                Err(e) => return Err(std::io::Error::other(e)),
-            }
-        }
-        Ok(())
+        write_all_with(&self.output_lock, data, |remaining| {
+            nix::unistd::write(self.master(), remaining)
+        })
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
@@ -197,6 +190,31 @@ impl Pty {
     fn master(&self) -> &OwnedFd {
         self.master.as_ref().expect("PTY master is available")
     }
+}
+
+fn write_all_with<W>(output_lock: &Mutex<()>, data: &[u8], mut write_once: W) -> std::io::Result<()>
+where
+    W: FnMut(&[u8]) -> nix::Result<usize>,
+{
+    // Poisoning cannot invalidate the protected unit value. Recovering keeps
+    // terminal output usable after an unrelated panic in a writer thread.
+    let _guard = match output_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let mut written = 0;
+    while written < data.len() {
+        match write_once(&data[written..]) {
+            Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero)),
+            Ok(n) => written += n,
+            Err(nix::Error::EINTR) => continue,
+            Err(nix::Error::EAGAIN) => {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err(e) => return Err(std::io::Error::other(e)),
+        }
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -572,7 +590,7 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 mod tests {
     use super::{
         child_environment, classify_readable_events, poll_timeout_for, select_shell, set_cloexec,
-        wait_readable_with, Pty, ReadPollResult,
+        wait_readable_with, write_all_with, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -582,6 +600,8 @@ mod tests {
     use std::ffi::{CString, OsString};
     use std::os::fd::AsRawFd;
     use std::path::Path;
+    use std::sync::{mpsc, Arc, Barrier, Mutex, TryLockError};
+    use std::thread;
     use std::time::{Duration, Instant};
 
     fn test_environment() -> Vec<CString> {
@@ -633,6 +653,101 @@ mod tests {
     #[test]
     fn pty_can_be_shared_with_a_reader_thread() {
         assert_send_sync::<Pty>();
+    }
+
+    #[test]
+    fn serializes_partial_and_retried_output_as_one_logical_write() {
+        let output_lock = Mutex::new(());
+        let mut outcomes = [
+            Ok(1),
+            Err(nix::errno::Errno::EINTR),
+            Err(nix::errno::Errno::EAGAIN),
+            Ok(2),
+        ]
+        .into_iter();
+        let mut remaining_slices = Vec::new();
+
+        write_all_with(&output_lock, b"abc", |remaining| {
+            assert!(matches!(
+                output_lock.try_lock(),
+                Err(TryLockError::WouldBlock)
+            ));
+            remaining_slices.push(remaining.to_vec());
+            outcomes
+                .next()
+                .expect("scripted write should have a result")
+        })
+        .unwrap();
+
+        assert_eq!(remaining_slices, [b"abc".as_slice(), b"bc", b"bc", b"bc"]);
+        assert!(output_lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn concurrent_logical_writes_do_not_interleave() {
+        const FIRST_WRITE_ATTEMPTS: usize = 64;
+
+        let output_lock = Arc::new(Mutex::new(()));
+        let attempts = Arc::new(Mutex::new(Vec::new()));
+        let second_start = Arc::new(Barrier::new(2));
+        let (first_entered_tx, first_entered_rx) = mpsc::sync_channel(0);
+        let (release_first_tx, release_first_rx) = mpsc::sync_channel(0);
+        let (second_ready_tx, second_ready_rx) = mpsc::sync_channel(0);
+        let (second_entered_tx, second_entered_rx) = mpsc::sync_channel(1);
+
+        let first_lock = output_lock.clone();
+        let first_attempts = attempts.clone();
+        let first = thread::spawn(move || {
+            let mut is_first_attempt = true;
+            write_all_with(&first_lock, &[b'a'; FIRST_WRITE_ATTEMPTS], |_| {
+                first_attempts.lock().unwrap().push(b'a');
+                if is_first_attempt {
+                    is_first_attempt = false;
+                    first_entered_tx.send(()).unwrap();
+                    release_first_rx.recv().unwrap();
+                }
+                thread::yield_now();
+                Ok(1)
+            })
+            .unwrap();
+        });
+
+        first_entered_rx.recv().unwrap();
+
+        let second_lock = output_lock.clone();
+        let second_attempts = attempts.clone();
+        let second_barrier = second_start.clone();
+        let second = thread::spawn(move || {
+            second_ready_tx.send(()).unwrap();
+            second_barrier.wait();
+            write_all_with(&second_lock, b"b", |_| {
+                second_attempts.lock().unwrap().push(b'b');
+                second_entered_tx.send(()).unwrap();
+                Ok(1)
+            })
+            .unwrap();
+        });
+
+        second_ready_rx.recv().unwrap();
+        second_start.wait();
+        assert!(matches!(
+            second_entered_rx.recv_timeout(Duration::from_millis(250)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        release_first_tx.send(()).unwrap();
+        first.join().unwrap();
+        second_entered_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        second.join().unwrap();
+
+        let attempts = attempts.lock().unwrap();
+        assert_eq!(attempts.len(), FIRST_WRITE_ATTEMPTS + 1);
+        assert!(attempts[..FIRST_WRITE_ATTEMPTS]
+            .iter()
+            .all(|attempt| *attempt == b'a'));
+        assert_eq!(attempts[FIRST_WRITE_ATTEMPTS], b'b');
     }
 
     #[test]
