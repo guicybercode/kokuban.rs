@@ -1,14 +1,15 @@
 use crate::grid::Grid;
 use crate::layout::{PaneId, PixelRect};
-use crate::parser::ansi::{GraphicsSupport, Utf8Parser};
+use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 use crate::selection::SelectionState;
+use crate::terminal_decoder::TerminalDecoder;
 
 pub struct Pane {
     pub id: PaneId,
     pub pty: Pty,
-    pub parser: Utf8Parser,
+    pub decoder: TerminalDecoder,
     pub grid: Grid,
     pub selection: SelectionState,
     pub rect: PixelRect,
@@ -29,7 +30,7 @@ impl Pane {
         Ok(Self {
             id,
             pty,
-            parser: Utf8Parser::with_graphics_support(graphics_support),
+            decoder: TerminalDecoder::new(graphics_support),
             grid,
             selection: SelectionState::default(),
             rect: PixelRect::ZERO,

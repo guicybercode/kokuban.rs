@@ -17,6 +17,8 @@ mod selection;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod software_raster;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
+mod terminal_decoder;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
 #[cfg(target_os = "macos")]
 mod renderer;
