@@ -1,5 +1,7 @@
 use super::image_store::{probe_image_data, ImageFormat, ImageStore};
-use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
+use crate::graphics::{
+    placement_cell_count, ImageId, ImagePlacement, InlineRenderSize, PlacementMode,
+};
 use crate::parser::kitty_graphics::*;
 use nix::libc;
 use std::borrow::Cow;
@@ -738,6 +740,12 @@ impl KittyHandler {
 
         let z_index = cmd.z_index.unwrap_or(0);
         let cursor_movement = cmd.cursor_movement.unwrap_or(0);
+        let render_size = InlineRenderSize::for_kitty_request(
+            cmd.columns,
+            cmd.rows,
+            img.width,
+            img.height,
+        );
 
         let (mode, advance) = inline_placement_and_advance(
             cursor_row,
@@ -745,8 +753,8 @@ impl KittyHandler {
             display_cols,
             display_rows,
             (x_offset, y_offset),
-            grid_cols,
-            grid_rows,
+            render_size,
+            (grid_cols, grid_rows),
         );
         let cursor_advance = cursor_advance_for_policy(cursor_movement, advance);
 
@@ -965,9 +973,10 @@ fn inline_placement_and_advance(
     display_cols: u32,
     display_rows: u32,
     pixel_offsets: (u32, u32),
-    grid_cols: usize,
-    grid_rows: usize,
+    render_size: InlineRenderSize,
+    grid_size: (usize, usize),
 ) -> (PlacementMode, CursorAdvance) {
+    let (grid_cols, grid_rows) = grid_size;
     let (cols, rows) = bounded_inline_dimensions(display_cols, display_rows, grid_cols, grid_rows);
     (
         PlacementMode::Inline {
@@ -977,6 +986,7 @@ fn inline_placement_and_advance(
             rows,
             x_offset: pixel_offsets.0,
             y_offset: pixel_offsets.1,
+            render_size,
         },
         CursorAdvance {
             rows: rows as usize,
@@ -1113,24 +1123,6 @@ fn valid_cell_offset(offset: u32, cell_extent: f32) -> bool {
     cell_extent.is_finite()
         && cell_extent > 0.0
         && f64::from(offset) < f64::from(cell_extent)
-}
-
-fn placement_cell_count(
-    requested_cells: Option<u32>,
-    image_extent: u32,
-    pixel_offset: u32,
-    cell_extent: f32,
-) -> u32 {
-    // Kitty treats an omitted or zero c/r as automatic. Only automatic sizes
-    // include X/Y when determining how many cells the placement occupies.
-    if let Some(cells) = requested_cells.filter(|cells| *cells != 0) {
-        return cells;
-    }
-
-    let occupied_pixels = f64::from(image_extent) + f64::from(pixel_offset);
-    (occupied_pixels / f64::from(cell_extent))
-        .ceil()
-        .clamp(1.0, f64::from(u32::MAX)) as u32
 }
 
 fn placement_offsets(
@@ -1552,13 +1544,13 @@ mod tests {
         cursor_advance_for_policy, file_load_error_response, inline_placement_and_advance,
         is_safe_read_path, is_safe_temp_delete_path, load_file_data,
         maybe_decompress_with_limit, normalized_path_entry, path_is_within_roots,
-        placement_cell_count, placement_error_response, placement_offsets,
-        read_regular_file, ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
+        placement_error_response, placement_offsets, read_regular_file,
+        ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
         DecompressionError, FileLoadError, KittyHandler, KittyHandlerOptions,
         PlacementError, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES,
         MAX_PENDING_IMAGE_BYTES,
     };
-    use crate::graphics::{ImagePlacement, PlacementMode};
+    use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
         KittyTransmission,
@@ -1645,6 +1637,7 @@ mod tests {
                 rows,
                 x_offset: 0,
                 y_offset: 0,
+                render_size: InlineRenderSize::CellAnchored,
             },
             z_index: 0,
         }
@@ -1835,15 +1828,6 @@ mod tests {
             );
         }
         assert_eq!(placement_offsets(&command, 0.5, 0.5), Ok((0, 0)));
-    }
-
-    #[test]
-    fn automatic_placement_cells_include_offsets_without_expanding_explicit_sizes() {
-        assert_eq!(placement_cell_count(None, 10, 9, 10.0), 2);
-        assert_eq!(placement_cell_count(Some(0), 10, 9, 10.0), 2);
-        assert_eq!(placement_cell_count(None, 20, 19, 20.0), 2);
-        assert_eq!(placement_cell_count(Some(1), 10, 9, 10.0), 1);
-        assert_eq!(placement_cell_count(None, 11, 0, 10.0), 2);
     }
 
     #[test]
@@ -2655,6 +2639,45 @@ mod tests {
     }
 
     #[test]
+    fn native_delete_hit_tests_follow_pixels_after_cell_shrink() {
+        let mut native = inline_image(22, 1, 0, 0, 2, 2);
+        let PlacementMode::Inline {
+            x_offset,
+            render_size,
+            ..
+        } = &mut native.mode;
+        *x_offset = 9;
+        *render_size = InlineRenderSize::NativePixels {
+            width: 10,
+            height: 20,
+        };
+
+        let explicit = {
+            let mut placement = inline_image(23, 1, 0, 0, 2, 2);
+            let PlacementMode::Inline { x_offset, .. } = &mut placement.mode;
+            *x_offset = 9;
+            placement
+        };
+        let mut placements = vec![native, explicit];
+        let third_column_delete = delete_command(KittyDeleteSpec::ByColumn {
+            column: 3,
+            delete_data: false,
+        });
+
+        apply_delete_to_placements(
+            &third_column_delete,
+            &mut placements,
+            0,
+            0,
+            8.0,
+            16.0,
+        );
+
+        assert_eq!(placements.len(), 1);
+        assert_eq!(placements[0].image_id, 23);
+    }
+
+    #[test]
     fn cursor_delete_uses_command_time_coordinates() {
         let mut placements = vec![
             inline_image(9, 1, 0, 0, 2, 2),
@@ -2713,8 +2736,8 @@ mod tests {
             u32::MAX,
             u32::MAX,
             (3, 5),
-            80,
-            24,
+            InlineRenderSize::CellAnchored,
+            (80, 24),
         );
 
         let PlacementMode::Inline {
@@ -2724,15 +2747,23 @@ mod tests {
             rows,
             x_offset,
             y_offset,
+            render_size,
         } = mode;
         assert_eq!(
-            (row, col, cols, rows, x_offset, y_offset),
-            (3, 7, 80, 24, 3, 5)
+            (row, col, cols, rows, x_offset, y_offset, render_size),
+            (3, 7, 80, 24, 3, 5, InlineRenderSize::CellAnchored)
         );
         assert_eq!((advance.cols, advance.rows), (80, 24));
 
-        let (mode, advance) =
-            inline_placement_and_advance(0, 0, 10, 5, (0, 0), 80, 24);
+        let (mode, advance) = inline_placement_and_advance(
+            0,
+            0,
+            10,
+            5,
+            (0, 0),
+            InlineRenderSize::CellAnchored,
+            (80, 24),
+        );
         assert!(matches!(
             mode,
             PlacementMode::Inline {
@@ -2746,8 +2777,15 @@ mod tests {
 
     #[test]
     fn c1_keeps_inline_geometry_and_only_suppresses_cursor_advance() {
-        let (mode, advance) =
-            inline_placement_and_advance(3, 7, 4, 2, (9, 19), 80, 24);
+        let (mode, advance) = inline_placement_and_advance(
+            3,
+            7,
+            4,
+            2,
+            (9, 19),
+            InlineRenderSize::CellAnchored,
+            (80, 24),
+        );
 
         assert!(matches!(&mode, PlacementMode::Inline { .. }));
         assert_eq!(mode.pixel_rect(10.0, 20.0), (79.0, 79.0, 31.0, 21.0));
