@@ -70,6 +70,7 @@ pub(crate) fn draw_glyph_a8(
 }
 
 /// Fill a clipped rectangle in a softbuffer frame (`0x00RRGGBB`).
+#[allow(dead_code)]
 pub(crate) fn fill_rect(
     frame: &mut [u32],
     frame_size: (u32, u32),
