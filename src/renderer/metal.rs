@@ -6,7 +6,7 @@ use super::image_store::ImageStore;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::app::selection::SelectionState;
-use crate::graphics::{ImageId, PlacementMode};
+use crate::graphics::ImageId;
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::{CursorShape, Grid};
 use crate::pane::layout::{DividerInfo, PixelRect, DIVIDER_THICKNESS};
@@ -697,18 +697,10 @@ impl MetalRenderer {
                         continue;
                     }
 
-                    let (x0, y0, w, h) = match &placement.mode {
-                        PlacementMode::Inline { row, col, cols, rows } => {
-                            let x = rect.x + *col as f32 * cell_w;
-                            let y = rect.y + *row as f32 * cell_h;
-                            let w = *cols as f32 * cell_w;
-                            let h = *rows as f32 * cell_h;
-                            (x, y, w, h)
-                        }
-                        PlacementMode::Overlay { x, y, width, height } => {
-                            (rect.x + x, rect.y + y, *width, *height)
-                        }
-                    };
+                    let (placement_x, placement_y, w, h) =
+                        placement.mode.pixel_rect(cell_w, cell_h);
+                    let x0 = rect.x + placement_x;
+                    let y0 = rect.y + placement_y;
 
                     // Clip to pane bounds
                     if y0 + h <= rect.y || y0 >= rect.y + grid_height {

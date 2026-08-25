@@ -329,6 +329,8 @@ pub fn launch(config: Config) {
                                                             col: pane.grid.cursor_col,
                                                             cols: display_cols,
                                                             rows: display_rows,
+                                                            x_offset: 0,
+                                                            y_offset: 0,
                                                         },
                                                         z_index: 0,
                                                     },
