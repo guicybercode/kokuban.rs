@@ -211,7 +211,7 @@ where
             Err(nix::Error::EAGAIN) => {
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
-            Err(e) => return Err(std::io::Error::other(e)),
+            Err(e) => return Err(e.into()),
         }
     }
     Ok(())
@@ -681,6 +681,16 @@ mod tests {
 
         assert_eq!(remaining_slices, [b"abc".as_slice(), b"bc", b"bc", b"bc"]);
         assert!(output_lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn preserves_native_write_errors() {
+        let output_lock = Mutex::new(());
+
+        let error = write_all_with(&output_lock, b"x", |_| Err(nix::errno::Errno::EPIPE))
+            .expect_err("terminal write should preserve the native error");
+
+        assert_eq!(error.raw_os_error(), Some(libc::EPIPE));
     }
 
     #[test]
