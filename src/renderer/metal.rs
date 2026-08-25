@@ -5,7 +5,7 @@ use super::image_store::ImageStore;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::graphics::ImageId;
-use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
+use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
@@ -34,6 +34,25 @@ const ANSI_COLORS: [(u8, u8, u8); 16] = [
     (41, 184, 219),   // 14 Bright Cyan
     (229, 229, 229),  // 15 Bright White
 ];
+
+fn white_pixel_uv(atlas_width: u32, atlas_height: u32) -> (f32, f32) {
+    (0.5 / atlas_width as f32, 0.5 / atlas_height as f32)
+}
+
+fn glyph_uv_bounds(
+    atlas_width: u32,
+    atlas_height: u32,
+    glyph: &GlyphEntry,
+) -> (f32, f32, f32, f32) {
+    let width = atlas_width as f32;
+    let height = atlas_height as f32;
+    (
+        glyph.atlas_x as f32 / width,
+        glyph.atlas_y as f32 / height,
+        (glyph.atlas_x + glyph.pixel_w) as f32 / width,
+        (glyph.atlas_y + glyph.pixel_h) as f32 / height,
+    )
+}
 
 pub struct MetalRenderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
@@ -242,8 +261,7 @@ impl MetalRenderer {
         let rect = pane.rect;
         let cell_w = atlas.cell_width;
         let cell_h = atlas.cell_height;
-        let white_u = atlas.white_uv.0;
-        let white_v = atlas.white_uv.1;
+        let (white_u, white_v) = white_pixel_uv(atlas.width, atlas.height);
         let grid_height = rect.height - status_bar_height;
         let line_thickness = 1.5;
 
@@ -333,14 +351,12 @@ impl MetalRenderer {
                         let key = GlyphKey { c: cell.c, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
                         let glyph = atlas.get_or_insert(key);
                         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
-                            let gx0 = x0 + glyph.bearing_x;
-                            let gy0 = y0 + atlas.ascent + glyph.bearing_y;
+                            let gx0 = x0 + glyph.bearing_x as f32;
+                            let gy0 = y0 + atlas.ascent + glyph.bearing_y as f32;
                             let gx1 = gx0 + glyph.pixel_w as f32;
                             let gy1 = gy0 + glyph.pixel_h as f32;
-                            let u0 = glyph.uv_x;
-                            let v0 = glyph.uv_y;
-                            let u1 = glyph.uv_x + glyph.uv_w;
-                            let v1 = glyph.uv_y + glyph.uv_h;
+                            let (u0, v0, u1, v1) =
+                                glyph_uv_bounds(atlas.width, atlas.height, &glyph);
                             vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
                             vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
                             vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
@@ -454,8 +470,7 @@ impl MetalRenderer {
     ) {
         let rect = pane.rect;
         let bar_y = rect.y + rect.height - status_bar_height;
-        let white_u = atlas.white_uv.0;
-        let white_v = atlas.white_uv.1;
+        let (white_u, white_v) = white_pixel_uv(atlas.width, atlas.height);
 
         // Status bar background
         let bg = Self::pack_color(chrome.sumi_dark.0, chrome.sumi_dark.1, chrome.sumi_dark.2, 255);
@@ -539,15 +554,13 @@ impl MetalRenderer {
         let cell_w = atlas.cell_width;
 
         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
-            let gx0 = x + glyph.bearing_x;
-            let gy0 = y + atlas.ascent + glyph.bearing_y;
+            let gx0 = x + glyph.bearing_x as f32;
+            let gy0 = y + atlas.ascent + glyph.bearing_y as f32;
             let gx1 = gx0 + glyph.pixel_w as f32;
             let gy1 = gy0 + glyph.pixel_h as f32;
 
-            let u0 = glyph.uv_x;
-            let v0 = glyph.uv_y;
-            let u1 = glyph.uv_x + glyph.uv_w;
-            let v1 = glyph.uv_y + glyph.uv_h;
+            let (u0, v0, u1, v1) =
+                glyph_uv_bounds(atlas.width, atlas.height, &glyph);
 
             vertices.push(Vertex::new(gx0, gy0, u0, v0, fg, bg));
             vertices.push(Vertex::new(gx1, gy0, u1, v0, fg, bg));
@@ -865,8 +878,7 @@ impl MetalRenderer {
         let alpha = overlay.opacity;
         let cell_w = atlas.cell_width;
         let cell_h = atlas.cell_height;
-        let white_u = atlas.white_uv.0;
-        let white_v = atlas.white_uv.1;
+        let (white_u, white_v) = white_pixel_uv(atlas.width, atlas.height);
 
         // 1. Dimming overlay — semi-transparent black covering the region
         let dim_alpha = (0.85 * alpha * 255.0) as u8;
@@ -1001,14 +1013,12 @@ impl MetalRenderer {
         let advance = atlas.cell_width * char_width as f32;
 
         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
-            let gx0 = x + glyph.bearing_x;
-            let gy0 = y + atlas.ascent + glyph.bearing_y;
+            let gx0 = x + glyph.bearing_x as f32;
+            let gy0 = y + atlas.ascent + glyph.bearing_y as f32;
             let gx1 = gx0 + glyph.pixel_w as f32;
             let gy1 = gy0 + glyph.pixel_h as f32;
-            let u0 = glyph.uv_x;
-            let v0 = glyph.uv_y;
-            let u1 = glyph.uv_x + glyph.uv_w;
-            let v1 = glyph.uv_y + glyph.uv_h;
+            let (u0, v0, u1, v1) =
+                glyph_uv_bounds(atlas.width, atlas.height, &glyph);
             vertices.push(Vertex::new(gx0, gy0, u0, v0, fg, bg));
             vertices.push(Vertex::new(gx1, gy0, u1, v0, fg, bg));
             vertices.push(Vertex::new(gx0, gy1, u0, v1, fg, bg));
@@ -1018,5 +1028,37 @@ impl MetalRenderer {
         }
 
         x + advance
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{glyph_uv_bounds, white_pixel_uv};
+    use crate::glyph_atlas::GlyphEntry;
+
+    fn assert_close(actual: f32, expected: f32) {
+        assert!((actual - expected).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn converts_integer_atlas_coordinates_to_metal_uvs() {
+        let glyph = GlyphEntry {
+            atlas_x: 20,
+            atlas_y: 20,
+            pixel_w: 50,
+            pixel_h: 20,
+            bearing_x: -2,
+            bearing_y: 3,
+        };
+
+        let (white_u, white_v) = white_pixel_uv(200, 80);
+        assert_close(white_u, 0.0025);
+        assert_close(white_v, 0.00625);
+
+        let (u0, v0, u1, v1) = glyph_uv_bounds(200, 80, &glyph);
+        assert_close(u0, 0.1);
+        assert_close(v0, 0.25);
+        assert_close(u1, 0.35);
+        assert_close(v1, 0.5);
     }
 }
