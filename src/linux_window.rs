@@ -1,9 +1,13 @@
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
+use crate::grid::Grid;
+use crate::pty::Pty;
 use crate::software_raster::draw_glyph_a8;
+use crate::terminal_reader::{ReaderExit, TerminalReader};
 use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::WindowEvent;
@@ -18,6 +22,18 @@ const SCALE_CHANGE_EPSILON: f64 = 0.001;
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
 
 type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
+
+#[derive(Debug)]
+enum LinuxEvent {
+    GridUpdated,
+    ReaderExited(ReaderStatus),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ReaderStatus {
+    Normal,
+    Failed(String),
+}
 
 #[derive(Clone, Copy)]
 struct GlyphSource<'a> {
@@ -34,14 +50,42 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         );
     }
 
-    let event_loop = EventLoop::new()
+    let event_loop = EventLoop::<LinuxEvent>::with_user_event()
+        .build()
         .map_err(|error| format!("could not connect to an X11 or Wayland display: {error}"))?;
     event_loop.set_control_flow(ControlFlow::Wait);
 
+    let columns = config.window.columns.max(1);
+    let rows = config.window.rows.max(1);
     let background = ColorConfig::parse_hex(&config.colors.background);
     let foreground = ColorConfig::parse_hex(&config.colors.foreground);
-    let initial_size = initial_window_dimensions(config.window.columns, config.window.rows);
+    let initial_size = initial_window_dimensions(columns, rows);
     let exit_after_first_frame = std::env::var(EXIT_AFTER_FIRST_FRAME_ENV).as_deref() == Ok("1");
+    let mut grid = Grid::new(
+        usize::from(columns),
+        usize::from(rows),
+        config.window.scrollback_lines,
+    );
+    grid.default_fg_hex = terminal_color_query_value(foreground);
+    grid.default_bg_hex = terminal_color_query_value(background);
+    let grid = Arc::new(Mutex::new(grid));
+    let pty = Arc::new(
+        Pty::spawn(columns, rows, false, false)
+            .map_err(|error| format!("could not start the Linux shell: {error}"))?,
+    );
+    let redraw_pending = Arc::new(AtomicBool::new(false));
+    let event_proxy = event_loop.create_proxy();
+    let update_proxy = event_proxy.clone();
+    let update_pending = redraw_pending.clone();
+    let reader = TerminalReader::spawn_text(
+        pty.clone(),
+        grid.clone(),
+        move || signal_grid_update(&update_proxy, update_pending.as_ref()),
+        move |exit| {
+            let _ = event_proxy.send_event(LinuxEvent::ReaderExited(classify_reader_exit(exit)));
+        },
+    )
+    .map_err(|error| format!("could not start the Linux terminal reader: {error}"))?;
     let mut application = LinuxWindow::new(
         background,
         foreground,
@@ -49,13 +93,20 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         config.font.size,
         initial_size,
         exit_after_first_frame,
+        grid,
+        pty,
+        reader,
+        redraw_pending,
     );
 
-    if let Err(error) = event_loop.run_app(&mut application) {
-        return Err(format!("Linux event loop failed: {error}"));
-    }
+    let run_result = event_loop
+        .run_app(&mut application)
+        .map_err(|error| format!("Linux event loop failed: {error}"));
+    application.request_reader_shutdown();
+    let join_result = application.join_reader();
+    let finish_result = application.finish();
 
-    application.finish()
+    run_result.and(finish_result).and(join_result)
 }
 
 struct LinuxWindow {
@@ -72,6 +123,13 @@ struct LinuxWindow {
     initial_size: LogicalSize<u32>,
     exit_after_first_frame: bool,
     first_frame_presented: bool,
+    #[allow(dead_code)] // The grid becomes the Linux renderer's source in the next step.
+    grid: Arc<Mutex<Grid>>,
+    #[allow(dead_code)] // Kept alive for the reader and upcoming input/resize handling.
+    pty: Arc<Pty>,
+    reader: Option<TerminalReader>,
+    redraw_pending: Arc<AtomicBool>,
+    reader_status: Option<ReaderStatus>,
     error: Option<String>,
 }
 
@@ -83,6 +141,10 @@ impl LinuxWindow {
         font_size: f32,
         initial_size: LogicalSize<u32>,
         exit_after_first_frame: bool,
+        grid: Arc<Mutex<Grid>>,
+        pty: Arc<Pty>,
+        reader: TerminalReader,
+        redraw_pending: Arc<AtomicBool>,
     ) -> Self {
         Self {
             surface: None,
@@ -97,6 +159,11 @@ impl LinuxWindow {
             initial_size,
             exit_after_first_frame,
             first_frame_presented: false,
+            grid,
+            pty,
+            reader: Some(reader),
+            redraw_pending,
+            reader_status: None,
             error: None,
         }
     }
@@ -128,23 +195,17 @@ impl LinuxWindow {
     }
 
     fn create_glyph_atlas(&self, scale_factor: f64) -> Result<GlyphAtlas, String> {
-        GlyphAtlas::new(&self.font_family, self.font_size, scale_factor as f32).map_err(|error| {
-            format!("could not initialize the Linux glyph atlas at scale {scale_factor}: {error}")
-        })
+        create_glyph_atlas(&self.font_family, self.font_size, scale_factor)
     }
 
     fn rebuild_glyph_atlas(&mut self, scale_factor: f64) -> Result<bool, String> {
-        if self
-            .atlas_scale_factor
-            .is_some_and(|current| (current - scale_factor).abs() <= SCALE_CHANGE_EPSILON)
-        {
-            return Ok(false);
-        }
-
-        let replacement = self.create_glyph_atlas(scale_factor)?;
-        self.glyph_atlas = Some(replacement);
-        self.atlas_scale_factor = Some(scale_factor);
-        Ok(true)
+        replace_glyph_atlas_for_scale(
+            &mut self.glyph_atlas,
+            &mut self.atlas_scale_factor,
+            &self.font_family,
+            self.font_size,
+            scale_factor,
+        )
     }
 
     fn present_frame(&mut self) -> Result<Option<bool>, String> {
@@ -194,8 +255,25 @@ impl LinuxWindow {
         event_loop.exit();
     }
 
-    fn finish(self) -> Result<(), String> {
-        if let Some(error) = self.error {
+    fn request_reader_shutdown(&self) {
+        if let Some(reader) = self.reader.as_ref() {
+            reader.request_shutdown();
+        }
+    }
+
+    fn join_reader(&mut self) -> Result<(), String> {
+        let Some(reader) = self.reader.take() else {
+            return Ok(());
+        };
+
+        match reader.shutdown_and_join() {
+            Ok(exit) => reader_status_result(classify_reader_exit(&exit)),
+            Err(_) => Err("Linux terminal reader thread panicked".to_string()),
+        }
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        if let Some(error) = self.error.take() {
             return Err(error);
         }
         if self.exit_after_first_frame && !self.first_frame_presented {
@@ -203,9 +281,23 @@ impl LinuxWindow {
         }
         Ok(())
     }
+
+    fn finish_reader_exit_after_frame(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(status) = self.reader_status.take() else {
+            return;
+        };
+
+        if let ReaderStatus::Failed(error) = status {
+            if self.error.is_none() {
+                self.error = Some(error);
+            }
+        }
+        self.request_reader_shutdown();
+        event_loop.exit();
+    }
 }
 
-impl ApplicationHandler for LinuxWindow {
+impl ApplicationHandler<LinuxEvent> for LinuxWindow {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -226,7 +318,10 @@ impl ApplicationHandler for LinuxWindow {
         }
 
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                self.request_reader_shutdown();
+                event_loop.exit();
+            }
             WindowEvent::Resized(_) => {
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
@@ -245,27 +340,137 @@ impl ApplicationHandler for LinuxWindow {
                     window.request_redraw();
                 }
             }
-            WindowEvent::RedrawRequested => match self.present_frame() {
-                Ok(Some(startup_text_visible)) => {
-                    self.first_frame_presented = true;
-                    if self.exit_after_first_frame {
-                        if startup_text_visible {
-                            event_loop.exit();
-                        } else {
-                            self.fail(
-                                event_loop,
-                                "smoke mode presented a Linux frame without visible glyphs"
-                                    .to_string(),
-                            );
+            WindowEvent::RedrawRequested => {
+                begin_grid_redraw(self.redraw_pending.as_ref());
+                match self.present_frame() {
+                    Ok(Some(startup_text_visible)) => {
+                        self.first_frame_presented = true;
+                        if self.exit_after_first_frame {
+                            if startup_text_visible {
+                                self.request_reader_shutdown();
+                                event_loop.exit();
+                            } else {
+                                self.fail(
+                                    event_loop,
+                                    "smoke mode presented a Linux frame without visible glyphs"
+                                        .to_string(),
+                                );
+                            }
                         }
                     }
+                    Ok(None) => {}
+                    Err(error) => self.fail(event_loop, error),
                 }
-                Ok(None) => {}
-                Err(error) => self.fail(event_loop, error),
-            },
+                self.finish_reader_exit_after_frame(event_loop);
+            }
             _ => {}
         }
     }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: LinuxEvent) {
+        match event {
+            LinuxEvent::GridUpdated => {
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
+            }
+            LinuxEvent::ReaderExited(status) => {
+                if self.reader_status.is_none() {
+                    self.reader_status = Some(status);
+                }
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
+            }
+        }
+    }
+
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.request_reader_shutdown();
+    }
+}
+
+fn terminal_color_query_value(color: (u8, u8, u8)) -> String {
+    format!("{:02x}{:02x}{:02x}", color.0, color.1, color.2)
+}
+
+fn signal_grid_update(
+    event_proxy: &winit::event_loop::EventLoopProxy<LinuxEvent>,
+    redraw_pending: &AtomicBool,
+) {
+    if arm_grid_redraw(redraw_pending) && event_proxy.send_event(LinuxEvent::GridUpdated).is_err() {
+        redraw_pending.store(false, Ordering::Release);
+    }
+}
+
+fn arm_grid_redraw(redraw_pending: &AtomicBool) -> bool {
+    redraw_pending
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn begin_grid_redraw(redraw_pending: &AtomicBool) {
+    redraw_pending.store(false, Ordering::Release);
+}
+
+fn classify_reader_exit(exit: &ReaderExit) -> ReaderStatus {
+    match exit {
+        ReaderExit::Shutdown | ReaderExit::Eof => ReaderStatus::Normal,
+        ReaderExit::WaitFailed(error) => ReaderStatus::Failed(format!(
+            "terminal reader could not wait for PTY output: {error}"
+        )),
+        ReaderExit::ReadFailed(error) => ReaderStatus::Failed(format!(
+            "terminal reader could not read PTY output: {error}"
+        )),
+        ReaderExit::ResponseWriteFailed(error) => ReaderStatus::Failed(format!(
+            "terminal reader could not write a protocol response: {error}"
+        )),
+        ReaderExit::GridPoisoned => {
+            ReaderStatus::Failed("terminal reader lost access to the terminal grid".to_string())
+        }
+        ReaderExit::DecoderStalled => {
+            ReaderStatus::Failed("terminal decoder stopped making progress".to_string())
+        }
+        ReaderExit::UnexpectedProtocolEvent => ReaderStatus::Failed(
+            "terminal reader received a graphics event in text-only mode".to_string(),
+        ),
+    }
+}
+
+fn reader_status_result(status: ReaderStatus) -> Result<(), String> {
+    match status {
+        ReaderStatus::Normal => Ok(()),
+        ReaderStatus::Failed(error) => Err(error),
+    }
+}
+
+fn create_glyph_atlas(
+    font_family: &str,
+    font_size: f32,
+    scale_factor: f64,
+) -> Result<GlyphAtlas, String> {
+    GlyphAtlas::new(font_family, font_size, scale_factor as f32).map_err(|error| {
+        format!("could not initialize the Linux glyph atlas at scale {scale_factor}: {error}")
+    })
+}
+
+fn replace_glyph_atlas_for_scale(
+    glyph_atlas: &mut Option<GlyphAtlas>,
+    atlas_scale_factor: &mut Option<f64>,
+    font_family: &str,
+    font_size: f32,
+    scale_factor: f64,
+) -> Result<bool, String> {
+    if atlas_scale_factor
+        .is_some_and(|current| (current - scale_factor).abs() <= SCALE_CHANGE_EPSILON)
+    {
+        return Ok(false);
+    }
+
+    let replacement = create_glyph_atlas(font_family, font_size, scale_factor)?;
+    *glyph_atlas = Some(replacement);
+    *atlas_scale_factor = Some(scale_factor);
+    Ok(true)
 }
 
 fn initial_window_dimensions(columns: u16, rows: u16) -> LogicalSize<u32> {
@@ -374,16 +579,25 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::{
-        draw_cell_glyph, drawable_dimensions, initial_window_dimensions, rgb_to_xrgb, rounded_i32,
-        LinuxWindow,
+        arm_grid_redraw, begin_grid_redraw, classify_reader_exit, draw_cell_glyph,
+        drawable_dimensions, initial_window_dimensions, replace_glyph_atlas_for_scale, rgb_to_xrgb,
+        rounded_i32, terminal_color_query_value, ReaderStatus,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
+    use crate::terminal_reader::ReaderExit;
+    use std::io;
+    use std::sync::atomic::AtomicBool;
     use winit::dpi::PhysicalSize;
 
     #[test]
     fn converts_rgb_to_softbuffer_xrgb() {
         assert_eq!(rgb_to_xrgb(0x1a, 0x2b, 0x3c), 0x001a_2b3c);
         assert_eq!(rgb_to_xrgb(0xff, 0xff, 0xff) >> 24, 0);
+    }
+
+    #[test]
+    fn terminal_query_colors_are_canonical_six_digit_hex() {
+        assert_eq!(terminal_color_query_value((0, 10, 255)), "000aff");
     }
 
     #[test]
@@ -458,32 +672,93 @@ mod tests {
 
     #[test]
     fn failed_scale_rebuild_preserves_the_previous_atlas() {
-        let mut application = LinuxWindow::new(
-            (0x1a, 0x1a, 0x2e),
-            (0xc0, 0xc0, 0xc0),
-            "kokuban-test-font-that-does-not-exist".to_string(),
-            14.0,
-            initial_window_dimensions(80, 24),
-            false,
-        );
-        let atlas = GlyphAtlas::new(&application.font_family, application.font_size, 1.0)
+        let font_family = "kokuban-test-font-that-does-not-exist";
+        let font_size = 14.0;
+        let atlas = GlyphAtlas::new(font_family, font_size, 1.0)
             .expect("system monospace fallback should be available");
         let original_cell_width = atlas.cell_width;
         let original_glyph_count = atlas.glyphs.len();
-        application.glyph_atlas = Some(atlas);
-        application.atlas_scale_factor = Some(1.0);
+        let mut glyph_atlas = Some(atlas);
+        let mut atlas_scale_factor = Some(1.0);
 
-        assert!(application.rebuild_glyph_atlas(f64::NAN).is_err());
+        assert!(replace_glyph_atlas_for_scale(
+            &mut glyph_atlas,
+            &mut atlas_scale_factor,
+            font_family,
+            font_size,
+            f64::NAN,
+        )
+        .is_err());
 
-        let preserved = application
-            .glyph_atlas
+        let preserved = glyph_atlas
             .as_ref()
             .expect("failed replacement must keep the old atlas");
-        assert_eq!(application.atlas_scale_factor, Some(1.0));
+        assert_eq!(atlas_scale_factor, Some(1.0));
         assert_eq!(preserved.cell_width, original_cell_width);
         assert_eq!(preserved.glyphs.len(), original_glyph_count);
-        assert!(!application
-            .rebuild_glyph_atlas(1.0)
-            .expect("duplicate scale should be a no-op"));
+        assert!(!replace_glyph_atlas_for_scale(
+            &mut glyph_atlas,
+            &mut atlas_scale_factor,
+            font_family,
+            font_size,
+            1.0,
+        )
+        .expect("duplicate scale should be a no-op"));
+    }
+
+    #[test]
+    fn shutdown_and_eof_are_normal_reader_exits() {
+        assert_eq!(
+            classify_reader_exit(&ReaderExit::Shutdown),
+            ReaderStatus::Normal
+        );
+        assert_eq!(classify_reader_exit(&ReaderExit::Eof), ReaderStatus::Normal);
+    }
+
+    #[test]
+    fn reader_failures_include_actionable_context() {
+        let failures = [
+            (
+                ReaderExit::WaitFailed(io::Error::from_raw_os_error(5)),
+                "wait for PTY output",
+            ),
+            (
+                ReaderExit::ReadFailed(io::Error::from_raw_os_error(5)),
+                "read PTY output",
+            ),
+            (
+                ReaderExit::ResponseWriteFailed(io::Error::from_raw_os_error(32)),
+                "write a protocol response",
+            ),
+            (ReaderExit::GridPoisoned, "terminal grid"),
+            (ReaderExit::DecoderStalled, "stopped making progress"),
+            (
+                ReaderExit::UnexpectedProtocolEvent,
+                "graphics event in text-only mode",
+            ),
+        ];
+
+        for (exit, expected_context) in failures {
+            let ReaderStatus::Failed(message) = classify_reader_exit(&exit) else {
+                panic!("reader failure was classified as a normal exit");
+            };
+            assert!(
+                message.contains(expected_context),
+                "missing `{expected_context}` in `{message}`"
+            );
+        }
+    }
+
+    #[test]
+    fn grid_updates_coalesce_until_redraw_begins_then_rearm() {
+        let redraw_pending = AtomicBool::new(false);
+
+        assert!(arm_grid_redraw(&redraw_pending));
+        assert!(!arm_grid_redraw(&redraw_pending));
+
+        begin_grid_redraw(&redraw_pending);
+
+        assert!(arm_grid_redraw(&redraw_pending));
+        assert!(!arm_grid_redraw(&redraw_pending));
     }
 }
