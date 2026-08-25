@@ -4,6 +4,7 @@ mod config;
 mod graphics;
 mod grid;
 mod input;
+mod layout;
 #[cfg(target_os = "linux")]
 mod linux_window;
 #[cfg(target_os = "macos")]

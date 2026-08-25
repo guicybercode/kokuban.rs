@@ -1,17 +1,14 @@
-pub mod layout;
 pub mod pane;
-pub mod tree;
 
 use crate::graphics::{retain_unreferenced_image_ids, ImageId};
+use crate::layout::{
+    compute_layout, DividerInfo, PaneId, PaneNode, PixelRect, SplitDirection,
+};
 use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
-use layout::{DividerInfo, PixelRect, compute_layout};
 use pane::Pane;
-use tree::{PaneNode, SplitDirection};
 
 use std::collections::{HashMap, HashSet};
-
-pub type PaneId = u64;
 
 const MIN_PANE_COLS: usize = 10;
 const MIN_PANE_ROWS: usize = 3;

@@ -1,10 +1,4 @@
-use super::PaneId;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SplitDirection {
-    Vertical,
-    Horizontal,
-}
+use super::{PaneId, SplitDirection};
 
 pub enum PaneNode {
     Leaf(PaneId),
@@ -19,7 +13,12 @@ pub enum PaneNode {
 impl PaneNode {
     /// Replace the leaf with `target_id` by a split, putting target in the left/top
     /// and `new_id` in the right/bottom.
-    pub fn split_leaf(&mut self, target_id: PaneId, new_id: PaneId, direction: SplitDirection) -> bool {
+    pub fn split_leaf(
+        &mut self,
+        target_id: PaneId,
+        new_id: PaneId,
+        direction: SplitDirection,
+    ) -> bool {
         match self {
             PaneNode::Leaf(id) if *id == target_id => {
                 let old = PaneNode::Leaf(target_id);
@@ -74,10 +73,7 @@ impl PaneNode {
         match self {
             PaneNode::Leaf(_) => false,
             PaneNode::Split {
-                left,
-                right,
-                ratio,
-                ..
+                left, right, ratio, ..
             } => {
                 let left_has = Self::contains(left, target_id);
                 let right_has = Self::contains(right, target_id);
