@@ -8,6 +8,7 @@ mod input;
 mod pane;
 mod parser;
 mod pty;
+mod selection;
 #[cfg(target_os = "macos")]
 mod renderer;
 

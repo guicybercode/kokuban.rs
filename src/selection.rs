@@ -106,3 +106,19 @@ impl SelectionState {
         lines.join("\n")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{GridPoint, SelectionState};
+
+    #[test]
+    fn normalizes_reverse_drag_order() {
+        let mut selection = SelectionState::default();
+        selection.start(GridPoint { row: 4, col: 8 });
+        selection.update(GridPoint { row: 2, col: 3 });
+
+        let (start, end) = selection.normalized().unwrap();
+        assert_eq!((start.row, start.col), (2, 3));
+        assert_eq!((end.row, end.col), (4, 8));
+    }
+}

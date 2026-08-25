@@ -1,5 +1,5 @@
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
-use crate::app::selection::GridPoint;
+use crate::selection::GridPoint;
 use crate::grid::{MouseEncoding, MouseTracking};
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::translate_key_event;
