@@ -26,7 +26,7 @@ impl Pane {
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
     ) -> Result<Self, crate::pty::PtyError> {
-        let pty = Pty::spawn(cols, rows)?;
+        let pty = Pty::spawn(cols, rows, graphics_support.kitty, graphics_support.sixel)?;
         let grid = Grid::new(cols as usize, rows as usize, scrollback_max);
         Ok(Self {
             id,
