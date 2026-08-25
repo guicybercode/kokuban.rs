@@ -21,12 +21,6 @@ pub enum PlacementMode {
         x_offset: u32,
         y_offset: u32,
     },
-    Overlay {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-    },
 }
 
 pub(crate) fn cell_anchored_pixel_extent(
@@ -73,19 +67,13 @@ impl PlacementMode {
                     cell_anchored_pixel_extent(*rows, cell_height, *y_offset),
                 )
             }
-            Self::Overlay {
-                x,
-                y,
-                width,
-                height,
-            } => (*x, *y, *width, *height),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{cell_anchored_pixel_extent, PlacementMode};
+    use super::PlacementMode;
 
     #[test]
     fn inline_pixel_rect_tracks_cell_size_and_preserves_offsets() {
@@ -100,27 +88,6 @@ mod tests {
 
         assert_eq!(placement.pixel_rect(10.0, 20.0), (73.0, 65.0, 37.0, 35.0));
         assert_eq!(placement.pixel_rect(20.0, 30.0), (143.0, 95.0, 77.0, 55.0));
-    }
-
-    #[test]
-    fn cursor_policy_modes_share_cell_anchored_geometry() {
-        let inline = PlacementMode::Inline {
-            row: 3,
-            col: 7,
-            cols: 1,
-            rows: 1,
-            x_offset: 9,
-            y_offset: 19,
-        };
-        let overlay = PlacementMode::Overlay {
-            x: 79.0,
-            y: 79.0,
-            width: cell_anchored_pixel_extent(1, 10.0, 9),
-            height: cell_anchored_pixel_extent(1, 20.0, 19),
-        };
-
-        assert_eq!(inline.pixel_rect(10.0, 20.0), overlay.pixel_rect(10.0, 20.0));
-        assert_eq!(inline.pixel_rect(10.0, 20.0), (79.0, 79.0, 1.0, 1.0));
     }
 
     #[test]
