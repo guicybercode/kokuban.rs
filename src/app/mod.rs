@@ -246,45 +246,55 @@ pub fn launch(config: Config) {
                                     dead_panes.push(id);
                                 }
                                 Ok(n) => {
-                                    pane.parser.feed(&buf[..n], &mut pane.grid);
-                                    let terminal_events = pane.grid.drain_terminal_events();
-                                    for event in terminal_events {
-                                        match event {
-                                            TerminalEvent::Response(response) => {
-                                                pane.pty.write_all(&response).ok();
-                                            }
-                                            TerminalEvent::KittyGraphics {
-                                                command,
-                                                cursor_row,
-                                                cursor_col,
-                                            } => {
-                                                if !kitty_enabled {
-                                                    continue;
-                                                }
-                                                let grid_cols = pane.grid.cols();
-                                                let grid_rows = pane.grid.rows();
-                                                let (response, advance) = {
-                                                    let mut store =
-                                                        reader_image_store.lock().unwrap();
-                                                    pane.kitty_handler.process(
-                                                        command,
-                                                        &mut store,
-                                                        cursor_row,
-                                                        cursor_col,
-                                                        cell_w,
-                                                        cell_h,
-                                                        grid_cols,
-                                                        grid_rows,
-                                                        &mut pane.grid.image_placements,
-                                                    )
-                                                };
-                                                if let Some(response) = response {
+                                    let mut parsed_bytes = 0;
+                                    while parsed_bytes < n {
+                                        let consumed = pane.parser.feed_until_terminal_event(
+                                            &buf[parsed_bytes..n],
+                                            &mut pane.grid,
+                                        );
+                                        debug_assert!(consumed > 0);
+                                        parsed_bytes += consumed;
+
+                                        let terminal_events = pane.grid.drain_terminal_events();
+                                        for event in terminal_events {
+                                            match event {
+                                                TerminalEvent::Response(response) => {
                                                     pane.pty.write_all(&response).ok();
                                                 }
-                                                // Advance cursor for inline images
-                                                if let Some(adv) = advance {
-                                                    for _ in 0..adv.rows {
-                                                        pane.grid.newline();
+                                                TerminalEvent::KittyGraphics {
+                                                    command,
+                                                    cursor_row,
+                                                    cursor_col,
+                                                } => {
+                                                    if !kitty_enabled {
+                                                        continue;
+                                                    }
+                                                    let grid_cols = pane.grid.cols();
+                                                    let grid_rows = pane.grid.rows();
+                                                    let (response, advance) = {
+                                                        let mut store =
+                                                            reader_image_store.lock().unwrap();
+                                                        pane.kitty_handler.process(
+                                                            command,
+                                                            &mut store,
+                                                            cursor_row,
+                                                            cursor_col,
+                                                            cell_w,
+                                                            cell_h,
+                                                            grid_cols,
+                                                            grid_rows,
+                                                            &mut pane.grid.image_placements,
+                                                        )
+                                                    };
+                                                    if let Some(response) = response {
+                                                        pane.pty.write_all(&response).ok();
+                                                    }
+                                                    // Advance cursor for inline images
+                                                    if let Some(adv) = advance {
+                                                        pane.grid.advance_image_cursor(
+                                                            adv.cols,
+                                                            adv.rows,
+                                                        );
                                                     }
                                                 }
                                             }
