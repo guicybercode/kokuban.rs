@@ -7,6 +7,7 @@ use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::pane::layout::PixelRect;
 use crate::pane::PaneTree;
+use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::KittyHandlerOptions;
@@ -42,9 +43,13 @@ pub fn launch(config: Config) {
         config.images.kitty.max_image_size_mb,
         config.images.kitty.allow_file_transfer,
     );
+    let graphics_support = GraphicsSupport {
+        kitty: config.images.kitty_graphics_enabled(),
+        sixel: config.images.sixel_graphics_enabled(),
+    };
 
     let pane_tree = Arc::new(Mutex::new(
-        PaneTree::new(cols, rows, scrollback_max, kitty_options)
+        PaneTree::new(cols, rows, scrollback_max, kitty_options, graphics_support)
             .expect("Failed to create initial pane"),
     ));
 
@@ -80,8 +85,8 @@ pub fn launch(config: Config) {
         device.retain(),
         config.images.max_memory_mb,
     )));
-    let kitty_enabled = config.images.kitty_graphics_enabled();
-    let sixel_enabled = config.images.sixel_graphics_enabled();
+    let kitty_enabled = graphics_support.kitty;
+    let sixel_enabled = graphics_support.sixel;
 
     // Status bar height = 1.5× line height
     let status_bar_height = if config.status_bar.enabled {
