@@ -431,13 +431,48 @@ define_class!(
                     if let Some(window) = self.window() {
                         let new_scale = window.backingScaleFactor() as f32;
                         if (new_scale - state.scale_factor).abs() > 0.01 {
-                            log::info!("Scale factor changed to {new_scale}");
-                            state.scale_factor = new_scale;
-                            state.metal_layer.setContentsScale(new_scale as f64);
-                            let mut atlas = state.atlas.lock().unwrap();
-                            *atlas = GlyphAtlas::new(&state.font_family, state.font_size, new_scale);
-                            drop(atlas);
-                            state.dirty.store(true, Ordering::Relaxed);
+                            match GlyphAtlas::new(
+                                &state.font_family,
+                                state.font_size,
+                                new_scale,
+                            ) {
+                                Ok(replacement) => {
+                                    let cell_w = replacement.cell_width;
+                                    let cell_h = replacement.cell_height;
+                                    let status_bar_height = if state.status_bar_enabled {
+                                        (cell_h * 1.5).ceil()
+                                    } else {
+                                        0.0
+                                    };
+                                    let backing_size =
+                                        self.convertSizeToBacking(self.bounds().size);
+
+                                    log::info!("Scale factor changed to {new_scale}");
+                                    let mut atlas = state.atlas.lock().unwrap();
+                                    let mut tree = state.pane_tree.lock().unwrap();
+                                    *atlas = replacement;
+                                    update_pane_geometry(
+                                        &mut tree,
+                                        cell_w,
+                                        cell_h,
+                                        status_bar_height,
+                                        backing_size,
+                                    );
+                                    drop(tree);
+                                    drop(atlas);
+
+                                    state.scale_factor = new_scale;
+                                    state.status_bar_height = status_bar_height;
+                                    state.metal_layer.setContentsScale(new_scale as f64);
+                                    state.metal_layer.setDrawableSize(backing_size);
+                                    state.dirty.store(true, Ordering::Relaxed);
+                                }
+                                Err(error) => log::error!(
+                                    "Failed to rebuild glyph atlas for scale {new_scale}: {error}; \
+                                     keeping scale {}",
+                                    state.scale_factor
+                                ),
+                            }
                         }
                     }
                 }
@@ -740,34 +775,59 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     if (new_size - state.font_size).abs() < 0.01 {
         return;
     }
-    state.font_size = new_size;
-    log::info!("Font zoom: {new_size}pt");
 
-    // Recreate atlas at new size
+    let drawable_size = state.metal_layer.drawableSize();
     let mut atlas = state.atlas.lock().unwrap();
-    atlas.clear_and_resize(new_size);
+    if let Err(error) = atlas.clear_and_resize(new_size) {
+        log::error!("Failed to resize glyph atlas to {new_size}pt: {error}");
+        return;
+    }
     let cell_w = atlas.cell_width;
     let cell_h = atlas.cell_height;
+    let status_bar_height = if state.status_bar_enabled {
+        (cell_h * 1.5).ceil()
+    } else {
+        0.0
+    };
+    let mut tree = state.pane_tree.lock().unwrap();
+    update_pane_geometry(
+        &mut tree,
+        cell_w,
+        cell_h,
+        status_bar_height,
+        drawable_size,
+    );
+    drop(tree);
     drop(atlas);
 
-    // Recalculate status bar height
-    if state.status_bar_enabled {
-        state.status_bar_height = (cell_h * 1.5).ceil();
+    state.font_size = new_size;
+    state.status_bar_height = status_bar_height;
+    log::info!("Font zoom: {new_size}pt");
+
+    state.dirty.store(true, Ordering::Relaxed);
+}
+
+fn update_pane_geometry(
+    tree: &mut PaneTree,
+    cell_w: f32,
+    cell_h: f32,
+    status_bar_height: f32,
+    drawable_size: NSSize,
+) {
+    for id in tree.pane_ids() {
+        if let Some(pane) = tree.pane_mut(id) {
+            pane.grid.cell_pixel_width = cell_w as u16;
+            pane.grid.cell_pixel_height = cell_h as u16;
+        }
     }
 
-    // Relayout all panes with new cell dimensions
-    let size = state.metal_layer.drawableSize();
     let viewport = PixelRect {
         x: 0.0,
         y: 0.0,
-        width: size.width as f32,
-        height: size.height as f32,
+        width: drawable_size.width as f32,
+        height: drawable_size.height as f32,
     };
-    let mut tree = state.pane_tree.lock().unwrap();
-    tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-    drop(tree);
-
-    state.dirty.store(true, Ordering::Relaxed);
+    tree.relayout(viewport, cell_w, cell_h, status_bar_height);
 }
 
 fn pixel_to_cell(
