@@ -10,8 +10,18 @@ use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, TryLockError};
 use std::time::{Duration, Instant};
+
+const WRITE_RETRY_INTERVAL: Duration = Duration::from_millis(1);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CancellableWriteOutcome {
+    Completed,
+    /// Shutdown was observed; an earlier partial write may already be visible.
+    Cancelled,
+}
 
 pub struct Pty {
     master: Option<OwnedFd>,
@@ -172,6 +182,20 @@ impl Pty {
         })
     }
 
+    pub(crate) fn write_all_cancellable(
+        &self,
+        data: &[u8],
+        cancelled: &AtomicBool,
+    ) -> std::io::Result<CancellableWriteOutcome> {
+        write_all_cancellable_with(
+            &self.output_lock,
+            data,
+            || cancelled.load(Ordering::Acquire),
+            |remaining| nix::unistd::write(self.master(), remaining),
+            || std::thread::sleep(WRITE_RETRY_INTERVAL),
+        )
+    }
+
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
         let win_size = libc::winsize {
             ws_row: rows,
@@ -215,6 +239,54 @@ where
         }
     }
     Ok(())
+}
+
+fn write_all_cancellable_with<C, W, B>(
+    output_lock: &Mutex<()>,
+    data: &[u8],
+    mut is_cancelled: C,
+    mut write_once: W,
+    mut backoff: B,
+) -> std::io::Result<CancellableWriteOutcome>
+where
+    C: FnMut() -> bool,
+    W: FnMut(&[u8]) -> nix::Result<usize>,
+    B: FnMut(),
+{
+    let _guard = loop {
+        if is_cancelled() {
+            return Ok(CancellableWriteOutcome::Cancelled);
+        }
+
+        match output_lock.try_lock() {
+            Ok(guard) => break guard,
+            Err(TryLockError::Poisoned(poisoned)) => break poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) => backoff(),
+        }
+    };
+
+    // Cancellation can race with acquiring the output lock. Re-check while
+    // holding it to avoid a write when shutdown is already observable here.
+    if is_cancelled() {
+        return Ok(CancellableWriteOutcome::Cancelled);
+    }
+
+    let mut written = 0;
+    while written < data.len() {
+        if is_cancelled() {
+            return Ok(CancellableWriteOutcome::Cancelled);
+        }
+
+        match write_once(&data[written..]) {
+            Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero)),
+            Ok(count) => written += count,
+            Err(nix::Error::EINTR) => continue,
+            Err(nix::Error::EAGAIN) => backoff(),
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    Ok(CancellableWriteOutcome::Completed)
 }
 
 #[allow(dead_code)]
@@ -590,7 +662,8 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 mod tests {
     use super::{
         child_environment, classify_readable_events, poll_timeout_for, select_shell, set_cloexec,
-        wait_readable_with, write_all_with, Pty, ReadPollResult,
+        wait_readable_with, write_all_cancellable_with, write_all_with, CancellableWriteOutcome,
+        Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -600,6 +673,7 @@ mod tests {
     use std::ffi::{CString, OsString};
     use std::os::fd::AsRawFd;
     use std::path::Path;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Arc, Barrier, Mutex, TryLockError};
     use std::thread;
     use std::time::{Duration, Instant};
@@ -691,6 +765,173 @@ mod tests {
             .expect_err("terminal write should preserve the native error");
 
         assert_eq!(error.raw_os_error(), Some(libc::EPIPE));
+    }
+
+    #[test]
+    fn cancellable_write_stops_before_and_while_waiting_for_the_lock() {
+        let output_lock = Mutex::new(());
+        let held = output_lock.lock().unwrap();
+        let cancelled = AtomicBool::new(true);
+        let mut write_calls = 0;
+
+        let outcome = write_all_cancellable_with(
+            &output_lock,
+            b"response",
+            || cancelled.load(Ordering::Acquire),
+            |_| {
+                write_calls += 1;
+                Ok(8)
+            },
+            || panic!("an already-cancelled write must not back off"),
+        )
+        .unwrap();
+
+        assert_eq!(outcome, CancellableWriteOutcome::Cancelled);
+        assert_eq!(write_calls, 0);
+
+        cancelled.store(false, Ordering::Release);
+        let backoffs = AtomicUsize::new(0);
+        let outcome = write_all_cancellable_with(
+            &output_lock,
+            b"response",
+            || cancelled.load(Ordering::Acquire),
+            |_| {
+                write_calls += 1;
+                Ok(8)
+            },
+            || {
+                backoffs.fetch_add(1, Ordering::Relaxed);
+                cancelled.store(true, Ordering::Release);
+            },
+        )
+        .unwrap();
+
+        assert_eq!(outcome, CancellableWriteOutcome::Cancelled);
+        assert_eq!(backoffs.load(Ordering::Relaxed), 1);
+        assert_eq!(write_calls, 0);
+        assert!(matches!(
+            output_lock.try_lock(),
+            Err(TryLockError::WouldBlock)
+        ));
+        drop(held);
+    }
+
+    #[test]
+    fn cancellable_write_rechecks_shutdown_after_acquiring_the_lock() {
+        let output_lock = Mutex::new(());
+        let cancellation_checks = AtomicUsize::new(0);
+        let mut write_calls = 0;
+
+        let outcome = write_all_cancellable_with(
+            &output_lock,
+            b"response",
+            || cancellation_checks.fetch_add(1, Ordering::Relaxed) == 1,
+            |_| {
+                write_calls += 1;
+                Ok(8)
+            },
+            || panic!("an uncontended lock must not back off"),
+        )
+        .unwrap();
+
+        assert_eq!(outcome, CancellableWriteOutcome::Cancelled);
+        assert_eq!(cancellation_checks.load(Ordering::Relaxed), 2);
+        assert_eq!(write_calls, 0);
+        assert!(output_lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn cancellable_write_stops_after_partial_output_and_would_block() {
+        let output_lock = Mutex::new(());
+        let cancelled = AtomicBool::new(false);
+        let mut outcomes = [Ok(1), Err(nix::errno::Errno::EAGAIN)].into_iter();
+        let mut remaining_slices = Vec::new();
+        let mut backoffs = 0;
+
+        let outcome = write_all_cancellable_with(
+            &output_lock,
+            b"abc",
+            || cancelled.load(Ordering::Acquire),
+            |remaining| {
+                assert!(matches!(
+                    output_lock.try_lock(),
+                    Err(TryLockError::WouldBlock)
+                ));
+                remaining_slices.push(remaining.to_vec());
+                outcomes
+                    .next()
+                    .expect("cancelled output must not be retried")
+            },
+            || {
+                backoffs += 1;
+                cancelled.store(true, Ordering::Release);
+            },
+        )
+        .unwrap();
+
+        assert_eq!(outcome, CancellableWriteOutcome::Cancelled);
+        assert_eq!(remaining_slices, [b"abc".as_slice(), b"bc"]);
+        assert_eq!(backoffs, 1);
+        assert!(output_lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn cancellable_write_completes_partial_and_retried_output_atomically() {
+        let output_lock = Mutex::new(());
+        let mut outcomes = [
+            Ok(1),
+            Err(nix::errno::Errno::EAGAIN),
+            Err(nix::errno::Errno::EINTR),
+            Ok(2),
+        ]
+        .into_iter();
+        let mut remaining_slices = Vec::new();
+        let mut backoffs = 0;
+
+        let outcome = write_all_cancellable_with(
+            &output_lock,
+            b"abc",
+            || false,
+            |remaining| {
+                assert!(matches!(
+                    output_lock.try_lock(),
+                    Err(TryLockError::WouldBlock)
+                ));
+                remaining_slices.push(remaining.to_vec());
+                outcomes.next().expect("scripted write should complete")
+            },
+            || backoffs += 1,
+        )
+        .unwrap();
+
+        assert_eq!(outcome, CancellableWriteOutcome::Completed);
+        assert_eq!(remaining_slices, [b"abc".as_slice(), b"bc", b"bc", b"bc"]);
+        assert_eq!(backoffs, 1);
+        assert!(output_lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn cancellable_write_retries_interrupts_and_preserves_native_errors() {
+        let output_lock = Mutex::new(());
+        let mut outcomes =
+            [Err(nix::errno::Errno::EINTR), Err(nix::errno::Errno::EPIPE)].into_iter();
+        let mut remaining_slices = Vec::new();
+
+        let error = write_all_cancellable_with(
+            &output_lock,
+            b"response",
+            || false,
+            |remaining| {
+                remaining_slices.push(remaining.to_vec());
+                outcomes.next().expect("scripted write should finish")
+            },
+            || panic!("EINTR and native errors must not back off"),
+        )
+        .expect_err("native PTY write errors must remain observable");
+
+        assert_eq!(remaining_slices, [b"response".as_slice(), b"response"]);
+        assert_eq!(error.raw_os_error(), Some(libc::EPIPE));
+        assert!(output_lock.try_lock().is_ok());
     }
 
     #[test]
