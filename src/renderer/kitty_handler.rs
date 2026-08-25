@@ -1,7 +1,5 @@
 use super::image_store::{probe_image_data, ImageFormat, ImageStore};
-use crate::graphics::{
-    cell_anchored_pixel_extent, ImageId, ImagePlacement, PlacementMode,
-};
+use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 use crate::parser::kitty_graphics::*;
 use nix::libc;
 use std::borrow::Cow;
@@ -741,31 +739,16 @@ impl KittyHandler {
         let z_index = cmd.z_index.unwrap_or(0);
         let cursor_movement = cmd.cursor_movement.unwrap_or(0);
 
-        let (mode, cursor_advance) = if cursor_movement == 1 {
-            // Don't move cursor → overlay mode
-            let x = cursor_col as f32 * cell_width + x_offset as f32;
-            let y = cursor_row as f32 * cell_height + y_offset as f32;
-            (
-                PlacementMode::Overlay {
-                    x,
-                    y,
-                    width: cell_anchored_pixel_extent(display_cols, cell_width, x_offset),
-                    height: cell_anchored_pixel_extent(display_rows, cell_height, y_offset),
-                },
-                None,
-            )
-        } else {
-            let (mode, advance) = inline_placement_and_advance(
-                cursor_row,
-                cursor_col,
-                display_cols,
-                display_rows,
-                (x_offset, y_offset),
-                grid_cols,
-                grid_rows,
-            );
-            (mode, Some(advance))
-        };
+        let (mode, advance) = inline_placement_and_advance(
+            cursor_row,
+            cursor_col,
+            display_cols,
+            display_rows,
+            (x_offset, y_offset),
+            grid_cols,
+            grid_rows,
+        );
+        let cursor_advance = cursor_advance_for_policy(cursor_movement, advance);
 
         placements.push(ImagePlacement {
             image_id,
@@ -951,9 +934,18 @@ fn pixel_span_intersects(start: f32, length: f32, target_start: f32, target_leng
 }
 
 /// How much to advance the cursor after placing an inline image.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorAdvance {
     pub rows: usize,
     pub cols: usize,
+}
+
+fn cursor_advance_for_policy(
+    cursor_movement: u8,
+    advance: CursorAdvance,
+) -> Option<CursorAdvance> {
+    // Kitty C=1 suppresses cursor movement without changing placement geometry.
+    (cursor_movement != 1).then_some(advance)
 }
 
 fn bounded_inline_dimensions(
@@ -1557,12 +1549,13 @@ fn file_load_error_response(image_id: ImageId, quiet: u8, error: FileLoadError) 
 mod tests {
     use super::{
         append_bounded, apply_delete_to_placements, decompression_error_response,
-        file_load_error_response, inline_placement_and_advance, is_safe_read_path,
-        is_safe_temp_delete_path, load_file_data, maybe_decompress_with_limit,
-        normalized_path_entry, path_is_within_roots, placement_cell_count,
-        placement_error_response, placement_offsets, read_regular_file, ChunkAssembler,
-        ChunkAssemblyErrorKind, CompletedImage, DecompressionError, FileLoadError, KittyHandler,
-        KittyHandlerOptions, PlacementError, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES,
+        cursor_advance_for_policy, file_load_error_response, inline_placement_and_advance,
+        is_safe_read_path, is_safe_temp_delete_path, load_file_data,
+        maybe_decompress_with_limit, normalized_path_entry, path_is_within_roots,
+        placement_cell_count, placement_error_response, placement_offsets,
+        read_regular_file, ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
+        DecompressionError, FileLoadError, KittyHandler, KittyHandlerOptions,
+        PlacementError, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES,
         MAX_PENDING_IMAGE_BYTES,
     };
     use crate::graphics::{ImagePlacement, PlacementMode};
@@ -1657,28 +1650,6 @@ mod tests {
         }
     }
 
-    fn overlay_image(
-        image_id: u32,
-        placement_id: u32,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-    ) -> ImagePlacement {
-        ImagePlacement {
-            image_id,
-            placement_id,
-            client_placement_id: (placement_id != 0).then_some(placement_id),
-            mode: PlacementMode::Overlay {
-                x,
-                y,
-                width,
-                height,
-            },
-            z_index: 0,
-        }
-    }
-
     fn offset_inline_image(
         image_id: u32,
         x_offset: u32,
@@ -1689,10 +1660,7 @@ mod tests {
             x_offset: placement_x_offset,
             y_offset: placement_y_offset,
             ..
-        } = &mut placement.mode
-        else {
-            unreachable!("inline_image must create an inline placement");
-        };
+        } = &mut placement.mode;
         *placement_x_offset = x_offset;
         *placement_y_offset = y_offset;
         placement
@@ -2588,8 +2556,6 @@ mod tests {
         let mut columns = vec![
             inline_image(1, 1, 0, 0, 2, 2),
             inline_image(2, 1, 0, 2, 1, 1),
-            overlay_image(3, 1, 15.0, 0.0, 2.0, 5.0),
-            overlay_image(4, 1, 20.0, 0.0, 5.0, 5.0),
         ];
         let cmd = delete_command(KittyDeleteSpec::ByColumn {
             column: 2,
@@ -2601,14 +2567,12 @@ mod tests {
                 .iter()
                 .map(|placement| placement.image_id)
                 .collect::<Vec<_>>(),
-            vec![2, 4]
+            vec![2]
         );
 
         let mut rows = vec![
             inline_image(5, 1, 0, 0, 2, 1),
             inline_image(6, 1, 2, 0, 1, 1),
-            overlay_image(7, 1, 0.0, 30.0, 5.0, 2.0),
-            overlay_image(8, 1, 0.0, 40.0, 5.0, 5.0),
         ];
         let cmd = delete_command(KittyDeleteSpec::ByRow {
             row: 2,
@@ -2619,7 +2583,7 @@ mod tests {
             rows.iter()
                 .map(|placement| placement.image_id)
                 .collect::<Vec<_>>(),
-            vec![6, 8]
+            vec![6]
         );
     }
 
@@ -2694,7 +2658,6 @@ mod tests {
     fn cursor_delete_uses_command_time_coordinates() {
         let mut placements = vec![
             inline_image(9, 1, 0, 0, 2, 2),
-            overlay_image(10, 1, 15.0, 25.0, 2.0, 2.0),
             inline_image(11, 1, 2, 2, 1, 1),
         ];
         let cmd = delete_command(KittyDeleteSpec::AtCursor { delete_data: true });
@@ -2744,26 +2707,32 @@ mod tests {
 
     #[test]
     fn clamps_inline_dimensions_and_cursor_advance_to_the_grid() {
-        let (mode, advance) =
-            inline_placement_and_advance(3, 7, u32::MAX, u32::MAX, (3, 5), 80, 24);
+        let (mode, advance) = inline_placement_and_advance(
+            3,
+            7,
+            u32::MAX,
+            u32::MAX,
+            (3, 5),
+            80,
+            24,
+        );
 
-        match mode {
-            PlacementMode::Inline {
-                row,
-                col,
-                cols,
-                rows,
-                x_offset,
-                y_offset,
-            } => assert_eq!(
-                (row, col, cols, rows, x_offset, y_offset),
-                (3, 7, 80, 24, 3, 5)
-            ),
-            PlacementMode::Overlay { .. } => panic!("expected inline placement"),
-        }
+        let PlacementMode::Inline {
+            row,
+            col,
+            cols,
+            rows,
+            x_offset,
+            y_offset,
+        } = mode;
+        assert_eq!(
+            (row, col, cols, rows, x_offset, y_offset),
+            (3, 7, 80, 24, 3, 5)
+        );
         assert_eq!((advance.cols, advance.rows), (80, 24));
 
-        let (mode, advance) = inline_placement_and_advance(0, 0, 10, 5, (0, 0), 80, 24);
+        let (mode, advance) =
+            inline_placement_and_advance(0, 0, 10, 5, (0, 0), 80, 24);
         assert!(matches!(
             mode,
             PlacementMode::Inline {
@@ -2773,6 +2742,22 @@ mod tests {
             }
         ));
         assert_eq!((advance.cols, advance.rows), (10, 5));
+    }
+
+    #[test]
+    fn c1_keeps_inline_geometry_and_only_suppresses_cursor_advance() {
+        let (mode, advance) =
+            inline_placement_and_advance(3, 7, 4, 2, (9, 19), 80, 24);
+
+        assert!(matches!(&mode, PlacementMode::Inline { .. }));
+        assert_eq!(mode.pixel_rect(10.0, 20.0), (79.0, 79.0, 31.0, 21.0));
+        for cursor_movement in [0, 2, u8::MAX] {
+            assert_eq!(
+                cursor_advance_for_policy(cursor_movement, advance),
+                Some(super::CursorAdvance { rows: 2, cols: 4 })
+            );
+        }
+        assert_eq!(cursor_advance_for_policy(1, advance), None);
     }
 
     #[test]
