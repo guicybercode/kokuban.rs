@@ -1,5 +1,7 @@
 use super::image_store::{probe_image_data, ImageFormat, ImageStore};
-use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
+use crate::graphics::{
+    cell_anchored_pixel_extent, ImageId, ImagePlacement, PlacementMode,
+};
 use crate::parser::kitty_graphics::*;
 use nix::libc;
 use std::borrow::Cow;
@@ -220,6 +222,7 @@ fn append_bounded(
 
 struct StoredTransmission {
     image_id: ImageId,
+    quiet: u8,
     place_after: Option<KittyCommand>,
 }
 
@@ -233,6 +236,12 @@ enum DecompressionError {
     TooLarge,
     InvalidData,
     AllocationFailed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlacementError {
+    ImageNotFound,
+    InvalidCellOffset,
 }
 
 pub struct KittyHandler {
@@ -280,9 +289,11 @@ impl KittyHandler {
             KittyAction::Transmit | KittyAction::TransmitAndPlace => {
                 let will_place = cmd.action == KittyAction::TransmitAndPlace;
                 let outcome = self.handle_transmit(cmd, store, will_place);
-                let advance = outcome.stored.and_then(|stored| {
-                    stored.place_after.and_then(|place_cmd| {
-                        self.create_placement(
+                let mut response = outcome.response;
+                let mut advance = None;
+                if let Some(stored) = outcome.stored {
+                    if let Some(place_cmd) = stored.place_after {
+                        match self.create_placement(
                             &place_cmd,
                             stored.image_id,
                             store,
@@ -293,41 +304,48 @@ impl KittyHandler {
                             grid_cols,
                             grid_rows,
                             placements,
-                        )
-                    })
-                });
-                return (outcome.response, advance);
+                        ) {
+                            Ok(cursor_advance) => advance = cursor_advance,
+                            Err(error) => {
+                                response = placement_error_response(
+                                    stored.image_id,
+                                    stored.quiet,
+                                    error,
+                                );
+                            }
+                        }
+                    }
+                }
+                return (response, advance);
             }
             KittyAction::Place => {
                 let image_id = cmd.image_id.unwrap_or(0);
-                if store.contains(image_id) {
-                    let advance = self.create_placement(
-                        &cmd,
-                        image_id,
-                        store,
-                        cursor_row,
-                        cursor_col,
-                        cell_width,
-                        cell_height,
-                        grid_cols,
-                        grid_rows,
-                        placements,
-                    );
-                    let resp = if cmd.quiet < 1 {
-                        Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
-                    } else {
-                        None
-                    };
-                    return (resp, advance);
-                } else {
-                    let resp = if cmd.quiet < 2 {
-                        Some(
-                            format!("\x1b_Gi={image_id};ENOENT:image not found\x1b\\").into_bytes(),
-                        )
-                    } else {
-                        None
-                    };
-                    return (resp, None);
+                match self.create_placement(
+                    &cmd,
+                    image_id,
+                    store,
+                    cursor_row,
+                    cursor_col,
+                    cell_width,
+                    cell_height,
+                    grid_cols,
+                    grid_rows,
+                    placements,
+                ) {
+                    Ok(advance) => {
+                        let response = if cmd.quiet < 1 {
+                            Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
+                        } else {
+                            None
+                        };
+                        return (response, advance);
+                    }
+                    Err(error) => {
+                        return (
+                            placement_error_response(image_id, cmd.quiet, error),
+                            None,
+                        );
+                    }
                 }
             }
             KittyAction::Delete => {
@@ -663,6 +681,7 @@ impl KittyHandler {
                     response: resp,
                     stored: Some(StoredTransmission {
                         image_id,
+                        quiet,
                         place_after,
                     }),
                 }
@@ -696,32 +715,42 @@ impl KittyHandler {
         grid_cols: usize,
         grid_rows: usize,
         placements: &mut Vec<ImagePlacement>,
-    ) -> Option<CursorAdvance> {
-        let img = store.get(image_id)?;
+    ) -> Result<Option<CursorAdvance>, PlacementError> {
+        let img = store
+            .get(image_id)
+            .ok_or(PlacementError::ImageNotFound)?;
+        let (x_offset, y_offset) = placement_offsets(cmd, cell_width, cell_height)?;
+
         let placement_id = self.next_placement_id;
         self.next_placement_id = self.next_placement_id.wrapping_add(1).max(1);
 
         // Calculate display dimensions in cells
-        let display_cols = cmd
-            .columns
-            .unwrap_or_else(|| ((img.width as f32) / cell_width).ceil() as u32);
-        let display_rows = cmd
-            .rows
-            .unwrap_or_else(|| ((img.height as f32) / cell_height).ceil() as u32);
+        let display_cols = placement_cell_count(
+            cmd.columns,
+            img.width,
+            x_offset,
+            cell_width,
+        );
+        let display_rows = placement_cell_count(
+            cmd.rows,
+            img.height,
+            y_offset,
+            cell_height,
+        );
 
         let z_index = cmd.z_index.unwrap_or(0);
         let cursor_movement = cmd.cursor_movement.unwrap_or(0);
 
         let (mode, cursor_advance) = if cursor_movement == 1 {
             // Don't move cursor → overlay mode
-            let x = cursor_col as f32 * cell_width + cmd.x_offset.unwrap_or(0) as f32;
-            let y = cursor_row as f32 * cell_height + cmd.y_offset.unwrap_or(0) as f32;
+            let x = cursor_col as f32 * cell_width + x_offset as f32;
+            let y = cursor_row as f32 * cell_height + y_offset as f32;
             (
                 PlacementMode::Overlay {
                     x,
                     y,
-                    width: display_cols as f32 * cell_width,
-                    height: display_rows as f32 * cell_height,
+                    width: cell_anchored_pixel_extent(display_cols, cell_width, x_offset),
+                    height: cell_anchored_pixel_extent(display_rows, cell_height, y_offset),
                 },
                 None,
             )
@@ -731,6 +760,7 @@ impl KittyHandler {
                 cursor_col,
                 display_cols,
                 display_rows,
+                (x_offset, y_offset),
                 grid_cols,
                 grid_rows,
             );
@@ -745,7 +775,7 @@ impl KittyHandler {
             z_index,
         });
 
-        cursor_advance
+        Ok(cursor_advance)
     }
 
     fn handle_delete(
@@ -824,7 +854,7 @@ fn apply_delete_to_placements(
                 return;
             };
             remove_matching_kitty_placements(placements, |placement| {
-                placement_intersects_column(placement, column, cell_width)
+                placement_intersects_column(placement, column, cell_width, cell_height)
             });
         }
         KittyDeleteSpec::ByRow { row, .. } => {
@@ -832,7 +862,7 @@ fn apply_delete_to_placements(
                 return;
             };
             remove_matching_kitty_placements(placements, |placement| {
-                placement_intersects_row(placement, row, cell_height)
+                placement_intersects_row(placement, row, cell_width, cell_height)
             });
         }
         KittyDeleteSpec::ByZIndex { z_index, .. } => {
@@ -885,35 +915,28 @@ fn placement_intersects_cell(
     cell_width: f32,
     cell_height: f32,
 ) -> bool {
-    placement_intersects_column(placement, column, cell_width)
-        && placement_intersects_row(placement, row, cell_height)
+    placement_intersects_column(placement, column, cell_width, cell_height)
+        && placement_intersects_row(placement, row, cell_width, cell_height)
 }
 
-fn placement_intersects_column(placement: &ImagePlacement, column: usize, cell_width: f32) -> bool {
-    match &placement.mode {
-        PlacementMode::Inline { col, cols, .. } => integer_span_contains(*col, *cols, column),
-        PlacementMode::Overlay { x, width, .. } => {
-            pixel_span_intersects(*x, *width, column as f32 * cell_width, cell_width)
-        }
-    }
+fn placement_intersects_column(
+    placement: &ImagePlacement,
+    column: usize,
+    cell_width: f32,
+    cell_height: f32,
+) -> bool {
+    let (x, _, width, _) = placement.mode.pixel_rect(cell_width, cell_height);
+    pixel_span_intersects(x, width, column as f32 * cell_width, cell_width)
 }
 
-fn placement_intersects_row(placement: &ImagePlacement, row: usize, cell_height: f32) -> bool {
-    match &placement.mode {
-        PlacementMode::Inline {
-            row: placement_row,
-            rows,
-            ..
-        } => integer_span_contains(*placement_row, *rows, row),
-        PlacementMode::Overlay { y, height, .. } => {
-            pixel_span_intersects(*y, *height, row as f32 * cell_height, cell_height)
-        }
-    }
-}
-
-fn integer_span_contains(start: usize, length: u32, target: usize) -> bool {
-    let length = usize::try_from(length).unwrap_or(usize::MAX);
-    start <= target && target < start.saturating_add(length)
+fn placement_intersects_row(
+    placement: &ImagePlacement,
+    row: usize,
+    cell_width: f32,
+    cell_height: f32,
+) -> bool {
+    let (_, y, _, height) = placement.mode.pixel_rect(cell_width, cell_height);
+    pixel_span_intersects(y, height, row as f32 * cell_height, cell_height)
 }
 
 fn pixel_span_intersects(start: f32, length: f32, target_start: f32, target_length: f32) -> bool {
@@ -949,6 +972,7 @@ fn inline_placement_and_advance(
     col: usize,
     display_cols: u32,
     display_rows: u32,
+    pixel_offsets: (u32, u32),
     grid_cols: usize,
     grid_rows: usize,
 ) -> (PlacementMode, CursorAdvance) {
@@ -959,6 +983,8 @@ fn inline_placement_and_advance(
             col,
             cols,
             rows,
+            x_offset: pixel_offsets.0,
+            y_offset: pixel_offsets.1,
         },
         CursorAdvance {
             rows: rows as usize,
@@ -1088,6 +1114,59 @@ fn decompression_error_response(
 
 fn query_error_response(image_id: ImageId, quiet: u8, reason: &str) -> Option<Vec<u8>> {
     log::warn!("Rejected Kitty query for image {image_id}: {reason}");
+    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
+}
+
+fn valid_cell_offset(offset: u32, cell_extent: f32) -> bool {
+    cell_extent.is_finite()
+        && cell_extent > 0.0
+        && f64::from(offset) < f64::from(cell_extent)
+}
+
+fn placement_cell_count(
+    requested_cells: Option<u32>,
+    image_extent: u32,
+    pixel_offset: u32,
+    cell_extent: f32,
+) -> u32 {
+    // Kitty treats an omitted or zero c/r as automatic. Only automatic sizes
+    // include X/Y when determining how many cells the placement occupies.
+    if let Some(cells) = requested_cells.filter(|cells| *cells != 0) {
+        return cells;
+    }
+
+    let occupied_pixels = f64::from(image_extent) + f64::from(pixel_offset);
+    (occupied_pixels / f64::from(cell_extent))
+        .ceil()
+        .clamp(1.0, f64::from(u32::MAX)) as u32
+}
+
+fn placement_offsets(
+    cmd: &KittyCommand,
+    cell_width: f32,
+    cell_height: f32,
+) -> Result<(u32, u32), PlacementError> {
+    let x_offset = cmd.x_offset.unwrap_or(0);
+    let y_offset = cmd.y_offset.unwrap_or(0);
+    if valid_cell_offset(x_offset, cell_width)
+        && valid_cell_offset(y_offset, cell_height)
+    {
+        Ok((x_offset, y_offset))
+    } else {
+        Err(PlacementError::InvalidCellOffset)
+    }
+}
+
+fn placement_error_response(
+    image_id: ImageId,
+    quiet: u8,
+    error: PlacementError,
+) -> Option<Vec<u8>> {
+    let reason = match error {
+        PlacementError::ImageNotFound => "ENOENT:image not found",
+        PlacementError::InvalidCellOffset => "EINVAL:placement offset exceeds cell bounds",
+    };
+    log::warn!("Rejected Kitty placement for image {image_id}: {reason}");
     (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
 }
 
@@ -1480,9 +1559,11 @@ mod tests {
         append_bounded, apply_delete_to_placements, decompression_error_response,
         file_load_error_response, inline_placement_and_advance, is_safe_read_path,
         is_safe_temp_delete_path, load_file_data, maybe_decompress_with_limit,
-        normalized_path_entry, path_is_within_roots, read_regular_file, ChunkAssembler,
+        normalized_path_entry, path_is_within_roots, placement_cell_count,
+        placement_error_response, placement_offsets, read_regular_file, ChunkAssembler,
         ChunkAssemblyErrorKind, CompletedImage, DecompressionError, FileLoadError, KittyHandler,
-        KittyHandlerOptions, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
+        KittyHandlerOptions, PlacementError, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES,
+        MAX_PENDING_IMAGE_BYTES,
     };
     use crate::graphics::{ImagePlacement, PlacementMode};
     use crate::parser::kitty_graphics::{
@@ -1569,6 +1650,8 @@ mod tests {
                 col,
                 cols,
                 rows,
+                x_offset: 0,
+                y_offset: 0,
             },
             z_index: 0,
         }
@@ -1594,6 +1677,25 @@ mod tests {
             },
             z_index: 0,
         }
+    }
+
+    fn offset_inline_image(
+        image_id: u32,
+        x_offset: u32,
+        y_offset: u32,
+    ) -> ImagePlacement {
+        let mut placement = inline_image(image_id, 1, 0, 0, 1, 1);
+        let PlacementMode::Inline {
+            x_offset: placement_x_offset,
+            y_offset: placement_y_offset,
+            ..
+        } = &mut placement.mode
+        else {
+            unreachable!("inline_image must create an inline placement");
+        };
+        *placement_x_offset = x_offset;
+        *placement_y_offset = y_offset;
+        placement
     }
 
     fn delete_command(specifier: KittyDeleteSpec) -> KittyCommand {
@@ -1730,6 +1832,72 @@ mod tests {
 
         invalid.quiet = 2;
         assert!(handler.handle_query(&invalid).0.is_none());
+    }
+
+    #[test]
+    fn placement_offsets_must_stay_inside_positive_finite_cells() {
+        for cursor_movement in [0, 1] {
+            let mut command = KittyCommand {
+                cursor_movement: Some(cursor_movement),
+                x_offset: Some(9),
+                y_offset: Some(19),
+                ..KittyCommand::default()
+            };
+            assert_eq!(placement_offsets(&command, 10.0, 20.0), Ok((9, 19)));
+
+            command.x_offset = Some(10);
+            assert_eq!(
+                placement_offsets(&command, 10.0, 20.0),
+                Err(PlacementError::InvalidCellOffset)
+            );
+
+            command.x_offset = Some(9);
+            command.y_offset = Some(20);
+            assert_eq!(
+                placement_offsets(&command, 10.0, 20.0),
+                Err(PlacementError::InvalidCellOffset)
+            );
+        }
+
+        let command = KittyCommand::default();
+        for invalid_width in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(
+                placement_offsets(&command, invalid_width, 20.0),
+                Err(PlacementError::InvalidCellOffset)
+            );
+        }
+        assert_eq!(placement_offsets(&command, 0.5, 0.5), Ok((0, 0)));
+    }
+
+    #[test]
+    fn automatic_placement_cells_include_offsets_without_expanding_explicit_sizes() {
+        assert_eq!(placement_cell_count(None, 10, 9, 10.0), 2);
+        assert_eq!(placement_cell_count(Some(0), 10, 9, 10.0), 2);
+        assert_eq!(placement_cell_count(None, 20, 19, 20.0), 2);
+        assert_eq!(placement_cell_count(Some(1), 10, 9, 10.0), 1);
+        assert_eq!(placement_cell_count(None, 11, 0, 10.0), 2);
+    }
+
+    #[test]
+    fn placement_errors_honor_quiet_level_and_preserve_image_id() {
+        let invalid_offset =
+            b"\x1b_Gi=41;EINVAL:placement offset exceeds cell bounds\x1b\\".to_vec();
+        assert_eq!(
+            placement_error_response(41, 0, PlacementError::InvalidCellOffset),
+            Some(invalid_offset.clone())
+        );
+        assert_eq!(
+            placement_error_response(41, 1, PlacementError::InvalidCellOffset),
+            Some(invalid_offset)
+        );
+        assert_eq!(
+            placement_error_response(41, 2, PlacementError::InvalidCellOffset),
+            None
+        );
+        assert_eq!(
+            placement_error_response(42, 0, PlacementError::ImageNotFound),
+            Some(b"\x1b_Gi=42;ENOENT:image not found\x1b\\".to_vec())
+        );
     }
 
     fn chunk(data: &[u8], more_chunks: bool, image_id: Option<u32>) -> KittyCommand {
@@ -2456,6 +2624,73 @@ mod tests {
     }
 
     #[test]
+    fn inline_offsets_do_not_expand_delete_bounds_beyond_explicit_cells() {
+        let mut columns = vec![offset_inline_image(20, 5, 0)];
+        let adjacent_column_delete = delete_command(KittyDeleteSpec::ByColumn {
+            column: 2,
+            delete_data: false,
+        });
+
+        apply_delete_to_placements(
+            &adjacent_column_delete,
+            &mut columns,
+            0,
+            0,
+            10.0,
+            20.0,
+        );
+
+        assert_eq!(columns.len(), 1);
+
+        let anchor_column_delete = delete_command(KittyDeleteSpec::ByColumn {
+            column: 1,
+            delete_data: false,
+        });
+        apply_delete_to_placements(
+            &anchor_column_delete,
+            &mut columns,
+            0,
+            0,
+            10.0,
+            20.0,
+        );
+
+        assert!(columns.is_empty());
+
+        let mut rows = vec![offset_inline_image(21, 0, 5)];
+        let adjacent_row_delete = delete_command(KittyDeleteSpec::ByRow {
+            row: 2,
+            delete_data: false,
+        });
+
+        apply_delete_to_placements(
+            &adjacent_row_delete,
+            &mut rows,
+            0,
+            0,
+            10.0,
+            20.0,
+        );
+
+        assert_eq!(rows.len(), 1);
+
+        let anchor_row_delete = delete_command(KittyDeleteSpec::ByRow {
+            row: 1,
+            delete_data: false,
+        });
+        apply_delete_to_placements(
+            &anchor_row_delete,
+            &mut rows,
+            0,
+            0,
+            10.0,
+            20.0,
+        );
+
+        assert!(rows.is_empty());
+    }
+
+    #[test]
     fn cursor_delete_uses_command_time_coordinates() {
         let mut placements = vec![
             inline_image(9, 1, 0, 0, 2, 2),
@@ -2509,7 +2744,8 @@ mod tests {
 
     #[test]
     fn clamps_inline_dimensions_and_cursor_advance_to_the_grid() {
-        let (mode, advance) = inline_placement_and_advance(3, 7, u32::MAX, u32::MAX, 80, 24);
+        let (mode, advance) =
+            inline_placement_and_advance(3, 7, u32::MAX, u32::MAX, (3, 5), 80, 24);
 
         match mode {
             PlacementMode::Inline {
@@ -2517,12 +2753,17 @@ mod tests {
                 col,
                 cols,
                 rows,
-            } => assert_eq!((row, col, cols, rows), (3, 7, 80, 24)),
+                x_offset,
+                y_offset,
+            } => assert_eq!(
+                (row, col, cols, rows, x_offset, y_offset),
+                (3, 7, 80, 24, 3, 5)
+            ),
             PlacementMode::Overlay { .. } => panic!("expected inline placement"),
         }
         assert_eq!((advance.cols, advance.rows), (80, 24));
 
-        let (mode, advance) = inline_placement_and_advance(0, 0, 10, 5, 80, 24);
+        let (mode, advance) = inline_placement_and_advance(0, 0, 10, 5, (0, 0), 80, 24);
         assert!(matches!(
             mode,
             PlacementMode::Inline {

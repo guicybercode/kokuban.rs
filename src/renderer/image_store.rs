@@ -187,10 +187,6 @@ impl ImageStore {
         self.images.get(&id)
     }
 
-    pub fn contains(&self, id: ImageId) -> bool {
-        self.images.contains_key(&id)
-    }
-
     fn evict_lru(&mut self) {
         if let Some((&oldest_id, _)) = self
             .images
