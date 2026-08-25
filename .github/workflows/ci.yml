@@ -22,7 +22,7 @@ jobs:
         include:
           - name: macOS
             runner: macos-latest
-          - name: Linux portable core
+          - name: Linux graphical shell
             runner: ubuntu-latest
 
     steps:
@@ -36,6 +36,13 @@ jobs:
           rustup default 1.94.1
           rustc --version
 
+      - name: Install Linux display test dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends xvfb xauth
+
       - name: Check all targets
         run: cargo check --locked --all-targets
 
@@ -45,27 +52,62 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --locked --all-targets
 
-      - name: Verify Linux portability contract
-        if: runner.os == 'Linux'
+      - name: Verify macOS dependency isolation
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          if cargo tree --locked | grep -E '(objc2|block2|font-kit|pathfinder_geometry) v'; then
-            echo "Apple-only dependencies are present in the Linux dependency tree"
+          if cargo tree --locked | grep -E '(winit|softbuffer) v'; then
+            echo "Linux-only window dependencies are present in the macOS dependency tree"
             exit 1
           fi
 
+      - name: Verify Linux dependency isolation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if cargo tree --locked | grep -E '(objc2|block2|font-kit|pathfinder_geometry|drm) v'; then
+            echo "Apple-only or KMS/DRM dependencies are present in the Linux dependency tree"
+            exit 1
+          fi
+
+      - name: Verify clean Linux display failure
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
           cargo build --locked
           set +e
-          linux_message="$(timeout 5s target/debug/kokuban 2>&1)"
+          linux_message="$(env \
+            -u DISPLAY \
+            -u WAYLAND_DISPLAY \
+            -u WAYLAND_SOCKET \
+            -u XDG_RUNTIME_DIR \
+            timeout 5s target/debug/kokuban 2>&1)"
           linux_exit_code=$?
           set -e
 
           if [[ $linux_exit_code -ne 1 ]]; then
-            echo "Expected the Linux stub to exit with status 1, got $linux_exit_code"
+            echo "Expected display initialization to exit with status 1, got $linux_exit_code"
             exit 1
           fi
 
-          if [[ "$linux_message" != "kokuban: the Linux graphical backend is not implemented yet" ]]; then
-            echo "Unexpected Linux stub message: $linux_message"
+          linux_error="${linux_message##*$'\n'}"
+          if [[ "$linux_error" != "kokuban: failed to initialize Linux window:"* ]]; then
+            echo "Unexpected Linux display error: $linux_message"
             exit 1
           fi
+
+          if grep -Eq 'panicked at|thread .* panicked' <<<"$linux_message"; then
+            echo "Linux display initialization panicked: $linux_message"
+            exit 1
+          fi
+
+      - name: Smoke test the first Linux frame under Xvfb
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          env \
+            -u WAYLAND_DISPLAY \
+            -u WAYLAND_SOCKET \
+            -u XDG_RUNTIME_DIR \
+            KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 \
+            xvfb-run --auto-servernum timeout 10s target/debug/kokuban

@@ -25,3 +25,7 @@ objc2-quartz-core = { version = "0.3", features = ["CAMetalLayer", "CALayer", "o
 block2 = "0.6"
 font-kit = "0.14"
 pathfinder_geometry = "0.5"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
+softbuffer = { version = "0.4.8", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }

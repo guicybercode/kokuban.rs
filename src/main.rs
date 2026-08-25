@@ -4,6 +4,8 @@ mod config;
 mod graphics;
 mod grid;
 mod input;
+#[cfg(target_os = "linux")]
+mod linux_window;
 #[cfg(target_os = "macos")]
 mod pane;
 mod parser;
@@ -24,8 +26,18 @@ fn main() {
 
 #[cfg(target_os = "linux")]
 fn main() -> std::process::ExitCode {
-    eprintln!("kokuban: the Linux graphical backend is not implemented yet");
-    std::process::ExitCode::FAILURE
+    env_logger::init();
+
+    let config = config::Config::load();
+    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
+
+    match linux_window::launch(config) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("kokuban: failed to initialize Linux window: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
