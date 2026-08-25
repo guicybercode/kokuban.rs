@@ -58,14 +58,12 @@ pub struct GlyphKey {
 
 #[derive(Debug, Clone, Copy)]
 pub struct GlyphEntry {
-    pub uv_x: f32,
-    pub uv_y: f32,
-    pub uv_w: f32,
-    pub uv_h: f32,
+    pub atlas_x: u32,
+    pub atlas_y: u32,
     pub pixel_w: u32,
     pub pixel_h: u32,
-    pub bearing_x: f32,
-    pub bearing_y: f32,
+    pub bearing_x: i32,
+    pub bearing_y: i32,
 }
 
 pub struct GlyphAtlas {
@@ -84,8 +82,6 @@ pub struct GlyphAtlas {
     cursor_y: u32,
     row_height: u32,
     pub dirty: bool,
-    // White pixel for background quads
-    pub white_uv: (f32, f32),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -173,7 +169,6 @@ impl GlyphAtlas {
 
         // Reserve 1x1 white pixel at (0,0)
         pixels[0] = 255;
-        let white_uv = (0.5 / width as f32, 0.5 / height as f32);
 
         let mut atlas = Self {
             width,
@@ -191,7 +186,6 @@ impl GlyphAtlas {
             cursor_y: 0,
             row_height: 0,
             dirty: true,
-            white_uv,
         };
 
         // Pre-rasterize ASCII printable range
@@ -254,14 +248,12 @@ impl GlyphAtlas {
             None => {
                 // Use space entry or create dummy
                 let entry = GlyphEntry {
-                    uv_x: self.white_uv.0,
-                    uv_y: self.white_uv.1,
-                    uv_w: 0.0,
-                    uv_h: 0.0,
+                    atlas_x: 0,
+                    atlas_y: 0,
                     pixel_w: 0,
                     pixel_h: 0,
-                    bearing_x: 0.0,
-                    bearing_y: 0.0,
+                    bearing_x: 0,
+                    bearing_y: 0,
                 };
                 self.glyphs.insert(key, entry);
                 return entry;
@@ -285,14 +277,12 @@ impl GlyphAtlas {
 
         if glyph_w == 0 || glyph_h == 0 {
             let entry = GlyphEntry {
-                uv_x: self.white_uv.0,
-                uv_y: self.white_uv.1,
-                uv_w: 0.0,
-                uv_h: 0.0,
+                atlas_x: 0,
+                atlas_y: 0,
                 pixel_w: 0,
                 pixel_h: 0,
-                bearing_x: 0.0,
-                bearing_y: 0.0,
+                bearing_x: 0,
+                bearing_y: 0,
             };
             self.glyphs.insert(key, entry);
             return entry;
@@ -309,14 +299,12 @@ impl GlyphAtlas {
         if self.cursor_y + glyph_h > self.height {
             log::warn!("Glyph atlas full, cannot rasterize '{}'", key.c);
             let entry = GlyphEntry {
-                uv_x: self.white_uv.0,
-                uv_y: self.white_uv.1,
-                uv_w: 0.0,
-                uv_h: 0.0,
+                atlas_x: 0,
+                atlas_y: 0,
                 pixel_w: 0,
                 pixel_h: 0,
-                bearing_x: 0.0,
-                bearing_y: 0.0,
+                bearing_x: 0,
+                bearing_y: 0,
             };
             self.glyphs.insert(key, entry);
             return entry;
@@ -352,14 +340,12 @@ impl GlyphAtlas {
         }
 
         let entry = GlyphEntry {
-            uv_x: self.cursor_x as f32 / self.width as f32,
-            uv_y: self.cursor_y as f32 / self.height as f32,
-            uv_w: glyph_w as f32 / self.width as f32,
-            uv_h: glyph_h as f32 / self.height as f32,
+            atlas_x: self.cursor_x,
+            atlas_y: self.cursor_y,
             pixel_w: glyph_w,
             pixel_h: glyph_h,
-            bearing_x: raster_rect.origin_x() as f32,
-            bearing_y: raster_rect.origin_y() as f32,
+            bearing_x: raster_rect.origin_x(),
+            bearing_y: raster_rect.origin_y(),
         };
 
         self.cursor_x += glyph_w + 1;
@@ -584,6 +570,7 @@ mod tests {
         });
 
         assert_eq!(atlas.pixels.len(), (atlas.width * atlas.height) as usize);
+        assert_eq!(atlas.pixels[0], 255);
         assert!(atlas.cell_width.is_finite() && atlas.cell_width > 0.0);
         assert!(atlas.cell_height.is_finite() && atlas.cell_height > 0.0);
         assert!(atlas.ascent.is_finite() && atlas.ascent > 0.0);
@@ -591,11 +578,14 @@ mod tests {
         assert!(glyph.pixel_w > 0);
         assert!(glyph.pixel_h > 0);
 
-        let atlas_x = (glyph.uv_x * atlas.width as f32).round() as u32;
-        let atlas_y = (glyph.uv_y * atlas.height as f32).round() as u32;
+        for cached in atlas.glyphs.values() {
+            assert!(cached.atlas_x.saturating_add(cached.pixel_w) <= atlas.width);
+            assert!(cached.atlas_y.saturating_add(cached.pixel_h) <= atlas.height);
+        }
         let has_coverage = (0..glyph.pixel_h).any(|y| {
             (0..glyph.pixel_w).any(|x| {
-                let index = ((atlas_y + y) * atlas.width + atlas_x + x) as usize;
+                let index =
+                    ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize;
                 atlas.pixels[index] != 0
             })
         });
@@ -619,8 +609,8 @@ mod tests {
 
         assert_eq!(atlas.glyphs.len(), cached_glyph_count);
         assert!(!atlas.dirty);
-        assert_eq!(cached.uv_x, expected.uv_x);
-        assert_eq!(cached.uv_y, expected.uv_y);
+        assert_eq!(cached.atlas_x, expected.atlas_x);
+        assert_eq!(cached.atlas_y, expected.atlas_y);
         assert_eq!(cached.pixel_w, expected.pixel_w);
         assert_eq!(cached.pixel_h, expected.pixel_h);
     }
