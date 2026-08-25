@@ -1,6 +1,7 @@
 use super::image_store::{probe_image_data, ImageFormat, ImageStore};
 use crate::graphics::{
-    placement_cell_count, ImageId, ImagePlacement, InlineRenderSize, PlacementMode,
+    resolve_kitty_placement_layout, ImageId, ImagePlacement, InlineRenderSize,
+    PlacementMode,
 };
 use crate::parser::kitty_graphics::*;
 use nix::libc;
@@ -724,36 +725,24 @@ impl KittyHandler {
         let placement_id = self.next_placement_id;
         self.next_placement_id = self.next_placement_id.wrapping_add(1).max(1);
 
-        // Calculate display dimensions in cells
-        let display_cols = placement_cell_count(
+        let layout = resolve_kitty_placement_layout(
             cmd.columns,
-            img.width,
-            x_offset,
-            cell_width,
-        );
-        let display_rows = placement_cell_count(
             cmd.rows,
-            img.height,
-            y_offset,
-            cell_height,
+            (img.width, img.height),
+            (x_offset, y_offset),
+            (cell_width, cell_height),
         );
 
         let z_index = cmd.z_index.unwrap_or(0);
         let cursor_movement = cmd.cursor_movement.unwrap_or(0);
-        let render_size = InlineRenderSize::for_kitty_request(
-            cmd.columns,
-            cmd.rows,
-            img.width,
-            img.height,
-        );
 
         let (mode, advance) = inline_placement_and_advance(
             cursor_row,
             cursor_col,
-            display_cols,
-            display_rows,
+            layout.display_cols,
+            layout.display_rows,
             (x_offset, y_offset),
-            render_size,
+            layout.render_size,
             (grid_cols, grid_rows),
         );
         let cursor_advance = cursor_advance_for_policy(cursor_movement, advance);
@@ -916,8 +905,9 @@ fn placement_intersects_column(
     cell_width: f32,
     cell_height: f32,
 ) -> bool {
-    let (x, _, width, _) = placement.mode.pixel_rect(cell_width, cell_height);
-    pixel_span_intersects(x, width, column as f32 * cell_width, cell_width)
+    let (_, start_column, columns, _) =
+        placement.mode.effective_cell_rect(cell_width, cell_height);
+    cell_span_intersects(start_column, columns, column)
 }
 
 fn placement_intersects_row(
@@ -926,19 +916,16 @@ fn placement_intersects_row(
     cell_width: f32,
     cell_height: f32,
 ) -> bool {
-    let (_, y, _, height) = placement.mode.pixel_rect(cell_width, cell_height);
-    pixel_span_intersects(y, height, row as f32 * cell_height, cell_height)
+    let (start_row, _, _, rows) =
+        placement.mode.effective_cell_rect(cell_width, cell_height);
+    cell_span_intersects(start_row, rows, row)
 }
 
-fn pixel_span_intersects(start: f32, length: f32, target_start: f32, target_length: f32) -> bool {
-    start.is_finite()
-        && length.is_finite()
-        && target_start.is_finite()
-        && target_length.is_finite()
-        && length > 0.0
-        && target_length > 0.0
-        && start < target_start + target_length
-        && target_start < start + length
+fn cell_span_intersects(start: usize, length: u32, target: usize) -> bool {
+    let length = usize::try_from(length).unwrap_or(usize::MAX);
+    target
+        .checked_sub(start)
+        .is_some_and(|offset| offset < length)
 }
 
 /// How much to advance the cursor after placing an inline image.
@@ -1550,7 +1537,10 @@ mod tests {
         PlacementError, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES,
         MAX_PENDING_IMAGE_BYTES,
     };
-    use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+    use crate::graphics::{
+        resolve_kitty_placement_layout, ImagePlacement, InlineRenderSize,
+        PlacementMode,
+    };
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
         KittyTransmission,
@@ -2639,7 +2629,7 @@ mod tests {
     }
 
     #[test]
-    fn native_delete_hit_tests_follow_pixels_after_cell_shrink() {
+    fn native_delete_hit_tests_recompute_effective_cells_after_cell_shrink() {
         let mut native = inline_image(22, 1, 0, 0, 2, 2);
         let PlacementMode::Inline {
             x_offset,
@@ -2675,6 +2665,91 @@ mod tests {
 
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].image_id, 23);
+    }
+
+    #[test]
+    fn aspect_ratio_delete_hit_tests_follow_effective_cells_after_cell_shrink() {
+        let mut from_columns = inline_image(24, 1, 0, 0, 2, 3);
+        let PlacementMode::Inline {
+            x_offset,
+            y_offset,
+            render_size,
+            ..
+        } = &mut from_columns.mode;
+        *x_offset = 2;
+        *y_offset = 3;
+        *render_size = InlineRenderSize::AspectFromColumns {
+            columns: 3,
+            source_width: 20,
+            source_height: 10,
+        };
+        let mut columns = vec![from_columns];
+
+        apply_delete_to_placements(
+            &delete_command(KittyDeleteSpec::ByRow {
+                row: 4,
+                delete_data: false,
+            }),
+            &mut columns,
+            0,
+            0,
+            8.0,
+            6.0,
+        );
+        assert_eq!(columns.len(), 1);
+        apply_delete_to_placements(
+            &delete_command(KittyDeleteSpec::ByRow {
+                row: 3,
+                delete_data: false,
+            }),
+            &mut columns,
+            0,
+            0,
+            8.0,
+            6.0,
+        );
+        assert!(columns.is_empty());
+
+        let mut from_rows = inline_image(25, 1, 0, 0, 3, 7);
+        let PlacementMode::Inline {
+            x_offset,
+            y_offset,
+            render_size,
+            ..
+        } = &mut from_rows.mode;
+        *x_offset = 2;
+        *y_offset = 3;
+        *render_size = InlineRenderSize::AspectFromRows {
+            rows: 3,
+            source_width: 20,
+            source_height: 10,
+        };
+        let mut rows = vec![from_rows];
+
+        apply_delete_to_placements(
+            &delete_command(KittyDeleteSpec::ByColumn {
+                column: 7,
+                delete_data: false,
+            }),
+            &mut rows,
+            0,
+            0,
+            8.0,
+            6.0,
+        );
+        assert_eq!(rows.len(), 1);
+        apply_delete_to_placements(
+            &delete_command(KittyDeleteSpec::ByColumn {
+                column: 6,
+                delete_data: false,
+            }),
+            &mut rows,
+            0,
+            0,
+            8.0,
+            6.0,
+        );
+        assert!(rows.is_empty());
     }
 
     #[test]
@@ -2773,6 +2848,41 @@ mod tests {
             }
         ));
         assert_eq!((advance.cols, advance.rows), (10, 5));
+    }
+
+    #[test]
+    fn single_axis_render_size_keeps_the_requested_cells_after_grid_clamp() {
+        let layout = resolve_kitty_placement_layout(
+            Some(100),
+            None,
+            (10, 10),
+            (0, 0),
+            (10.0, 10.0),
+        );
+        let (mode, advance) = inline_placement_and_advance(
+            0,
+            0,
+            layout.display_cols,
+            layout.display_rows,
+            (0, 0),
+            layout.render_size,
+            (80, 24),
+        );
+
+        assert!(matches!(
+            &mode,
+            PlacementMode::Inline {
+                cols: 80,
+                rows: 24,
+                render_size: InlineRenderSize::AspectFromColumns {
+                    columns: 100,
+                    ..
+                },
+                ..
+            }
+        ));
+        assert_eq!((advance.cols, advance.rows), (80, 24));
+        assert_eq!(mode.pixel_rect(10.0, 10.0), (0.0, 0.0, 1000.0, 1000.0));
     }
 
     #[test]
