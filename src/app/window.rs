@@ -1,4 +1,5 @@
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
+use crate::glyph_atlas::GlyphAtlas;
 use crate::selection::GridPoint;
 use crate::grid::{MouseEncoding, MouseTracking};
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
@@ -6,7 +7,6 @@ use crate::input::macos::translate_key_event;
 use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
-use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
 

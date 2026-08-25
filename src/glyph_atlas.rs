@@ -53,7 +53,9 @@ impl GlyphAtlas {
         props.weight = font_kit::properties::Weight::NORMAL;
         let font = source
             .select_best_match(
-                &[font_kit::family_name::FamilyName::Title(font_family.to_string())],
+                &[font_kit::family_name::FamilyName::Title(
+                    font_family.to_string(),
+                )],
                 &props,
             )
             .ok()
@@ -255,12 +257,12 @@ impl GlyphAtlas {
         }
 
         // Rasterize
-        let mut canvas = Canvas::new(
-            Vector2I::new(glyph_w as i32, glyph_h as i32),
-            Format::A8,
-        );
+        let mut canvas = Canvas::new(Vector2I::new(glyph_w as i32, glyph_h as i32), Format::A8);
 
-        let origin = Vector2F::new(-raster_rect.origin_x() as f32, -raster_rect.origin_y() as f32);
+        let origin = Vector2F::new(
+            -raster_rect.origin_x() as f32,
+            -raster_rect.origin_y() as f32,
+        );
         self.font
             .rasterize_glyph(
                 &mut canvas,
@@ -300,5 +302,62 @@ impl GlyphAtlas {
 
         self.glyphs.insert(key, entry);
         entry
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MISSING_FONT_FAMILY: &str = "kokuban-test-font-that-does-not-exist";
+
+    #[test]
+    fn rasterizes_visible_glyph_into_a8_atlas() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 14.0, 1.0);
+        let glyph = atlas.get_or_insert(GlyphKey {
+            c: 'A',
+            bold: false,
+            italic: false,
+        });
+
+        assert_eq!(atlas.pixels.len(), (atlas.width * atlas.height) as usize);
+        assert!(atlas.cell_width.is_finite() && atlas.cell_width > 0.0);
+        assert!(atlas.cell_height.is_finite() && atlas.cell_height > 0.0);
+        assert!(atlas.ascent.is_finite() && atlas.ascent > 0.0);
+        assert!(atlas.descent.is_finite() && atlas.descent <= 0.0);
+        assert!(glyph.pixel_w > 0);
+        assert!(glyph.pixel_h > 0);
+
+        let atlas_x = (glyph.uv_x * atlas.width as f32).round() as u32;
+        let atlas_y = (glyph.uv_y * atlas.height as f32).round() as u32;
+        let has_coverage = (0..glyph.pixel_h).any(|y| {
+            (0..glyph.pixel_w).any(|x| {
+                let index = ((atlas_y + y) * atlas.width + atlas_x + x) as usize;
+                atlas.pixels[index] != 0
+            })
+        });
+        assert!(has_coverage);
+    }
+
+    #[test]
+    fn cached_glyph_lookup_does_not_dirty_or_grow_atlas() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 14.0, 1.0);
+        let key = GlyphKey {
+            c: 'A',
+            bold: false,
+            italic: false,
+        };
+        let expected = atlas.get_or_insert(key);
+        let cached_glyph_count = atlas.glyphs.len();
+        atlas.dirty = false;
+
+        let cached = atlas.get_or_insert(key);
+
+        assert_eq!(atlas.glyphs.len(), cached_glyph_count);
+        assert!(!atlas.dirty);
+        assert_eq!(cached.uv_x, expected.uv_x);
+        assert_eq!(cached.uv_y, expected.uv_y);
+        assert_eq!(cached.pixel_w, expected.pixel_w);
+        assert_eq!(cached.pixel_h, expected.pixel_h);
     }
 }

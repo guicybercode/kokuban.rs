@@ -36,13 +36,17 @@ jobs:
           rustup default 1.94.1
           rustc --version
 
-      - name: Install Linux display test dependencies
+      - name: Install Linux display and font dependencies
         if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
+            fonts-dejavu-core \
+            libfontconfig1-dev \
+            libfreetype6-dev \
             libxkbcommon-x11-0 \
+            pkg-config \
             xauth \
             xvfb
 
@@ -59,8 +63,8 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          if cargo tree --locked | grep -E '(winit|softbuffer) v'; then
-            echo "Linux-only window dependencies are present in the macOS dependency tree"
+          if cargo tree --locked | grep -E '(winit|softbuffer|freetype-sys|yeslogic-fontconfig-sys) v'; then
+            echo "Linux-only window or font dependencies are present in the macOS dependency tree"
             exit 1
           fi
 
@@ -68,7 +72,16 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          if cargo tree --locked | grep -E '(objc2|block2|font-kit|pathfinder_geometry|drm) v'; then
+          linux_tree="$(cargo tree --locked)"
+
+          for dependency in font-kit freetype-sys yeslogic-fontconfig-sys pathfinder_geometry; do
+            if ! grep -q "$dependency v" <<<"$linux_tree"; then
+              echo "Required Linux font dependency is missing: $dependency"
+              exit 1
+            fi
+          done
+
+          if grep -E '(objc2|block2|core-foundation|core-graphics|core-text|drm) v' <<<"$linux_tree"; then
             echo "Apple-only or KMS/DRM dependencies are present in the Linux dependency tree"
             exit 1
           fi

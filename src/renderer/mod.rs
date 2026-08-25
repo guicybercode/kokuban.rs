@@ -1,4 +1,3 @@
-pub mod atlas;
 pub mod box_drawing;
 pub mod braille;
 pub mod brush;
