@@ -18,13 +18,19 @@ mod selection;
 mod renderer;
 
 #[cfg(target_os = "macos")]
-fn main() {
+fn main() -> std::process::ExitCode {
     env_logger::init();
 
     let config = config::Config::load();
     log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
 
-    app::launch(config);
+    match app::launch(config) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("kokuban: failed to initialize macOS app: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]

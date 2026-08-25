@@ -3,7 +3,7 @@ pub mod window;
 
 use crate::config::{ColorConfig, Config};
 use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
-use crate::glyph_atlas::GlyphAtlas;
+use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
 use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 
 use window::create_terminal_view;
 
-pub fn launch(config: Config) {
+pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let mtm = MainThreadMarker::new().expect("Must be called from the main thread");
 
     let app = NSApplication::sharedApplication(mtm);
@@ -58,7 +58,7 @@ pub fn launch(config: Config) {
         &config.font.family,
         config.font.size,
         scale_factor,
-    )));
+    )?));
 
     let dirty = Arc::new(AtomicBool::new(true));
     let should_close = Arc::new(AtomicBool::new(false));
@@ -438,6 +438,7 @@ pub fn launch(config: Config) {
     app.activate();
     log::info!("Starting application run loop");
     app.run();
+    Ok(())
 }
 
 fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
