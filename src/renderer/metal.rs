@@ -7,9 +7,9 @@ use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::graphics::ImageId;
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
-use crate::grid::{CursorShape, Grid};
-use crate::layout::{DividerInfo, PixelRect, SplitDirection, DIVIDER_THICKNESS};
-use crate::selection::SelectionState;
+use crate::grid::CursorShape;
+use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
+use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
@@ -34,33 +34,6 @@ const ANSI_COLORS: [(u8, u8, u8); 16] = [
     (41, 184, 219),   // 14 Bright Cyan
     (229, 229, 229),  // 15 Bright White
 ];
-
-pub struct PaneRenderData<'a> {
-    pub grid: &'a Grid,
-    pub rect: PixelRect,
-    pub selection: Option<&'a SelectionState>,
-    pub is_focused: bool,
-    pub pane_index: usize,
-    pub cwd: &'a str,
-    pub prompt_mark_rows: Vec<usize>,
-    pub show_cursor: bool,
-}
-
-pub struct ConfirmOverlayInfo {
-    pub region: PixelRect,
-    pub title: String,
-    pub process_text: Option<String>,
-    pub opacity: f32,
-}
-
-pub struct ChromeColors {
-    pub sumi_dark: (u8, u8, u8),
-    pub sumi_medium: (u8, u8, u8),
-    pub sumi_light: (u8, u8, u8),
-    pub sumi_ghost: (u8, u8, u8),
-    pub hanko_red: (u8, u8, u8),
-    pub hanko_dim: (u8, u8, u8),
-}
 
 pub struct MetalRenderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,

@@ -8,10 +8,10 @@ use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
+use crate::render_scene::ChromeColors;
 use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::KittyHandlerOptions;
-use crate::renderer::metal::ChromeColors;
 
 use objc2::{MainThreadMarker, Message};
 use objc2_app_kit::*;

@@ -5,9 +5,10 @@ use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::translate_key_event;
 use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::PaneTree;
+use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::ImageStore;
-use crate::renderer::metal::{ChromeColors, ConfirmOverlayInfo, MetalRenderer, PaneRenderData};
+use crate::renderer::metal::MetalRenderer;
 
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, ProtocolObject};
