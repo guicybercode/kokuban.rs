@@ -1,11 +1,68 @@
 use std::collections::HashMap;
 
 pub type ImageId = u32;
+pub type KittyImageId = u32;
+
+/// Maps pane-local Kitty protocol IDs to IDs in the shared renderer cache.
+#[derive(Debug)]
+pub(crate) struct ClientImageRegistry {
+    by_client_id: HashMap<KittyImageId, ImageId>,
+    next_client_id: KittyImageId,
+}
+
+impl Default for ClientImageRegistry {
+    fn default() -> Self {
+        Self {
+            by_client_id: HashMap::new(),
+            next_client_id: 1,
+        }
+    }
+}
+
+impl ClientImageRegistry {
+    pub(crate) fn len(&self) -> usize {
+        self.by_client_id.len()
+    }
+
+    pub(crate) fn next_id(&mut self) -> KittyImageId {
+        loop {
+            let candidate = self.next_client_id.max(1);
+            self.next_client_id = candidate.wrapping_add(1).max(1);
+            if !self.by_client_id.contains_key(&candidate) {
+                return candidate;
+            }
+        }
+    }
+
+    pub(crate) fn record(&mut self, client_id: KittyImageId, image_id: ImageId) {
+        if client_id != 0 && image_id != 0 {
+            self.by_client_id.insert(client_id, image_id);
+        }
+    }
+
+    pub(crate) fn get(&self, client_id: KittyImageId) -> Option<ImageId> {
+        self.by_client_id.get(&client_id).copied()
+    }
+
+    pub(crate) fn resolve_live(
+        &self,
+        client_id: KittyImageId,
+        mut exists: impl FnMut(ImageId) -> bool,
+    ) -> Option<ImageId> {
+        let image_id = self.get(client_id)?;
+        exists(image_id).then_some(image_id)
+    }
+
+    pub(crate) fn retain_existing(&mut self, mut exists: impl FnMut(ImageId) -> bool) {
+        self.by_client_id
+            .retain(|_, image_id| exists(*image_id));
+    }
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct ImageNumberRegistry {
-    by_number: HashMap<u32, Vec<ImageId>>,
-    by_id: HashMap<ImageId, u32>,
+    by_number: HashMap<u32, Vec<KittyImageId>>,
+    by_id: HashMap<KittyImageId, u32>,
 }
 
 impl ImageNumberRegistry {
@@ -13,7 +70,7 @@ impl ImageNumberRegistry {
         self.by_id.len()
     }
 
-    pub(crate) fn record_new(&mut self, number: u32, image_id: ImageId) {
+    pub(crate) fn record_new(&mut self, number: u32, image_id: KittyImageId) {
         if number == 0 || image_id == 0 {
             return;
         }
@@ -23,7 +80,7 @@ impl ImageNumberRegistry {
         self.by_id.insert(image_id, number);
     }
 
-    pub(crate) fn forget(&mut self, image_id: ImageId) {
+    pub(crate) fn forget(&mut self, image_id: KittyImageId) {
         let Some(number) = self.by_id.remove(&image_id) else {
             return;
         };
@@ -40,7 +97,7 @@ impl ImageNumberRegistry {
 
     pub(crate) fn retain_existing(
         &mut self,
-        mut exists: impl FnMut(ImageId) -> bool,
+        mut exists: impl FnMut(KittyImageId) -> bool,
     ) {
         let by_id = &mut self.by_id;
         self.by_number.retain(|_, image_ids| {
@@ -55,11 +112,12 @@ impl ImageNumberRegistry {
         });
     }
 
+    #[cfg(test)]
     pub(crate) fn newest_existing(
         &mut self,
         number: u32,
-        mut exists: impl FnMut(ImageId) -> bool,
-    ) -> Option<ImageId> {
+        mut exists: impl FnMut(KittyImageId) -> bool,
+    ) -> Option<KittyImageId> {
         if number == 0 {
             return None;
         }
@@ -78,6 +136,23 @@ impl ImageNumberRegistry {
             self.by_number.insert(number, existing_ids);
         }
         newest
+    }
+
+    pub(crate) fn newest_matching(
+        &self,
+        number: u32,
+        mut matches: impl FnMut(KittyImageId) -> bool,
+    ) -> Option<KittyImageId> {
+        if number == 0 {
+            return None;
+        }
+
+        self.by_number
+            .get(&number)?
+            .iter()
+            .rev()
+            .copied()
+            .find(|image_id| matches(*image_id))
     }
 }
 
@@ -452,8 +527,8 @@ mod tests {
     use super::{
         aspect_ratio_cell_count, placement_cell_count,
         next_available_image_id, resolve_kitty_placement_layout,
-        ImageNumberRegistry, InlineRenderSize, KittyPlacementLayout,
-        PlacementMode,
+        ClientImageRegistry, ImageNumberRegistry, InlineRenderSize,
+        KittyPlacementLayout, PlacementMode,
     };
 
     #[test]
@@ -793,11 +868,47 @@ mod tests {
     }
 
     #[test]
+    fn client_image_ids_are_namespaced_from_shared_store_ids() {
+        let mut first = ClientImageRegistry::default();
+        let mut second = ClientImageRegistry::default();
+
+        first.record(7, 41);
+        second.record(7, 42);
+
+        assert_eq!(first.resolve_live(7, |_| true), Some(41));
+        assert_eq!(second.resolve_live(7, |_| true), Some(42));
+    }
+
+    #[test]
+    fn client_image_registry_retains_bindings_until_explicit_pruning() {
+        let mut registry = ClientImageRegistry::default();
+        registry.record(1, 41);
+        registry.record(2, 42);
+
+        assert_eq!(registry.next_id(), 3);
+        assert_eq!(registry.resolve_live(1, |image_id| image_id == 42), None);
+        assert_eq!(registry.get(1), Some(41));
+
+        registry.retain_existing(|image_id| image_id == 42);
+        assert_eq!(registry.len(), 1);
+
+        let mut fresh = ClientImageRegistry::default();
+        fresh.record(1, 0);
+        fresh.record(0, 99);
+        assert_eq!(fresh.next_id(), 1);
+    }
+
+    #[test]
     fn image_numbers_resolve_the_newest_live_generation_and_fall_back() {
         let mut registry = ImageNumberRegistry::default();
         registry.record_new(7, 11);
         registry.record_new(7, 12);
 
+        assert_eq!(
+            registry.newest_matching(7, |image_id| image_id != 12),
+            Some(11)
+        );
+        assert_eq!(registry.newest_matching(7, |_| true), Some(12));
         assert_eq!(registry.newest_existing(7, |_| true), Some(12));
         assert_eq!(
             registry.newest_existing(7, |image_id| image_id != 12),
