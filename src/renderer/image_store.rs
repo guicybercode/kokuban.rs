@@ -6,10 +6,12 @@ use std::time::Instant;
 
 use crate::graphics::{next_available_image_id, ImageId};
 
+type MetalTexture = Retained<ProtocolObject<dyn MTLTexture>>;
+
 pub struct StoredImage {
     #[allow(dead_code)]
     pub id: ImageId,
-    pub texture: Retained<ProtocolObject<dyn MTLTexture>>,
+    pub texture: MetalTexture,
     pub width: u32,
     pub height: u32,
     pub byte_size: usize,
@@ -70,6 +72,26 @@ impl ImageStore {
         height: u32,
         requested_id: Option<ImageId>,
     ) -> Option<ImageId> {
+        self.store_rgba_with(
+            rgba_data,
+            width,
+            height,
+            requested_id,
+            |store, width, height, data| store.create_texture(width, height, data),
+        )
+    }
+
+    fn store_rgba_with<F>(
+        &mut self,
+        rgba_data: &[u8],
+        width: u32,
+        height: u32,
+        requested_id: Option<ImageId>,
+        create_texture: F,
+    ) -> Option<ImageId>
+    where
+        F: FnOnce(&Self, u32, u32, &[u8]) -> Option<MetalTexture>,
+    {
         let expected_size = rgba_byte_len(width, height)?;
         if rgba_data.len() < expected_size {
             log::warn!(
@@ -90,12 +112,8 @@ impl ImageStore {
             return None;
         }
 
-        // Evict if needed
-        while self.total_bytes + expected_size > self.max_bytes && !self.images.is_empty() {
-            self.evict_lru();
-        }
-
-        let texture = self.create_texture(width, height, rgba_data)?;
+        let retained_budget = self.max_bytes - expected_size;
+        let texture = create_texture(self, width, height, rgba_data)?;
         let id = requested_id.unwrap_or_else(|| self.next_id());
 
         // If using a requested ID that's higher than next_id, advance next_id
@@ -110,6 +128,10 @@ impl ImageStore {
             self.total_bytes -= old.byte_size;
         }
 
+        while self.total_bytes > retained_budget && !self.images.is_empty() {
+            self.evict_lru();
+        }
+
         self.images.insert(
             id,
             StoredImage {
@@ -122,6 +144,7 @@ impl ImageStore {
             },
         );
         self.total_bytes += expected_size;
+        debug_assert!(self.total_bytes <= self.max_bytes);
 
         log::trace!(
             "Stored image id={id} size={width}x{height} bytes={expected_size} total={}MB",
@@ -136,7 +159,7 @@ impl ImageStore {
         width: u32,
         height: u32,
         rgba_data: &[u8],
-    ) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+    ) -> Option<MetalTexture> {
         unsafe {
             let desc =
                 MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
@@ -344,7 +367,29 @@ fn decode_png(data: &[u8], max_bytes: usize) -> Option<(Vec<u8>, u32, u32)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{prepare_image, ImageFormat};
+    use super::{prepare_image, ImageFormat, ImageStore};
+    use objc2_metal::MTLCreateSystemDefaultDevice;
+    use std::time::{Duration, Instant};
+
+    fn image_store_with_byte_limit(max_bytes: usize) -> Option<ImageStore> {
+        let device = MTLCreateSystemDefaultDevice()?;
+        let mut store = ImageStore::new(device, 1);
+        store.max_bytes = max_bytes;
+        Some(store)
+    }
+
+    fn set_creation_order(store: &mut ImageStore, image_ids: &[u64]) {
+        let base = Instant::now()
+            .checked_sub(Duration::from_secs(image_ids.len() as u64 + 1))
+            .expect("test timestamp should be representable");
+        for (offset, image_id) in image_ids.iter().enumerate() {
+            store
+                .images
+                .get_mut(image_id)
+                .expect("test image should exist")
+                .created_at = base + Duration::from_secs(offset as u64);
+        }
+    }
 
     fn rgba_png(width: u32, height: u32, pixels: &[u8]) -> Vec<u8> {
         let mut encoded = Vec::new();
@@ -391,5 +436,113 @@ mod tests {
         let encoded = rgba_png(2, 2, &pixels);
 
         assert!(prepare_image(&encoded, 0, 0, ImageFormat::Png, 8).is_none());
+    }
+
+    #[test]
+    fn replacement_that_fits_after_credit_preserves_other_images() {
+        let Some(mut store) = image_store_with_byte_limit(12) else {
+            eprintln!("skipping Metal cache test: no device is available");
+            return;
+        };
+        assert_eq!(
+            store.store(&[255; 4], 1, 1, ImageFormat::Rgba, Some(1)),
+            Some(1)
+        );
+        assert_eq!(
+            store.store(&[127; 4], 1, 1, ImageFormat::Rgba, Some(2)),
+            Some(2)
+        );
+        set_creation_order(&mut store, &[1, 2]);
+
+        assert_eq!(
+            store.store(&[63; 8], 1, 2, ImageFormat::Rgba, Some(2)),
+            Some(2)
+        );
+
+        assert_eq!(store.image_count(), 2);
+        assert_eq!(store.total_bytes, 12);
+        assert!(store.get(1).is_some());
+        assert_eq!(
+            store.get(2).map(|image| (image.width, image.height)),
+            Some((1, 2))
+        );
+    }
+
+    #[test]
+    fn replacement_evicts_only_the_required_lru_entry() {
+        let Some(mut store) = image_store_with_byte_limit(12) else {
+            eprintln!("skipping Metal cache test: no device is available");
+            return;
+        };
+        for image_id in 1..=3 {
+            assert_eq!(
+                store.store(
+                    &[image_id as u8; 4],
+                    1,
+                    1,
+                    ImageFormat::Rgba,
+                    Some(image_id),
+                ),
+                Some(image_id)
+            );
+        }
+        set_creation_order(&mut store, &[1, 2, 3]);
+
+        assert_eq!(
+            store.store(&[31; 8], 1, 2, ImageFormat::Rgba, Some(3)),
+            Some(3)
+        );
+
+        assert_eq!(store.image_count(), 2);
+        assert_eq!(store.total_bytes, 12);
+        assert!(store.get(1).is_none());
+        assert!(store.get(2).is_some());
+        assert_eq!(
+            store.get(3).map(|image| (image.width, image.height)),
+            Some((1, 2))
+        );
+    }
+
+    #[test]
+    fn failed_texture_creation_preserves_cache_and_next_id() {
+        let Some(mut store) = image_store_with_byte_limit(12) else {
+            eprintln!("skipping Metal cache test: no device is available");
+            return;
+        };
+        assert_eq!(
+            store.store(&[255; 4], 1, 1, ImageFormat::Rgba, Some(1)),
+            Some(1)
+        );
+        assert_eq!(
+            store.store(&[127; 4], 1, 1, ImageFormat::Rgba, Some(2)),
+            Some(2)
+        );
+        set_creation_order(&mut store, &[1, 2]);
+        let first_created_at = store.get(1).unwrap().created_at;
+        let second_created_at = store.get(2).unwrap().created_at;
+        let next_id = store.next_id;
+
+        let result = store.store_rgba_with(
+            &[63; 8],
+            1,
+            2,
+            None,
+            |cache, _, _, _| {
+                assert_eq!(cache.image_count(), 2);
+                assert_eq!(cache.total_bytes, 8);
+                None
+            },
+        );
+
+        assert_eq!(result, None);
+        assert_eq!(store.image_count(), 2);
+        assert_eq!(store.total_bytes, 8);
+        assert_eq!(store.next_id, next_id);
+        assert_eq!(store.get(1).unwrap().created_at, first_created_at);
+        assert_eq!(store.get(2).unwrap().created_at, second_created_at);
+        assert_eq!(
+            store.get(2).map(|image| (image.width, image.height)),
+            Some((1, 1))
+        );
     }
 }
