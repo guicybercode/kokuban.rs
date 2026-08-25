@@ -1,4 +1,98 @@
+use std::collections::HashMap;
+
 pub type ImageId = u32;
+
+#[derive(Debug, Default)]
+pub(crate) struct ImageNumberRegistry {
+    by_number: HashMap<u32, Vec<ImageId>>,
+    by_id: HashMap<ImageId, u32>,
+}
+
+impl ImageNumberRegistry {
+    pub(crate) fn len(&self) -> usize {
+        self.by_id.len()
+    }
+
+    pub(crate) fn record_new(&mut self, number: u32, image_id: ImageId) {
+        if number == 0 || image_id == 0 {
+            return;
+        }
+
+        self.forget(image_id);
+        self.by_number.entry(number).or_default().push(image_id);
+        self.by_id.insert(image_id, number);
+    }
+
+    pub(crate) fn forget(&mut self, image_id: ImageId) {
+        let Some(number) = self.by_id.remove(&image_id) else {
+            return;
+        };
+        let should_remove = if let Some(image_ids) = self.by_number.get_mut(&number) {
+            image_ids.retain(|candidate| *candidate != image_id);
+            image_ids.is_empty()
+        } else {
+            false
+        };
+        if should_remove {
+            self.by_number.remove(&number);
+        }
+    }
+
+    pub(crate) fn retain_existing(
+        &mut self,
+        mut exists: impl FnMut(ImageId) -> bool,
+    ) {
+        let by_id = &mut self.by_id;
+        self.by_number.retain(|_, image_ids| {
+            image_ids.retain(|image_id| {
+                let keep = exists(*image_id);
+                if !keep {
+                    by_id.remove(image_id);
+                }
+                keep
+            });
+            !image_ids.is_empty()
+        });
+    }
+
+    pub(crate) fn newest_existing(
+        &mut self,
+        number: u32,
+        mut exists: impl FnMut(ImageId) -> bool,
+    ) -> Option<ImageId> {
+        if number == 0 {
+            return None;
+        }
+
+        let image_ids = self.by_number.remove(&number)?;
+        let mut existing_ids = Vec::with_capacity(image_ids.len());
+        for image_id in image_ids {
+            if exists(image_id) {
+                existing_ids.push(image_id);
+            } else {
+                self.by_id.remove(&image_id);
+            }
+        }
+        let newest = existing_ids.last().copied();
+        if !existing_ids.is_empty() {
+            self.by_number.insert(number, existing_ids);
+        }
+        newest
+    }
+}
+
+pub(crate) fn next_available_image_id(
+    next_id: &mut ImageId,
+    mut is_occupied: impl FnMut(ImageId) -> bool,
+) -> ImageId {
+    loop {
+        let candidate = (*next_id).max(1);
+        *next_id = candidate.wrapping_add(1).max(1);
+        if !is_occupied(candidate) {
+            return candidate;
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ImagePlacement {
@@ -357,8 +451,9 @@ impl PlacementMode {
 mod tests {
     use super::{
         aspect_ratio_cell_count, placement_cell_count,
-        resolve_kitty_placement_layout, InlineRenderSize,
-        KittyPlacementLayout, PlacementMode,
+        next_available_image_id, resolve_kitty_placement_layout,
+        ImageNumberRegistry, InlineRenderSize, KittyPlacementLayout,
+        PlacementMode,
     };
 
     #[test]
@@ -695,5 +790,69 @@ mod tests {
             ),
             u32::MAX
         );
+    }
+
+    #[test]
+    fn image_numbers_resolve_the_newest_live_generation_and_fall_back() {
+        let mut registry = ImageNumberRegistry::default();
+        registry.record_new(7, 11);
+        registry.record_new(7, 12);
+
+        assert_eq!(registry.newest_existing(7, |_| true), Some(12));
+        assert_eq!(
+            registry.newest_existing(7, |image_id| image_id != 12),
+            Some(11)
+        );
+
+        registry.forget(11);
+        assert_eq!(registry.newest_existing(7, |_| true), None);
+        registry.record_new(0, 13);
+        registry.record_new(8, 0);
+        assert_eq!(registry.newest_existing(0, |_| true), None);
+        assert_eq!(registry.newest_existing(8, |_| true), None);
+    }
+
+    #[test]
+    fn image_number_reassignment_never_leaves_an_old_alias() {
+        let mut registry = ImageNumberRegistry::default();
+        registry.record_new(7, 11);
+        registry.record_new(8, 11);
+
+        assert_eq!(registry.newest_existing(7, |_| true), None);
+        assert_eq!(registry.newest_existing(8, |_| true), Some(11));
+    }
+
+    #[test]
+    fn image_number_registry_prunes_evicted_generations_across_all_numbers() {
+        let mut registry = ImageNumberRegistry::default();
+        registry.record_new(7, 11);
+        registry.record_new(7, 12);
+        registry.record_new(8, 13);
+
+        registry.retain_existing(|image_id| image_id == 11);
+
+        assert_eq!(registry.newest_existing(7, |_| true), Some(11));
+        assert_eq!(registry.newest_existing(8, |_| true), None);
+        registry.record_new(9, 13);
+        assert_eq!(registry.newest_existing(9, |_| true), Some(13));
+    }
+
+    #[test]
+    fn generated_image_ids_skip_live_entries_and_zero_after_wrap() {
+        let mut next_id = 1;
+        assert_eq!(
+            next_available_image_id(&mut next_id, |image_id| [1, 2].contains(&image_id)),
+            3
+        );
+        assert_eq!(next_id, 4);
+
+        next_id = u32::MAX;
+        assert_eq!(
+            next_available_image_id(&mut next_id, |image_id| {
+                [u32::MAX, 1].contains(&image_id)
+            }),
+            2
+        );
+        assert_eq!(next_id, 3);
     }
 }

@@ -8,6 +8,8 @@ pub struct KittyCommand {
     pub quiet: u8,
     pub image_id: Option<u32>,
     pub image_number: Option<u32>,
+    // True when i/I cannot be parsed or both selector namespaces are present.
+    pub invalid_image_selector: bool,
     pub placement_id: Option<u32>,
     pub format: KittyFormat,
     pub transmission: KittyTransmission,
@@ -80,6 +82,7 @@ impl Default for KittyCommand {
             quiet: 0,
             image_id: None,
             image_number: None,
+            invalid_image_selector: false,
             placement_id: None,
             format: KittyFormat::Rgba,
             transmission: KittyTransmission::Direct,
@@ -115,6 +118,8 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
     let mut invalid_placement_id = false;
     let mut image_id_key_seen = false;
     let mut image_number_key_seen = false;
+    let mut invalid_image_id = false;
+    let mut invalid_image_number = false;
 
     // Parse comma-separated key=value pairs
     for pair in control_str.split(',') {
@@ -145,11 +150,23 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
             }
             "i" => {
                 image_id_key_seen = true;
-                cmd.image_id = value.parse().ok();
+                cmd.image_id = match value.parse() {
+                    Ok(image_id) => Some(image_id),
+                    Err(_) => {
+                        invalid_image_id = true;
+                        None
+                    }
+                };
             }
             "I" => {
                 image_number_key_seen = true;
-                cmd.image_number = value.parse().ok();
+                cmd.image_number = match value.parse() {
+                    Ok(image_number) => Some(image_number),
+                    Err(_) => {
+                        invalid_image_number = true;
+                        None
+                    }
+                };
             }
             "p" => match value.parse::<u32>() {
                 Ok(0) => {
@@ -230,8 +247,12 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
         }
     }
 
+    cmd.invalid_image_selector = invalid_image_id
+        || invalid_image_number
+        || (image_id_key_seen && image_number_key_seen);
+
     let invalid_delete_command = cmd.action == KittyAction::Delete
-        && (invalid_placement_id || (image_id_key_seen && image_number_key_seen));
+        && (invalid_placement_id || cmd.invalid_image_selector);
 
     if let Some(selector) = delete_selector {
         let specifier = if invalid_delete_command {
@@ -431,6 +452,60 @@ mod tests {
                 delete_data: false,
             })
         );
+    }
+
+    #[test]
+    fn invalid_image_selectors_are_preserved_for_every_action() {
+        let actions = ["t", "T", "p", "q", "d", "f", "a", "c"];
+        let invalid_selectors = [
+            "i=7,I=8",
+            "i=invalid",
+            "I=invalid",
+            "i=4294967296",
+            "I=4294967296",
+        ];
+
+        for action in actions {
+            for selector in invalid_selectors {
+                let input = format!("a={action},{selector}");
+                let command = parse_kitty_command(input.as_bytes())
+                    .expect("invalid image selector should remain available to the handler");
+
+                assert!(
+                    command.invalid_image_selector,
+                    "a={action} did not preserve invalid selector {selector}"
+                );
+                if action == "d" {
+                    assert_eq!(command.delete_specifier, Some(KittyDeleteSpec::NoOp));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn valid_isolated_image_selectors_are_not_marked_invalid() {
+        let actions = ["t", "T", "p", "q", "d", "f", "a", "c"];
+        let valid_selectors = [
+            ("i=0", Some(0), None),
+            ("i=4294967295", Some(u32::MAX), None),
+            ("I=0", None, Some(0)),
+            ("I=4294967295", None, Some(u32::MAX)),
+        ];
+
+        for action in actions {
+            for (selector, image_id, image_number) in valid_selectors {
+                let input = format!("a={action},{selector}");
+                let command = parse_kitty_command(input.as_bytes())
+                    .expect("valid image selector should parse");
+
+                assert!(
+                    !command.invalid_image_selector,
+                    "a={action} marked valid selector {selector} invalid"
+                );
+                assert_eq!(command.image_id, image_id);
+                assert_eq!(command.image_number, image_number);
+            }
+        }
     }
 
     #[test]
