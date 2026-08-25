@@ -1067,7 +1067,7 @@ fn apply_delete_to_placements(
     cell_height: f32,
 ) {
     let resolved_image_id = match cmd.delete_specifier {
-        Some(KittyDeleteSpec::ById { id, .. }) if id != 0 => Some(id),
+        Some(KittyDeleteSpec::ById { id, .. }) if id != 0 => Some(u64::from(id)),
         _ => None,
     };
     apply_resolved_delete_to_placements(
@@ -2026,7 +2026,7 @@ mod tests {
     }
 
     fn offset_inline_image(
-        image_id: u32,
+        image_id: ImageId,
         x_offset: u32,
         y_offset: u32,
     ) -> ImagePlacement {

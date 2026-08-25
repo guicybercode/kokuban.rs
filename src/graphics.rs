@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-pub type ImageId = u32;
+pub type ImageId = u64;
 pub type KittyImageId = u32;
 
 /// Maps pane-local Kitty protocol IDs to IDs in the shared renderer cache.
@@ -957,10 +957,14 @@ mod tests {
         );
         assert_eq!(next_id, 4);
 
-        next_id = u32::MAX;
+        next_id = u64::from(u32::MAX) + 1;
+        assert_eq!(next_available_image_id(&mut next_id, |_| false), 1 << 32);
+        assert_eq!(next_id, (1 << 32) + 1);
+
+        next_id = u64::MAX;
         assert_eq!(
             next_available_image_id(&mut next_id, |image_id| {
-                [u32::MAX, 1].contains(&image_id)
+                [u64::MAX, 1].contains(&image_id)
             }),
             2
         );
