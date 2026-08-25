@@ -1,4 +1,4 @@
-use crate::pane::PaneId;
+use crate::layout::PaneId;
 use nix::libc;
 use std::os::fd::RawFd;
 use std::time::Instant;

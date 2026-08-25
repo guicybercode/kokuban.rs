@@ -5,7 +5,7 @@ use crate::config::{ColorConfig, Config};
 use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
-use crate::pane::layout::PixelRect;
+use crate::layout::PixelRect;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::atlas::GlyphAtlas;

@@ -1,11 +1,9 @@
 use crate::grid::Grid;
+use crate::layout::{PaneId, PixelRect};
 use crate::parser::ansi::{GraphicsSupport, Utf8Parser};
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 use crate::selection::SelectionState;
-
-use super::layout::PixelRect;
-use super::PaneId;
 
 pub struct Pane {
     pub id: PaneId,

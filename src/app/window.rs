@@ -3,8 +3,7 @@ use crate::selection::GridPoint;
 use crate::grid::{MouseEncoding, MouseTracking};
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::translate_key_event;
-use crate::pane::layout::PixelRect;
-use crate::pane::tree::SplitDirection;
+use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::PaneTree;
 use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::ImageStore;
@@ -770,7 +769,13 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     state.dirty.store(true, Ordering::Relaxed);
 }
 
-fn pixel_to_cell(event: &NSEvent, state: &ViewState, tree: &PaneTree, cell_w: f32, cell_h: f32) -> Option<(crate::pane::PaneId, usize, usize)> {
+fn pixel_to_cell(
+    event: &NSEvent,
+    state: &ViewState,
+    tree: &PaneTree,
+    cell_w: f32,
+    cell_h: f32,
+) -> Option<(PaneId, usize, usize)> {
     let loc = event.locationInWindow();
     let scale = state.scale_factor;
     let size = state.metal_layer.drawableSize();
@@ -801,7 +806,13 @@ fn encode_sgr_mouse(button: u8, col: usize, row: usize, press: bool, sgr: bool) 
     }
 }
 
-fn pixel_to_grid_point(event: &NSEvent, state: &ViewState, tree: &PaneTree, cell_w: f32, cell_h: f32) -> Option<(crate::pane::PaneId, GridPoint)> {
+fn pixel_to_grid_point(
+    event: &NSEvent,
+    state: &ViewState,
+    tree: &PaneTree,
+    cell_w: f32,
+    cell_h: f32,
+) -> Option<(PaneId, GridPoint)> {
     let loc = event.locationInWindow();
     let scale = state.scale_factor;
 
