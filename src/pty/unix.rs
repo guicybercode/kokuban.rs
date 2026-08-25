@@ -18,7 +18,12 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub fn spawn(cols: u16, rows: u16) -> Result<Self, PtyError> {
+    pub fn spawn(
+        cols: u16,
+        rows: u16,
+        kitty_graphics: bool,
+        sixel_graphics: bool,
+    ) -> Result<Self, PtyError> {
         let shell_path = resolve_shell();
         let shell = CString::new(shell_path.as_os_str().as_bytes())
             .map_err(|_| PtyError::InvalidShell("shell path contains NUL".to_string()))?;
@@ -31,7 +36,7 @@ impl Pty {
         login_name.extend_from_slice(shell_name.as_bytes());
         let argv = vec![CString::new(login_name)
             .map_err(|_| PtyError::InvalidShell("shell name contains NUL".to_string()))?];
-        let environment = child_environment(&shell_path)?;
+        let environment = child_environment(&shell_path, kitty_graphics, sixel_graphics)?;
 
         Self::spawn_prepared(cols, rows, shell, argv, environment)
     }
@@ -240,7 +245,11 @@ fn is_executable_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn child_environment(shell: &Path) -> Result<Vec<CString>, PtyError> {
+fn child_environment(
+    shell: &Path,
+    kitty_graphics: bool,
+    sixel_graphics: bool,
+) -> Result<Vec<CString>, PtyError> {
     const OVERRIDDEN: &[&[u8]] = &[
         b"SHELL",
         b"TERM",
@@ -269,6 +278,7 @@ fn child_environment(shell: &Path) -> Result<Vec<CString>, PtyError> {
 
     let version = env!("CARGO_PKG_VERSION");
     let shell = shell.as_os_str().as_bytes();
+    let graphics = graphics_environment_value(kitty_graphics, sixel_graphics);
     for (key, value) in [
         (b"SHELL".as_slice(), shell),
         (b"TERM".as_slice(), b"xterm-256color".as_slice()),
@@ -276,7 +286,7 @@ fn child_environment(shell: &Path) -> Result<Vec<CString>, PtyError> {
         (b"TERM_PROGRAM".as_slice(), b"kokuban".as_slice()),
         (b"TERM_PROGRAM_VERSION".as_slice(), version.as_bytes()),
         (b"KOKUBAN_VERSION".as_slice(), version.as_bytes()),
-        (b"KOKUBAN_GRAPHICS".as_slice(), b"kitty,sixel".as_slice()),
+        (b"KOKUBAN_GRAPHICS".as_slice(), graphics),
     ] {
         let mut entry = Vec::with_capacity(key.len() + value.len() + 1);
         entry.extend_from_slice(key);
@@ -288,6 +298,15 @@ fn child_environment(shell: &Path) -> Result<Vec<CString>, PtyError> {
     }
 
     Ok(environment)
+}
+
+fn graphics_environment_value(kitty: bool, sixel: bool) -> &'static [u8] {
+    match (kitty, sixel) {
+        (false, false) => b"",
+        (true, false) => b"kitty",
+        (false, true) => b"sixel",
+        (true, true) => b"kitty,sixel",
+    }
 }
 
 fn set_cloexec(fd: RawFd) -> Result<(), PtyError> {
@@ -465,7 +484,7 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use super::{select_shell, set_cloexec, Pty};
+    use super::{child_environment, select_shell, set_cloexec, Pty};
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
     use nix::libc;
@@ -536,6 +555,26 @@ mod tests {
     fn rejects_relative_shell_paths() {
         let selected = select_shell(Some(OsString::from("zsh")), None, |_| true);
         assert_eq!(selected, Path::new("/bin/sh"));
+    }
+
+    #[test]
+    fn reports_only_enabled_graphics_protocols() {
+        let cases: [(bool, bool, &[u8]); 4] = [
+            (false, false, b""),
+            (true, false, b"kitty"),
+            (false, true, b"sixel"),
+            (true, true, b"kitty,sixel"),
+        ];
+
+        for (kitty, sixel, expected) in cases {
+            let environment = child_environment(Path::new("/bin/sh"), kitty, sixel).unwrap();
+            let values: Vec<&[u8]> = environment
+                .iter()
+                .filter_map(|entry| entry.as_bytes().strip_prefix(b"KOKUBAN_GRAPHICS="))
+                .collect();
+
+            assert_eq!(values, vec![expected]);
+        }
     }
 
     #[test]
