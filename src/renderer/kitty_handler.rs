@@ -268,6 +268,7 @@ fn append_bounded(
 struct StoredTransmission {
     client_image_id: KittyImageId,
     stored_image_id: ImageId,
+    replaced_image_id: Option<ImageId>,
     image_number: Option<u32>,
     quiet: u8,
     place_after: Option<KittyCommand>,
@@ -367,6 +368,9 @@ impl KittyHandler {
                     self.prune_image_registries(store, placements);
                 }
                 if let Some(stored) = outcome.stored {
+                    if let Some(replaced_image_id) = stored.replaced_image_id {
+                        remove_retransmitted_placements(placements, replaced_image_id);
+                    }
                     if let Some(place_cmd) = stored.place_after {
                         match self.create_placement(
                             &place_cmd,
@@ -788,10 +792,8 @@ impl KittyHandler {
             }
         };
 
-        let stored_image_id = self
-            .client_images
-            .get(image_id)
-            .unwrap_or_else(|| store.next_id());
+        let replaced_image_id = self.client_images.get(image_id);
+        let stored_image_id = replaced_image_id.unwrap_or_else(|| store.next_id());
         let replacing_existing = store.get(stored_image_id).is_some();
         match store.store(
             image_data.as_ref(),
@@ -820,6 +822,7 @@ impl KittyHandler {
                     stored: Some(StoredTransmission {
                         client_image_id: image_id,
                         stored_image_id,
+                        replaced_image_id,
                         image_number,
                         quiet,
                         place_after,
@@ -1186,6 +1189,15 @@ fn remove_matching_kitty_placements(
     // Sixel placements use the reserved placement ID zero. Kitty placements
     // are always assigned non-zero IDs, including when the client sends p=0.
     placements.retain(|placement| placement.placement_id == 0 || !matches(placement));
+}
+
+fn remove_retransmitted_placements(
+    placements: &mut Vec<ImagePlacement>,
+    image_id: ImageId,
+) {
+    remove_matching_kitty_placements(placements, |placement| {
+        placement.image_id == image_id
+    });
 }
 
 fn placement_intersects_cell(
@@ -1901,6 +1913,7 @@ mod tests {
         kitty_response, maybe_decompress_with_limit, normalized_path_entry,
         path_is_within_roots, placement_error_response,
         placement_error_response_with_number, placement_offsets, read_regular_file,
+        remove_retransmitted_placements,
         ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
         DecompressionError, FileLoadError, ImageFormat, ImageStore, KittyHandler,
         KittyHandlerOptions, PlacementError, TempFileDeletion,
@@ -2392,6 +2405,78 @@ mod tests {
         assert_eq!(
             second_placements.last().map(|placement| placement.image_id),
             Some(second_stored_id)
+        );
+
+        let failed_retransmission = KittyCommand {
+            image_id: Some(7),
+            payload: vec![255, 0, 0, 255],
+            ..KittyCommand::default()
+        };
+        assert_eq!(
+            process_graphics(
+                &mut first,
+                failed_retransmission,
+                &mut store,
+                &mut first_placements,
+            )
+            .0,
+            Some(b"\x1b_Gi=7;EINVAL:missing dimensions\x1b\\".to_vec())
+        );
+        assert_eq!(first_placements.len(), 1);
+        assert_eq!(
+            store.get(first_stored_id).map(|image| (image.width, image.height)),
+            Some((1, 1))
+        );
+
+        let successful_retransmission = KittyCommand {
+            action: KittyAction::TransmitAndPlace,
+            image_id: Some(7),
+            placement_id: Some(91),
+            width: Some(1),
+            height: Some(2),
+            columns: Some(2),
+            rows: Some(3),
+            x_offset: Some(4),
+            y_offset: Some(5),
+            z_index: Some(6),
+            payload: vec![255, 0, 0, 255, 0, 0, 255, 255],
+            ..KittyCommand::default()
+        };
+        assert_eq!(
+            process_graphics(
+                &mut first,
+                successful_retransmission,
+                &mut store,
+                &mut first_placements,
+            )
+            .0,
+            Some(b"\x1b_Gi=7;OK\x1b\\".to_vec())
+        );
+        assert_eq!(first_placements.len(), 1);
+        assert_eq!(second_placements.len(), 1);
+        let replacement = &first_placements[0];
+        assert_eq!(replacement.image_id, first_stored_id);
+        assert_eq!(replacement.client_placement_id, Some(91));
+        assert_eq!(replacement.z_index, 6);
+        assert!(matches!(
+            replacement.mode,
+            PlacementMode::Inline {
+                row: 0,
+                col: 0,
+                cols: 2,
+                rows: 3,
+                x_offset: 4,
+                y_offset: 5,
+                render_size: InlineRenderSize::CellAnchored,
+            }
+        ));
+        assert_eq!(
+            store.get(first_stored_id).map(|image| (image.width, image.height)),
+            Some((1, 2))
+        );
+        assert_eq!(
+            store.get(second_stored_id).map(|image| (image.width, image.height)),
+            Some((2, 1))
         );
 
         let delete_first = KittyCommand {
@@ -3789,6 +3874,21 @@ mod tests {
 
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 0);
+    }
+
+    #[test]
+    fn retransmission_cleanup_removes_only_matching_kitty_placements() {
+        let mut placements = vec![
+            inline_image(15, 1, 0, 0, 1, 1),
+            inline_image(15, 0, 0, 0, 1, 1),
+            inline_image(16, 2, 0, 0, 1, 1),
+        ];
+
+        remove_retransmitted_placements(&mut placements, 15);
+
+        assert_eq!(placements.len(), 2);
+        assert_eq!(placements[0].placement_id, 0);
+        assert_eq!(placements[1].image_id, 16);
     }
 
     #[test]
