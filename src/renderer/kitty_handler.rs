@@ -300,6 +300,22 @@ pub struct KittyHandler {
     options: KittyHandlerOptions,
 }
 
+pub(crate) struct KittyProcessOutcome {
+    pub(crate) response: Option<Vec<u8>>,
+    pub(crate) advance: Option<CursorAdvance>,
+    pub(crate) hard_delete_candidates: HashSet<ImageId>,
+}
+
+impl KittyProcessOutcome {
+    fn new(response: Option<Vec<u8>>, advance: Option<CursorAdvance>) -> Self {
+        Self {
+            response,
+            advance,
+            hard_delete_candidates: HashSet::new(),
+        }
+    }
+}
+
 impl KittyHandler {
     pub fn new(options: KittyHandlerOptions) -> Self {
         Self {
@@ -312,9 +328,8 @@ impl KittyHandler {
     }
 
     /// Process a parsed Kitty graphics command.
-    /// Returns an optional response to send back to the PTY,
-    /// and optional placement(s) to add.
-    pub fn process(
+    /// Returns any PTY response, cursor movement, and deferred cache effects.
+    pub(crate) fn process(
         &mut self,
         cmd: KittyCommand,
         store: &mut ImageStore,
@@ -325,7 +340,7 @@ impl KittyHandler {
         grid_cols: usize,
         grid_rows: usize,
         placements: &mut Vec<ImagePlacement>,
-    ) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
+    ) -> KittyProcessOutcome {
         let selectors_conflict = cmd.image_id.is_some() && cmd.image_number.is_some();
         if cmd.invalid_image_selector || selectors_conflict {
             self.chunks.abort();
@@ -334,7 +349,7 @@ impl KittyHandler {
             } else {
                 "EINVAL:invalid image selector"
             };
-            return (
+            return KittyProcessOutcome::new(
                 kitty_response(
                     cmd.image_id,
                     cmd.image_number,
@@ -356,7 +371,8 @@ impl KittyHandler {
 
         match cmd.action {
             KittyAction::Query => {
-                return self.handle_query(&cmd);
+                let (response, advance) = self.handle_query(&cmd);
+                KittyProcessOutcome::new(response, advance)
             }
             KittyAction::Transmit | KittyAction::TransmitAndPlace => {
                 let will_place = cmd.action == KittyAction::TransmitAndPlace;
@@ -396,7 +412,7 @@ impl KittyHandler {
                         }
                     }
                 }
-                return (response, advance);
+                KittyProcessOutcome::new(response, advance)
             }
             KittyAction::Place => {
                 let image_number = cmd.image_number.filter(|number| *number != 0);
@@ -448,22 +464,27 @@ impl KittyHandler {
                     ),
                 };
                 self.prune_image_registries(store, placements);
-                return result;
+                KittyProcessOutcome::new(result.0, result.1)
             }
             KittyAction::Delete => {
-                self.handle_delete(
+                let hard_delete_candidates = self.handle_delete(
                     &cmd,
                     store,
                     (cursor_row, cursor_col),
                     (cell_width, cell_height),
+                    (grid_cols, grid_rows),
                     placements,
                 );
                 self.prune_image_registries(store, placements);
-                return (None, None);
+                KittyProcessOutcome {
+                    response: None,
+                    advance: None,
+                    hard_delete_candidates,
+                }
             }
             KittyAction::Frame | KittyAction::Animate | KittyAction::Compose => {
                 // Out of scope
-                return (None, None);
+                KittyProcessOutcome::new(None, None)
             }
         }
     }
@@ -997,20 +1018,21 @@ impl KittyHandler {
         store: &ImageStore,
         cursor: (usize, usize),
         cell_size: (f32, f32),
+        grid_size: (usize, usize),
         placements: &mut Vec<ImagePlacement>,
-    ) {
+    ) -> HashSet<ImageId> {
         let resolved_image_id = match cmd.delete_specifier {
             Some(KittyDeleteSpec::ByNumber { number, .. }) => {
                 let Some((_, image_id)) =
                     self.resolve_image_number_for_delete(number, store, placements)
                 else {
-                    return;
+                    return HashSet::new();
                 };
                 Some(image_id)
             }
             Some(KittyDeleteSpec::ById { id, .. }) => {
                 let Some(image_id) = self.client_images.get(id) else {
-                    return;
+                    return HashSet::new();
                 };
                 Some(image_id)
             }
@@ -1020,11 +1042,10 @@ impl KittyHandler {
             cmd,
             resolved_image_id,
             placements,
-            cursor.0,
-            cursor.1,
-            cell_size.0,
-            cell_size.1,
-        );
+            cursor,
+            cell_size,
+            grid_size,
+        )
     }
 }
 
@@ -1068,7 +1089,7 @@ fn apply_delete_to_placements(
     cursor_col: usize,
     cell_width: f32,
     cell_height: f32,
-) {
+) -> HashSet<ImageId> {
     let resolved_image_id = match cmd.delete_specifier {
         Some(KittyDeleteSpec::ById { id, .. }) if id != 0 => Some(u64::from(id)),
         _ => None,
@@ -1077,38 +1098,38 @@ fn apply_delete_to_placements(
         cmd,
         resolved_image_id,
         placements,
-        cursor_row,
-        cursor_col,
-        cell_width,
-        cell_height,
-    );
+        (cursor_row, cursor_col),
+        (cell_width, cell_height),
+        (usize::MAX, usize::MAX),
+    )
 }
 
 fn apply_resolved_delete_to_placements(
     cmd: &KittyCommand,
     resolved_image_id: Option<ImageId>,
     placements: &mut Vec<ImagePlacement>,
-    cursor_row: usize,
-    cursor_col: usize,
-    cell_width: f32,
-    cell_height: f32,
-) {
+    cursor: (usize, usize),
+    cell_size: (f32, f32),
+    grid_size: (usize, usize),
+) -> HashSet<ImageId> {
     let spec = cmd.delete_specifier.unwrap_or(KittyDeleteSpec::All);
-    if requests_image_data_deletion(spec) {
-        // This handler can see only the current pane's placements. Preserve
-        // cached data until global reference tracking can prove that no
-        // remaining placement needs the texture.
-        log::warn!("Preserving shared image data for uppercase Kitty delete selector");
-    }
 
-    match spec {
-        KittyDeleteSpec::NoOp => {}
+    let removed_image_ids = match spec {
+        KittyDeleteSpec::NoOp => HashSet::new(),
         KittyDeleteSpec::All | KittyDeleteSpec::AllImages => {
-            remove_matching_kitty_placements(placements, |_| true);
+            remove_matching_kitty_placements(placements, |placement| {
+                placement_intersects_grid(
+                    placement,
+                    grid_size.0,
+                    grid_size.1,
+                    cell_size.0,
+                    cell_size.1,
+                )
+            })
         }
         KittyDeleteSpec::ById { .. } | KittyDeleteSpec::ByNumber { .. } => {
             let Some(image_id) = resolved_image_id else {
-                return;
+                return HashSet::new();
             };
             let client_placement_id = cmd.placement_id;
             remove_matching_kitty_placements(placements, |placement| {
@@ -1116,41 +1137,57 @@ fn apply_resolved_delete_to_placements(
                     && client_placement_id
                         .map(|expected| placement.client_placement_id == Some(expected))
                         .unwrap_or(true)
-            });
+            })
         }
         KittyDeleteSpec::AtCursor { .. } => {
             remove_matching_kitty_placements(placements, |placement| {
                 placement_intersects_cell(
                     placement,
-                    cursor_row,
-                    cursor_col,
-                    cell_width,
-                    cell_height,
+                    cursor.0,
+                    cursor.1,
+                    cell_size.0,
+                    cell_size.1,
                 )
-            });
+            })
         }
         KittyDeleteSpec::ByColumn { column, .. } => {
             let Some(column) = column
                 .checked_sub(1)
                 .and_then(|column| usize::try_from(column).ok())
             else {
-                return;
+                return HashSet::new();
             };
             remove_matching_kitty_placements(placements, |placement| {
-                placement_intersects_column(placement, column, cell_width, cell_height)
-            });
+                placement_intersects_column(placement, column, cell_size.0, cell_size.1)
+            })
         }
         KittyDeleteSpec::ByRow { row, .. } => {
             let Some(row) = row.checked_sub(1).and_then(|row| usize::try_from(row).ok()) else {
-                return;
+                return HashSet::new();
             };
             remove_matching_kitty_placements(placements, |placement| {
-                placement_intersects_row(placement, row, cell_width, cell_height)
-            });
+                placement_intersects_row(placement, row, cell_size.0, cell_size.1)
+            })
         }
         KittyDeleteSpec::ByZIndex { z_index, .. } => {
-            remove_matching_kitty_placements(placements, |placement| placement.z_index == z_index);
+            remove_matching_kitty_placements(placements, |placement| placement.z_index == z_index)
         }
+    };
+
+    if !requests_image_data_deletion(spec) {
+        return HashSet::new();
+    }
+
+    match spec {
+        KittyDeleteSpec::ById { .. } | KittyDeleteSpec::ByNumber { .. }
+            if cmd.placement_id.is_none() =>
+        {
+            // Uppercase I/N without p= also target transmitted images that
+            // currently have no placement. With p=, an actual removal above
+            // is required before the image becomes a deletion candidate.
+            resolved_image_id.into_iter().collect()
+        }
+        _ => removed_image_ids,
     }
 }
 
@@ -1185,17 +1222,25 @@ fn requests_image_data_deletion(spec: KittyDeleteSpec) -> bool {
 fn remove_matching_kitty_placements(
     placements: &mut Vec<ImagePlacement>,
     mut matches: impl FnMut(&ImagePlacement) -> bool,
-) {
+) -> HashSet<ImageId> {
     // Sixel placements use the reserved placement ID zero. Kitty placements
     // are always assigned non-zero IDs, including when the client sends p=0.
-    placements.retain(|placement| placement.placement_id == 0 || !matches(placement));
+    let mut removed_image_ids = HashSet::new();
+    placements.retain(|placement| {
+        let should_remove = placement.placement_id != 0 && matches(placement);
+        if should_remove {
+            removed_image_ids.insert(placement.image_id);
+        }
+        !should_remove
+    });
+    removed_image_ids
 }
 
 fn remove_retransmitted_placements(
     placements: &mut Vec<ImagePlacement>,
     image_id: ImageId,
 ) {
-    remove_matching_kitty_placements(placements, |placement| {
+    let _ = remove_matching_kitty_placements(placements, |placement| {
         placement.image_id == image_id
     });
 }
@@ -1209,6 +1254,18 @@ fn placement_intersects_cell(
 ) -> bool {
     placement_intersects_column(placement, column, cell_width, cell_height)
         && placement_intersects_row(placement, row, cell_width, cell_height)
+}
+
+fn placement_intersects_grid(
+    placement: &ImagePlacement,
+    grid_cols: usize,
+    grid_rows: usize,
+    cell_width: f32,
+    cell_height: f32,
+) -> bool {
+    let (row, column, columns, rows) =
+        placement.mode.effective_cell_rect(cell_width, cell_height);
+    columns != 0 && rows != 0 && column < grid_cols && row < grid_rows
 }
 
 fn placement_intersects_column(
@@ -1905,7 +1962,8 @@ fn file_load_error_response_with_number(
 #[cfg(test)]
 mod tests {
     use super::{
-        append_bounded, apply_delete_to_placements, decompression_error_response,
+        append_bounded, apply_delete_to_placements,
+        apply_resolved_delete_to_placements, decompression_error_response,
         client_image_registry_needs_pruning,
         cursor_advance_for_policy, file_load_error_response, inline_placement_and_advance,
         image_number_registry_needs_pruning,
@@ -1921,8 +1979,8 @@ mod tests {
         MAX_PENDING_IMAGE_BYTES,
     };
     use crate::graphics::{
-        resolve_kitty_placement_layout, ImageId, ImagePlacement,
-        InlineRenderSize, PlacementMode,
+        resolve_kitty_placement_layout, retain_unreferenced_image_ids, ImageId,
+        ImagePlacement, InlineRenderSize, PlacementMode,
     };
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
@@ -1933,6 +1991,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     use objc2_metal::MTLCreateSystemDefaultDevice;
     use std::borrow::Cow;
+    use std::collections::HashSet;
     #[cfg(target_os = "linux")]
     use std::ffi::OsString;
     use std::fs;
@@ -1983,12 +2042,12 @@ mod tests {
     }
 
     #[cfg(target_os = "macos")]
-    fn process_graphics(
+    fn process_graphics_outcome(
         handler: &mut KittyHandler,
         command: KittyCommand,
         store: &mut ImageStore,
         placements: &mut Vec<ImagePlacement>,
-    ) -> (Option<Vec<u8>>, Option<super::CursorAdvance>) {
+    ) -> super::KittyProcessOutcome {
         handler.process(
             command,
             store,
@@ -2000,6 +2059,17 @@ mod tests {
             24,
             placements,
         )
+    }
+
+    #[cfg(target_os = "macos")]
+    fn process_graphics(
+        handler: &mut KittyHandler,
+        command: KittyCommand,
+        store: &mut ImageStore,
+        placements: &mut Vec<ImagePlacement>,
+    ) -> (Option<Vec<u8>>, Option<super::CursorAdvance>) {
+        let outcome = process_graphics_outcome(handler, command, store, placements);
+        (outcome.response, outcome.advance)
     }
 
     fn direct_query(image_id: Option<u32>, payload: &[u8]) -> KittyCommand {
@@ -2598,7 +2668,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn image_numbers_use_newest_generation_and_fall_back_after_cache_removal() {
+    fn uppercase_by_number_deletes_unreferenced_newest_generation_and_falls_back() {
         let Some(device) = MTLCreateSystemDefaultDevice() else {
             eprintln!("skipping Metal integration test: no device is available");
             return;
@@ -2680,12 +2750,13 @@ mod tests {
             }),
             ..KittyCommand::default()
         };
-        process_graphics(
+        let outcome = process_graphics_outcome(
             &mut handler,
             delete_newest,
             &mut store,
             &mut placements,
         );
+        assert_eq!(outcome.hard_delete_candidates, HashSet::from([2]));
         assert_eq!(
             placements
                 .iter()
@@ -2693,10 +2764,19 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![1]
         );
-        // Uppercase deletes preserve data while the cache is shared across panes.
-        assert!(store.get(2).is_some());
+        assert!(store.get(1).is_some());
 
-        store.remove(2);
+        let mut candidates = outcome.hard_delete_candidates;
+        retain_unreferenced_image_ids(
+            &mut candidates,
+            placements.iter().chain(other_placements.iter()),
+        );
+        assert_eq!(candidates, HashSet::from([2]));
+        for image_id in candidates {
+            store.remove(image_id);
+        }
+        assert!(store.get(2).is_none());
+
         assert_eq!(
             process_graphics(
                 &mut handler,
@@ -3524,8 +3604,10 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
+        assert!(candidates.is_empty());
         assert_eq!(
             placements
                 .iter()
@@ -3567,13 +3649,61 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let mut candidates =
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        assert_eq!(candidates, HashSet::from([7]));
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 2);
+        retain_unreferenced_image_ids(&mut candidates, &placements);
+        assert!(candidates.is_empty());
+
+        cmd.placement_id = Some(99);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        assert!(candidates.is_empty());
+        assert_eq!(placements.len(), 1);
 
         cmd.placement_id = Some(2);
-        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        assert_eq!(candidates, HashSet::from([7]));
         assert!(placements.is_empty());
+    }
+
+    #[test]
+    fn uppercase_explicit_delete_can_candidate_an_unplaced_image() {
+        for specifier in [
+            KittyDeleteSpec::ById {
+                id: 7,
+                delete_data: true,
+            },
+            KittyDeleteSpec::ByNumber {
+                number: 7,
+                delete_data: true,
+            },
+        ] {
+            let cmd = delete_command(specifier);
+            let candidates = apply_resolved_delete_to_placements(
+                &cmd,
+                Some(71),
+                &mut Vec::new(),
+                (0, 0),
+                (10.0, 20.0),
+                (usize::MAX, usize::MAX),
+            );
+
+            assert_eq!(candidates, HashSet::from([71]));
+        }
+
+        let candidates = apply_delete_to_placements(
+            &delete_command(KittyDeleteSpec::AllImages),
+            &mut Vec::new(),
+            0,
+            0,
+            10.0,
+            20.0,
+        );
+        assert!(candidates.is_empty());
     }
 
     #[test]
@@ -3592,7 +3722,9 @@ mod tests {
         ] {
             let mut placements = original.clone();
             let cmd = delete_command(specifier);
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+            let candidates =
+                apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+            assert!(candidates.is_empty());
             assert_eq!(placements.len(), 1);
             assert_eq!(placements[0].image_id, 7);
         }
@@ -3608,7 +3740,9 @@ mod tests {
             column: 2,
             delete_data: true,
         });
-        apply_delete_to_placements(&cmd, &mut columns, 0, 0, 10.0, 20.0);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut columns, 0, 0, 10.0, 20.0);
+        assert_eq!(candidates, HashSet::from([1]));
         assert_eq!(
             columns
                 .iter()
@@ -3625,12 +3759,46 @@ mod tests {
             row: 2,
             delete_data: true,
         });
-        apply_delete_to_placements(&cmd, &mut rows, 0, 0, 10.0, 20.0);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut rows, 0, 0, 10.0, 20.0);
+        assert_eq!(candidates, HashSet::from([5]));
         assert_eq!(
             rows.iter()
                 .map(|placement| placement.image_id)
                 .collect::<Vec<_>>(),
             vec![6]
+        );
+    }
+
+    #[test]
+    fn uppercase_z_index_delete_reports_only_removed_kitty_images() {
+        let mut first = inline_image(30, 1, 0, 0, 1, 1);
+        first.z_index = -3;
+        let mut duplicate = inline_image(30, 2, 1, 1, 1, 1);
+        duplicate.z_index = -3;
+        let mut sixel = inline_image(32, 0, 0, 0, 1, 1);
+        sixel.z_index = -3;
+        let mut placements = vec![
+            first,
+            duplicate,
+            inline_image(31, 3, 0, 0, 1, 1),
+            sixel,
+        ];
+        let command = delete_command(KittyDeleteSpec::ByZIndex {
+            z_index: -3,
+            delete_data: true,
+        });
+
+        let candidates =
+            apply_delete_to_placements(&command, &mut placements, 0, 0, 10.0, 20.0);
+
+        assert_eq!(candidates, HashSet::from([30]));
+        assert_eq!(
+            placements
+                .iter()
+                .map(|placement| (placement.image_id, placement.placement_id))
+                .collect::<Vec<_>>(),
+            vec![(31, 3), (32, 0)]
         );
     }
 
@@ -3833,7 +4001,9 @@ mod tests {
         ];
         let cmd = delete_command(KittyDeleteSpec::AtCursor { delete_data: true });
 
-        apply_delete_to_placements(&cmd, &mut placements, 1, 1, 10.0, 20.0);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut placements, 1, 1, 10.0, 20.0);
+        assert_eq!(candidates, HashSet::from([9]));
         assert_eq!(
             placements
                 .iter()
@@ -3852,10 +4022,56 @@ mod tests {
             ];
             let cmd = delete_command(specifier);
 
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+            let mut candidates =
+                apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
             assert_eq!(placements.len(), 1);
             assert_eq!(placements[0].placement_id, 0);
+            if specifier == KittyDeleteSpec::AllImages {
+                assert_eq!(candidates, HashSet::from([12]));
+                retain_unreferenced_image_ids(&mut candidates, &placements);
+                assert!(candidates.is_empty());
+            } else {
+                assert!(candidates.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn all_delete_variants_only_remove_visible_kitty_placements() {
+        let original = vec![
+            inline_image(12, 1, 0, 0, 1, 1),
+            inline_image(12, 2, 2, 0, 1, 1),
+            inline_image(13, 3, 1, 1, 2, 2),
+            inline_image(14, 0, 0, 0, 1, 1),
+        ];
+
+        for specifier in [KittyDeleteSpec::All, KittyDeleteSpec::AllImages] {
+            let mut placements = original.clone();
+            let command = delete_command(specifier);
+            let mut candidates = apply_resolved_delete_to_placements(
+                &command,
+                None,
+                &mut placements,
+                (0, 0),
+                (10.0, 20.0),
+                (2, 2),
+            );
+
+            assert_eq!(
+                placements
+                    .iter()
+                    .map(|placement| (placement.image_id, placement.placement_id))
+                    .collect::<Vec<_>>(),
+                vec![(12, 2), (14, 0)]
+            );
+            if specifier == KittyDeleteSpec::AllImages {
+                assert_eq!(candidates, HashSet::from([12, 13]));
+                retain_unreferenced_image_ids(&mut candidates, &placements);
+                assert_eq!(candidates, HashSet::from([13]));
+            } else {
+                assert!(candidates.is_empty());
+            }
         }
     }
 
@@ -3870,8 +4086,10 @@ mod tests {
             delete_data: false,
         });
 
-        apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates =
+            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
+        assert!(candidates.is_empty());
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 0);
     }
