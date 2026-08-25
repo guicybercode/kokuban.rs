@@ -18,6 +18,8 @@ mod selection;
 mod software_raster;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_decoder;
+#[allow(dead_code)]
+mod terminal_reader;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
 #[cfg(target_os = "macos")]
