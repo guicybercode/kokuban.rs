@@ -11,6 +11,7 @@ mod linux_window;
 mod pane;
 mod parser;
 mod pty;
+mod render_scene;
 mod selection;
 #[cfg(target_os = "macos")]
 mod renderer;
