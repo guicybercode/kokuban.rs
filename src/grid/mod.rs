@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::parser::kitty_graphics::KittyCommand;
 use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES};
-use crate::renderer::kitty_handler::ImagePlacement;
+use crate::graphics::ImagePlacement;
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
 

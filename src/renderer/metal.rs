@@ -3,10 +3,10 @@ use super::box_drawing;
 use super::braille;
 use super::brush::BrushRenderer;
 use super::image_store::ImageStore;
-use super::kitty_handler::PlacementMode;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::app::selection::SelectionState;
+use crate::graphics::{ImageId, PlacementMode};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::{CursorShape, Grid};
 use crate::pane::layout::{DividerInfo, PixelRect, DIVIDER_THICKNESS};
@@ -678,7 +678,7 @@ impl MetalRenderer {
         struct ImageDrawCall {
             vertex_start: usize,
             vertex_count: usize,
-            image_id: super::image_store::ImageId,
+            image_id: ImageId,
         }
         let mut image_vertices: Vec<Vertex> = Vec::new();
         let mut image_draw_calls: Vec<ImageDrawCall> = Vec::new();

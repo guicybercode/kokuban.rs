@@ -3,6 +3,7 @@ pub mod selection;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
+use crate::graphics::{ImagePlacement, PlacementMode};
 use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::pane::layout::PixelRect;
@@ -309,11 +310,11 @@ pub fn launch(config: Config) {
                                                 let display_rows =
                                                     ((sixel_img.height as f32) / cell_h).ceil() as u32;
                                                 pane.grid.image_placements.push(
-                                                    crate::renderer::kitty_handler::ImagePlacement {
+                                                    ImagePlacement {
                                                         image_id: stored_id,
                                                         placement_id: 0,
                                                         client_placement_id: None,
-                                                        mode: crate::renderer::kitty_handler::PlacementMode::Inline {
+                                                        mode: PlacementMode::Inline {
                                                             row: pane.grid.cursor_row,
                                                             col: pane.grid.cursor_col,
                                                             cols: display_cols,

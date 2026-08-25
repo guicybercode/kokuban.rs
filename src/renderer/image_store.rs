@@ -4,7 +4,7 @@ use objc2_metal::*;
 use std::collections::HashMap;
 use std::time::Instant;
 
-pub type ImageId = u32;
+use crate::graphics::ImageId;
 
 pub struct StoredImage {
     #[allow(dead_code)]
