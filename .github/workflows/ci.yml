@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            runner: macos-latest
+          - name: Linux portable core
+            runner: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust 1.94.1
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal --component clippy
+          rustup default 1.94.1
+          rustc --version
+
+      - name: Check all targets
+        run: cargo check --locked --all-targets
+
+      - name: Test all targets
+        run: cargo test --locked --all-targets
+
+      - name: Run Clippy
+        run: cargo clippy --locked --all-targets
+
+      - name: Verify Linux portability contract
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if cargo tree --locked | grep -E '(objc2|block2|font-kit|pathfinder_geometry) v'; then
+            echo "Apple-only dependencies are present in the Linux dependency tree"
+            exit 1
+          fi
+
+          cargo build --locked
+          set +e
+          linux_message="$(timeout 5s target/debug/kokuban 2>&1)"
+          linux_exit_code=$?
+          set -e
+
+          if [[ $linux_exit_code -ne 1 ]]; then
+            echo "Expected the Linux stub to exit with status 1, got $linux_exit_code"
+            exit 1
+          fi
+
+          if [[ "$linux_message" != "kokuban: the Linux graphical backend is not implemented yet" ]]; then
+            echo "Unexpected Linux stub message: $linux_message"
+            exit 1
+          fi
