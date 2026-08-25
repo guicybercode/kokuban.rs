@@ -41,7 +41,10 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends xvfb xauth
+          sudo apt-get install --yes --no-install-recommends \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
 
       - name: Check all targets
         run: cargo check --locked --all-targets
