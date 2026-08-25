@@ -80,9 +80,8 @@ pub fn launch(config: Config) {
         device.retain(),
         config.images.max_memory_mb,
     )));
-    let images_enabled = config.images.enabled;
-    let kitty_enabled = config.images.kitty_enabled;
-    let sixel_enabled = config.images.sixel_enabled;
+    let kitty_enabled = config.images.kitty_graphics_enabled();
+    let sixel_enabled = config.images.sixel_graphics_enabled();
 
     // Status bar height = 1.5× line height
     let status_bar_height = if config.status_bar.enabled {
@@ -253,7 +252,7 @@ pub fn launch(config: Config) {
                                                 cursor_row,
                                                 cursor_col,
                                             } => {
-                                                if !(kitty_enabled || images_enabled) {
+                                                if !kitty_enabled {
                                                     continue;
                                                 }
                                                 let grid_cols = pane.grid.cols();
@@ -287,40 +286,40 @@ pub fn launch(config: Config) {
                                     }
 
                                     // Process Sixel images
-                                    if sixel_enabled || images_enabled {
-                                        let sixel_imgs = pane.grid.drain_sixel_images();
-                                        if !sixel_imgs.is_empty() {
-                                            let mut store = reader_image_store.lock().unwrap();
-                                            for sixel_img in sixel_imgs {
-                                                let img_id = store.next_id();
-                                                if let Some(stored_id) = store.store(
-                                                    &sixel_img.pixels,
-                                                    sixel_img.width,
-                                                    sixel_img.height,
-                                                    ImageFormat::Rgba,
-                                                    Some(img_id),
-                                                ) {
-                                                    // Place inline at cursor
-                                                    let display_cols = ((sixel_img.width as f32) / cell_w).ceil() as u32;
-                                                    let display_rows = ((sixel_img.height as f32) / cell_h).ceil() as u32;
-                                                    pane.grid.image_placements.push(
-                                                        crate::renderer::kitty_handler::ImagePlacement {
-                                                            image_id: stored_id,
-                                                            placement_id: 0,
-                                                            client_placement_id: None,
-                                                            mode: crate::renderer::kitty_handler::PlacementMode::Inline {
-                                                                row: pane.grid.cursor_row,
-                                                                col: pane.grid.cursor_col,
-                                                                cols: display_cols,
-                                                                rows: display_rows,
-                                                            },
-                                                            z_index: 0,
+                                    let sixel_imgs = pane.grid.drain_sixel_images();
+                                    if sixel_enabled && !sixel_imgs.is_empty() {
+                                        let mut store = reader_image_store.lock().unwrap();
+                                        for sixel_img in sixel_imgs {
+                                            let img_id = store.next_id();
+                                            if let Some(stored_id) = store.store(
+                                                &sixel_img.pixels,
+                                                sixel_img.width,
+                                                sixel_img.height,
+                                                ImageFormat::Rgba,
+                                                Some(img_id),
+                                            ) {
+                                                // Place inline at cursor
+                                                let display_cols =
+                                                    ((sixel_img.width as f32) / cell_w).ceil() as u32;
+                                                let display_rows =
+                                                    ((sixel_img.height as f32) / cell_h).ceil() as u32;
+                                                pane.grid.image_placements.push(
+                                                    crate::renderer::kitty_handler::ImagePlacement {
+                                                        image_id: stored_id,
+                                                        placement_id: 0,
+                                                        client_placement_id: None,
+                                                        mode: crate::renderer::kitty_handler::PlacementMode::Inline {
+                                                            row: pane.grid.cursor_row,
+                                                            col: pane.grid.cursor_col,
+                                                            cols: display_cols,
+                                                            rows: display_rows,
                                                         },
-                                                    );
-                                                    // Advance cursor past image
-                                                    for _ in 0..display_rows {
-                                                        pane.grid.newline();
-                                                    }
+                                                        z_index: 0,
+                                                    },
+                                                );
+                                                // Advance cursor past image
+                                                for _ in 0..display_rows {
+                                                    pane.grid.newline();
                                                 }
                                             }
                                         }

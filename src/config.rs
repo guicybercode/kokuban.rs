@@ -112,7 +112,6 @@ pub struct ResizeConfig {
     pub step: u32,
 }
 
-
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct ImagesConfig {
@@ -128,6 +127,16 @@ pub struct ImagesConfig {
 pub struct KittyImagesConfig {
     pub max_image_size_mb: usize,
     pub allow_file_transfer: bool,
+}
+
+impl ImagesConfig {
+    pub(crate) fn kitty_graphics_enabled(&self) -> bool {
+        self.enabled && self.kitty_enabled
+    }
+
+    pub(crate) fn sixel_graphics_enabled(&self) -> bool {
+        self.enabled && self.sixel_enabled
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -329,6 +338,37 @@ impl ColorConfig {
             (r, g, b)
         } else {
             (192, 192, 192)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ImagesConfig;
+
+    #[test]
+    fn graphics_protocols_honor_master_and_specific_switches() {
+        let cases = [
+            (false, false, false, false, false),
+            (false, false, true, false, false),
+            (false, true, false, false, false),
+            (false, true, true, false, false),
+            (true, false, false, false, false),
+            (true, false, true, false, true),
+            (true, true, false, true, false),
+            (true, true, true, true, true),
+        ];
+
+        for (enabled, kitty_enabled, sixel_enabled, expected_kitty, expected_sixel) in cases {
+            let config = ImagesConfig {
+                enabled,
+                kitty_enabled,
+                sixel_enabled,
+                ..ImagesConfig::default()
+            };
+
+            assert_eq!(config.kitty_graphics_enabled(), expected_kitty);
+            assert_eq!(config.sixel_graphics_enabled(), expected_sixel);
         }
     }
 }
