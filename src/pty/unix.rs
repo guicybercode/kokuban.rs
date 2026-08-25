@@ -1,6 +1,6 @@
 use super::PtyError;
 use nix::libc;
-use nix::poll::{poll, PollFd, PollFlags};
+use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 use nix::pty::openpty;
 use nix::sys::signal::{kill, killpg, Signal};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -132,6 +132,22 @@ impl Pty {
         self.master().as_raw_fd()
     }
 
+    #[allow(dead_code)]
+    pub fn wait_readable(&self, timeout: Duration) -> std::io::Result<bool> {
+        let started = Instant::now();
+        wait_readable_with(
+            timeout,
+            || started.elapsed(),
+            |poll_timeout| {
+                let mut poll_fds = [PollFd::new(self.master().as_fd(), PollFlags::POLLIN)];
+                match poll(&mut poll_fds, poll_timeout)? {
+                    0 => Ok(ReadPollResult::TimedOut),
+                    _ => Ok(ReadPollResult::Events(poll_fds[0].revents())),
+                }
+            },
+        )
+    }
+
     pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             match nix::unistd::read(self.master().as_raw_fd(), buf) {
@@ -139,7 +155,9 @@ impl Pty {
                 Err(nix::Error::EAGAIN) => {
                     return Err(std::io::Error::from(std::io::ErrorKind::WouldBlock));
                 }
-                Err(other) => return Err(std::io::Error::other(other)),
+                #[cfg(target_os = "linux")]
+                Err(nix::Error::EIO) => return Ok(0),
+                Err(other) => return Err(other.into()),
                 Ok(read) => return Ok(read),
             }
         }
@@ -179,6 +197,74 @@ impl Pty {
     fn master(&self) -> &OwnedFd {
         self.master.as_ref().expect("PTY master is available")
     }
+}
+
+#[allow(dead_code)]
+enum ReadPollResult {
+    TimedOut,
+    Events(Option<PollFlags>),
+}
+
+#[allow(dead_code)]
+fn wait_readable_with<P, E>(
+    timeout: Duration,
+    mut elapsed: E,
+    mut poll_once: P,
+) -> std::io::Result<bool>
+where
+    P: FnMut(PollTimeout) -> nix::Result<ReadPollResult>,
+    E: FnMut() -> Duration,
+{
+    let mut attempted = false;
+    loop {
+        let elapsed = elapsed();
+        if attempted && elapsed >= timeout {
+            return Ok(false);
+        }
+
+        let remaining = timeout.saturating_sub(elapsed);
+        attempted = true;
+        match poll_once(poll_timeout_for(remaining)) {
+            Ok(ReadPollResult::TimedOut) | Err(nix::errno::Errno::EINTR) => continue,
+            Ok(ReadPollResult::Events(events)) => {
+                classify_readable_events(events)?;
+                return Ok(true);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn poll_timeout_for(duration: Duration) -> PollTimeout {
+    if duration.is_zero() {
+        return PollTimeout::ZERO;
+    }
+
+    let rounded_millis = duration.as_nanos().div_ceil(1_000_000);
+    PollTimeout::try_from(rounded_millis).unwrap_or(PollTimeout::MAX)
+}
+
+#[allow(dead_code)]
+fn classify_readable_events(events: Option<PollFlags>) -> std::io::Result<()> {
+    let events = events.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "poll returned unknown PTY event flags",
+        )
+    })?;
+
+    if events.contains(PollFlags::POLLNVAL) {
+        return Err(std::io::Error::from_raw_os_error(libc::EBADF));
+    }
+    if events.intersects(PollFlags::POLLIN | PollFlags::POLLHUP | PollFlags::POLLERR) {
+        return Ok(());
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!("poll returned unexpected PTY events: {events:?}"),
+    ))
 }
 
 impl Drop for Pty {
@@ -484,10 +570,14 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use super::{child_environment, select_shell, set_cloexec, Pty};
+    use super::{
+        child_environment, classify_readable_events, poll_timeout_for, select_shell, set_cloexec,
+        wait_readable_with, Pty, ReadPollResult,
+    };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
     use nix::libc;
+    use nix::poll::{PollFlags, PollTimeout};
     use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
     use std::ffi::{CString, OsString};
     use std::os::fd::AsRawFd;
@@ -511,6 +601,13 @@ mod tests {
         let mut buffer = [0; 256];
 
         while Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if !pty
+                .wait_readable(remaining)
+                .expect("PTY readiness check should succeed")
+            {
+                break;
+            }
             match pty.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(read) => {
@@ -519,10 +616,7 @@ mod tests {
                         break;
                     }
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                Err(error) if error.raw_os_error() == Some(libc::EIO) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
                 Err(error) => panic!("PTY read failed: {error}"),
             }
         }
@@ -532,6 +626,130 @@ mod tests {
     fn process_exists(pid: nix::unistd::Pid) -> bool {
         let result = unsafe { libc::kill(pid.as_raw(), 0) };
         result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+
+    fn assert_send_sync<T: Send + Sync>() {}
+
+    #[test]
+    fn pty_can_be_shared_with_a_reader_thread() {
+        assert_send_sync::<Pty>();
+    }
+
+    #[test]
+    fn rounds_and_bounds_poll_timeouts() {
+        assert_eq!(poll_timeout_for(Duration::ZERO), PollTimeout::ZERO);
+        assert_eq!(
+            poll_timeout_for(Duration::from_nanos(1)).as_millis(),
+            Some(1)
+        );
+        assert_eq!(
+            poll_timeout_for(Duration::from_millis(1)).as_millis(),
+            Some(1)
+        );
+        assert_eq!(
+            poll_timeout_for(Duration::from_millis(1) + Duration::from_nanos(1)).as_millis(),
+            Some(2)
+        );
+        assert_eq!(
+            poll_timeout_for(Duration::from_millis(i32::MAX as u64) + Duration::from_nanos(1)),
+            PollTimeout::MAX
+        );
+    }
+
+    #[test]
+    fn classifies_readable_hangup_error_and_invalid_events() {
+        for event in [PollFlags::POLLIN, PollFlags::POLLHUP, PollFlags::POLLERR] {
+            classify_readable_events(Some(event)).expect("event should wake a PTY reader");
+        }
+        classify_readable_events(Some(PollFlags::POLLIN | PollFlags::POLLHUP))
+            .expect("pending data must remain readable during hangup");
+
+        let error = classify_readable_events(Some(PollFlags::POLLIN | PollFlags::POLLNVAL))
+            .expect_err("invalid descriptor should fail");
+        assert_eq!(error.raw_os_error(), Some(libc::EBADF));
+
+        let error = classify_readable_events(Some(PollFlags::empty()))
+            .expect_err("empty events should not look readable");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        let error = classify_readable_events(None).expect_err("unknown flags should fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn interrupted_polls_preserve_the_original_deadline() {
+        let mut elapsed = [
+            Duration::ZERO,
+            Duration::from_millis(30),
+            Duration::from_millis(70),
+            Duration::from_millis(100),
+        ]
+        .into_iter();
+        let mut outcomes = [
+            Err(nix::errno::Errno::EINTR),
+            Err(nix::errno::Errno::EINTR),
+            Ok(ReadPollResult::TimedOut),
+        ]
+        .into_iter();
+        let mut observed_timeouts = Vec::new();
+
+        let readable = wait_readable_with(
+            Duration::from_millis(100),
+            || elapsed.next().expect("scripted clock should have a value"),
+            |timeout| {
+                observed_timeouts.push(timeout.as_millis());
+                outcomes.next().expect("scripted poll should have a result")
+            },
+        )
+        .unwrap();
+
+        assert!(!readable);
+        assert_eq!(observed_timeouts, [Some(100), Some(70), Some(30)]);
+    }
+
+    #[test]
+    fn wait_readable_times_out_without_output() {
+        let program = CString::new("/bin/sh").unwrap();
+        let argv = ["sh", "-c", "sleep 5"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+
+        assert!(!pty.wait_readable(Duration::ZERO).unwrap());
+        let started = Instant::now();
+        assert!(!pty.wait_readable(Duration::from_millis(25)).unwrap());
+        assert!(started.elapsed() >= Duration::from_millis(10));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn wait_readable_reports_pending_output() {
+        let program = CString::new("/bin/sh").unwrap();
+        let argv = ["sh", "-c", "printf '__KOKUBAN_READABLE__'; sleep 1"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+
+        assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
+        assert!(pty.wait_readable(Duration::ZERO).unwrap());
+        assert_eq!(
+            read_until(&pty, b"__KOKUBAN_READABLE__"),
+            b"__KOKUBAN_READABLE__"
+        );
+    }
+
+    #[test]
+    fn child_exit_becomes_readable_eof() {
+        let program = CString::new("/bin/sh").unwrap();
+        let argv = ["sh", "-c", "exit 0"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+
+        assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
+        assert_eq!(pty.read(&mut [0; 1]).unwrap(), 0);
     }
 
     #[test]
