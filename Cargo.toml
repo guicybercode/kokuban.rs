@@ -15,6 +15,8 @@ unicode-width = "0.2"
 png = "0.17"
 flate2 = "1"
 base64 = "0.22"
+font-kit = "0.14"
+pathfinder_geometry = "0.5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -23,8 +25,6 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWindow", "NSV
 objc2-metal = { version = "0.3", features = ["MTLDevice", "MTLCommandQueue", "MTLCommandBuffer", "MTLRenderCommandEncoder", "MTLRenderPipeline", "MTLLibrary", "MTLBuffer", "MTLTexture", "MTLResource", "MTLVertexDescriptor", "MTLSampler", "MTLRenderPass", "MTLPixelFormat", "MTLDrawable"] }
 objc2-quartz-core = { version = "0.3", features = ["CAMetalLayer", "CALayer", "objc2-metal"] }
 block2 = "0.6"
-font-kit = "0.14"
-pathfinder_geometry = "0.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }

@@ -3,13 +3,13 @@ pub mod window;
 
 use crate::config::{ColorConfig, Config};
 use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::render_scene::ChromeColors;
-use crate::renderer::atlas::GlyphAtlas;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 

@@ -2,6 +2,7 @@
 mod app;
 mod config;
 mod graphics;
+mod glyph_atlas;
 mod grid;
 mod input;
 mod layout;

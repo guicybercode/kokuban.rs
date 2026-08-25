@@ -1,4 +1,3 @@
-use super::atlas::{GlyphAtlas, GlyphKey};
 use super::box_drawing;
 use super::braille;
 use super::brush::BrushRenderer;
@@ -6,6 +5,7 @@ use super::image_store::ImageStore;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::graphics::ImageId;
+use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
