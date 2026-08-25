@@ -255,11 +255,11 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                         let Some(pane) = tree.pane_mut(id) else {
                                             break;
                                         };
-                                        let consumed = pane.parser.feed_until_terminal_event(
+                                        let step = pane.decoder.feed_until_event(
                                             &buf[parsed_bytes..n],
                                             &mut pane.grid,
                                         );
-                                        (consumed, pane.grid.drain_terminal_events())
+                                        (step.consumed, step.events)
                                     };
                                     debug_assert!(consumed > 0);
                                     parsed_bytes += consumed;
