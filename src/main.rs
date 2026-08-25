@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod graphics;
 mod grid;
 mod input;
 mod pane;

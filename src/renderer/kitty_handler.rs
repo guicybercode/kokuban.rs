@@ -1,4 +1,5 @@
-use super::image_store::{probe_image_data, ImageFormat, ImageId, ImageStore};
+use super::image_store::{probe_image_data, ImageFormat, ImageStore};
+use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 use crate::parser::kitty_graphics::*;
 use nix::libc;
 use std::borrow::Cow;
@@ -30,33 +31,6 @@ impl KittyHandlerOptions {
             allow_file_transfer,
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ImagePlacement {
-    pub image_id: ImageId,
-    /// Non-zero renderer-local identity. Sixel reserves zero as its source marker.
-    pub placement_id: u32,
-    /// Protocol `p=` supplied by the Kitty client, distinct from local identity.
-    pub client_placement_id: Option<u32>,
-    pub mode: PlacementMode,
-    pub z_index: i32,
-}
-
-#[derive(Debug, Clone)]
-pub enum PlacementMode {
-    Inline {
-        row: usize,
-        col: usize,
-        cols: u32,
-        rows: u32,
-    },
-    Overlay {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-    },
 }
 
 #[derive(Debug)]
@@ -1507,10 +1481,10 @@ mod tests {
         file_load_error_response, inline_placement_and_advance, is_safe_read_path,
         is_safe_temp_delete_path, load_file_data, maybe_decompress_with_limit,
         normalized_path_entry, path_is_within_roots, read_regular_file, ChunkAssembler,
-        ChunkAssemblyErrorKind, CompletedImage, DecompressionError, FileLoadError, ImagePlacement,
-        KittyHandler, KittyHandlerOptions, PlacementMode, TempFileDeletion,
-        DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
+        ChunkAssemblyErrorKind, CompletedImage, DecompressionError, FileLoadError, KittyHandler,
+        KittyHandlerOptions, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
     };
+    use crate::graphics::{ImagePlacement, PlacementMode};
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
         KittyTransmission,
