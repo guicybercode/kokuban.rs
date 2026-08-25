@@ -1,6 +1,6 @@
 use crate::grid::{Grid, TerminalEvent};
 use crate::parser::ansi::GraphicsSupport;
-use crate::pty::Pty;
+use crate::pty::{CancellableWriteOutcome, Pty};
 use crate::terminal_decoder::TerminalDecoder;
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,7 +15,11 @@ const MAX_READS_PER_BATCH: usize = 16;
 trait ReaderIo: Send + Sync + 'static {
     fn wait_readable(&self, timeout: Duration) -> io::Result<bool>;
     fn read(&self, buffer: &mut [u8]) -> io::Result<usize>;
-    fn write_all(&self, data: &[u8]) -> io::Result<()>;
+    fn write_all_cancellable(
+        &self,
+        data: &[u8],
+        cancelled: &AtomicBool,
+    ) -> io::Result<CancellableWriteOutcome>;
 }
 
 impl ReaderIo for Pty {
@@ -27,8 +31,12 @@ impl ReaderIo for Pty {
         Pty::read(self, buffer)
     }
 
-    fn write_all(&self, data: &[u8]) -> io::Result<()> {
-        Pty::write_all(self, data)
+    fn write_all_cancellable(
+        &self,
+        data: &[u8],
+        cancelled: &AtomicBool,
+    ) -> io::Result<CancellableWriteOutcome> {
+        Pty::write_all_cancellable(self, data, cancelled)
     }
 }
 
@@ -182,7 +190,7 @@ where
             Ok(0) => return (changed, Some(ReaderExit::Eof)),
             Ok(read) => {
                 changed = true;
-                if let Err(exit) = process_bytes(io, grid, decoder, &buffer[..read]) {
+                if let Err(exit) = process_bytes(io, grid, shutdown, decoder, &buffer[..read]) {
                     return (changed, Some(exit));
                 }
             }
@@ -197,6 +205,7 @@ where
 fn process_bytes<I>(
     io: &I,
     grid: &Mutex<Grid>,
+    shutdown: &AtomicBool,
     decoder: &mut TerminalDecoder,
     input: &[u8],
 ) -> Result<(), ReaderExit>
@@ -205,6 +214,10 @@ where
 {
     let mut offset = 0;
     while offset < input.len() {
+        if shutdown.load(Ordering::Acquire) {
+            return Err(ReaderExit::Shutdown);
+        }
+
         let step = {
             let mut grid = grid.lock().map_err(|_| ReaderExit::GridPoisoned)?;
             decoder.feed_until_event(&input[offset..], &mut grid)
@@ -218,9 +231,15 @@ where
 
         for event in step.events {
             match event {
-                TerminalEvent::Response(response) => io
-                    .write_all(&response)
-                    .map_err(ReaderExit::ResponseWriteFailed)?,
+                TerminalEvent::Response(response) => {
+                    match io.write_all_cancellable(&response, shutdown) {
+                        Ok(CancellableWriteOutcome::Completed) => {}
+                        Ok(CancellableWriteOutcome::Cancelled) => {
+                            return Err(ReaderExit::Shutdown);
+                        }
+                        Err(error) => return Err(ReaderExit::ResponseWriteFailed(error)),
+                    }
+                }
                 TerminalEvent::KittyGraphics { .. } => {
                     return Err(ReaderExit::UnexpectedProtocolEvent);
                 }
@@ -239,6 +258,7 @@ mod tests {
     use crate::grid::cell::Color;
     use crate::grid::Grid;
     use crate::parser::ansi::GraphicsSupport;
+    use crate::pty::CancellableWriteOutcome;
     use crate::terminal_decoder::TerminalDecoder;
     use nix::libc;
     use std::collections::VecDeque;
@@ -300,6 +320,8 @@ mod tests {
         writes: Mutex<Vec<Vec<u8>>>,
         write_check: Option<WriteCheck>,
         write_error: Option<i32>,
+        cancel_response_write: bool,
+        blocked_cancelled_response_write: Option<Arc<BlockingGate>>,
         wait_calls: AtomicUsize,
         read_calls: AtomicUsize,
     }
@@ -312,6 +334,8 @@ mod tests {
                 writes: Mutex::new(Vec::new()),
                 write_check: None,
                 write_error: None,
+                cancel_response_write: false,
+                blocked_cancelled_response_write: None,
                 wait_calls: AtomicUsize::new(0),
                 read_calls: AtomicUsize::new(0),
             }
@@ -324,6 +348,16 @@ mod tests {
 
         fn with_write_error(mut self, error: i32) -> Self {
             self.write_error = Some(error);
+            self
+        }
+
+        fn with_cancelled_response_write(mut self) -> Self {
+            self.cancel_response_write = true;
+            self
+        }
+
+        fn with_blocked_cancelled_response_write(mut self, gate: Arc<BlockingGate>) -> Self {
+            self.blocked_cancelled_response_write = Some(gate);
             self
         }
 
@@ -377,15 +411,29 @@ mod tests {
             }
         }
 
-        fn write_all(&self, data: &[u8]) -> io::Result<()> {
+        fn write_all_cancellable(
+            &self,
+            data: &[u8],
+            cancelled: &AtomicBool,
+        ) -> io::Result<CancellableWriteOutcome> {
             if let Some(check) = &self.write_check {
                 check(data);
             }
             if let Some(error) = self.write_error {
                 return Err(io::Error::from_raw_os_error(error));
             }
+            if self.cancel_response_write {
+                cancelled.store(true, Ordering::Release);
+                return Ok(CancellableWriteOutcome::Cancelled);
+            }
+            if let Some(gate) = &self.blocked_cancelled_response_write {
+                gate.wait();
+                if cancelled.load(Ordering::Acquire) {
+                    return Ok(CancellableWriteOutcome::Cancelled);
+                }
+            }
             self.writes.lock().unwrap().push(data.to_vec());
-            Ok(())
+            Ok(CancellableWriteOutcome::Completed)
         }
     }
 
@@ -449,6 +497,74 @@ mod tests {
         assert!(matches!(exit, ReaderExit::Eof));
         assert_eq!(fake.writes(), [b"\x1b[1;2R".to_vec()]);
         assert_eq!(grid.lock().unwrap().buffer.cell(0, 1).c, 'B');
+    }
+
+    #[test]
+    fn cancelled_response_write_exits_before_trailing_text() {
+        let fake = FakeIo::new(
+            vec![WaitAction::Ready],
+            vec![ReadAction::Data(b"A\x1b[6nB".to_vec())],
+        )
+        .with_cancelled_response_write();
+        let grid = grid();
+        let shutdown = AtomicBool::new(false);
+        let mut decoder = text_decoder();
+        let mut updates = 0;
+
+        let exit = run_reader(&fake, &grid, &shutdown, &mut decoder, &mut || updates += 1);
+
+        assert!(matches!(exit, ReaderExit::Shutdown));
+        assert!(shutdown.load(Ordering::Acquire));
+        assert_eq!(updates, 1);
+        assert!(fake.writes().is_empty());
+        let grid = grid.lock().unwrap();
+        assert_eq!(grid.buffer.cell(0, 0).c, 'A');
+        assert_eq!(grid.buffer.cell(0, 1).c, ' ');
+    }
+
+    #[test]
+    fn request_shutdown_cancels_a_blocked_response_before_trailing_text() {
+        let (write_gate, entered_write, release_write) = blocking_gate();
+        let fake = Arc::new(
+            FakeIo::new(
+                vec![WaitAction::Ready],
+                vec![ReadAction::Data(b"A\x1b[6nB".to_vec())],
+            )
+            .with_blocked_cancelled_response_write(write_gate),
+        );
+        let grid = grid();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let update_events = events.clone();
+        let exit_events = events.clone();
+
+        let reader = TerminalReader::spawn_with_io(
+            fake.clone(),
+            grid.clone(),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            move || update_events.lock().unwrap().push("update"),
+            move |exit| {
+                assert!(matches!(exit, ReaderExit::Shutdown));
+                exit_events.lock().unwrap().push("exit");
+            },
+        )
+        .unwrap();
+
+        entered_write
+            .recv_timeout(Duration::from_secs(2))
+            .expect("reader did not enter the blocked response write");
+        reader.request_shutdown();
+        release_write.send(()).unwrap();
+        let exit = reader.shutdown_and_join().unwrap();
+
+        assert!(matches!(exit, ReaderExit::Shutdown));
+        assert_eq!(*events.lock().unwrap(), ["update", "exit"]);
+        assert!(fake.writes().is_empty());
+        let grid = grid.lock().unwrap();
+        assert_eq!(grid.buffer.cell(0, 0).c, 'A');
+        assert_eq!(grid.buffer.cell(0, 1).c, ' ');
     }
 
     #[test]

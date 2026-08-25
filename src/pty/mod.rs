@@ -1,5 +1,6 @@
 pub mod unix;
 
+pub(crate) use unix::CancellableWriteOutcome;
 pub use unix::Pty;
 
 use thiserror::Error;
