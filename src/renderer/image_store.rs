@@ -4,7 +4,7 @@ use objc2_metal::*;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::graphics::ImageId;
+use crate::graphics::{next_available_image_id, ImageId};
 
 pub struct StoredImage {
     #[allow(dead_code)]
@@ -96,11 +96,7 @@ impl ImageStore {
         }
 
         let texture = self.create_texture(width, height, rgba_data)?;
-        let id = requested_id.unwrap_or_else(|| {
-            let id = self.next_id;
-            self.next_id = self.next_id.wrapping_add(1).max(1);
-            id
-        });
+        let id = requested_id.unwrap_or_else(|| self.next_id());
 
         // If using a requested ID that's higher than next_id, advance next_id
         if let Some(req_id) = requested_id {
@@ -187,6 +183,10 @@ impl ImageStore {
         self.images.get(&id)
     }
 
+    pub(crate) fn image_count(&self) -> usize {
+        self.images.len()
+    }
+
     fn evict_lru(&mut self) {
         if let Some((&oldest_id, _)) = self
             .images
@@ -198,11 +198,10 @@ impl ImageStore {
         }
     }
 
-    /// Assign a new unique ID (for Sixel images which don't have their own IDs)
+    /// Assign a non-zero image ID that is not currently in the cache.
     pub fn next_id(&mut self) -> ImageId {
-        let id = self.next_id;
-        self.next_id = self.next_id.wrapping_add(1).max(1);
-        id
+        let images = &self.images;
+        next_available_image_id(&mut self.next_id, |id| images.contains_key(&id))
     }
 }
 

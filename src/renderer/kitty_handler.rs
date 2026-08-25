@@ -1,7 +1,7 @@
 use super::image_store::{probe_image_data, ImageFormat, ImageStore};
 use crate::graphics::{
-    resolve_kitty_placement_layout, ImageId, ImagePlacement, InlineRenderSize,
-    PlacementMode,
+    resolve_kitty_placement_layout, ImageId, ImageNumberRegistry,
+    ImagePlacement, InlineRenderSize, PlacementMode,
 };
 use crate::parser::kitty_graphics::*;
 use nix::libc;
@@ -19,6 +19,8 @@ const DECOMPRESSION_CHUNK_BYTES: usize = 32 * 1024;
 const FILE_READ_CHUNK_BYTES: usize = 32 * 1024;
 const BYTES_PER_MEBIBYTE: usize = 1024 * 1024;
 const TEMP_FILE_MARKER: &str = "tty-graphics-protocol";
+// Batch cache-existence scans while bounding registry growth relative to the shared cache.
+const MAX_STALE_IMAGE_NUMBER_GENERATIONS: usize = 32;
 
 #[derive(Debug, Clone, Copy)]
 pub struct KittyHandlerOptions {
@@ -55,6 +57,7 @@ struct CompletedImage {
 #[derive(Debug, PartialEq, Eq)]
 enum ChunkAssemblyErrorKind {
     Interleaved { received_id: ImageId },
+    InterleavedNumber { received_number: u32 },
     UnexpectedStart,
     TooLarge,
     AllocationFailed,
@@ -63,6 +66,7 @@ enum ChunkAssemblyErrorKind {
 #[derive(Debug, PartialEq, Eq)]
 struct ChunkAssemblyError {
     image_id: ImageId,
+    image_number: Option<u32>,
     quiet: u8,
     kind: ChunkAssemblyErrorKind,
 }
@@ -99,18 +103,48 @@ impl ChunkAssembler {
             if will_place {
                 let error = ChunkAssemblyError {
                     image_id: pending.image_id,
+                    image_number: pending
+                        .metadata
+                        .image_number
+                        .filter(|number| *number != 0),
                     quiet: pending.metadata.quiet,
                     kind: ChunkAssemblyErrorKind::UnexpectedStart,
                 };
                 self.pending = None;
                 return Err(error);
             }
-            if let Some(received_id) = cmd.image_id {
-                if received_id != pending.image_id {
+            if let Some(received_id) = cmd.image_id.filter(|id| *id != 0) {
+                if pending.metadata.image_id.filter(|id| *id != 0) != Some(received_id) {
                     let error = ChunkAssemblyError {
                         image_id: pending.image_id,
+                        image_number: pending
+                            .metadata
+                            .image_number
+                            .filter(|number| *number != 0),
                         quiet: pending.metadata.quiet,
                         kind: ChunkAssemblyErrorKind::Interleaved { received_id },
+                    };
+                    self.pending = None;
+                    return Err(error);
+                }
+            }
+            if let Some(received_number) = cmd.image_number.filter(|number| *number != 0) {
+                if pending
+                    .metadata
+                    .image_number
+                    .filter(|number| *number != 0)
+                    != Some(received_number)
+                {
+                    let error = ChunkAssemblyError {
+                        image_id: pending.image_id,
+                        image_number: pending
+                            .metadata
+                            .image_number
+                            .filter(|number| *number != 0),
+                        quiet: pending.metadata.quiet,
+                        kind: ChunkAssemblyErrorKind::InterleavedNumber {
+                            received_number,
+                        },
                     };
                     self.pending = None;
                     return Err(error);
@@ -122,6 +156,10 @@ impl ChunkAssembler {
             if let Err(kind) = append_bounded(&mut pending.data, &payload, self.max_bytes) {
                 let error = ChunkAssemblyError {
                     image_id: pending.image_id,
+                    image_number: pending
+                        .metadata
+                        .image_number
+                        .filter(|number| *number != 0),
                     quiet: pending.metadata.quiet,
                     kind,
                 };
@@ -150,13 +188,17 @@ impl ChunkAssembler {
             }));
         }
 
-        let image_id = cmd.image_id.unwrap_or_else(&mut next_image_id);
+        let image_id = cmd
+            .image_id
+            .filter(|id| *id != 0)
+            .unwrap_or_else(&mut next_image_id);
         let quiet = cmd.quiet;
         let payload = std::mem::take(&mut cmd.payload);
         let mut data = Vec::new();
         if let Err(kind) = append_bounded(&mut data, &payload, self.max_bytes) {
             return Err(ChunkAssemblyError {
                 image_id,
+                image_number: cmd.image_number.filter(|number| *number != 0),
                 quiet,
                 kind,
             });
@@ -223,6 +265,7 @@ fn append_bounded(
 
 struct StoredTransmission {
     image_id: ImageId,
+    image_number: Option<u32>,
     quiet: u8,
     place_after: Option<KittyCommand>,
 }
@@ -247,6 +290,7 @@ enum PlacementError {
 
 pub struct KittyHandler {
     chunks: ChunkAssembler,
+    image_numbers: ImageNumberRegistry,
     next_placement_id: u32,
     options: KittyHandlerOptions,
 }
@@ -255,6 +299,7 @@ impl KittyHandler {
     pub fn new(options: KittyHandlerOptions) -> Self {
         Self {
             chunks: ChunkAssembler::new(options.max_image_bytes),
+            image_numbers: ImageNumberRegistry::default(),
             next_placement_id: 1,
             options,
         }
@@ -275,6 +320,26 @@ impl KittyHandler {
         grid_rows: usize,
         placements: &mut Vec<ImagePlacement>,
     ) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
+        let selectors_conflict = cmd.image_id.is_some() && cmd.image_number.is_some();
+        if cmd.invalid_image_selector || selectors_conflict {
+            self.chunks.abort();
+            let reason = if selectors_conflict {
+                "EINVAL:image ID and image number are mutually exclusive"
+            } else {
+                "EINVAL:invalid image selector"
+            };
+            return (
+                kitty_response(
+                    cmd.image_id,
+                    cmd.image_number,
+                    cmd.quiet,
+                    true,
+                    reason,
+                ),
+                None,
+            );
+        }
+
         if !matches!(
             cmd.action,
             KittyAction::Transmit | KittyAction::TransmitAndPlace
@@ -308,8 +373,9 @@ impl KittyHandler {
                         ) {
                             Ok(cursor_advance) => advance = cursor_advance,
                             Err(error) => {
-                                response = placement_error_response(
+                                response = placement_error_response_with_number(
                                     stored.image_id,
+                                    stored.image_number,
                                     stored.quiet,
                                     error,
                                 );
@@ -320,7 +386,19 @@ impl KittyHandler {
                 return (response, advance);
             }
             KittyAction::Place => {
-                let image_id = cmd.image_id.unwrap_or(0);
+                let image_number = cmd.image_number.filter(|number| *number != 0);
+                let image_id = cmd
+                    .image_id
+                    .filter(|id| *id != 0)
+                    .or_else(|| {
+                        image_number.and_then(|number| self.resolve_image_number(number, store))
+                    })
+                    .unwrap_or(0);
+                let response_image_id = if image_number.is_some() {
+                    (image_id != 0).then_some(image_id)
+                } else {
+                    Some(image_id)
+                };
                 match self.create_placement(
                     &cmd,
                     image_id,
@@ -334,28 +412,34 @@ impl KittyHandler {
                     placements,
                 ) {
                     Ok(advance) => {
-                        let response = if cmd.quiet < 1 {
-                            Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
-                        } else {
-                            None
-                        };
+                        let response = kitty_response(
+                            response_image_id,
+                            image_number,
+                            cmd.quiet,
+                            false,
+                            "OK",
+                        );
                         return (response, advance);
                     }
                     Err(error) => {
                         return (
-                            placement_error_response(image_id, cmd.quiet, error),
+                            placement_error_response_with_number(
+                                response_image_id.unwrap_or(0),
+                                image_number,
+                                cmd.quiet,
+                                error,
+                            ),
                             None,
                         );
                     }
                 }
             }
             KittyAction::Delete => {
-                Self::handle_delete(
+                self.handle_delete(
                     &cmd,
-                    cursor_row,
-                    cursor_col,
-                    cell_width,
-                    cell_height,
+                    store,
+                    (cursor_row, cursor_col),
+                    (cell_width, cell_height),
                     placements,
                 );
                 return (None, None);
@@ -368,20 +452,28 @@ impl KittyHandler {
     }
 
     fn handle_query(&self, cmd: &KittyCommand) -> (Option<Vec<u8>>, Option<CursorAdvance>) {
-        let Some(image_id) = cmd.image_id.filter(|id| *id != 0) else {
-            log::warn!("Ignoring Kitty query without a non-zero image ID");
-            return (None, None);
-        };
-        if cmd.image_number.is_some() {
+        let selectors_conflict = cmd.image_id.is_some() && cmd.image_number.is_some();
+        if cmd.invalid_image_selector || selectors_conflict {
+            let reason = if selectors_conflict {
+                "EINVAL:image ID and image number are mutually exclusive"
+            } else {
+                "EINVAL:invalid image selector"
+            };
             return (
-                query_error_response(
-                    image_id,
+                kitty_response(
+                    cmd.image_id,
+                    cmd.image_number,
                     cmd.quiet,
-                    "EINVAL:image ID and image number are mutually exclusive",
+                    true,
+                    reason,
                 ),
                 None,
             );
         }
+        let Some(image_id) = cmd.image_id.filter(|id| *id != 0) else {
+            log::warn!("Ignoring Kitty query without a non-zero image ID");
+            return (None, None);
+        };
 
         let (width, height, format, expected_raw_bytes) = match cmd.format {
             KittyFormat::Png => (0, 0, ImageFormat::Png, None),
@@ -506,11 +598,7 @@ impl KittyHandler {
             );
         }
 
-        let resp = if cmd.quiet < 1 {
-            Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
-        } else {
-            None
-        };
+        let resp = kitty_response(Some(image_id), None, cmd.quiet, false, "OK");
         (resp, None)
     }
 
@@ -533,6 +621,9 @@ impl KittyHandler {
                     ChunkAssemblyErrorKind::Interleaved { received_id } => {
                         format!("EINVAL:interleaved transmission i={received_id}")
                     }
+                    ChunkAssemblyErrorKind::InterleavedNumber { received_number } => {
+                        format!("EINVAL:interleaved transmission I={received_number}")
+                    }
                     ChunkAssemblyErrorKind::UnexpectedStart => {
                         "EINVAL:new transmission before previous completed".to_owned()
                     }
@@ -547,11 +638,13 @@ impl KittyHandler {
                     "Rejected Kitty transmission for image {}: {reason}",
                     error.image_id
                 );
-                let response = if error.quiet < 2 {
-                    Some(format!("\x1b_Gi={};{reason}\x1b\\", error.image_id).into_bytes())
-                } else {
-                    None
-                };
+                let response = kitty_response(
+                    Some(error.image_id),
+                    error.image_number,
+                    error.quiet,
+                    true,
+                    &reason,
+                );
                 return TransmitOutcome {
                     response,
                     stored: None,
@@ -567,6 +660,7 @@ impl KittyHandler {
         } = completed;
         let KittyCommand {
             quiet,
+            image_number,
             format,
             width,
             height,
@@ -574,6 +668,7 @@ impl KittyHandler {
             transmission,
             ..
         } = metadata;
+        let image_number = image_number.filter(|number| *number != 0);
 
         // Handle file transmission
         let image_data = match transmission {
@@ -586,21 +681,25 @@ impl KittyHandler {
                     Ok(data) => data,
                     Err(error) => {
                         return TransmitOutcome {
-                            response: file_load_error_response(image_id, quiet, error),
+                            response: file_load_error_response_with_number(
+                                image_id,
+                                image_number,
+                                quiet,
+                                error,
+                            ),
                             stored: None,
                         };
                     }
                 }
             }
             KittyTransmission::SharedMemory => {
-                let resp = if quiet < 2 {
-                    Some(
-                        format!("\x1b_Gi={image_id};ENOSYS:shared memory not supported\x1b\\")
-                            .into_bytes(),
-                    )
-                } else {
-                    None
-                };
+                let resp = kitty_response(
+                    Some(image_id),
+                    image_number,
+                    quiet,
+                    true,
+                    "ENOSYS:shared memory not supported",
+                );
                 return TransmitOutcome {
                     response: resp,
                     stored: None,
@@ -619,7 +718,12 @@ impl KittyHandler {
             Ok(data) => data,
             Err(error) => {
                 return TransmitOutcome {
-                    response: decompression_error_response(image_id, quiet, error),
+                    response: decompression_error_response_with_number(
+                        image_id,
+                        image_number,
+                        quiet,
+                        error,
+                    ),
                     stored: None,
                 };
             }
@@ -635,14 +739,13 @@ impl KittyHandler {
                 let w = width.unwrap_or(0);
                 let h = height.unwrap_or(0);
                 if w == 0 || h == 0 {
-                    let resp = if quiet < 2 {
-                        Some(
-                            format!("\x1b_Gi={image_id};EINVAL:missing dimensions\x1b\\")
-                                .into_bytes(),
-                        )
-                    } else {
-                        None
-                    };
+                    let resp = kitty_response(
+                        Some(image_id),
+                        image_number,
+                        quiet,
+                        true,
+                        "EINVAL:missing dimensions",
+                    );
                     return TransmitOutcome {
                         response: resp,
                         stored: None,
@@ -654,14 +757,13 @@ impl KittyHandler {
                 let w = width.unwrap_or(0);
                 let h = height.unwrap_or(0);
                 if w == 0 || h == 0 {
-                    let resp = if quiet < 2 {
-                        Some(
-                            format!("\x1b_Gi={image_id};EINVAL:missing dimensions\x1b\\")
-                                .into_bytes(),
-                        )
-                    } else {
-                        None
-                    };
+                    let resp = kitty_response(
+                        Some(image_id),
+                        image_number,
+                        quiet,
+                        true,
+                        "EINVAL:missing dimensions",
+                    );
                     return TransmitOutcome {
                         response: resp,
                         stored: None,
@@ -671,37 +773,62 @@ impl KittyHandler {
             }
         };
 
+        let replacing_existing = store.get(image_id).is_some();
         match store.store(image_data.as_ref(), w, h, img_format, Some(image_id)) {
             Some(_) => {
-                let resp = if quiet < 1 {
-                    Some(format!("\x1b_Gi={image_id};OK\x1b\\").into_bytes())
-                } else {
-                    None
-                };
+                update_image_number_association(
+                    &mut self.image_numbers,
+                    image_id,
+                    image_number,
+                    replacing_existing,
+                );
+                if image_number_registry_needs_pruning(
+                    self.image_numbers.len(),
+                    store.image_count(),
+                ) {
+                    self.image_numbers
+                        .retain_existing(|candidate| store.get(candidate).is_some());
+                }
+                let resp = kitty_response(
+                    Some(image_id),
+                    image_number,
+                    quiet,
+                    false,
+                    "OK",
+                );
                 TransmitOutcome {
                     response: resp,
                     stored: Some(StoredTransmission {
                         image_id,
+                        image_number,
                         quiet,
                         place_after,
                     }),
                 }
             }
             None => {
-                let resp = if quiet < 2 {
-                    Some(
-                        format!("\x1b_Gi={image_id};ENOMEM:failed to store image\x1b\\")
-                            .into_bytes(),
-                    )
-                } else {
-                    None
-                };
+                let resp = kitty_response(
+                    Some(image_id),
+                    image_number,
+                    quiet,
+                    true,
+                    "ENOMEM:failed to store image",
+                );
                 TransmitOutcome {
                     response: resp,
                     stored: None,
                 }
             }
         }
+    }
+
+    fn resolve_image_number(
+        &mut self,
+        image_number: u32,
+        store: &ImageStore,
+    ) -> Option<ImageId> {
+        self.image_numbers
+            .newest_existing(image_number, |image_id| store.get(image_id).is_some())
     }
 
     fn create_placement(
@@ -759,22 +886,61 @@ impl KittyHandler {
     }
 
     fn handle_delete(
+        &mut self,
         cmd: &KittyCommand,
-        cursor_row: usize,
-        cursor_col: usize,
-        cell_width: f32,
-        cell_height: f32,
+        store: &ImageStore,
+        cursor: (usize, usize),
+        cell_size: (f32, f32),
         placements: &mut Vec<ImagePlacement>,
     ) {
+        let resolved_command = match cmd.delete_specifier {
+            Some(KittyDeleteSpec::ByNumber {
+                number,
+                delete_data,
+            }) => {
+                let Some(image_id) = self.resolve_image_number(number, store) else {
+                    return;
+                };
+                let mut resolved = cmd.clone();
+                resolved.delete_specifier = Some(KittyDeleteSpec::ById {
+                    id: image_id,
+                    delete_data,
+                });
+                Some(resolved)
+            }
+            _ => None,
+        };
+        let command = resolved_command.as_ref().unwrap_or(cmd);
         apply_delete_to_placements(
-            cmd,
+            command,
             placements,
-            cursor_row,
-            cursor_col,
-            cell_width,
-            cell_height,
+            cursor.0,
+            cursor.1,
+            cell_size.0,
+            cell_size.1,
         );
     }
+}
+
+fn update_image_number_association(
+    registry: &mut ImageNumberRegistry,
+    image_id: ImageId,
+    image_number: Option<u32>,
+    replacing_existing: bool,
+) {
+    if let Some(image_number) = image_number.filter(|number| *number != 0) {
+        registry.record_new(image_number, image_id);
+    } else if !replacing_existing {
+        registry.forget(image_id);
+    }
+}
+
+fn image_number_registry_needs_pruning(
+    registry_entries: usize,
+    stored_images: usize,
+) -> bool {
+    registry_entries
+        > stored_images.saturating_add(MAX_STALE_IMAGE_NUMBER_GENERATIONS)
 }
 
 fn apply_delete_to_placements(
@@ -811,9 +977,9 @@ fn apply_delete_to_placements(
             });
         }
         KittyDeleteSpec::ByNumber { number, .. } => {
-            // Image numbers are not image IDs. Until the handler tracks the
-            // number-to-ID mapping, leave unrelated images untouched.
-            log::warn!("Kitty delete by image number {number} is not supported yet");
+            // Number selectors are resolved by KittyHandler before this
+            // placement-only filter runs. Missing numbers remain a safe no-op.
+            log::trace!("No live image found for Kitty image number {number}");
         }
         KittyDeleteSpec::AtCursor { .. } => {
             remove_matching_kitty_placements(placements, |placement| {
@@ -1087,8 +1253,46 @@ fn append_decompressed(
     Ok(())
 }
 
+fn kitty_response(
+    image_id: Option<ImageId>,
+    image_number: Option<u32>,
+    quiet: u8,
+    is_error: bool,
+    result: &str,
+) -> Option<Vec<u8>> {
+    if (is_error && quiet >= 2) || (!is_error && quiet >= 1) {
+        return None;
+    }
+
+    let mut response = String::from("\x1b_G");
+    let mut has_identity = false;
+    if let Some(image_id) = image_id {
+        response.push_str(&format!("i={image_id}"));
+        has_identity = true;
+    }
+    if let Some(image_number) = image_number.filter(|number| *number != 0) {
+        if has_identity {
+            response.push(',');
+        }
+        response.push_str(&format!("I={image_number}"));
+    }
+    response.push(';');
+    response.push_str(result);
+    response.push_str("\x1b\\");
+    Some(response.into_bytes())
+}
+
 fn decompression_error_response(
     image_id: ImageId,
+    quiet: u8,
+    error: DecompressionError,
+) -> Option<Vec<u8>> {
+    decompression_error_response_with_number(image_id, None, quiet, error)
+}
+
+fn decompression_error_response_with_number(
+    image_id: ImageId,
+    image_number: Option<u32>,
     quiet: u8,
     error: DecompressionError,
 ) -> Option<Vec<u8>> {
@@ -1098,12 +1302,12 @@ fn decompression_error_response(
         DecompressionError::AllocationFailed => "ENOMEM:failed to buffer decompressed image",
     };
     log::warn!("Rejected Kitty transmission for image {image_id}: {reason}");
-    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
+    kitty_response(Some(image_id), image_number, quiet, true, reason)
 }
 
 fn query_error_response(image_id: ImageId, quiet: u8, reason: &str) -> Option<Vec<u8>> {
     log::warn!("Rejected Kitty query for image {image_id}: {reason}");
-    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
+    kitty_response(Some(image_id), None, quiet, true, reason)
 }
 
 fn valid_cell_offset(offset: u32, cell_extent: f32) -> bool {
@@ -1128,8 +1332,18 @@ fn placement_offsets(
     }
 }
 
+#[cfg(test)]
 fn placement_error_response(
     image_id: ImageId,
+    quiet: u8,
+    error: PlacementError,
+) -> Option<Vec<u8>> {
+    placement_error_response_with_number(image_id, None, quiet, error)
+}
+
+fn placement_error_response_with_number(
+    image_id: ImageId,
+    image_number: Option<u32>,
     quiet: u8,
     error: PlacementError,
 ) -> Option<Vec<u8>> {
@@ -1138,7 +1352,12 @@ fn placement_error_response(
         PlacementError::InvalidCellOffset => "EINVAL:placement offset exceeds cell bounds",
     };
     log::warn!("Rejected Kitty placement for image {image_id}: {reason}");
-    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
+    let response_image_id = if image_number.is_some() && image_id == 0 {
+        None
+    } else {
+        Some(image_id)
+    };
+    kitty_response(response_image_id, image_number, quiet, true, reason)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1510,6 +1729,15 @@ fn is_sensitive_path(path: &Path) -> bool {
 }
 
 fn file_load_error_response(image_id: ImageId, quiet: u8, error: FileLoadError) -> Option<Vec<u8>> {
+    file_load_error_response_with_number(image_id, None, quiet, error)
+}
+
+fn file_load_error_response_with_number(
+    image_id: ImageId,
+    image_number: Option<u32>,
+    quiet: u8,
+    error: FileLoadError,
+) -> Option<Vec<u8>> {
     let reason = match error {
         FileLoadError::Disabled => "EPERM:file transmission disabled",
         FileLoadError::InvalidPath => "EINVAL:invalid file path",
@@ -1521,7 +1749,7 @@ fn file_load_error_response(image_id: ImageId, quiet: u8, error: FileLoadError) 
         FileLoadError::AllocationFailed => "ENOMEM:failed to buffer file",
     };
     log::warn!("Rejected Kitty file transmission for image {image_id}: {reason}");
-    (quiet < 2).then(|| format!("\x1b_Gi={image_id};{reason}\x1b\\").into_bytes())
+    kitty_response(Some(image_id), image_number, quiet, true, reason)
 }
 
 #[cfg(test)]
@@ -1529,12 +1757,15 @@ mod tests {
     use super::{
         append_bounded, apply_delete_to_placements, decompression_error_response,
         cursor_advance_for_policy, file_load_error_response, inline_placement_and_advance,
+        image_number_registry_needs_pruning,
         is_safe_read_path, is_safe_temp_delete_path, load_file_data,
-        maybe_decompress_with_limit, normalized_path_entry, path_is_within_roots,
-        placement_error_response, placement_offsets, read_regular_file,
+        kitty_response, maybe_decompress_with_limit, normalized_path_entry,
+        path_is_within_roots, placement_error_response,
+        placement_error_response_with_number, placement_offsets, read_regular_file,
         ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
-        DecompressionError, FileLoadError, KittyHandler, KittyHandlerOptions,
-        PlacementError, TempFileDeletion, DECOMPRESSION_CHUNK_BYTES,
+        DecompressionError, FileLoadError, ImageStore, KittyHandler,
+        KittyHandlerOptions, PlacementError, TempFileDeletion,
+        update_image_number_association, DECOMPRESSION_CHUNK_BYTES,
         MAX_PENDING_IMAGE_BYTES,
     };
     use crate::graphics::{
@@ -1547,6 +1778,8 @@ mod tests {
     };
     use flate2::write::ZlibEncoder;
     use flate2::Compression;
+    #[cfg(target_os = "macos")]
+    use objc2_metal::MTLCreateSystemDefaultDevice;
     use std::borrow::Cow;
     #[cfg(target_os = "linux")]
     use std::ffi::OsString;
@@ -1595,6 +1828,26 @@ mod tests {
             max_image_bytes,
             allow_file_transfer,
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn process_graphics(
+        handler: &mut KittyHandler,
+        command: KittyCommand,
+        store: &mut ImageStore,
+        placements: &mut Vec<ImagePlacement>,
+    ) -> (Option<Vec<u8>>, Option<super::CursorAdvance>) {
+        handler.process(
+            command,
+            store,
+            0,
+            0,
+            10.0,
+            20.0,
+            80,
+            24,
+            placements,
+        )
     }
 
     fn direct_query(image_id: Option<u32>, payload: &[u8]) -> KittyCommand {
@@ -1673,14 +1926,11 @@ mod tests {
         let handler = KittyHandler::new(file_options(64, true));
         let mut image_number_only = direct_query(None, &[255, 0, 0, 255]);
         image_number_only.image_number = Some(7);
-        let mut zero_id_with_number = direct_query(Some(0), &[255, 0, 0, 255]);
-        zero_id_with_number.image_number = Some(7);
 
         for cmd in [
             direct_query(None, &[255, 0, 0, 255]),
             direct_query(Some(0), &[255, 0, 0, 255]),
             image_number_only,
-            zero_id_with_number,
         ] {
             let (response, advance) = handler.handle_query(&cmd);
             assert!(response.is_none());
@@ -1700,8 +1950,15 @@ mod tests {
             assert_eq!(
                 response,
                 Some(
-                    b"\x1b_Gi=17;EINVAL:image ID and image number are mutually exclusive\x1b\\"
-                        .to_vec()
+                    format!(
+                        "\x1b_Gi=17{};EINVAL:image ID and image number are mutually exclusive\x1b\\",
+                        if image_number == 0 {
+                            String::new()
+                        } else {
+                            format!(",I={image_number}")
+                        }
+                    )
+                    .into_bytes()
                 )
             );
             assert!(advance.is_none());
@@ -1783,6 +2040,229 @@ mod tests {
 
         invalid.quiet = 2;
         assert!(handler.handle_query(&invalid).0.is_none());
+    }
+
+    #[test]
+    fn numbered_responses_include_both_identities_and_honor_quiet_levels() {
+        let success = b"\x1b_Gi=41,I=7;OK\x1b\\".to_vec();
+        assert_eq!(
+            kitty_response(Some(41), Some(7), 0, false, "OK"),
+            Some(success)
+        );
+        assert!(kitty_response(Some(41), Some(7), 1, false, "OK").is_none());
+
+        let error = b"\x1b_Gi=41,I=7;EINVAL:rejected\x1b\\".to_vec();
+        for quiet in [0, 1] {
+            assert_eq!(
+                kitty_response(Some(41), Some(7), quiet, true, "EINVAL:rejected"),
+                Some(error.clone())
+            );
+        }
+        assert!(
+            kitty_response(Some(41), Some(7), 2, true, "EINVAL:rejected").is_none()
+        );
+        assert_eq!(
+            kitty_response(None, Some(7), 0, true, "ENOENT:image not found"),
+            Some(b"\x1b_GI=7;ENOENT:image not found\x1b\\".to_vec())
+        );
+        assert_eq!(
+            kitty_response(None, None, 0, true, "EINVAL:invalid image selector"),
+            Some(b"\x1b_G;EINVAL:invalid image selector\x1b\\".to_vec())
+        );
+        assert_eq!(
+            kitty_response(Some(41), Some(0), 0, true, "EINVAL:rejected"),
+            Some(b"\x1b_Gi=41;EINVAL:rejected\x1b\\".to_vec())
+        );
+        assert_eq!(
+            placement_error_response_with_number(
+                0,
+                Some(7),
+                0,
+                PlacementError::ImageNotFound,
+            ),
+            Some(b"\x1b_GI=7;ENOENT:image not found\x1b\\".to_vec())
+        );
+    }
+
+    #[test]
+    fn image_number_namespaces_are_isolated_per_handler() {
+        let mut first = KittyHandler::new(file_options(64, true));
+        let mut second = KittyHandler::new(file_options(64, true));
+        first.image_numbers.record_new(7, 41);
+
+        assert_eq!(
+            first.image_numbers.newest_existing(7, |_| true),
+            Some(41)
+        );
+        assert_eq!(second.image_numbers.newest_existing(7, |_| true), None);
+    }
+
+    #[test]
+    fn retransmission_preserves_a_live_alias_but_id_reuse_clears_it() {
+        let mut registry = crate::graphics::ImageNumberRegistry::default();
+        registry.record_new(7, 41);
+
+        update_image_number_association(&mut registry, 41, None, true);
+        assert_eq!(registry.newest_existing(7, |_| true), Some(41));
+
+        update_image_number_association(&mut registry, 41, None, false);
+        assert_eq!(registry.newest_existing(7, |_| true), None);
+
+        update_image_number_association(&mut registry, 41, Some(8), false);
+        assert_eq!(registry.newest_existing(8, |_| true), Some(41));
+    }
+
+    #[test]
+    fn image_number_pruning_threshold_includes_store_size_and_stale_slack() {
+        assert!(!image_number_registry_needs_pruning(32, 0));
+        assert!(image_number_registry_needs_pruning(33, 0));
+        assert!(!image_number_registry_needs_pruning(42, 10));
+        assert!(image_number_registry_needs_pruning(43, 10));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn image_numbers_use_newest_generation_and_fall_back_after_cache_removal() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else {
+            eprintln!("skipping Metal integration test: no device is available");
+            return;
+        };
+        let mut store = ImageStore::new(device, 1);
+        let mut handler = KittyHandler::new(file_options(64, true));
+        let mut placements = Vec::new();
+
+        for (expected_id, pixel) in [(1, [255, 0, 0, 255]), (2, [0, 255, 0, 255])] {
+            let command = KittyCommand {
+                image_number: Some(7),
+                width: Some(1),
+                height: Some(1),
+                payload: pixel.to_vec(),
+                ..KittyCommand::default()
+            };
+            assert_eq!(
+                process_graphics(&mut handler, command, &mut store, &mut placements).0,
+                Some(format!("\x1b_Gi={expected_id},I=7;OK\x1b\\").into_bytes())
+            );
+        }
+        assert!(store.get(1).is_some());
+        assert!(store.get(2).is_some());
+
+        let place_newest = KittyCommand {
+            action: KittyAction::Place,
+            image_number: Some(7),
+            columns: Some(1),
+            rows: Some(1),
+            ..KittyCommand::default()
+        };
+        assert_eq!(
+            process_graphics(
+                &mut handler,
+                place_newest.clone(),
+                &mut store,
+                &mut placements,
+            )
+            .0,
+            Some(b"\x1b_Gi=2,I=7;OK\x1b\\".to_vec())
+        );
+        assert_eq!(placements.last().map(|placement| placement.image_id), Some(2));
+
+        let place_oldest = KittyCommand {
+            action: KittyAction::Place,
+            image_id: Some(1),
+            columns: Some(1),
+            rows: Some(1),
+            ..KittyCommand::default()
+        };
+        process_graphics(
+            &mut handler,
+            place_oldest,
+            &mut store,
+            &mut placements,
+        );
+        assert_eq!(placements.last().map(|placement| placement.image_id), Some(1));
+
+        let mut other_handler = KittyHandler::new(file_options(64, true));
+        let mut other_placements = Vec::new();
+        assert_eq!(
+            process_graphics(
+                &mut other_handler,
+                place_newest.clone(),
+                &mut store,
+                &mut other_placements,
+            )
+            .0,
+            Some(b"\x1b_GI=7;ENOENT:image not found\x1b\\".to_vec())
+        );
+        assert!(other_placements.is_empty());
+
+        let delete_newest = KittyCommand {
+            action: KittyAction::Delete,
+            image_number: Some(7),
+            delete_specifier: Some(KittyDeleteSpec::ByNumber {
+                number: 7,
+                delete_data: true,
+            }),
+            ..KittyCommand::default()
+        };
+        process_graphics(
+            &mut handler,
+            delete_newest,
+            &mut store,
+            &mut placements,
+        );
+        assert_eq!(
+            placements
+                .iter()
+                .map(|placement| placement.image_id)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        // Uppercase deletes preserve data while the cache is shared across panes.
+        assert!(store.get(2).is_some());
+
+        store.remove(2);
+        assert_eq!(
+            process_graphics(
+                &mut handler,
+                place_newest,
+                &mut store,
+                &mut placements,
+            )
+            .0,
+            Some(b"\x1b_Gi=1,I=7;OK\x1b\\".to_vec())
+        );
+        assert_eq!(placements.last().map(|placement| placement.image_id), Some(1));
+
+        let failed_transmission = KittyCommand {
+            image_number: Some(8),
+            payload: vec![255, 0, 0, 255],
+            ..KittyCommand::default()
+        };
+        assert_eq!(
+            process_graphics(
+                &mut handler,
+                failed_transmission,
+                &mut store,
+                &mut placements,
+            )
+            .0,
+            Some(b"\x1b_Gi=3,I=8;EINVAL:missing dimensions\x1b\\".to_vec())
+        );
+        let missing_number = KittyCommand {
+            action: KittyAction::Place,
+            image_number: Some(8),
+            ..KittyCommand::default()
+        };
+        assert_eq!(
+            process_graphics(
+                &mut handler,
+                missing_number,
+                &mut store,
+                &mut placements,
+            )
+            .0,
+            Some(b"\x1b_GI=8;ENOENT:image not found\x1b\\".to_vec())
+        );
     }
 
     #[test]
@@ -2196,6 +2676,111 @@ mod tests {
     }
 
     #[test]
+    fn numbered_chunks_allocate_once_and_preserve_the_first_identity() {
+        let mut assembler = ChunkAssembler::new(64);
+        let mut allocations = 0;
+        let mut first = chunk(b"one", true, None);
+        first.image_number = Some(7);
+        assembler
+            .push(first, false, || {
+                allocations += 1;
+                41
+            })
+            .expect("numbered transmission should start");
+
+        let mut second = chunk(b"-two", true, None);
+        second.image_number = Some(7);
+        assembler
+            .push(second, false, || {
+                allocations += 1;
+                42
+            })
+            .expect("matching image number should continue");
+
+        let image = complete(
+            assembler
+                .push(chunk(b"-three", false, None), false, || {
+                    allocations += 1;
+                    43
+                })
+                .expect("selector-free final chunk should complete"),
+        );
+        assert_eq!(allocations, 1);
+        assert_eq!(image.image_id, 41);
+        assert_eq!(image.metadata.image_number, Some(7));
+        assert_eq!(image.data, b"one-two-three");
+
+        let mut next_generation = chunk(b"new", false, None);
+        next_generation.image_number = Some(7);
+        let image = complete(
+            assembler
+                .push(next_generation, false, || {
+                    allocations += 1;
+                    42
+                })
+                .expect("the same number should create a fresh generation"),
+        );
+        assert_eq!(allocations, 2);
+        assert_eq!(image.image_id, 42);
+    }
+
+    #[test]
+    fn numbered_chunks_reject_divergent_numbers_and_selector_switches() {
+        let mut assembler = ChunkAssembler::new(64);
+        let mut first = chunk(b"old", true, None);
+        first.image_number = Some(7);
+        assembler
+            .push(first, false, || 41)
+            .expect("numbered transmission should start");
+
+        let mut divergent = chunk(b"new", false, None);
+        divergent.image_number = Some(8);
+        let error = assembler
+            .push(divergent, false, || 42)
+            .expect_err("a divergent image number must abort the transmission");
+        assert_eq!(error.image_id, 41);
+        assert_eq!(error.image_number, Some(7));
+        assert_eq!(
+            error.kind,
+            ChunkAssemblyErrorKind::InterleavedNumber {
+                received_number: 8,
+            }
+        );
+        assert!(assembler.pending.is_none());
+
+        let mut first = chunk(b"old", true, None);
+        first.image_number = Some(7);
+        assembler
+            .push(first, false, || 43)
+            .expect("second numbered transmission should start");
+        let error = assembler
+            .push(chunk(b"new", false, Some(43)), false, || 44)
+            .expect_err("switching from image number to image ID must abort");
+        assert_eq!(error.image_id, 43);
+        assert_eq!(error.image_number, Some(7));
+        assert_eq!(
+            error.kind,
+            ChunkAssemblyErrorKind::Interleaved { received_id: 43 }
+        );
+        assert!(assembler.pending.is_none());
+    }
+
+    #[test]
+    fn zero_image_number_is_absent_from_chunk_errors() {
+        let mut assembler = ChunkAssembler::new(1);
+        let mut command = chunk(b"too large", false, None);
+        command.image_number = Some(0);
+
+        let error = assembler
+            .push(command, false, || 41)
+            .expect_err("oversized chunk should be rejected");
+
+        assert_eq!(error.image_id, 41);
+        assert_eq!(error.image_number, None);
+        assert_eq!(error.kind, ChunkAssemblyErrorKind::TooLarge);
+    }
+
+    #[test]
     fn empty_final_chunk_completes_the_active_upload() {
         let mut assembler = ChunkAssembler::new(64);
         assembler
@@ -2436,6 +3021,18 @@ mod tests {
         );
         assert_eq!(image.image_id, 73);
         assert!(image.place_after.is_some());
+    }
+
+    #[test]
+    fn zero_image_id_uses_a_fresh_nonzero_allocation() {
+        let mut assembler = ChunkAssembler::new(64);
+        let image = complete(
+            assembler
+                .push(chunk(b"rgba", false, Some(0)), false, || 73)
+                .expect("zero must be treated as an unspecified image ID"),
+        );
+
+        assert_eq!(image.image_id, 73);
     }
 
     #[test]
