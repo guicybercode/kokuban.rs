@@ -232,6 +232,10 @@ impl Grid {
         std::mem::take(&mut self.pending_terminal_events)
     }
 
+    pub(crate) fn has_pending_terminal_events(&self) -> bool {
+        !self.pending_terminal_events.is_empty()
+    }
+
     pub fn drain_sixel_images(&mut self) -> Vec<SixelImage> {
         self.pending_sixel_bytes = 0;
         std::mem::take(&mut self.pending_sixel_images)
@@ -540,6 +544,13 @@ impl Grid {
     pub fn move_cursor_forward(&mut self, n: usize) { self.cursor_col = (self.cursor_col + n).min(self.cols() - 1); }
     pub fn move_cursor_backward(&mut self, n: usize) { self.cursor_col = self.cursor_col.saturating_sub(n); }
 
+    pub(crate) fn advance_image_cursor(&mut self, cols: usize, rows: usize) {
+        self.move_cursor_forward(cols);
+        for _ in 0..rows {
+            self.newline();
+        }
+    }
+
     pub fn set_scroll_region(&mut self, top: usize, bottom: usize) {
         let bottom = bottom.min(self.rows() - 1);
         if top < bottom {
@@ -679,6 +690,16 @@ mod tests {
 
         assert_eq!(grid.buffer.cell(0, 1).c, 'b');
         assert_eq!(grid.buffer.cell(1, 0).c, 'c');
+    }
+
+    #[test]
+    fn image_cursor_advance_moves_right_and_down() {
+        let mut grid = Grid::new(10, 6, 0);
+        grid.set_cursor_pos(1, 2);
+
+        grid.advance_image_cursor(3, 2);
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (3, 5));
     }
 
     #[test]

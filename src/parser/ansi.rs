@@ -966,46 +966,66 @@ impl Utf8Parser {
         }
     }
 
+    #[cfg(test)]
     pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
         for &byte in input {
-            // OSC, APC and DCS payloads are byte-oriented. Decoding their UTF-8
-            // here would print the decoded character into the terminal grid
-            // instead of keeping it inside the control string.
-            if self.parser.state != State::Ground {
-                self.utf8_len = 0;
-                self.utf8_expected = 0;
-                self.parser.advance(byte, grid);
-                continue;
-            }
+            self.feed_byte(byte, grid);
+        }
+    }
 
-            if self.utf8_expected > 0 {
-                if byte & 0xc0 == 0x80 {
-                    self.utf8_buf[self.utf8_len] = byte;
-                    self.utf8_len += 1;
-                    self.utf8_expected -= 1;
-                    if self.utf8_expected == 0 {
-                        if let Ok(s) = std::str::from_utf8(&self.utf8_buf[..self.utf8_len]) {
-                            for c in s.chars() {
-                                grid.put_char(c);
-                            }
+    /// Consume input through the first newly queued terminal event.
+    /// The caller must drain any existing events before calling this method.
+    pub(crate) fn feed_until_terminal_event(&mut self, input: &[u8], grid: &mut Grid) -> usize {
+        debug_assert!(!grid.has_pending_terminal_events());
+
+        for (index, &byte) in input.iter().enumerate() {
+            self.feed_byte(byte, grid);
+            if grid.has_pending_terminal_events() {
+                return index + 1;
+            }
+        }
+
+        input.len()
+    }
+
+    fn feed_byte(&mut self, byte: u8, grid: &mut Grid) {
+        // OSC, APC and DCS payloads are byte-oriented. Decoding their UTF-8
+        // here would print the decoded character into the terminal grid
+        // instead of keeping it inside the control string.
+        if self.parser.state != State::Ground {
+            self.utf8_len = 0;
+            self.utf8_expected = 0;
+            self.parser.advance(byte, grid);
+            return;
+        }
+
+        if self.utf8_expected > 0 {
+            if byte & 0xc0 == 0x80 {
+                self.utf8_buf[self.utf8_len] = byte;
+                self.utf8_len += 1;
+                self.utf8_expected -= 1;
+                if self.utf8_expected == 0 {
+                    if let Ok(s) = std::str::from_utf8(&self.utf8_buf[..self.utf8_len]) {
+                        for c in s.chars() {
+                            grid.put_char(c);
                         }
                     }
-                } else {
-                    self.utf8_expected = 0;
-                    self.utf8_len = 0;
-                    self.parser.advance(byte, grid);
                 }
-            } else if byte & 0x80 == 0 {
-                self.parser.advance(byte, grid);
-            } else if byte & 0xe0 == 0xc0 {
-                self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 1;
-            } else if byte & 0xf0 == 0xe0 {
-                self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 2;
-            } else if byte & 0xf8 == 0xf0 {
-                self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 3;
             } else {
+                self.utf8_expected = 0;
+                self.utf8_len = 0;
                 self.parser.advance(byte, grid);
             }
+        } else if byte & 0x80 == 0 {
+            self.parser.advance(byte, grid);
+        } else if byte & 0xe0 == 0xc0 {
+            self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 1;
+        } else if byte & 0xf0 == 0xe0 {
+            self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 2;
+        } else if byte & 0xf8 == 0xf0 {
+            self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 3;
+        } else {
+            self.parser.advance(byte, grid);
         }
     }
 }
@@ -1368,6 +1388,83 @@ mod tests {
         assert!(matches!(
             &events[3],
             TerminalEvent::Response(response) if response == b"\x1b[>1;0;0c"
+        ));
+    }
+
+    #[test]
+    fn kitty_event_boundary_precedes_trailing_text() {
+        const IMAGE: &[u8] = b"\x1b_Ga=p,i=7,c=2,r=1\x1b\\";
+        const CURSOR_QUERY: &[u8] = b"\x1b[6n";
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let stream = [IMAGE, CURSOR_QUERY, b"X"].concat();
+
+        let consumed = parser.feed_until_terminal_event(&stream, &mut grid);
+
+        assert_eq!(consumed, IMAGE.len());
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 0));
+        assert_eq!(grid.buffer.cell(0, 0).c, ' ');
+        let events = grid.drain_terminal_events();
+        assert!(matches!(
+            events.as_slice(),
+            [TerminalEvent::KittyGraphics {
+                command,
+                cursor_row: 0,
+                cursor_col: 0,
+            }] if command.columns == Some(2) && command.rows == Some(1)
+        ));
+
+        grid.advance_image_cursor(2, 1);
+        let response_consumed = parser.feed_until_terminal_event(&stream[consumed..], &mut grid);
+        assert_eq!(response_consumed, CURSOR_QUERY.len());
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[2;3R"
+        ));
+
+        let text_start = consumed + response_consumed;
+        let text_consumed =
+            parser.feed_until_terminal_event(&stream[text_start..], &mut grid);
+
+        assert_eq!(text_consumed, 1);
+        assert_eq!(grid.buffer.cell(1, 2).c, 'X');
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 3));
+    }
+
+    #[test]
+    fn consecutive_inline_placements_observe_previous_advance() {
+        const FIRST: &[u8] = b"\x1b_Ga=p,i=7,c=2,r=1\x1b\\";
+        const SECOND: &[u8] = b"\x1b_Ga=p,i=8,c=3,r=1\x1b\\";
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let stream = [FIRST, SECOND].concat();
+
+        let first_consumed = parser.feed_until_terminal_event(&stream, &mut grid);
+        assert_eq!(first_consumed, FIRST.len());
+        let first_events = grid.drain_terminal_events();
+        assert!(matches!(
+            first_events.as_slice(),
+            [TerminalEvent::KittyGraphics {
+                command,
+                cursor_row: 0,
+                cursor_col: 0,
+            }] if command.image_id == Some(7)
+        ));
+        grid.advance_image_cursor(2, 1);
+
+        let second_consumed = parser.feed_until_terminal_event(
+            &stream[first_consumed..],
+            &mut grid,
+        );
+        assert_eq!(second_consumed, SECOND.len());
+        let second_events = grid.drain_terminal_events();
+        assert!(matches!(
+            second_events.as_slice(),
+            [TerminalEvent::KittyGraphics {
+                command,
+                cursor_row: 1,
+                cursor_col: 2,
+            }] if command.image_id == Some(8)
         ));
     }
 
