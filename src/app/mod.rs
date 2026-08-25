@@ -3,7 +3,7 @@ pub mod selection;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
-use crate::graphics::{ImagePlacement, PlacementMode};
+use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::pane::layout::PixelRect;
@@ -331,6 +331,8 @@ pub fn launch(config: Config) {
                                                             rows: display_rows,
                                                             x_offset: 0,
                                                             y_offset: 0,
+                                                            render_size:
+                                                                InlineRenderSize::CellAnchored,
                                                         },
                                                         z_index: 0,
                                                     },
