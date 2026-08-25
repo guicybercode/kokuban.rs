@@ -22,6 +22,9 @@ const ANSI_COLORS: [Rgb; 16] = [
     (229, 229, 229),
 ];
 
+// xterm's 6x6x6 color cube uses non-uniform intensity levels.
+const XTERM_COLOR_CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TerminalColors {
     default_foreground: Rgb,
@@ -63,9 +66,9 @@ fn indexed_color(index: u8) -> Rgb {
         0..=15 => ANSI_COLORS[index as usize],
         16..=231 => {
             let cube_index = index - 16;
-            let red = (cube_index / 36) * 51;
-            let green = ((cube_index % 36) / 6) * 51;
-            let blue = (cube_index % 6) * 51;
+            let red = XTERM_COLOR_CUBE_LEVELS[(cube_index / 36) as usize];
+            let green = XTERM_COLOR_CUBE_LEVELS[((cube_index % 36) / 6) as usize];
+            let blue = XTERM_COLOR_CUBE_LEVELS[(cube_index % 6) as usize];
             (red, green, blue)
         }
         232..=255 => {
@@ -82,6 +85,7 @@ mod tests {
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
     const DEFAULT_BACKGROUND: (u8, u8, u8) = (26, 26, 46);
+    const EXPECTED_XTERM_COLOR_CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
     const EXPECTED_ANSI_COLORS: [(u8, u8, u8); 16] = [
         (0, 0, 0),
         (205, 49, 49),
@@ -162,15 +166,15 @@ mod tests {
     }
 
     #[test]
-    fn preserves_existing_color_cube_and_grayscale_boundaries() {
+    fn resolves_xterm_color_cube_and_grayscale_boundaries() {
         let colors = colors();
 
         for index in 16_u8..=231 {
             let cube_index = index - 16;
             let expected = (
-                (cube_index / 36) * 51,
-                ((cube_index % 36) / 6) * 51,
-                (cube_index % 6) * 51,
+                EXPECTED_XTERM_COLOR_CUBE_LEVELS[(cube_index / 36) as usize],
+                EXPECTED_XTERM_COLOR_CUBE_LEVELS[((cube_index % 36) / 6) as usize],
+                EXPECTED_XTERM_COLOR_CUBE_LEVELS[(cube_index % 6) as usize],
             );
             assert_eq!(
                 colors.resolve_foreground(Color::Indexed(index), false),
