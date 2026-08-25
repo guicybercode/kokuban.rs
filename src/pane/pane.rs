@@ -1,6 +1,6 @@
 use crate::app::selection::SelectionState;
 use crate::grid::Grid;
-use crate::parser::ansi::Utf8Parser;
+use crate::parser::ansi::{GraphicsSupport, Utf8Parser};
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 
@@ -24,13 +24,14 @@ impl Pane {
         rows: u16,
         scrollback_max: usize,
         kitty_options: KittyHandlerOptions,
+        graphics_support: GraphicsSupport,
     ) -> Result<Self, crate::pty::PtyError> {
         let pty = Pty::spawn(cols, rows)?;
         let grid = Grid::new(cols as usize, rows as usize, scrollback_max);
         Ok(Self {
             id,
             pty,
-            parser: Utf8Parser::new(),
+            parser: Utf8Parser::with_graphics_support(graphics_support),
             grid,
             selection: SelectionState::default(),
             rect: PixelRect::ZERO,

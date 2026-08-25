@@ -37,6 +37,21 @@ impl Default for ControlStringLimits {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GraphicsSupport {
+    pub(crate) kitty: bool,
+    pub(crate) sixel: bool,
+}
+
+impl Default for GraphicsSupport {
+    fn default() -> Self {
+        Self {
+            kitty: true,
+            sixel: true,
+        }
+    }
+}
+
 pub struct Parser {
     state: State,
     params: Vec<u16>,
@@ -51,14 +66,28 @@ pub struct Parser {
     active_control_string: Option<ControlStringKind>,
     control_string_overflowed: bool,
     control_string_limits: ControlStringLimits,
+    graphics_support: GraphicsSupport,
 }
 
 impl Parser {
+    #[cfg(test)]
     pub fn new() -> Self {
-        Self::with_control_string_limits(ControlStringLimits::default())
+        Self::with_options(ControlStringLimits::default(), GraphicsSupport::default())
     }
 
+    #[cfg(test)]
     fn with_control_string_limits(control_string_limits: ControlStringLimits) -> Self {
+        Self::with_options(control_string_limits, GraphicsSupport::default())
+    }
+
+    fn with_graphics_support(graphics_support: GraphicsSupport) -> Self {
+        Self::with_options(ControlStringLimits::default(), graphics_support)
+    }
+
+    fn with_options(
+        control_string_limits: ControlStringLimits,
+        graphics_support: GraphicsSupport,
+    ) -> Self {
         Self {
             state: State::Ground,
             params: Vec::new(),
@@ -72,6 +101,7 @@ impl Parser {
             active_control_string: None,
             control_string_overflowed: false,
             control_string_limits,
+            graphics_support,
         }
     }
 
@@ -428,7 +458,10 @@ impl Parser {
                 self.cancel_active_control_string();
                 self.state = State::Ground;
             }
-            _ => { self.push_control_string_byte(ControlStringKind::Apc, byte); }
+            _ if self.graphics_support.kitty => {
+                self.push_control_string_byte(ControlStringKind::Apc, byte);
+            }
+            _ => {}
         }
     }
 
@@ -439,13 +472,16 @@ impl Parser {
                 self.cancel_active_control_string();
                 self.state = State::Ground;
             }
-            _ => { self.push_control_string_byte(ControlStringKind::Dcs, byte); }
+            _ if self.graphics_support.sixel => {
+                self.push_control_string_byte(ControlStringKind::Dcs, byte);
+            }
+            _ => {}
         }
     }
 
     fn dispatch_apc(&mut self, grid: &mut Grid) {
         let data = std::mem::take(&mut self.apc_data);
-        if data.is_empty() {
+        if data.is_empty() || !self.graphics_support.kitty {
             return;
         }
 
@@ -461,7 +497,7 @@ impl Parser {
 
     fn dispatch_dcs(&mut self, grid: &mut Grid) {
         let data = std::mem::take(&mut self.dcs_data);
-        if data.is_empty() {
+        if data.is_empty() || !self.graphics_support.sixel {
             return;
         }
 
@@ -706,7 +742,12 @@ impl Parser {
                     grid.queue_response(b"\x1b[>1;0;0c".to_vec());
                 } else if params.is_empty() || params.first().copied().unwrap_or(0) == 0 {
                     // DA1 (62=VT220, 4=Sixel, 22=color)
-                    grid.queue_response(b"\x1b[?62;4;22c".to_vec());
+                    let response = if self.graphics_support.sixel {
+                        b"\x1b[?62;4;22c".to_vec()
+                    } else {
+                        b"\x1b[?62;22c".to_vec()
+                    };
+                    grid.queue_response(response);
                 }
             }
 
@@ -896,9 +937,19 @@ pub struct Utf8Parser {
 }
 
 impl Utf8Parser {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self {
             parser: Parser::new(),
+            utf8_buf: [0; 4],
+            utf8_len: 0,
+            utf8_expected: 0,
+        }
+    }
+
+    pub(crate) fn with_graphics_support(graphics_support: GraphicsSupport) -> Self {
+        Self {
+            parser: Parser::with_graphics_support(graphics_support),
             utf8_buf: [0; 4],
             utf8_len: 0,
             utf8_expected: 0,
@@ -962,7 +1013,7 @@ impl Utf8Parser {
 #[cfg(test)]
 mod tests {
     use super::{
-        ControlStringLimits, Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES,
+        ControlStringLimits, GraphicsSupport, Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::{Grid, TerminalEvent};
@@ -1017,6 +1068,42 @@ mod tests {
         parser.feed(data, grid);
         parser.feed(b"\x1b", grid);
         parser.feed(b"\\", grid);
+    }
+
+    #[test]
+    fn graphics_support_gates_parsing_buffering_and_da1() {
+        for (kitty, sixel) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut parser = Utf8Parser::with_graphics_support(GraphicsSupport { kitty, sixel });
+            let mut grid = grid();
+
+            parser.feed(b"\x1b_Ga=d,d=a", &mut grid);
+            assert_eq!(parser.parser.apc_data.is_empty(), !kitty);
+            if !kitty {
+                assert_eq!(parser.parser.apc_data.capacity(), 0);
+            }
+            parser.feed(b"\x1b\\", &mut grid);
+            assert_eq!(drain_kitty_commands(&mut grid).len(), usize::from(kitty));
+
+            parser.feed(b"\x1bPq~", &mut grid);
+            assert_eq!(parser.parser.dcs_data.is_empty(), !sixel);
+            if !sixel {
+                assert_eq!(parser.parser.dcs_data.capacity(), 0);
+            }
+            parser.feed(b"\x1b\\", &mut grid);
+            assert_eq!(grid.drain_sixel_images().len(), usize::from(sixel));
+
+            parser.feed(b"\x1b[c", &mut grid);
+            let events = grid.drain_terminal_events();
+            let expected_da1 = if sixel {
+                b"\x1b[?62;4;22c".as_slice()
+            } else {
+                b"\x1b[?62;22c".as_slice()
+            };
+            assert!(matches!(
+                events.as_slice(),
+                [TerminalEvent::Response(response)] if response == expected_da1
+            ));
+        }
     }
 
     #[test]

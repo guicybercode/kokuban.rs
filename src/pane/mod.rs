@@ -2,6 +2,7 @@ pub mod layout;
 pub mod pane;
 pub mod tree;
 
+use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use layout::{DividerInfo, PixelRect, compute_layout};
 use pane::Pane;
@@ -23,6 +24,7 @@ pub struct PaneTree {
     default_cols: u16,
     default_rows: u16,
     kitty_options: KittyHandlerOptions,
+    graphics_support: GraphicsSupport,
 }
 
 impl PaneTree {
@@ -31,9 +33,17 @@ impl PaneTree {
         rows: u16,
         scrollback_max: usize,
         kitty_options: KittyHandlerOptions,
+        graphics_support: GraphicsSupport,
     ) -> Result<Self, crate::pty::PtyError> {
         let id: PaneId = 1;
-        let pane = Pane::new(id, cols, rows, scrollback_max, kitty_options)?;
+        let pane = Pane::new(
+            id,
+            cols,
+            rows,
+            scrollback_max,
+            kitty_options,
+            graphics_support,
+        )?;
         let mut panes = HashMap::new();
         panes.insert(id, pane);
 
@@ -46,6 +56,7 @@ impl PaneTree {
             default_cols: cols,
             default_rows: rows,
             kitty_options,
+            graphics_support,
         })
     }
 
@@ -109,6 +120,7 @@ impl PaneTree {
             new_rows.max(MIN_PANE_ROWS as u16),
             self.scrollback_max,
             self.kitty_options,
+            self.graphics_support,
         )?;
 
         // Copy color config from existing pane for OSC 10/11 queries
