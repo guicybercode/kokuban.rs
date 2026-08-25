@@ -239,39 +239,54 @@ pub fn launch(config: Config) {
                     let pane_ids = tree.pane_ids();
 
                     for id in pane_ids {
-                        if let Some(pane) = tree.pane_mut(id) {
-                            match pane.pty.read(&mut buf) {
-                                Ok(0) => {
-                                    log::info!("PTY EOF for pane {id}");
-                                    dead_panes.push(id);
-                                }
-                                Ok(n) => {
-                                    let mut parsed_bytes = 0;
-                                    while parsed_bytes < n {
+                        let read_result = match tree.pane_mut(id) {
+                            Some(pane) => pane.pty.read(&mut buf),
+                            None => continue,
+                        };
+
+                        match read_result {
+                            Ok(0) => {
+                                log::info!("PTY EOF for pane {id}");
+                                dead_panes.push(id);
+                            }
+                            Ok(n) => {
+                                let mut parsed_bytes = 0;
+                                while parsed_bytes < n {
+                                    let (consumed, terminal_events) = {
+                                        let Some(pane) = tree.pane_mut(id) else {
+                                            break;
+                                        };
                                         let consumed = pane.parser.feed_until_terminal_event(
                                             &buf[parsed_bytes..n],
                                             &mut pane.grid,
                                         );
-                                        debug_assert!(consumed > 0);
-                                        parsed_bytes += consumed;
+                                        (consumed, pane.grid.drain_terminal_events())
+                                    };
+                                    debug_assert!(consumed > 0);
+                                    parsed_bytes += consumed;
 
-                                        let terminal_events = pane.grid.drain_terminal_events();
-                                        for event in terminal_events {
-                                            match event {
-                                                TerminalEvent::Response(response) => {
+                                    for event in terminal_events {
+                                        match event {
+                                            TerminalEvent::Response(response) => {
+                                                if let Some(pane) = tree.pane_mut(id) {
                                                     pane.pty.write_all(&response).ok();
                                                 }
-                                                TerminalEvent::KittyGraphics {
-                                                    command,
-                                                    cursor_row,
-                                                    cursor_col,
-                                                } => {
-                                                    if !kitty_enabled {
+                                            }
+                                            TerminalEvent::KittyGraphics {
+                                                command,
+                                                cursor_row,
+                                                cursor_col,
+                                            } => {
+                                                if !kitty_enabled {
+                                                    continue;
+                                                }
+                                                let mut hard_delete_candidates = {
+                                                    let Some(pane) = tree.pane_mut(id) else {
                                                         continue;
-                                                    }
+                                                    };
                                                     let grid_cols = pane.grid.cols();
                                                     let grid_rows = pane.grid.rows();
-                                                    let (response, advance) = {
+                                                    let outcome = {
                                                         let mut store =
                                                             reader_image_store.lock().unwrap();
                                                         pane.kitty_handler.process(
@@ -286,25 +301,44 @@ pub fn launch(config: Config) {
                                                             &mut pane.grid.image_placements,
                                                         )
                                                     };
-                                                    if let Some(response) = response {
+                                                    if let Some(response) = outcome.response {
                                                         pane.pty.write_all(&response).ok();
                                                     }
                                                     // Advance cursor for inline images
-                                                    if let Some(adv) = advance {
+                                                    if let Some(adv) = outcome.advance {
                                                         pane.grid.advance_image_cursor(
                                                             adv.cols,
                                                             adv.rows,
                                                         );
                                                     }
+                                                    outcome.hard_delete_candidates
+                                                };
+
+                                                if !hard_delete_candidates.is_empty() {
+                                                    tree.retain_unreferenced_image_ids(
+                                                        &mut hard_delete_candidates,
+                                                    );
+                                                    if !hard_delete_candidates.is_empty() {
+                                                        let mut store =
+                                                            reader_image_store.lock().unwrap();
+                                                        for image_id in hard_delete_candidates {
+                                                            store.remove(image_id);
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                }
 
-                                    // Process Sixel images
-                                    let sixel_imgs = pane.grid.drain_sixel_images();
-                                    if sixel_enabled && !sixel_imgs.is_empty() {
-                                        let mut store = reader_image_store.lock().unwrap();
+                                // Process Sixel images
+                                let sixel_imgs = match tree.pane_mut(id) {
+                                    Some(pane) => pane.grid.drain_sixel_images(),
+                                    None => Vec::new(),
+                                };
+                                if sixel_enabled && !sixel_imgs.is_empty() {
+                                    let mut store = reader_image_store.lock().unwrap();
+                                    if let Some(pane) = tree.pane_mut(id) {
                                         for sixel_img in sixel_imgs {
                                             let img_id = store.next_id();
                                             if let Some(stored_id) = store.store(
@@ -319,14 +353,16 @@ pub fn launch(config: Config) {
                                                     ((sixel_img.width as f32) / cell_w).ceil() as u32;
                                                 let display_rows =
                                                     ((sixel_img.height as f32) / cell_h).ceil() as u32;
+                                                let cursor_row = pane.grid.cursor_row;
+                                                let cursor_col = pane.grid.cursor_col;
                                                 pane.grid.image_placements.push(
                                                     ImagePlacement {
                                                         image_id: stored_id,
                                                         placement_id: 0,
                                                         client_placement_id: None,
                                                         mode: PlacementMode::Inline {
-                                                            row: pane.grid.cursor_row,
-                                                            col: pane.grid.cursor_col,
+                                                            row: cursor_row,
+                                                            col: cursor_col,
                                                             cols: display_cols,
                                                             rows: display_rows,
                                                             x_offset: 0,
@@ -344,14 +380,14 @@ pub fn launch(config: Config) {
                                             }
                                         }
                                     }
+                                }
 
-                                    any_data = true;
-                                }
-                                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                                Err(e) => {
-                                    log::error!("PTY read error for pane {id}: {e}");
-                                    dead_panes.push(id);
-                                }
+                                any_data = true;
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                            Err(e) => {
+                                log::error!("PTY read error for pane {id}: {e}");
+                                dead_panes.push(id);
                             }
                         }
                     }

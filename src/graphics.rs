@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub type ImageId = u64;
 pub type KittyImageId = u32;
@@ -178,6 +178,19 @@ pub struct ImagePlacement {
     pub client_placement_id: Option<u32>,
     pub mode: PlacementMode,
     pub z_index: i32,
+}
+
+/// Keep only cache-deletion candidates with no remaining placement reference.
+pub(crate) fn retain_unreferenced_image_ids<'a>(
+    candidates: &mut HashSet<ImageId>,
+    placements: impl IntoIterator<Item = &'a ImagePlacement>,
+) {
+    for placement in placements {
+        candidates.remove(&placement.image_id);
+        if candidates.is_empty() {
+            return;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -527,9 +540,10 @@ mod tests {
     use super::{
         aspect_ratio_cell_count, placement_cell_count,
         next_available_image_id, resolve_kitty_placement_layout,
-        ClientImageRegistry, ImageNumberRegistry, InlineRenderSize,
-        KittyPlacementLayout, PlacementMode,
+        retain_unreferenced_image_ids, ClientImageRegistry, ImageNumberRegistry,
+        ImagePlacement, InlineRenderSize, KittyPlacementLayout, PlacementMode,
     };
+    use std::collections::HashSet;
 
     #[test]
     fn inline_pixel_rect_tracks_cell_size_and_preserves_offsets() {
@@ -969,5 +983,64 @@ mod tests {
             2
         );
         assert_eq!(next_id, 3);
+    }
+
+    #[test]
+    fn hard_delete_candidates_require_zero_references_across_kitty_sixel_and_panes() {
+        let placements = [
+            ImagePlacement {
+                image_id: 7,
+                placement_id: 1,
+                client_placement_id: None,
+                mode: PlacementMode::Inline {
+                    row: 0,
+                    col: 0,
+                    cols: 1,
+                    rows: 1,
+                    x_offset: 0,
+                    y_offset: 0,
+                    render_size: InlineRenderSize::CellAnchored,
+                },
+                z_index: 0,
+            },
+            ImagePlacement {
+                image_id: 8,
+                placement_id: 0,
+                client_placement_id: None,
+                mode: PlacementMode::Inline {
+                    row: 1,
+                    col: 0,
+                    cols: 1,
+                    rows: 1,
+                    x_offset: 0,
+                    y_offset: 0,
+                    render_size: InlineRenderSize::CellAnchored,
+                },
+                z_index: 0,
+            },
+        ];
+        let other_pane_placements = [ImagePlacement {
+            image_id: 9,
+            placement_id: 2,
+            client_placement_id: None,
+            mode: PlacementMode::Inline {
+                row: 0,
+                col: 1,
+                cols: 1,
+                rows: 1,
+                x_offset: 0,
+                y_offset: 0,
+                render_size: InlineRenderSize::CellAnchored,
+            },
+            z_index: 0,
+        }];
+        let mut candidates = HashSet::from([7, 8, 9, 10]);
+
+        retain_unreferenced_image_ids(
+            &mut candidates,
+            placements.iter().chain(other_pane_placements.iter()),
+        );
+
+        assert_eq!(candidates, HashSet::from([10]));
     }
 }

@@ -2,13 +2,14 @@ pub mod layout;
 pub mod pane;
 pub mod tree;
 
+use crate::graphics::{retain_unreferenced_image_ids, ImageId};
 use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use layout::{DividerInfo, PixelRect, compute_layout};
 use pane::Pane;
 use tree::{PaneNode, SplitDirection};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub type PaneId = u64;
 
@@ -84,6 +85,19 @@ impl PaneTree {
 
     pub fn pane_count(&self) -> usize {
         self.panes.len()
+    }
+
+    /// Keep only cache-deletion candidates unused by every pane and protocol.
+    pub(crate) fn retain_unreferenced_image_ids(
+        &self,
+        candidates: &mut HashSet<ImageId>,
+    ) {
+        retain_unreferenced_image_ids(
+            candidates,
+            self.panes
+                .values()
+                .flat_map(|pane| pane.grid.image_placements.iter()),
+        );
     }
 
     /// Split the focused pane in the given direction. Returns the new pane's ID.
