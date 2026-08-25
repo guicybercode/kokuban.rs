@@ -10,30 +10,11 @@ use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::terminal_colors::TerminalColors;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::*;
-
-// Standard 256-color palette (first 16 colors)
-const ANSI_COLORS: [(u8, u8, u8); 16] = [
-    (0, 0, 0),       // 0 Black
-    (205, 49, 49),    // 1 Red
-    (13, 188, 121),   // 2 Green
-    (229, 229, 16),   // 3 Yellow
-    (36, 114, 200),   // 4 Blue
-    (188, 63, 188),   // 5 Magenta
-    (17, 168, 205),   // 6 Cyan
-    (229, 229, 229),  // 7 White
-    (102, 102, 102),  // 8 Bright Black
-    (241, 76, 76),    // 9 Bright Red
-    (35, 209, 139),   // 10 Bright Green
-    (245, 245, 67),   // 11 Bright Yellow
-    (59, 142, 234),   // 12 Bright Blue
-    (214, 112, 214),  // 13 Bright Magenta
-    (41, 184, 219),   // 14 Bright Cyan
-    (229, 229, 229),  // 15 Bright White
-];
 
 fn white_pixel_uv(atlas_width: u32, atlas_height: u32) -> (f32, f32) {
     (0.5 / atlas_width as f32, 0.5 / atlas_height as f32)
@@ -64,8 +45,7 @@ pub struct MetalRenderer {
     atlas_texture: Retained<ProtocolObject<dyn MTLTexture>>,
     sampler_state: Retained<ProtocolObject<dyn MTLSamplerState>>,
     pub brush: BrushRenderer,
-    default_fg: (u8, u8, u8),
-    default_bg: (u8, u8, u8),
+    colors: TerminalColors,
 }
 
 impl MetalRenderer {
@@ -205,41 +185,8 @@ impl MetalRenderer {
                 atlas_texture,
                 sampler_state,
                 brush,
-                default_fg,
-                default_bg,
+                colors: TerminalColors::new(default_fg, default_bg),
             }
-        }
-    }
-
-    fn resolve_color(&self, color: Color, is_fg: bool, bold: bool) -> (u8, u8, u8) {
-        match color {
-            Color::Default => {
-                if is_fg {
-                    self.default_fg
-                } else {
-                    self.default_bg
-                }
-            }
-            Color::Indexed(idx) => {
-                if idx < 16 {
-                    let actual_idx = if is_fg && bold && idx < 8 {
-                        idx + 8
-                    } else {
-                        idx
-                    };
-                    ANSI_COLORS[actual_idx as usize]
-                } else if idx < 232 {
-                    let idx = idx - 16;
-                    let r = (idx / 36) * 51;
-                    let g = ((idx % 36) / 6) * 51;
-                    let b = (idx % 6) * 51;
-                    (r, g, b)
-                } else {
-                    let level = 8 + (idx - 232) * 10;
-                    (level, level, level)
-                }
-            }
-            Color::Rgb(r, g, b) => (r, g, b),
         }
     }
 
@@ -279,10 +226,12 @@ impl MetalRenderer {
                 let is_wide = cell.flags.contains(CellFlags::WIDE);
                 let render_width = if is_wide { 2.0 } else { 1.0 };
 
+                let semantic_fg = self.colors.resolve_foreground(cell.fg, bold);
+                let semantic_bg = self.colors.resolve_background(cell.bg);
                 let (fg, bg) = if reverse {
-                    (self.resolve_color(cell.bg, false, false), self.resolve_color(cell.fg, true, bold))
+                    (semantic_bg, semantic_fg)
                 } else {
-                    (self.resolve_color(cell.fg, true, bold), self.resolve_color(cell.bg, false, false))
+                    (semantic_fg, semantic_bg)
                 };
 
                 let is_selected = pane.selection
@@ -371,7 +320,7 @@ impl MetalRenderer {
                 if cell.underline_style != UnderlineStyle::None {
                     let ul_color = match cell.underline_color {
                         Color::Default => fg,
-                        other => self.resolve_color(other, true, false),
+                        other => self.colors.resolve_foreground(other, false),
                     };
                     let ul_packed = Self::pack_color(ul_color.0, ul_color.1, ul_color.2, 255);
                     let ul_y = y0 + atlas.ascent + 2.0;
@@ -653,7 +602,8 @@ impl MetalRenderer {
         }
 
         // Build divider vertices (use brush texture)
-        let bg_packed = Self::pack_color(self.default_bg.0, self.default_bg.1, self.default_bg.2, 255);
+        let default_bg = self.colors.default_background();
+        let bg_packed = Self::pack_color(default_bg.0, default_bg.1, default_bg.2, 255);
         let mut divider_vertices: Vec<Vertex> = Vec::new();
         for div in dividers {
             divider_vertices.extend(self.build_divider_vertices(div, bg_packed, chrome));
@@ -794,7 +744,7 @@ impl MetalRenderer {
             color_attachment.setLoadAction(MTLLoadAction::Clear);
             color_attachment.setStoreAction(MTLStoreAction::Store);
 
-            let (br, bg_r, bb) = self.default_bg;
+            let (br, bg_r, bb) = self.colors.default_background();
             color_attachment.setClearColor(MTLClearColor {
                 red: br as f64 / 255.0,
                 green: bg_r as f64 / 255.0,
