@@ -91,13 +91,19 @@ jobs:
         shell: bash
         run: |
           cargo build --locked
+          kokuban_binary="$PWD/target/debug/kokuban"
+          display_check_directory="$(mktemp -d)"
+          trap 'rmdir "$display_check_directory"' EXIT
           set +e
-          linux_message="$(env \
-            -u DISPLAY \
-            -u WAYLAND_DISPLAY \
-            -u WAYLAND_SOCKET \
-            -u XDG_RUNTIME_DIR \
-            timeout 5s target/debug/kokuban 2>&1)"
+          linux_message="$(
+            cd "$display_check_directory"
+            env \
+              -u DISPLAY \
+              -u WAYLAND_DISPLAY \
+              -u WAYLAND_SOCKET \
+              -u XDG_RUNTIME_DIR \
+              timeout 5s "$kokuban_binary" 2>&1
+          )"
           linux_exit_code=$?
           set -e
 
@@ -121,9 +127,19 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          env \
-            -u WAYLAND_DISPLAY \
-            -u WAYLAND_SOCKET \
-            -u XDG_RUNTIME_DIR \
-            KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 \
-            xvfb-run --auto-servernum timeout 10s target/debug/kokuban
+          kokuban_binary="$PWD/target/debug/kokuban"
+          smoke_directory="$(mktemp -d)"
+          trap 'rmdir "$smoke_directory"' EXIT
+
+          for scale_factor in 1 2; do
+            (
+              cd "$smoke_directory"
+              env \
+                -u WAYLAND_DISPLAY \
+                -u WAYLAND_SOCKET \
+                -u XDG_RUNTIME_DIR \
+                KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 \
+                WINIT_X11_SCALE_FACTOR="$scale_factor" \
+                xvfb-run --auto-servernum timeout 10s "$kokuban_binary"
+            )
+          done

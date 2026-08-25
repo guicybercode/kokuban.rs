@@ -14,8 +14,7 @@ mod parser;
 mod pty;
 mod render_scene;
 mod selection;
-// Land the portable compositor independently from its Linux window call site.
-#[allow(dead_code)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 mod software_raster;
 #[cfg(target_os = "macos")]
 mod renderer;
