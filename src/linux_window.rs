@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, PhysicalSize};
+use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
@@ -153,12 +153,19 @@ struct CursorSnapshot {
     shape: CursorShape,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImeCursorArea {
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+}
+
 #[derive(Debug)]
 struct GridSnapshot {
     columns: usize,
     rows: usize,
     cells: Vec<Cell>,
     cursor: Option<CursorSnapshot>,
+    input_cursor: (usize, usize),
 }
 
 impl GridSnapshot {
@@ -292,6 +299,8 @@ struct LinuxWindow {
     redraw_pending: Arc<AtomicBool>,
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
+    ime_active: bool,
+    last_ime_cursor_area: Option<ImeCursorArea>,
     error: Option<String>,
 }
 
@@ -330,6 +339,8 @@ impl LinuxWindow {
             redraw_pending,
             reader_status: None,
             modifiers: ModifiersState::empty(),
+            ime_active: false,
+            last_ime_cursor_area: None,
             error: None,
         }
     }
@@ -439,13 +450,20 @@ impl LinuxWindow {
         else {
             return Ok(None);
         };
+        let cell_dimensions = self
+            .cell_dimensions
+            .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
+        let snapshot = snapshot_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        let next_ime_cursor_area = ime_cursor_area(
+            snapshot.input_cursor,
+            (snapshot.columns, snapshot.rows),
+            cell_dimensions,
+            (width.get(), height.get()),
+        );
         let surface = self
             .surface
             .as_mut()
             .ok_or_else(|| "redraw requested before the software renderer was ready".to_string())?;
-        let cell_dimensions = self
-            .cell_dimensions
-            .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let glyph_atlas = self
             .glyph_atlas
             .as_mut()
@@ -458,7 +476,6 @@ impl LinuxWindow {
             .buffer_mut()
             .map_err(|error| format!("could not acquire the software-rendering buffer: {error}"))?;
         buffer.fill(self.background);
-        let snapshot = snapshot_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
         draw_grid_snapshot(
             &mut buffer,
             (width.get(), height.get()),
@@ -473,6 +490,12 @@ impl LinuxWindow {
         buffer
             .present()
             .map_err(|error| format!("could not present a Linux frame: {error}"))?;
+        sync_ime_cursor_area_with(
+            self.ime_active,
+            &mut self.last_ime_cursor_area,
+            next_ime_cursor_area,
+            |area| window.set_ime_cursor_area(area.position, area.size),
+        );
         Ok(Some(terminal_content_visible))
     }
 
@@ -597,6 +620,17 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             WindowEvent::Focused(focused) => {
                 self.modifiers = modifiers_after_focus_change(self.modifiers, focused);
             }
+            WindowEvent::Ime(Ime::Enabled) => {
+                self.ime_active = true;
+                self.last_ime_cursor_area = None;
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::Ime(Ime::Disabled) => {
+                self.ime_active = false;
+                self.last_ime_cursor_area = None;
+            }
             WindowEvent::Ime(event) => {
                 if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
                     return;
@@ -679,6 +713,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 scale_factor,
                 mut inner_size_writer,
             } => {
+                self.last_ime_cursor_area = None;
                 match self.rebuild_glyph_atlas(scale_factor) {
                     Ok(changed) => {
                         if changed {
@@ -1189,7 +1224,64 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
         rows,
         cells,
         cursor,
+        input_cursor: (grid.cursor_row, grid.cursor_col),
     })
+}
+
+fn ime_cursor_area(
+    input_cursor: (usize, usize),
+    grid_dimensions: (usize, usize),
+    cell_dimensions: (u16, u16),
+    surface_dimensions: (u32, u32),
+) -> Option<ImeCursorArea> {
+    let (columns, rows) = grid_dimensions;
+    let last_row = rows.checked_sub(1)?;
+    let last_column = columns.checked_sub(1)?;
+    if input_cursor.0 > last_row || input_cursor.1 > columns {
+        return None;
+    }
+    let row = input_cursor.0;
+    let column = input_cursor.1.min(last_column);
+    let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
+    let (surface_width, surface_height) = surface_dimensions;
+    if cell_size.0 == 0 || cell_size.1 == 0 || surface_width == 0 || surface_height == 0 {
+        return None;
+    }
+
+    let origin = cell_origin(row, column, cell_dimensions)?;
+    let desired_x = u32::try_from(origin.0).ok()?;
+    let desired_y = u32::try_from(origin.1).ok()?;
+    let area_width = cell_size.0.min(surface_width);
+    let area_height = cell_size.1.min(surface_height);
+    let x = desired_x.min(surface_width.checked_sub(area_width)?);
+    let y = desired_y.min(surface_height.checked_sub(area_height)?);
+
+    Some(ImeCursorArea {
+        position: PhysicalPosition::new(i32::try_from(x).ok()?, i32::try_from(y).ok()?),
+        size: PhysicalSize::new(area_width, area_height),
+    })
+}
+
+fn sync_ime_cursor_area_with<F>(
+    ime_active: bool,
+    last_area: &mut Option<ImeCursorArea>,
+    next_area: Option<ImeCursorArea>,
+    set_area: F,
+) where
+    F: FnOnce(ImeCursorArea),
+{
+    if !ime_active {
+        return;
+    }
+    let Some(next_area) = next_area else {
+        return;
+    };
+    if *last_area == Some(next_area) {
+        return;
+    }
+
+    set_area(next_area);
+    *last_area = Some(next_area);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1400,15 +1492,16 @@ mod tests {
         begin_grid_redraw, classify_reader_exit, classify_writer_exit, combine_launch_results,
         configured_terminal_dimensions, dispatch_encoded_terminal_input_with,
         dispatch_keyboard_input_with, draw_cell_glyph, draw_grid_snapshot, drawable_dimensions,
-        ime_payload_from_event, immediate_surface_size_to_reconcile, initial_window_dimensions,
-        is_current_surface_size, modifiers_after_focus_change, physical_size_for_terminal,
-        replace_glyph_atlas_for_scale, resize_terminal_with, resolve_cell_colors, rgb_to_xrgb,
-        rounded_i32, set_grid_cell_dimensions, snapshot_grid, terminal_accepts_keyboard_input,
-        terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
-        KeyboardInputError, KeyboardInputOutcome, ReaderStatus, ResolvedCellColors,
-        SurfaceSizeError, TerminalDimensions, TerminalResizeError, WriterStatus,
-        MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,
-        MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        ime_cursor_area, ime_payload_from_event, immediate_surface_size_to_reconcile,
+        initial_window_dimensions, is_current_surface_size, modifiers_after_focus_change,
+        physical_size_for_terminal, replace_glyph_atlas_for_scale, resize_terminal_with,
+        resolve_cell_colors, rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
+        sync_ime_cursor_area_with, terminal_accepts_keyboard_input, terminal_color_query_value,
+        terminal_dimensions_for_surface, GridAccessError, ImeCursorArea, KeyboardInputError,
+        KeyboardInputOutcome, ReaderStatus, ResolvedCellColors, SurfaceSizeError,
+        TerminalDimensions, TerminalResizeError, WriterStatus, MAX_INITIAL_LOGICAL_HEIGHT,
+        MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH,
+        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
@@ -1421,7 +1514,7 @@ mod tests {
     use std::io;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, TryLockError};
-    use winit::dpi::PhysicalSize;
+    use winit::dpi::{PhysicalPosition, PhysicalSize};
     use winit::event::Ime;
     use winit::keyboard::ModifiersState;
 
@@ -1875,6 +1968,175 @@ mod tests {
             ime_payload_from_event(Ime::Commit("日".to_string())),
             Some(ImeCommitPayload::Bytes("日".as_bytes().to_vec()))
         );
+    }
+
+    #[test]
+    fn ime_cursor_area_tracks_the_physical_terminal_cell_and_dpi_metrics() {
+        assert_eq!(
+            ime_cursor_area((0, 0), (80, 24), (10, 20), (800, 480)),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(0, 0),
+                size: PhysicalSize::new(10, 20),
+            })
+        );
+        assert_eq!(
+            ime_cursor_area((2, 3), (80, 24), (10, 20), (800, 480)),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(30, 40),
+                size: PhysicalSize::new(10, 20),
+            })
+        );
+        assert_eq!(
+            ime_cursor_area((2, 3), (80, 24), (20, 40), (1600, 960)),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(60, 80),
+                size: PhysicalSize::new(20, 40),
+            })
+        );
+    }
+
+    #[test]
+    fn ime_cursor_area_handles_pending_wrap_clipping_and_invalid_geometry() {
+        assert_eq!(
+            ime_cursor_area((2, 80), (80, 24), (10, 20), (800, 480)),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(790, 40),
+                size: PhysicalSize::new(10, 20),
+            }),
+            "pending wrap should anchor IME at the last terminal cell"
+        );
+        assert_eq!(
+            ime_cursor_area((0, 0), (1, 1), (10, 20), (5, 7)),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(0, 0),
+                size: PhysicalSize::new(5, 7),
+            }),
+            "an undersized surface should still receive an in-bounds area"
+        );
+        assert_eq!(
+            ime_cursor_area((2, 3), (80, 24), (10, 20), (25, 25)),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(15, 5),
+                size: PhysicalSize::new(10, 20),
+            }),
+            "a cursor beyond a stale surface must clamp the full area in bounds"
+        );
+
+        for invalid in [
+            ime_cursor_area((0, 0), (0, 24), (10, 20), (800, 480)),
+            ime_cursor_area((0, 0), (80, 0), (10, 20), (800, 480)),
+            ime_cursor_area((24, 0), (80, 24), (10, 20), (800, 480)),
+            ime_cursor_area((0, 81), (80, 24), (10, 20), (800, 480)),
+            ime_cursor_area((0, 0), (80, 24), (0, 20), (800, 480)),
+            ime_cursor_area((0, 0), (80, 24), (10, 0), (800, 480)),
+            ime_cursor_area((0, 0), (80, 24), (10, 20), (0, 480)),
+            ime_cursor_area((0, 0), (80, 24), (10, 20), (800, 0)),
+        ] {
+            assert_eq!(invalid, None);
+        }
+
+        let last_fitting_column =
+            usize::try_from(i32::MAX).expect("positive i32 should fit usize") / 10;
+        assert!(ime_cursor_area(
+            (0, last_fitting_column),
+            (last_fitting_column + 2, 1),
+            (10, 20),
+            (u32::MAX, 20),
+        )
+        .is_some());
+        assert_eq!(
+            ime_cursor_area(
+                (0, last_fitting_column + 1),
+                (last_fitting_column + 2, 1),
+                (10, 20),
+                (u32::MAX, 20),
+            ),
+            None,
+            "IME coordinates beyond i32 must not wrap"
+        );
+    }
+
+    #[test]
+    fn ime_cursor_uses_live_input_position_while_visual_cursor_is_suppressed() {
+        let mut history = grid_with_scrollback(3, 5);
+        history.cursor_row = 1;
+        history.cursor_col = 2;
+        history.cursor_visible = false;
+        history.scroll_viewport_up(history.scrollback_len());
+        let grid = Mutex::new(history);
+        let snapshot = snapshot_grid(&grid).expect("history snapshot should succeed");
+
+        assert!(snapshot.cursor.is_none());
+        assert_eq!(snapshot.input_cursor, (1, 2));
+        let area = ime_cursor_area(
+            snapshot.input_cursor,
+            (snapshot.columns, snapshot.rows),
+            (10, 20),
+            (80, 60),
+        );
+        assert_eq!(
+            area,
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(20, 20),
+                size: PhysicalSize::new(10, 20),
+            })
+        );
+
+        let mut last_area = None;
+        let observed = RefCell::new(None);
+        sync_ime_cursor_area_with(true, &mut last_area, area, |area| {
+            assert!(
+                grid.try_lock().is_ok(),
+                "IME window requests must run without the Grid lock"
+            );
+            observed.replace(Some(area));
+        });
+        assert_eq!(observed.into_inner(), area);
+    }
+
+    #[test]
+    fn ime_cursor_area_sync_requires_an_active_session_and_deduplicates_updates() {
+        let first = ImeCursorArea {
+            position: PhysicalPosition::new(30, 40),
+            size: PhysicalSize::new(10, 20),
+        };
+        let second = ImeCursorArea {
+            position: PhysicalPosition::new(40, 40),
+            size: PhysicalSize::new(10, 20),
+        };
+        let calls = RefCell::new(Vec::new());
+        let mut last_area = None;
+
+        sync_ime_cursor_area_with(false, &mut last_area, Some(first), |area| {
+            calls.borrow_mut().push(area);
+        });
+        sync_ime_cursor_area_with(true, &mut last_area, Some(first), |area| {
+            calls.borrow_mut().push(area);
+        });
+        sync_ime_cursor_area_with(true, &mut last_area, Some(first), |area| {
+            calls.borrow_mut().push(area);
+        });
+        assert_eq!(calls.borrow().as_slice(), [first]);
+        sync_ime_cursor_area_with(true, &mut last_area, Some(second), |area| {
+            calls.borrow_mut().push(area);
+        });
+        sync_ime_cursor_area_with(true, &mut last_area, Some(second), |area| {
+            calls.borrow_mut().push(area);
+        });
+        assert_eq!(calls.borrow().as_slice(), [first, second]);
+        assert_eq!(last_area, Some(second));
+
+        // Ime::Enabled invalidates the cache so a recreated input context is synchronized.
+        last_area = None;
+        sync_ime_cursor_area_with(true, &mut last_area, Some(first), |area| {
+            calls.borrow_mut().push(area);
+        });
+        sync_ime_cursor_area_with(false, &mut last_area, Some(second), |area| {
+            calls.borrow_mut().push(area);
+        });
+
+        assert_eq!(calls.into_inner(), [first, second, first]);
+        assert_eq!(last_area, Some(first));
     }
 
     #[test]
