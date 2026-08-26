@@ -16,6 +16,7 @@ bitflags! {
         const REVERSE   = 0b0000_1000;
         const WIDE      = 0b0001_0000;
         const WIDE_CONT = 0b0010_0000;
+        const FAINT     = 0b0100_0000;
     }
 }
 

@@ -2727,18 +2727,19 @@ struct ResolvedCellColors {
 }
 
 fn resolve_cell_colors(colors: TerminalColors, cell: &Cell) -> ResolvedCellColors {
-    let bold = cell.flags.contains(CellFlags::BOLD);
-    let semantic_foreground = colors.resolve_foreground(cell.fg, bold);
-    let semantic_background = colors.resolve_background(cell.bg);
-    let (foreground, background) = if cell.flags.contains(CellFlags::REVERSE) {
-        (semantic_background, semantic_foreground)
-    } else {
-        (semantic_foreground, semantic_background)
-    };
+    let resolved = colors.resolve_cell_colors(cell.fg, cell.bg, cell.flags);
 
     ResolvedCellColors {
-        foreground: rgb_to_xrgb(foreground.0, foreground.1, foreground.2),
-        background: rgb_to_xrgb(background.0, background.1, background.2),
+        foreground: rgb_to_xrgb(
+            resolved.foreground.0,
+            resolved.foreground.1,
+            resolved.foreground.2,
+        ),
+        background: rgb_to_xrgb(
+            resolved.background.0,
+            resolved.background.1,
+            resolved.background.2,
+        ),
     }
 }
 
@@ -7106,7 +7107,7 @@ mod tests {
         *grid.buffer.cell_mut(0, 0) = Cell {
             c: character,
             bg: Color::Rgb(1, 2, 3),
-            flags: CellFlags::BOLD | CellFlags::ITALIC,
+            flags: CellFlags::BOLD | CellFlags::FAINT | CellFlags::ITALIC,
             ..Cell::default()
         };
 
@@ -7173,6 +7174,41 @@ mod tests {
                 .iter()
                 .all(|&pixel| pixel == rgb_to_xrgb(241, 76, 76)));
         }
+    }
+
+    #[test]
+    fn converts_faint_cell_colors_to_xrgb_without_mutating_style_flags() {
+        let cell = Cell {
+            fg: Color::Rgb(0, 0, 0),
+            bg: Color::Rgb(255, 255, 255),
+            flags: CellFlags::BOLD | CellFlags::FAINT,
+            ..Cell::default()
+        };
+
+        assert_eq!(
+            resolve_cell_colors(test_colors(), &cell),
+            ResolvedCellColors {
+                foreground: 0x007f_7f7f,
+                background: 0x00ff_ffff,
+            }
+        );
+        assert!(cell.flags.contains(CellFlags::BOLD));
+        assert!(cell.flags.contains(CellFlags::FAINT));
+    }
+
+    #[test]
+    fn grid_snapshot_preserves_faint_cell_flags() {
+        let mut grid = Grid::new(1, 1, 0);
+        grid.flags = CellFlags::FAINT;
+        grid.put_char('A');
+
+        let snapshot = snapshot_grid(&Mutex::new(grid)).expect("snapshot should succeed");
+
+        assert!(snapshot
+            .cell(0, 0)
+            .expect("printed cell should be present")
+            .flags
+            .contains(CellFlags::FAINT));
     }
 
     #[test]

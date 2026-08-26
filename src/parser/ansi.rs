@@ -847,6 +847,7 @@ impl Parser {
                     grid.underline_color = Color::Default;
                 }
                 1 => grid.flags.insert(CellFlags::BOLD),
+                2 => grid.flags.insert(CellFlags::FAINT),
                 3 => grid.flags.insert(CellFlags::ITALIC),
                 4 => {
                     // Check for sub-parameter (colon syntax: 4:N)
@@ -873,7 +874,7 @@ impl Parser {
                     }
                 }
                 7 => grid.flags.insert(CellFlags::REVERSE),
-                22 => grid.flags.remove(CellFlags::BOLD),
+                22 => grid.flags.remove(CellFlags::BOLD | CellFlags::FAINT),
                 23 => grid.flags.remove(CellFlags::ITALIC),
                 24 => {
                     grid.flags.remove(CellFlags::UNDERLINE);
@@ -944,12 +945,18 @@ impl Parser {
             };
         }
 
+        // In the semicolon form, the color mode determines the number of
+        // following channel parameters. If that tuple is truncated, consume
+        // the remainder so channel values cannot become unrelated SGRs.
         match params[*i + 1] {
             5 => {
                 if *i + 2 < params.len() {
                     *i += 2;
                     Some(Color::Indexed(u8::try_from(params[*i]).ok()?))
-                } else { None }
+                } else {
+                    *i = params.len() - 1;
+                    None
+                }
             }
             2 => {
                 if *i + 4 < params.len() {
@@ -958,7 +965,10 @@ impl Parser {
                     let b = u8::try_from(params[*i + 4]).ok();
                     *i += 4;
                     Some(Color::Rgb(r?, g?, b?))
-                } else { None }
+                } else {
+                    *i = params.len() - 1;
+                    None
+                }
             }
             _ => None,
         }
@@ -1918,6 +1928,96 @@ mod tests {
         parser.feed(b"\x1b[38:2::255:0:0m", &mut grid);
 
         assert_eq!(grid.fg, Color::Rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn faint_intensity_is_independent_and_resets_with_sgr_and_ris() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[1;2;3;4;7m", &mut grid);
+        assert!(grid.flags.contains(CellFlags::BOLD));
+        assert!(grid.flags.contains(CellFlags::FAINT));
+        assert!(grid.flags.contains(CellFlags::ITALIC));
+        assert!(grid.flags.contains(CellFlags::UNDERLINE));
+        assert!(grid.flags.contains(CellFlags::REVERSE));
+        parser.feed(b"A", &mut grid);
+        assert!(grid.buffer.cell(0, 0).flags.contains(CellFlags::FAINT));
+
+        parser.feed(b"\x1b[22m", &mut grid);
+        assert!(!grid.flags.contains(CellFlags::BOLD));
+        assert!(!grid.flags.contains(CellFlags::FAINT));
+        assert!(grid.flags.contains(CellFlags::ITALIC));
+        assert!(grid.flags.contains(CellFlags::UNDERLINE));
+        assert!(grid.flags.contains(CellFlags::REVERSE));
+        parser.feed(b"B", &mut grid);
+        assert!(grid.buffer.cell(0, 0).flags.contains(CellFlags::FAINT));
+        assert!(!grid
+            .buffer
+            .cell(0, 1)
+            .flags
+            .intersects(CellFlags::BOLD | CellFlags::FAINT));
+
+        parser.feed(b"\x1b[2m\x1b[0m", &mut grid);
+        assert!(grid.flags.is_empty());
+
+        parser.feed(b"\x1b[2m\x1b[m", &mut grid);
+        assert!(grid.flags.is_empty());
+
+        parser.feed(b"\x1b[2m\x1bc", &mut grid);
+        assert!(grid.flags.is_empty());
+    }
+
+    #[test]
+    fn extended_color_modes_do_not_leak_faint_from_value_two() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[38;2;2;2;2m", &mut grid);
+        assert_eq!(grid.fg, Color::Rgb(2, 2, 2));
+        assert!(!grid.flags.contains(CellFlags::FAINT));
+
+        parser.feed(b"\x1b[48:2::2:2:2m", &mut grid);
+        assert_eq!(grid.bg, Color::Rgb(2, 2, 2));
+        assert!(!grid.flags.contains(CellFlags::FAINT));
+
+        parser.feed(b"\x1b[58;5;2m", &mut grid);
+        assert_eq!(grid.underline_color, Color::Indexed(2));
+        assert!(!grid.flags.contains(CellFlags::FAINT));
+
+        parser.feed(b"\x1b[38:2::1:2:3;2m", &mut grid);
+        assert_eq!(grid.fg, Color::Rgb(1, 2, 3));
+        assert!(grid.flags.contains(CellFlags::FAINT));
+    }
+
+    #[test]
+    fn incomplete_semicolon_truecolors_do_not_leak_channels_as_attributes() {
+        let mut parser = Utf8Parser::new();
+        let mut fg_grid = grid();
+        fg_grid.fg = Color::Indexed(3);
+        fg_grid.flags = CellFlags::ITALIC;
+
+        parser.feed(b"\x1b[38;2;1m", &mut fg_grid);
+        assert_eq!(fg_grid.fg, Color::Indexed(3));
+        assert_eq!(fg_grid.flags, CellFlags::ITALIC);
+
+        let mut parser = Utf8Parser::new();
+        let mut bg_grid = grid();
+        bg_grid.bg = Color::Indexed(4);
+        bg_grid.flags = CellFlags::ITALIC;
+
+        parser.feed(b"\x1b[48;2;1;2m", &mut bg_grid);
+        assert_eq!(bg_grid.bg, Color::Indexed(4));
+        assert_eq!(bg_grid.flags, CellFlags::ITALIC);
+
+        let mut parser = Utf8Parser::new();
+        let mut underline_grid = grid();
+        underline_grid.underline_color = Color::Indexed(5);
+        underline_grid.flags = CellFlags::ITALIC;
+
+        parser.feed(b"\x1b[58;2;1;2m", &mut underline_grid);
+        assert_eq!(underline_grid.underline_color, Color::Indexed(5));
+        assert_eq!(underline_grid.flags, CellFlags::ITALIC);
     }
 
     #[test]

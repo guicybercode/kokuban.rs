@@ -222,17 +222,14 @@ impl MetalRenderer {
                 }
 
                 let bold = cell.flags.contains(CellFlags::BOLD);
-                let reverse = cell.flags.contains(CellFlags::REVERSE);
                 let is_wide = cell.flags.contains(CellFlags::WIDE);
                 let render_width = if is_wide { 2.0 } else { 1.0 };
 
-                let semantic_fg = self.colors.resolve_foreground(cell.fg, bold);
-                let semantic_bg = self.colors.resolve_background(cell.bg);
-                let (fg, bg) = if reverse {
-                    (semantic_bg, semantic_fg)
-                } else {
-                    (semantic_fg, semantic_bg)
-                };
+                let resolved =
+                    self.colors
+                        .resolve_cell_colors(cell.fg, cell.bg, cell.flags);
+                let fg = resolved.foreground;
+                let bg = resolved.background;
 
                 let is_selected = pane.selection
                     .map(|s| s.contains(row, col, grid.scroll_offset, grid.scrollback_len()))
@@ -982,7 +979,7 @@ impl MetalRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{glyph_uv_bounds, white_pixel_uv};
+    use super::{glyph_uv_bounds, white_pixel_uv, MetalRenderer};
     use crate::glyph_atlas::GlyphEntry;
 
     fn assert_close(actual: f32, expected: f32) {
@@ -1009,5 +1006,13 @@ mod tests {
         assert_close(v0, 0.25);
         assert_close(u1, 0.35);
         assert_close(v1, 0.5);
+    }
+
+    #[test]
+    fn packs_resolved_terminal_colors_with_opaque_alpha() {
+        let packed = MetalRenderer::pack_color(0x12, 0x34, 0x56, u8::MAX);
+
+        assert_eq!(packed, 0x1234_56ff);
+        assert_eq!(packed & 0xff, u32::from(u8::MAX));
     }
 }

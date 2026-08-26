@@ -1,6 +1,7 @@
-use crate::grid::cell::Color;
+use crate::grid::cell::{CellFlags, Color};
 
 pub(crate) type Rgb = (u8, u8, u8);
+pub(crate) const FAINT_OPACITY: u8 = 128;
 
 // Preserve kokuban's existing first 16 terminal colors across renderers.
 const ANSI_COLORS: [Rgb; 16] = [
@@ -31,6 +32,12 @@ pub(crate) struct TerminalColors {
     default_background: Rgb,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResolvedCellColors {
+    pub(crate) foreground: Rgb,
+    pub(crate) background: Rgb,
+}
+
 impl TerminalColors {
     pub(crate) fn new(default_foreground: Rgb, default_background: Rgb) -> Self {
         Self {
@@ -56,9 +63,52 @@ impl TerminalColors {
         }
     }
 
+    pub(crate) fn resolve_cell_colors(
+        self,
+        foreground: Color,
+        background: Color,
+        flags: CellFlags,
+    ) -> ResolvedCellColors {
+        let semantic_foreground =
+            self.resolve_foreground(foreground, flags.contains(CellFlags::BOLD));
+        let semantic_background = self.resolve_background(background);
+        let (mut foreground, background) = if flags.contains(CellFlags::REVERSE) {
+            (semantic_background, semantic_foreground)
+        } else {
+            (semantic_foreground, semantic_background)
+        };
+
+        if flags.contains(CellFlags::FAINT) {
+            foreground = blend_rgb(foreground, background, FAINT_OPACITY);
+        }
+
+        ResolvedCellColors {
+            foreground,
+            background,
+        }
+    }
+
     pub(crate) fn default_background(self) -> Rgb {
         self.default_background
     }
+}
+
+fn blend_rgb(foreground: Rgb, background: Rgb, opacity: u8) -> Rgb {
+    (
+        blend_channel(foreground.0, background.0, opacity),
+        blend_channel(foreground.1, background.1, opacity),
+        blend_channel(foreground.2, background.2, opacity),
+    )
+}
+
+fn blend_channel(foreground: u8, background: u8, opacity: u8) -> u8 {
+    let opacity = u32::from(opacity);
+    let inverse_opacity = u32::from(u8::MAX) - opacity;
+    let numerator = u32::from(foreground) * opacity
+        + u32::from(background) * inverse_opacity
+        + u32::from(u8::MAX) / 2;
+    let rounded = numerator / u32::from(u8::MAX);
+    u8::try_from(rounded).unwrap_or(u8::MAX)
 }
 
 fn indexed_color(index: u8) -> Rgb {
@@ -80,8 +130,8 @@ fn indexed_color(index: u8) -> Rgb {
 
 #[cfg(test)]
 mod tests {
-    use super::TerminalColors;
-    use crate::grid::cell::Color;
+    use super::{ResolvedCellColors, TerminalColors, FAINT_OPACITY};
+    use crate::grid::cell::{CellFlags, Color};
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
     const DEFAULT_BACKGROUND: (u8, u8, u8) = (26, 26, 46);
@@ -192,5 +242,101 @@ mod tests {
             );
             assert_eq!(colors.resolve_background(Color::Indexed(index)), expected);
         }
+    }
+
+    #[test]
+    fn resolves_default_indexed_and_truecolor_faint_foregrounds() {
+        let colors = colors();
+
+        assert_eq!(FAINT_OPACITY, 128);
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Default,
+                Color::Default,
+                CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (109, 109, 119),
+                background: DEFAULT_BACKGROUND,
+            }
+        );
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Indexed(1),
+                Color::Indexed(4),
+                CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (121, 81, 124),
+                background: (36, 114, 200),
+            }
+        );
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Rgb(255, 0, 128),
+                Color::Rgb(0, 255, 64),
+                CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (128, 127, 96),
+                background: (0, 255, 64),
+            }
+        );
+    }
+
+    #[test]
+    fn faint_blending_rounds_safely_at_channel_extremes() {
+        let colors = colors();
+
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Rgb(0, 0, 0),
+                Color::Rgb(255, 255, 255),
+                CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (127, 127, 127),
+                background: (255, 255, 255),
+            }
+        );
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Rgb(255, 255, 255),
+                Color::Rgb(0, 0, 0),
+                CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (128, 128, 128),
+                background: (0, 0, 0),
+            }
+        );
+    }
+
+    #[test]
+    fn bold_bright_and_reverse_are_resolved_before_faint() {
+        let colors = colors();
+
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Indexed(1),
+                Color::Default,
+                CellFlags::BOLD | CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (134, 51, 61),
+                background: DEFAULT_BACKGROUND,
+            }
+        );
+        assert_eq!(
+            colors.resolve_cell_colors(
+                Color::Rgb(0, 0, 0),
+                Color::Rgb(255, 255, 255),
+                CellFlags::REVERSE | CellFlags::FAINT,
+            ),
+            ResolvedCellColors {
+                foreground: (128, 128, 128),
+                background: (0, 0, 0),
+            }
+        );
     }
 }
