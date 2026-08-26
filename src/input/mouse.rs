@@ -6,6 +6,7 @@ pub(crate) const MOUSE_WHEEL_DOWN: u8 = 65;
 const LEGACY_VALUE_OFFSET: u8 = 32;
 const LEGACY_VALUE_MAX: u8 = u8::MAX - LEGACY_VALUE_OFFSET;
 const LEGACY_RELEASE_BUTTON: u8 = 3;
+const LEGACY_MODIFIER_MASK: u8 = 0b0001_1100;
 
 pub(crate) fn encode_mouse_event(
     button: u8,
@@ -25,7 +26,7 @@ pub(crate) fn encode_mouse_event(
             let button = if pressed {
                 button.min(LEGACY_VALUE_MAX)
             } else {
-                LEGACY_RELEASE_BUTTON
+                LEGACY_RELEASE_BUTTON | (button & LEGACY_MODIFIER_MASK)
             };
             vec![
                 0x1b,
@@ -102,14 +103,22 @@ mod tests {
     }
 
     #[test]
-    fn legacy_clamps_pressed_button_and_uses_release_code_three() {
+    fn legacy_clamps_pressed_button() {
         assert_eq!(
             encode_mouse_event(u8::MAX, 1, 1, true, MouseEncoding::Default),
             [0x1b, b'[', b'M', 255, 33, 33]
         );
+    }
+
+    #[test]
+    fn legacy_release_uses_code_three_and_preserves_modifiers() {
         assert_eq!(
-            encode_mouse_event(u8::MAX, 1, 1, false, MouseEncoding::Default),
+            encode_mouse_event(0, 1, 1, false, MouseEncoding::Default),
             [0x1b, b'[', b'M', 35, 33, 33]
+        );
+        assert_eq!(
+            encode_mouse_event(0b0001_1110, 1, 1, false, MouseEncoding::Default),
+            [0x1b, b'[', b'M', 63, 33, 33]
         );
     }
 }
