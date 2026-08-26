@@ -161,6 +161,11 @@ impl TerminalWriter {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    pub(crate) fn max_input_bytes(&self) -> usize {
+        self.max_outstanding_bytes
+    }
+
     pub(crate) fn request_shutdown(&mut self) {
         self.shutdown.store(true, Ordering::Release);
         self.sender.take();
