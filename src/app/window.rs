@@ -28,6 +28,9 @@ use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+const BRACKETED_PASTE_START: &[u8] = b"\x1b[200~";
+const BRACKETED_PASTE_END: &[u8] = b"\x1b[201~";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MacScrollPhase {
     Started,
@@ -418,15 +421,11 @@ define_class!(
                             let tree = state.pane_tree.lock().unwrap();
                             if let Some(pane) = tree.focused_pane() {
                                 let bracketed = pane.grid.bracketed_paste;
-                                let mut bytes = Vec::new();
-                                if bracketed {
-                                    bytes.extend_from_slice(b"\x1b[200~");
+                                if let Some(bytes) = encode_clipboard_paste(text, bracketed) {
+                                    pane.queue_input(bytes);
+                                } else {
+                                    log::error!("clipboard paste is too large to frame");
                                 }
-                                bytes.extend_from_slice(text.as_bytes());
-                                if bracketed {
-                                    bytes.extend_from_slice(b"\x1b[201~");
-                                }
-                                pane.queue_input(bytes);
                             }
                         }
                     }
@@ -1236,6 +1235,27 @@ fn paste_from_clipboard() -> Option<String> {
     }
 }
 
+fn encode_clipboard_paste(text: String, bracketed: bool) -> Option<Vec<u8>> {
+    if !bracketed {
+        return Some(text.into_bytes());
+    }
+
+    let framed_len = bracketed_paste_len(text.len())?;
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(framed_len).ok()?;
+    bytes.extend_from_slice(BRACKETED_PASTE_START);
+    bytes.extend_from_slice(text.as_bytes());
+    bytes.extend_from_slice(BRACKETED_PASTE_END);
+    debug_assert_eq!(bytes.len(), framed_len);
+    Some(bytes)
+}
+
+fn bracketed_paste_len(payload_len: usize) -> Option<usize> {
+    payload_len
+        .checked_add(BRACKETED_PASTE_START.len())?
+        .checked_add(BRACKETED_PASTE_END.len())
+}
+
 fn render_frame() {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -1517,8 +1537,10 @@ pub(super) fn create_terminal_view(
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_macos_forwarded_wheel, mac_scroll_phase, sync_pending_window_title_with,
-        MacScrollPhase, MacScrollSample, MacScrollState, WindowTitleMailbox, WINDOW_TITLE,
+        bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
+        mac_scroll_phase, sync_pending_window_title_with, MacScrollPhase, MacScrollSample,
+        MacScrollState, WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START,
+        WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
     use crate::input::mouse::MouseWheelRoute;
@@ -1547,6 +1569,48 @@ mod tests {
             "expected remainder {expected}, got {}",
             state.line_remainder,
         );
+    }
+
+    #[test]
+    fn clipboard_paste_encoding_reuses_plain_storage_and_frames_bracketed_input() {
+        let mut plain_text = String::with_capacity(64);
+        plain_text.push_str("plain é");
+        let plain_pointer = plain_text.as_ptr();
+        let plain_capacity = plain_text.capacity();
+        let plain = encode_clipboard_paste(plain_text, false)
+            .expect("plain paste length should fit usize");
+        assert_eq!(plain, "plain é".as_bytes());
+        assert_eq!(plain.as_ptr(), plain_pointer);
+        assert_eq!(plain.capacity(), plain_capacity);
+
+        let text = "x".repeat(1024);
+        let framed = encode_clipboard_paste(text.clone(), true)
+            .expect("bracketed paste length should fit usize");
+        let expected_len = text.len() + BRACKETED_PASTE_START.len() + BRACKETED_PASTE_END.len();
+        assert_eq!(framed.len(), expected_len);
+        assert_eq!(
+            &framed[..BRACKETED_PASTE_START.len()],
+            BRACKETED_PASTE_START
+        );
+        assert_eq!(
+            &framed[BRACKETED_PASTE_START.len()..BRACKETED_PASTE_START.len() + text.len()],
+            text.as_bytes()
+        );
+        assert_eq!(
+            &framed[framed.len() - BRACKETED_PASTE_END.len()..],
+            BRACKETED_PASTE_END
+        );
+
+        let framing_bytes = BRACKETED_PASTE_START.len() + BRACKETED_PASTE_END.len();
+        assert_eq!(
+            bracketed_paste_len(usize::MAX - framing_bytes),
+            Some(usize::MAX)
+        );
+        assert_eq!(
+            bracketed_paste_len(usize::MAX - framing_bytes + 1),
+            None
+        );
+        assert_eq!(bracketed_paste_len(usize::MAX), None);
     }
 
     #[test]
