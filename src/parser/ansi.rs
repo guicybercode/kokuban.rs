@@ -887,20 +887,49 @@ impl Parser {
 
     fn parse_extended_color(&self, params: &[u16], i: &mut usize) -> Option<Color> {
         if *i + 1 >= params.len() { return None; }
+
+        if self.is_sub_param(*i + 1) {
+            let group_start = *i + 1;
+            let mut group_end = group_start;
+            while group_end < params.len() && self.is_sub_param(group_end) {
+                group_end += 1;
+            }
+
+            // Colon-delimited values form one SGR parameter. Consume the
+            // entire group even when it is malformed so its channels cannot
+            // be interpreted as independent attributes. A following
+            // semicolon-delimited SGR remains outside the group.
+            *i = group_end - 1;
+            return match &params[group_start..group_end] {
+                [5, index] => Some(Color::Indexed(u8::try_from(*index).ok()?)),
+                [2, r, g, b] => Some(Color::Rgb(
+                    u8::try_from(*r).ok()?,
+                    u8::try_from(*g).ok()?,
+                    u8::try_from(*b).ok()?,
+                )),
+                [2, _color_space, r, g, b] => Some(Color::Rgb(
+                    u8::try_from(*r).ok()?,
+                    u8::try_from(*g).ok()?,
+                    u8::try_from(*b).ok()?,
+                )),
+                _ => None,
+            };
+        }
+
         match params[*i + 1] {
             5 => {
                 if *i + 2 < params.len() {
                     *i += 2;
-                    Some(Color::Indexed(params[*i] as u8))
+                    Some(Color::Indexed(u8::try_from(params[*i]).ok()?))
                 } else { None }
             }
             2 => {
                 if *i + 4 < params.len() {
-                    let r = params[*i + 2] as u8;
-                    let g = params[*i + 3] as u8;
-                    let b = params[*i + 4] as u8;
+                    let r = u8::try_from(params[*i + 2]).ok();
+                    let g = u8::try_from(params[*i + 3]).ok();
+                    let b = u8::try_from(params[*i + 4]).ok();
                     *i += 4;
-                    Some(Color::Rgb(r, g, b))
+                    Some(Color::Rgb(r?, g?, b?))
                 } else { None }
             }
             _ => None,
@@ -1676,6 +1705,115 @@ mod tests {
 
         parser.feed(b"\x1b[4:3m", &mut grid);
         assert_eq!(grid.underline_style, UnderlineStyle::Curly);
+    }
+
+    #[test]
+    fn parses_colon_truecolor_with_empty_color_space() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[38:2::255:0:0m", &mut grid);
+
+        assert_eq!(grid.fg, Color::Rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn colon_truecolor_channels_do_not_apply_sgr_attributes() {
+        for blue in [1, 7] {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            let sequence = format!("\x1b[38:2::10:20:{blue}m");
+
+            parser.feed(sequence.as_bytes(), &mut grid);
+
+            assert_eq!(grid.fg, Color::Rgb(10, 20, blue));
+            assert!(!grid.flags.contains(CellFlags::BOLD));
+            assert!(!grid.flags.contains(CellFlags::REVERSE));
+        }
+    }
+
+    #[test]
+    fn parses_colon_truecolor_for_background_and_underline() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[48:2::1:2:3;58:2::4:5:6m", &mut grid);
+
+        assert_eq!(grid.bg, Color::Rgb(1, 2, 3));
+        assert_eq!(grid.underline_color, Color::Rgb(4, 5, 6));
+    }
+
+    #[test]
+    fn preserves_existing_extended_color_forms() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[38;2;7;8;9m", &mut grid);
+        assert_eq!(grid.fg, Color::Rgb(7, 8, 9));
+
+        parser.feed(b"\x1b[38:5:196m", &mut grid);
+        assert_eq!(grid.fg, Color::Indexed(196));
+
+        parser.feed(b"\x1b[38:5:1;7m", &mut grid);
+        assert_eq!(grid.fg, Color::Indexed(1));
+        assert!(!grid.flags.contains(CellFlags::BOLD));
+        assert!(grid.flags.contains(CellFlags::REVERSE));
+
+        parser.feed(b"\x1b[38:2:10:11:12m", &mut grid);
+        assert_eq!(grid.fg, Color::Rgb(10, 11, 12));
+    }
+
+    #[test]
+    fn malformed_colon_color_preserves_following_sgr() {
+        let mut parser = Utf8Parser::new();
+        let mut fg_grid = grid();
+        fg_grid.fg = Color::Indexed(3);
+
+        parser.feed(b"\x1b[38:9:1:7;3m", &mut fg_grid);
+        assert_eq!(fg_grid.fg, Color::Indexed(3));
+        assert!(!fg_grid.flags.contains(CellFlags::BOLD));
+        assert!(!fg_grid.flags.contains(CellFlags::REVERSE));
+        assert!(fg_grid.flags.contains(CellFlags::ITALIC));
+
+        let mut parser = Utf8Parser::new();
+        let mut bg_grid = grid();
+        bg_grid.bg = Color::Indexed(4);
+
+        parser.feed(b"\x1b[48:2::10:20:30:1:7;4m", &mut bg_grid);
+        assert_eq!(bg_grid.bg, Color::Indexed(4));
+        assert!(!bg_grid.flags.contains(CellFlags::BOLD));
+        assert!(!bg_grid.flags.contains(CellFlags::REVERSE));
+        assert!(bg_grid.flags.contains(CellFlags::UNDERLINE));
+    }
+
+    #[test]
+    fn rejects_out_of_range_extended_colors_without_leaking_channels() {
+        let mut parser = Utf8Parser::new();
+        let mut fg_grid = grid();
+        fg_grid.fg = Color::Indexed(3);
+
+        parser.feed(b"\x1b[38:2::256:1:7;3m", &mut fg_grid);
+        assert_eq!(fg_grid.fg, Color::Indexed(3));
+        assert!(!fg_grid.flags.contains(CellFlags::BOLD));
+        assert!(!fg_grid.flags.contains(CellFlags::REVERSE));
+        assert!(fg_grid.flags.contains(CellFlags::ITALIC));
+
+        let mut parser = Utf8Parser::new();
+        let mut bg_grid = grid();
+        bg_grid.bg = Color::Indexed(4);
+
+        parser.feed(b"\x1b[48:5:256;4m", &mut bg_grid);
+        assert_eq!(bg_grid.bg, Color::Indexed(4));
+        assert!(bg_grid.flags.contains(CellFlags::UNDERLINE));
+
+        let mut parser = Utf8Parser::new();
+        let mut underline_grid = grid();
+        underline_grid.underline_color = Color::Indexed(5);
+
+        parser.feed(b"\x1b[58;2;0;256;7;1m", &mut underline_grid);
+        assert_eq!(underline_grid.underline_color, Color::Indexed(5));
+        assert!(!underline_grid.flags.contains(CellFlags::REVERSE));
+        assert!(underline_grid.flags.contains(CellFlags::BOLD));
     }
 
     #[test]
