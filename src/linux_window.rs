@@ -37,6 +37,8 @@ const SCALE_CHANGE_EPSILON: f64 = 0.001;
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
 const CURSOR_THICKNESS: u32 = 2;
 const CURSOR_ALPHA: u8 = 180;
+const FOCUS_IN_REPORT: &[u8] = b"\x1b[I";
+const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 const MAX_IME_PREEDIT_BYTES: usize = 4 * 1024;
 const MAX_IME_PREEDIT_RENDER_CELLS: usize = 1024;
 const IME_PREEDIT_REPLACEMENT: char = '\u{fffd}';
@@ -341,6 +343,7 @@ struct LinuxWindow {
     redraw_pending: Arc<AtomicBool>,
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
+    last_window_focus: Option<bool>,
     ime_active: bool,
     ime_preedit: Option<ImePreedit>,
     last_ime_cursor_area: Option<ImeCursorArea>,
@@ -382,6 +385,7 @@ impl LinuxWindow {
             redraw_pending,
             reader_status: None,
             modifiers: ModifiersState::empty(),
+            last_window_focus: None,
             ime_active: false,
             ime_preedit: None,
             last_ime_cursor_area: None,
@@ -700,6 +704,19 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if !focused {
                     self.update_ime_preedit(None);
                 }
+                let focus_changed =
+                    record_window_focus_change(&mut self.last_window_focus, focused);
+                if focus_changed
+                    && terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref())
+                {
+                    let result = dispatch_focus_event_with(self.grid.as_ref(), focused, |bytes| {
+                        self.writer
+                            .as_ref()
+                            .ok_or(TerminalWriteQueueError::Disconnected)?
+                            .enqueue(bytes)
+                    });
+                    self.handle_terminal_input_result(event_loop, result);
+                }
             }
             WindowEvent::Ime(Ime::Enabled) => {
                 self.ime_active = true;
@@ -715,7 +732,8 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 self.last_ime_cursor_area = None;
             }
             WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
-                if !self.ime_active || !terminal_accepts_keyboard_input(self.reader_status.as_ref())
+                if !self.ime_active
+                    || !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref())
                 {
                     return;
                 }
@@ -753,7 +771,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             }
             WindowEvent::Ime(event) => {
                 self.update_ime_preedit(None);
-                if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
+                if !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     return;
                 }
                 let Some(payload) = ime_payload_from_event(event) else {
@@ -786,7 +804,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 is_synthetic,
                 ..
             } => {
-                if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
+                if !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     return;
                 }
                 let scrollback_action =
@@ -1020,8 +1038,8 @@ fn combine_launch_results(
         .and(finish_result)
 }
 
-fn terminal_accepts_keyboard_input(reader_status: Option<&ReaderStatus>) -> bool {
-    reader_status.is_none()
+fn terminal_accepts_input(exiting: bool, reader_status: Option<&ReaderStatus>) -> bool {
+    !exiting && reader_status.is_none()
 }
 
 fn create_glyph_atlas(
@@ -1261,6 +1279,42 @@ where
         grid.application_cursor_keys
     };
     dispatch_encoded_terminal_input_with(grid, encode(application_cursor_keys), write)
+}
+
+fn focus_report_bytes(focused: bool) -> &'static [u8] {
+    if focused {
+        FOCUS_IN_REPORT
+    } else {
+        FOCUS_OUT_REPORT
+    }
+}
+
+fn record_window_focus_change(last_window_focus: &mut Option<bool>, focused: bool) -> bool {
+    last_window_focus.replace(focused) != Some(focused)
+}
+
+fn dispatch_focus_event_with<W>(
+    grid: &Mutex<Grid>,
+    focused: bool,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let focus_events = grid
+        .lock()
+        .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?
+        .focus_events;
+    if !focus_events {
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    }
+
+    write(focus_report_bytes(focused).to_vec())?;
+    Ok(KeyboardInputOutcome::Forwarded {
+        viewport_changed: false,
+    })
 }
 
 fn ime_payload_from_event(event: Ime) -> Option<ImeCommitPayload> {
@@ -1973,22 +2027,23 @@ mod tests {
         apply_scrollback_action, apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions,
         begin_grid_redraw, classify_reader_exit, classify_writer_exit, combine_launch_results,
         configured_terminal_dimensions, contrasting_cursor_color,
-        dispatch_encoded_terminal_input_with, dispatch_keyboard_input_with, draw_cell_glyph,
-        draw_grid_snapshot, draw_ime_preedit, drawable_dimensions, ime_cursor_area,
-        ime_payload_from_event, ime_preedit_payload_with_limits,
-        immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
-        layout_ime_preedit, modifiers_after_focus_change, physical_size_for_terminal,
+        dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
+        dispatch_keyboard_input_with, draw_cell_glyph, draw_grid_snapshot, draw_ime_preedit,
+        drawable_dimensions, focus_report_bytes, ime_cursor_area, ime_payload_from_event,
+        ime_preedit_payload_with_limits, immediate_surface_size_to_reconcile,
+        initial_window_dimensions, is_current_surface_size, layout_ime_preedit,
+        modifiers_after_focus_change, physical_size_for_terminal, record_window_focus_change,
         replace_glyph_atlas_for_scale, replace_ime_preedit, resize_terminal_with,
         resolve_cell_colors, reveal_ime_input_viewport, rgb_to_xrgb, rounded_i32,
-        set_grid_cell_dimensions, snapshot_grid, sync_ime_cursor_area_with,
-        terminal_accepts_keyboard_input, terminal_color_query_value,
-        terminal_dimensions_for_surface, GridAccessError, ImeCursorArea, ImePreedit,
-        ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout, ImePreeditPayload, KeyboardInputError,
-        KeyboardInputOutcome, ReaderStatus, ResolvedCellColors, SurfaceSizeError,
-        TerminalDimensions, TerminalResizeError, WriterStatus, CURSOR_THICKNESS,
-        IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES, MAX_IME_PREEDIT_RENDER_CELLS,
-        MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,
-        MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        set_grid_cell_dimensions, snapshot_grid, sync_ime_cursor_area_with, terminal_accepts_input,
+        terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
+        ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
+        ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, ReaderStatus,
+        ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
+        WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES,
+        MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
+        MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
+        MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
@@ -3378,6 +3433,94 @@ mod tests {
     }
 
     #[test]
+    fn repeated_window_focus_states_are_not_transitions() {
+        let mut last_window_focus = None;
+
+        assert!(record_window_focus_change(&mut last_window_focus, false));
+        assert_eq!(last_window_focus, Some(false));
+        assert!(!record_window_focus_change(&mut last_window_focus, false));
+        assert!(record_window_focus_change(&mut last_window_focus, true));
+        assert_eq!(last_window_focus, Some(true));
+        assert!(!record_window_focus_change(&mut last_window_focus, true));
+        assert!(record_window_focus_change(&mut last_window_focus, false));
+    }
+
+    #[test]
+    fn focus_reporting_is_gated_and_writes_exact_bytes_without_scrolling() {
+        assert_eq!(focus_report_bytes(true), b"\x1b[I");
+        assert_eq!(focus_report_bytes(false), b"\x1b[O");
+
+        let mut history = grid_with_scrollback(3, 5);
+        history.scroll_viewport_up(history.scrollback_len());
+        let grid = Mutex::new(history);
+        let writes = RefCell::new(Vec::new());
+        let dispatch = |focused| {
+            dispatch_focus_event_with(&grid, focused, |bytes| {
+                assert!(
+                    grid.try_lock().is_ok(),
+                    "focus enqueue must run without the Grid lock"
+                );
+                writes.borrow_mut().push(bytes);
+                Ok(())
+            })
+            .expect("fake focus report should succeed")
+        };
+
+        assert_eq!(
+            dispatch(true),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        assert!(writes.borrow().is_empty());
+
+        grid.lock()
+            .expect("fresh Grid should enable focus reporting")
+            .focus_events = true;
+        assert_eq!(
+            dispatch(true),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            dispatch(false),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            writes.into_inner(),
+            [b"\x1b[I".to_vec(), b"\x1b[O".to_vec()]
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("focus reporting should keep the Grid available")
+                .scroll_offset,
+            5,
+            "focus reports must preserve the user's scrollback position"
+        );
+
+        for queue_error in [
+            TerminalWriteQueueError::Full,
+            TerminalWriteQueueError::Disconnected,
+        ] {
+            let error = dispatch_focus_event_with(&grid, true, |_| {
+                assert!(
+                    grid.try_lock().is_ok(),
+                    "focus queue errors must be returned outside the Grid lock"
+                );
+                Err(queue_error)
+            })
+            .expect_err("focus queue failures should be preserved");
+            assert!(matches!(
+                error,
+                KeyboardInputError::Queue(actual) if actual == queue_error
+            ));
+        }
+    }
+
+    #[test]
     fn keyboard_forwarding_skips_empty_output_and_preserves_queue_errors() {
         let mut history = grid_with_scrollback(4, 6);
         history.scroll_viewport_up(history.scrollback_len());
@@ -3422,7 +3565,7 @@ mod tests {
     }
 
     #[test]
-    fn poisoned_grid_prevents_keyboard_and_ime_queue_writes() {
+    fn poisoned_grid_prevents_keyboard_ime_and_focus_queue_writes() {
         let grid = Arc::new(Mutex::new(Grid::new(80, 24, 0)));
         let poison_target = grid.clone();
         assert!(std::thread::spawn(move || {
@@ -3466,6 +3609,17 @@ mod tests {
         .expect_err("poisoned Grid must reject IME input");
         assert!(matches!(
             ime_error,
+            KeyboardInputError::Grid(GridAccessError::Poisoned)
+        ));
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+
+        let focus_error = dispatch_focus_event_with(grid.as_ref(), true, |_| {
+            enqueue_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        })
+        .expect_err("poisoned Grid must reject focus reporting");
+        assert!(matches!(
+            focus_error,
             KeyboardInputError::Grid(GridAccessError::Poisoned)
         ));
         assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
@@ -3943,14 +4097,15 @@ mod tests {
     }
 
     #[test]
-    fn terminal_stops_accepting_keyboard_input_after_the_reader_exits() {
-        assert!(terminal_accepts_keyboard_input(None));
-        assert!(!terminal_accepts_keyboard_input(Some(
-            &ReaderStatus::Normal
-        )));
-        assert!(!terminal_accepts_keyboard_input(Some(
-            &ReaderStatus::Failed("read failed".to_string())
-        )));
+    fn terminal_stops_accepting_input_while_exiting_or_after_the_reader_exits() {
+        assert!(terminal_accepts_input(false, None));
+        assert!(!terminal_accepts_input(true, None));
+        assert!(!terminal_accepts_input(false, Some(&ReaderStatus::Normal)));
+        assert!(!terminal_accepts_input(
+            false,
+            Some(&ReaderStatus::Failed("read failed".to_string()))
+        ));
+        assert!(!terminal_accepts_input(true, Some(&ReaderStatus::Normal)));
     }
 
     #[test]
