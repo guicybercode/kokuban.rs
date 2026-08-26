@@ -2,14 +2,15 @@ pub mod confirm;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
-use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
-use crate::grid::TerminalEvent;
+use crate::grid::{Grid, TerminalEvent};
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
+use crate::parser::sixel::SixelImage;
 use crate::render_scene::ChromeColors;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::KittyHandlerOptions;
@@ -89,6 +90,40 @@ where
             CleanupCommand::Retire(value) => retire(*value),
             CleanupCommand::Shutdown => break,
         }
+    }
+}
+
+fn process_sixel_event<F>(
+    grid: &mut Grid,
+    image: &SixelImage,
+    cursor: (usize, usize),
+    cell_size: (f32, f32),
+    store_image: F,
+)
+where
+    F: FnOnce(&SixelImage) -> Option<ImageId>,
+{
+    let display_cols = ((image.width as f32) / cell_size.0).ceil() as u32;
+    let display_rows = ((image.height as f32) / cell_size.1).ceil() as u32;
+    if let Some(image_id) = store_image(image) {
+        grid.image_placements.push(ImagePlacement {
+            image_id,
+            placement_id: 0,
+            client_placement_id: None,
+            mode: PlacementMode::Inline {
+                row: cursor.0,
+                col: cursor.1,
+                cols: display_cols,
+                rows: display_rows,
+                x_offset: 0,
+                y_offset: 0,
+                render_size: InlineRenderSize::CellAnchored,
+            },
+            z_index: 0,
+        });
+    }
+    for _ in 0..display_rows {
+        grid.newline();
     }
 }
 
@@ -409,59 +444,35 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-
-                                // Process Sixel images
-                                let sixel_imgs = match tree.pane_mut(id) {
-                                    Some(pane) => pane.grid.drain_sixel_images(),
-                                    None => Vec::new(),
-                                };
-                                if sixel_enabled && !sixel_imgs.is_empty() {
-                                    let mut store = reader_image_store.lock().unwrap();
-                                    if let Some(pane) = tree.pane_mut(id) {
-                                        for sixel_img in sixel_imgs {
-                                            let img_id = store.next_id();
-                                            if let Some(stored_id) = store.store(
-                                                &sixel_img.pixels,
-                                                sixel_img.width,
-                                                sixel_img.height,
-                                                ImageFormat::Rgba,
-                                                Some(img_id),
-                                            ) {
-                                                // Place inline at cursor
-                                                let display_cols =
-                                                    ((sixel_img.width as f32) / cell_w).ceil() as u32;
-                                                let display_rows =
-                                                    ((sixel_img.height as f32) / cell_h).ceil() as u32;
-                                                let cursor_row = pane.grid.cursor_row;
-                                                let cursor_col = pane
-                                                    .grid
-                                                    .screen_cursor_col()
-                                                    .unwrap_or(pane.grid.cols() - 1);
-                                                pane.grid.image_placements.push(
-                                                    ImagePlacement {
-                                                        image_id: stored_id,
-                                                        placement_id: 0,
-                                                        client_placement_id: None,
-                                                        mode: PlacementMode::Inline {
-                                                            row: cursor_row,
-                                                            col: cursor_col,
-                                                            cols: display_cols,
-                                                            rows: display_rows,
-                                                            x_offset: 0,
-                                                            y_offset: 0,
-                                                            render_size:
-                                                                InlineRenderSize::CellAnchored,
-                                                        },
-                                                        z_index: 0,
+                                            TerminalEvent::SixelGraphics {
+                                                image,
+                                                cursor_row,
+                                                cursor_col,
+                                            } => {
+                                                if !sixel_enabled {
+                                                    continue;
+                                                }
+                                                let Some(pane) = tree.pane_mut(id) else {
+                                                    continue;
+                                                };
+                                                process_sixel_event(
+                                                    &mut pane.grid,
+                                                    &image,
+                                                    (cursor_row, cursor_col),
+                                                    (cell_w, cell_h),
+                                                    |image| {
+                                                        let mut store =
+                                                            reader_image_store.lock().unwrap();
+                                                        let image_id = store.next_id();
+                                                        store.store(
+                                                            &image.pixels,
+                                                            image.width,
+                                                            image.height,
+                                                            ImageFormat::Rgba,
+                                                            Some(image_id),
+                                                        )
                                                     },
                                                 );
-                                                // Advance cursor past image
-                                                for _ in 0..display_rows {
-                                                    pane.grid.newline();
-                                                }
                                             }
                                         }
                                     }
@@ -601,7 +612,10 @@ fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
 
 #[cfg(test)]
 mod tests {
-    use super::{run_cleanup, CleanupCommand};
+    use super::{process_sixel_event, run_cleanup, CleanupCommand};
+    use crate::graphics::PlacementMode;
+    use crate::grid::Grid;
+    use crate::parser::sixel::SixelImage;
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
 
@@ -621,6 +635,53 @@ mod tests {
                 .send(())
                 .expect("cleanup test should observe retirement completion");
         }
+    }
+
+    #[test]
+    fn sixel_placement_uses_the_event_cursor_snapshot() {
+        let mut grid = Grid::new(12, 6, 0);
+        grid.cursor_row = 4;
+        grid.cursor_col = 7;
+        let image = SixelImage {
+            width: 1,
+            height: 6,
+            pixels: vec![0; 24],
+        };
+
+        process_sixel_event(&mut grid, &image, (1, 2), (8.0, 16.0), |_| Some(9));
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (5, 7));
+        let placement = grid.image_placements.pop().unwrap();
+        match placement.mode {
+            PlacementMode::Inline {
+                row,
+                col,
+                cols,
+                rows,
+                ..
+            } => {
+                assert_eq!((row, col), (1, 2));
+                assert_ne!((row, col), (grid.cursor_row, grid.cursor_col));
+                assert_eq!((cols, rows), (1, 1));
+            }
+        }
+    }
+
+    #[test]
+    fn sixel_store_rejection_still_advances_the_protocol_cursor() {
+        let mut grid = Grid::new(12, 6, 0);
+        grid.cursor_row = 1;
+        grid.cursor_col = 2;
+        let image = SixelImage {
+            width: 1,
+            height: 6,
+            pixels: vec![0; 24],
+        };
+
+        process_sixel_event(&mut grid, &image, (1, 2), (8.0, 16.0), |_| None);
+
+        assert!(grid.image_placements.is_empty());
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 2));
     }
 
     #[test]

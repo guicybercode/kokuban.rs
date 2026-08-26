@@ -22,6 +22,11 @@ pub(crate) enum TerminalEvent {
         cursor_row: usize,
         cursor_col: usize,
     },
+    SixelGraphics {
+        image: SixelImage,
+        cursor_row: usize,
+        cursor_col: usize,
+    },
 }
 
 const DEFAULT_CELL: Cell = Cell {
@@ -133,12 +138,12 @@ pub struct Grid {
     // Prompt marks
     pub marks: MarkIndex,
     pub total_lines_pushed: usize,
-    // Ordered protocol events to process after parsing this PTY read.
+    // Ordered protocol events to process before parsing subsequent PTY bytes.
     pending_terminal_events: Vec<TerminalEvent>,
     // Colors for query responses
     pub default_fg_hex: String,
     pub default_bg_hex: String,
-    pending_sixel_images: Vec<SixelImage>,
+    pending_sixel_count: usize,
     pending_sixel_bytes: usize,
     // Active image placements for this grid
     pub image_placements: Vec<ImagePlacement>,
@@ -195,7 +200,7 @@ impl Grid {
             pending_terminal_events: Vec::new(),
             default_fg_hex: String::new(),
             default_bg_hex: String::new(),
-            pending_sixel_images: Vec::new(),
+            pending_sixel_count: 0,
             pending_sixel_bytes: 0,
             image_placements: Vec::new(),
             cell_pixel_width: 8,
@@ -302,16 +307,14 @@ impl Grid {
     }
 
     pub(crate) fn drain_terminal_events(&mut self) -> Vec<TerminalEvent> {
-        std::mem::take(&mut self.pending_terminal_events)
+        let events = std::mem::take(&mut self.pending_terminal_events);
+        self.pending_sixel_count = 0;
+        self.pending_sixel_bytes = 0;
+        events
     }
 
     pub(crate) fn has_pending_terminal_events(&self) -> bool {
         !self.pending_terminal_events.is_empty()
-    }
-
-    pub fn drain_sixel_images(&mut self) -> Vec<SixelImage> {
-        self.pending_sixel_bytes = 0;
-        std::mem::take(&mut self.pending_sixel_images)
     }
 
     pub(crate) fn queue_sixel_image(&mut self, image: SixelImage) -> bool {
@@ -323,7 +326,7 @@ impl Grid {
     }
 
     pub(crate) fn has_sixel_queue_slot(&self) -> bool {
-        self.pending_sixel_images.len() < MAX_PENDING_SIXEL_IMAGES
+        self.pending_sixel_count < MAX_PENDING_SIXEL_IMAGES
     }
 
     #[cfg(test)]
@@ -347,7 +350,12 @@ impl Grid {
             return false;
         }
 
-        self.pending_sixel_images.push(image);
+        self.pending_terminal_events.push(TerminalEvent::SixelGraphics {
+            image,
+            cursor_row: self.cursor_row,
+            cursor_col: self.screen_cursor_col().unwrap_or(self.cols() - 1),
+        });
+        self.pending_sixel_count += 1;
         self.pending_sixel_bytes = pending_bytes;
         true
     }
@@ -882,7 +890,7 @@ mod tests {
     use super::{
         cell::{CellFlags, Color, UnderlineStyle},
         marks::PromptMarkKind,
-        Grid,
+        Grid, TerminalEvent,
     };
     use crate::parser::sixel::SixelImage;
 
@@ -1697,6 +1705,7 @@ mod tests {
     fn pending_sixel_queue_enforces_and_resets_its_byte_budget() {
         let mut grid = Grid::new(2, 2, 0);
 
+        grid.queue_response(b"ready".to_vec());
         assert!(grid.queue_sixel_image_with_limit(sixel_image(8), 12));
         assert!(grid.queue_sixel_image_with_limit(sixel_image(4), 12));
         assert_eq!(grid.pending_sixel_bytes, 12);
@@ -1705,10 +1714,18 @@ mod tests {
             super::MAX_PENDING_SIXEL_BYTES - 12
         );
         assert!(!grid.queue_sixel_image_with_limit(sixel_image(4), 12));
-        assert_eq!(grid.pending_sixel_images.len(), 2);
+        assert_eq!(grid.pending_sixel_count, 2);
 
-        let drained = grid.drain_sixel_images();
-        assert_eq!(drained.len(), 2);
+        let drained = grid.drain_terminal_events();
+        assert_eq!(drained.len(), 3);
+        assert!(matches!(
+            drained.first(),
+            Some(TerminalEvent::Response(response)) if response == b"ready"
+        ));
+        assert!(drained[1..]
+            .iter()
+            .all(|event| matches!(event, TerminalEvent::SixelGraphics { .. })));
+        assert_eq!(grid.pending_sixel_count, 0);
         assert_eq!(grid.pending_sixel_bytes, 0);
         assert!(grid.queue_sixel_image_with_limit(sixel_image(8), 12));
 
@@ -1725,11 +1742,15 @@ mod tests {
         }
         assert!(!grid.has_sixel_queue_slot());
         assert!(!grid.queue_sixel_image(sixel_image(4)));
+        assert_eq!(grid.pending_sixel_count, super::MAX_PENDING_SIXEL_IMAGES);
 
-        assert_eq!(
-            grid.drain_sixel_images().len(),
-            super::MAX_PENDING_SIXEL_IMAGES
-        );
+        let drained = grid.drain_terminal_events();
+        assert_eq!(drained.len(), super::MAX_PENDING_SIXEL_IMAGES);
+        assert!(drained
+            .iter()
+            .all(|event| matches!(event, TerminalEvent::SixelGraphics { .. })));
+        assert_eq!(grid.pending_sixel_count, 0);
+        assert_eq!(grid.pending_sixel_bytes, 0);
         assert!(grid.has_sixel_queue_slot());
     }
 
