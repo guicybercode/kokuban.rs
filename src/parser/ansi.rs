@@ -184,6 +184,7 @@ impl Parser {
             b'8' => { grid.restore_cursor(); self.state = State::Ground; }
             b'D' => { grid.newline(); self.state = State::Ground; }
             b'M' => {
+                grid.cancel_pending_wrap();
                 if grid.cursor_row == grid.scroll_top {
                     grid.scroll_down(1);
                 } else if grid.cursor_row > 0 {
@@ -673,10 +674,12 @@ impl Parser {
             b'M' => { grid.delete_lines(params.first().copied().unwrap_or(1).max(1) as usize); }
             b'G' => {
                 let col = params.first().copied().unwrap_or(1).max(1) as usize - 1;
+                grid.cancel_pending_wrap();
                 grid.cursor_col = col.min(grid.cols() - 1);
             }
             b'd' => {
                 let row = params.first().copied().unwrap_or(1).max(1) as usize - 1;
+                grid.cancel_pending_wrap();
                 grid.cursor_row = row.min(grid.rows() - 1);
             }
             b'E' => {
@@ -689,44 +692,15 @@ impl Parser {
             }
             b'P' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                let row = grid.cursor_row;
-                let col = grid.cursor_col;
-                let cols = grid.cols();
-                for c in col..cols {
-                    let src_char = if c + n < cols {
-                        *grid.buffer.cell(row, c + n)
-                    } else {
-                        grid.template_cell()
-                    };
-                    *grid.buffer.cell_mut(row, c) = src_char;
-                }
-                grid.dirty[row] = true;
+                grid.delete_chars(n);
             }
             b'@' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                let row = grid.cursor_row;
-                let col = grid.cursor_col;
-                let cols = grid.cols();
-                for c in (col..cols).rev() {
-                    if c >= col + n {
-                        let src = *grid.buffer.cell(row, c - n);
-                        *grid.buffer.cell_mut(row, c) = src;
-                    } else {
-                        *grid.buffer.cell_mut(row, c) = grid.template_cell();
-                    }
-                }
-                grid.dirty[row] = true;
+                grid.insert_blank_chars(n);
             }
             b'X' => {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                let row = grid.cursor_row;
-                let col = grid.cursor_col;
-                let cols = grid.cols();
-                let template = grid.template_cell();
-                for c in col..(col + n).min(cols) {
-                    *grid.buffer.cell_mut(row, c) = template;
-                }
-                grid.dirty[row] = true;
+                grid.erase_chars(n);
             }
             b'S' => { grid.scroll_up(params.first().copied().unwrap_or(1).max(1) as usize); }
             b'T' => { grid.scroll_down(params.first().copied().unwrap_or(1).max(1) as usize); }
@@ -736,7 +710,8 @@ impl Parser {
                 let ps = params.first().copied().unwrap_or(0);
                 if ps == 6 {
                     // Cursor position report
-                    let resp = format!("\x1b[{};{}R", grid.cursor_row + 1, grid.cursor_col + 1);
+                    let cursor_col = grid.screen_cursor_col().unwrap_or(grid.cols() - 1);
+                    let resp = format!("\x1b[{};{}R", grid.cursor_row + 1, cursor_col + 1);
                     grid.queue_response(resp.into_bytes());
                 }
             }
@@ -786,6 +761,7 @@ impl Parser {
                     for &param in params.iter() {
                         match param {
                             1 => { grid.application_cursor_keys = set; }
+                            7 => { grid.set_auto_wrap(set); }
                             1049 => {
                                 if set { grid.save_cursor(); grid.enter_alt_screen(); }
                                 else { grid.leave_alt_screen(); grid.restore_cursor(); }
@@ -1226,6 +1202,214 @@ mod tests {
 
         parser.feed(b"\x1b[?1h\x1bc", &mut grid);
         assert!(!grid.application_cursor_keys);
+    }
+
+    #[test]
+    fn toggles_auto_wrap_with_decawm_and_resets_it_with_ris() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(3, 2, 10);
+
+        assert!(grid.auto_wrap);
+        parser.feed(b"\x1b[?7l", &mut grid);
+        assert!(!grid.auto_wrap);
+
+        parser.feed(b"abcde", &mut grid);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, grid.cols()));
+        assert_eq!(grid.buffer.cell(0, 0).c, 'a');
+        assert_eq!(grid.buffer.cell(0, 1).c, 'b');
+        assert_eq!(grid.buffer.cell(0, 2).c, 'e');
+        assert_eq!(grid.buffer.cell(1, 0).c, ' ');
+        assert_eq!(grid.scrollback_len(), 0);
+
+        parser.feed(b"\x1b[?7h", &mut grid);
+        assert!(grid.auto_wrap);
+        parser.feed(b"f", &mut grid);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.buffer.cell(1, 0).c, 'f');
+
+        parser.feed(b"\x1b[?7l\x1bc", &mut grid);
+        assert!(grid.auto_wrap);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 0));
+        assert_eq!(grid.buffer.cell(0, 0).c, ' ');
+
+        parser.feed(b"abcd", &mut grid);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.buffer.cell(0, 2).c, 'c');
+        assert_eq!(grid.buffer.cell(1, 0).c, 'd');
+    }
+
+    #[test]
+    fn decawm_toggle_without_printable_preserves_pending_wrap() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(2, 2, 0);
+        parser.feed(b"ab", &mut grid);
+        assert_eq!(grid.cursor_col, grid.cols());
+
+        parser.feed(b"\x1b[?7l\x1b[?7h", &mut grid);
+        parser.feed(b"c", &mut grid);
+
+        assert!(grid.auto_wrap);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.buffer.cell(0, 1).c, 'b');
+        assert_eq!(grid.buffer.cell(1, 0).c, 'c');
+    }
+
+    #[test]
+    fn decawm_participates_in_multi_parameter_private_modes() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[?1;7;25l", &mut grid);
+        assert!(!grid.application_cursor_keys);
+        assert!(!grid.auto_wrap);
+        assert!(!grid.cursor_visible);
+
+        parser.feed(b"\x1b[?1;7;25h", &mut grid);
+        assert!(grid.application_cursor_keys);
+        assert!(grid.auto_wrap);
+        assert!(grid.cursor_visible);
+    }
+
+    #[test]
+    fn cursor_position_report_projects_pending_wrap_to_the_right_margin() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(2, 2, 0);
+
+        parser.feed(b"ab\x1b[6n", &mut grid);
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[1;2R"
+        ));
+
+        parser.feed(b"\x1b[?7lc\x1b[6n", &mut grid);
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[1;2R"
+        ));
+    }
+
+    #[test]
+    fn kitty_events_project_pending_wrap_to_the_right_margin() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(3, 2, 0);
+
+        parser.feed(b"abc\x1b_Ga=d,d=c\x1b\\", &mut grid);
+
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::KittyGraphics {
+                cursor_row: 0,
+                cursor_col: 2,
+                ..
+            }]
+        ));
+        assert_eq!(grid.cursor_col, grid.cols());
+    }
+
+    #[test]
+    fn screen_editing_controls_cancel_pending_wrap_before_the_next_printable() {
+        let controls: [(&str, &[u8]); 16] = [
+            ("LF", b"\n"),
+            ("VT", b"\x0b"),
+            ("FF", b"\x0c"),
+            ("IND", b"\x1bD"),
+            ("RI", b"\x1bM"),
+            ("CUU", b"\x1b[A"),
+            ("CUD", b"\x1b[B"),
+            ("HPA", b"\x1b[3G"),
+            ("VPA", b"\x1b[2d"),
+            ("EL", b"\x1b[K"),
+            ("ED", b"\x1b[J"),
+            ("DCH", b"\x1b[P"),
+            ("ICH", b"\x1b[@"),
+            ("ECH", b"\x1b[X"),
+            ("IL", b"\x1b[L"),
+            ("DL", b"\x1b[M"),
+        ];
+
+        for (name, control) in controls {
+            let mut parser = Utf8Parser::new();
+            let mut grid = Grid::new(3, 3, 0);
+            grid.set_cursor_pos(1, 0);
+            parser.feed(b"abc", &mut grid);
+            assert_eq!(grid.cursor_col, grid.cols(), "setup failed for {name}");
+
+            parser.feed(control, &mut grid);
+            let row_after_control = grid.cursor_row;
+            assert_eq!(grid.cursor_col, 2, "{name} did not cancel pending wrap");
+
+            parser.feed(b"X", &mut grid);
+
+            assert_eq!(grid.cursor_row, row_after_control, "{name} wrapped twice");
+            assert_eq!(grid.buffer.cell(row_after_control, 2).c, 'X', "{name}");
+        }
+    }
+
+    #[test]
+    fn screen_scroll_controls_preserve_pending_wrap() {
+        for (name, control) in [("SU", b"\x1b[S".as_slice()), ("SD", b"\x1b[T".as_slice())] {
+            let mut parser = Utf8Parser::new();
+            let mut grid = Grid::new(3, 4, 0);
+            grid.set_cursor_pos(1, 0);
+            parser.feed(b"abc", &mut grid);
+            assert_eq!(grid.cursor_col, grid.cols(), "setup failed for {name}");
+
+            parser.feed(control, &mut grid);
+            assert_eq!(grid.cursor_col, grid.cols(), "{name} consumed pending wrap");
+
+            parser.feed(b"X", &mut grid);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (2, 1), "{name}");
+            assert_eq!(grid.buffer.cell(2, 0).c, 'X', "{name}");
+        }
+    }
+
+    #[test]
+    fn horizontal_tab_preserves_pending_wrap_at_the_right_margin() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(3, 2, 0);
+        parser.feed(b"abc\t", &mut grid);
+
+        assert_eq!(grid.cursor_col, grid.cols());
+        parser.feed(b"X", &mut grid);
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.buffer.cell(0, 2).c, 'c');
+        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+    }
+
+    #[test]
+    fn horizontal_tab_moves_the_physical_cursor_after_grow_without_clearing_wrap() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(3, 2, 0);
+        parser.feed(b"abc", &mut grid);
+
+        grid.resize(10, 2);
+        parser.feed(b"\t\x1b[6n", &mut grid);
+
+        assert_eq!(grid.cursor_col, 8);
+        assert!(grid.is_wrap_pending());
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[1;9R"
+        ));
+
+        parser.feed(b"X", &mut grid);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+    }
+
+    #[test]
+    fn non_moving_sequences_preserve_pending_wrap() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(3, 2, 0);
+        parser.feed(b"abc", &mut grid);
+
+        parser.feed(b"\x1b[31m\x1b[?7l\x1b[?7h\x1b[6n", &mut grid);
+        assert_eq!(grid.cursor_col, grid.cols());
+        parser.feed(b"X", &mut grid);
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::grid::Grid;
+use crate::grid::{cell::CellFlags, Grid};
 
 #[derive(Debug, Clone, Copy)]
 pub struct GridPoint {
@@ -85,18 +85,24 @@ impl SelectionState {
 
             let mut line = String::new();
             for col in col_start..=col_end {
-                let c = if abs_row < sb_len {
+                let cell = if abs_row < sb_len {
                     // Read from scrollback
-                    grid.scrollback_cell(abs_row as usize, col)
+                    Some(grid.scrollback_cell_data(abs_row as usize, col))
                 } else {
                     let buffer_row = (abs_row - sb_len) as usize;
                     if buffer_row < grid.rows() {
-                        grid.buffer.cell(buffer_row, col).c
+                        Some(grid.buffer.cell(buffer_row, col))
                     } else {
-                        ' '
+                        None
                     }
                 };
-                line.push(c);
+                if let Some(cell) = cell {
+                    if !cell.flags.contains(CellFlags::WIDE_CONT) {
+                        line.push(cell.c);
+                    }
+                } else {
+                    line.push(' ');
+                }
             }
             // Trim trailing spaces
             let trimmed = line.trim_end();
@@ -110,6 +116,7 @@ impl SelectionState {
 #[cfg(test)]
 mod tests {
     use super::{GridPoint, SelectionState};
+    use crate::grid::Grid;
 
     #[test]
     fn normalizes_reverse_drag_order() {
@@ -120,5 +127,25 @@ mod tests {
         let (start, end) = selection.normalized().unwrap();
         assert_eq!((start.row, start.col), (2, 3));
         assert_eq!((end.row, end.col), (4, 8));
+    }
+
+    #[test]
+    fn copy_uses_the_visible_scrollback_projection_across_resize() {
+        let mut grid = Grid::new(4, 2, 10);
+        grid.set_cursor_pos(0, 2);
+        grid.put_char('日');
+        grid.scroll_up(1);
+
+        let mut selection = SelectionState::default();
+        selection.start(GridPoint { row: 0, col: 2 });
+        selection.update(GridPoint { row: 0, col: 2 });
+
+        grid.resize(3, 2);
+        assert_eq!(selection.get_text(&grid), "");
+
+        grid.resize(4, 2);
+        selection.update(GridPoint { row: 0, col: 3 });
+        assert_eq!(selection.get_text(&grid), "日");
+        assert!(!selection.get_text(&grid).contains('\0'));
     }
 }

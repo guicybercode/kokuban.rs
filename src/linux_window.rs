@@ -499,6 +499,7 @@ struct ImePreeditGlyph {
 #[derive(Debug, Default, PartialEq, Eq)]
 struct ImePreeditLayout {
     glyphs: Vec<ImePreeditGlyph>,
+    cleared_cells: Vec<(usize, usize)>,
     caret_cell: Option<(usize, usize)>,
 }
 
@@ -509,12 +510,25 @@ struct GridSnapshot {
     cells: Vec<Cell>,
     cursor: Option<CursorSnapshot>,
     input_cursor: (usize, usize),
+    wrap_pending: bool,
+    auto_wrap: bool,
 }
 
 impl GridSnapshot {
     fn cell(&self, row: usize, column: usize) -> Option<&Cell> {
         let index = row.checked_mul(self.columns)?.checked_add(column)?;
         self.cells.get(index)
+    }
+
+    fn rendered_cell(&self, row: usize, column: usize) -> Option<&Cell> {
+        let cell = self.cell(row, column)?;
+        if cell.flags.contains(CellFlags::WIDE_CONT) && column > 0 {
+            let leader = self.cell(row, column - 1)?;
+            if leader.flags.contains(CellFlags::WIDE) {
+                return Some(leader);
+            }
+        }
+        Some(cell)
     }
 }
 
@@ -803,13 +817,10 @@ impl LinuxWindow {
             .cell_dimensions
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let snapshot = snapshot_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
-        let preedit_layout = self.ime_preedit.as_ref().map(|preedit| {
-            layout_ime_preedit(
-                preedit,
-                snapshot.input_cursor,
-                (snapshot.columns, snapshot.rows),
-            )
-        });
+        let preedit_layout = self
+            .ime_preedit
+            .as_ref()
+            .map(|preedit| layout_ime_preedit_for_snapshot(preedit, &snapshot));
         let ime_cursor = preedit_layout
             .as_ref()
             .and_then(|layout| layout.caret_cell)
@@ -2286,15 +2297,15 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
         }
     }
 
-    let cursor = (grid.cursor_visible
-        && grid.scroll_offset == 0
-        && grid.cursor_row < rows
-        && grid.cursor_col < columns)
-        .then_some(CursorSnapshot {
+    let cursor = if grid.cursor_visible && grid.scroll_offset == 0 && grid.cursor_row < rows {
+        grid.screen_cursor_col().map(|column| CursorSnapshot {
             row: grid.cursor_row,
-            column: grid.cursor_col,
+            column,
             shape: grid.cursor_style.shape,
-        });
+        })
+    } else {
+        None
+    };
 
     Ok(GridSnapshot {
         columns,
@@ -2302,6 +2313,8 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
         cells,
         cursor,
         input_cursor: (grid.cursor_row, grid.cursor_col),
+        wrap_pending: grid.is_wrap_pending(),
+        auto_wrap: grid.auto_wrap,
     })
 }
 
@@ -2361,10 +2374,34 @@ fn sync_ime_cursor_area_with<F>(
     *last_area = Some(next_area);
 }
 
+#[cfg(test)]
 fn layout_ime_preedit(
     preedit: &ImePreedit,
     input_cursor: (usize, usize),
     grid_dimensions: (usize, usize),
+) -> ImePreeditLayout {
+    layout_ime_preedit_with_mode(preedit, input_cursor, grid_dimensions, true, None)
+}
+
+fn layout_ime_preedit_for_snapshot(
+    preedit: &ImePreedit,
+    snapshot: &GridSnapshot,
+) -> ImePreeditLayout {
+    layout_ime_preedit_with_mode(
+        preedit,
+        snapshot.input_cursor,
+        (snapshot.columns, snapshot.rows),
+        snapshot.auto_wrap,
+        Some(snapshot),
+    )
+}
+
+fn layout_ime_preedit_with_mode(
+    preedit: &ImePreedit,
+    input_cursor: (usize, usize),
+    grid_dimensions: (usize, usize),
+    auto_wrap: bool,
+    snapshot: Option<&GridSnapshot>,
 ) -> ImePreeditLayout {
     let (columns, rows) = grid_dimensions;
     if columns == 0 || rows == 0 || input_cursor.0 >= rows || input_cursor.1 > columns {
@@ -2374,6 +2411,9 @@ fn layout_ime_preedit(
     let mut layout = ImePreeditLayout::default();
     let mut row = input_cursor.0;
     let mut column = input_cursor.1;
+    let mut wrap_pending = snapshot
+        .map(|snapshot| snapshot.wrap_pending)
+        .unwrap_or(column == columns);
     let mut previous_cell = None;
     let mut last_visible_cell = clamp_ime_layout_position(input_cursor, grid_dimensions);
 
@@ -2391,10 +2431,27 @@ fn layout_ime_preedit(
             cursor.selection_start < byte_end && byte_start < cursor.selection_end
         });
         let width_usize = usize::from(width);
+        let mut renderable = true;
 
-        if width != 0 && (column >= columns || width_usize > columns.saturating_sub(column)) {
-            row = row.saturating_add(1);
-            column = 0;
+        let attaches_to_previous = width == 0 && previous_cell.is_some();
+        if !attaches_to_previous && (wrap_pending || column >= columns) {
+            wrap_pending = false;
+            if auto_wrap {
+                row = row.saturating_add(1);
+                column = 0;
+            } else {
+                column = column.min(columns - 1);
+            }
+        }
+        if width != 0 {
+            if width_usize > columns.saturating_sub(column) {
+                if auto_wrap {
+                    row = row.saturating_add(1);
+                    column = 0;
+                } else {
+                    renderable = false;
+                }
+            }
         }
         if preedit
             .cursor
@@ -2410,6 +2467,14 @@ fn layout_ime_preedit(
             if let Some((glyph_row, glyph_column)) =
                 position.filter(|(row, column)| *row < rows && *column < columns)
             {
+                let has_cluster_anchor = previous_cell == Some((glyph_row, glyph_column))
+                    && layout
+                        .glyphs
+                        .iter()
+                        .any(|glyph| glyph.row == glyph_row && glyph.column == glyph_column);
+                if !auto_wrap && !has_cluster_anchor {
+                    prepare_ime_no_wrap_write(&mut layout, snapshot, glyph_row, glyph_column, 1);
+                }
                 layout.glyphs.push(ImePreeditGlyph {
                     character: display_character,
                     byte_start,
@@ -2428,7 +2493,17 @@ fn layout_ime_preedit(
             continue;
         }
 
+        if !renderable {
+            if !auto_wrap {
+                previous_cell = None;
+            }
+            continue;
+        }
+
         if row < rows {
+            if !auto_wrap {
+                prepare_ime_no_wrap_write(&mut layout, snapshot, row, column, width_usize);
+            }
             layout.glyphs.push(ImePreeditGlyph {
                 character: display_character,
                 byte_start,
@@ -2449,6 +2524,7 @@ fn layout_ime_preedit(
         }
         previous_cell = Some((row, column));
         column = column.saturating_add(width_usize);
+        wrap_pending = column >= columns;
     }
     normalize_ime_preedit_cluster_selection(&mut layout.glyphs);
 
@@ -2460,6 +2536,63 @@ fn layout_ime_preedit(
             ime_layout_caret_position((row, column), grid_dimensions, last_visible_cell);
     }
     layout
+}
+
+fn prepare_ime_no_wrap_write(
+    layout: &mut ImePreeditLayout,
+    snapshot: Option<&GridSnapshot>,
+    row: usize,
+    column: usize,
+    width: usize,
+) {
+    let end = column.saturating_add(width);
+    layout.cleared_cells.retain(|&(cell_row, cell_column)| {
+        cell_row != row || cell_column < column || cell_column >= end
+    });
+
+    let mut removed_anchors = Vec::new();
+    let mut kept = Vec::with_capacity(layout.glyphs.len());
+    for glyph in std::mem::take(&mut layout.glyphs) {
+        let glyph_width = usize::from(glyph.width.max(1));
+        let glyph_end = glyph.column.saturating_add(glyph_width);
+        let overlaps = glyph.row == row && glyph.column < end && column < glyph_end;
+        if !overlaps {
+            kept.push(glyph);
+            continue;
+        }
+
+        if glyph.width > 0 {
+            removed_anchors.push((glyph.row, glyph.column));
+            for cleared_column in glyph.column..glyph_end {
+                if cleared_column < column || cleared_column >= end {
+                    layout.cleared_cells.push((row, cleared_column));
+                }
+            }
+        }
+    }
+    kept.retain(|glyph| glyph.width != 0 || !removed_anchors.contains(&(glyph.row, glyph.column)));
+    layout.glyphs = kept;
+
+    if let Some(snapshot) = snapshot {
+        for target_column in column..end {
+            let Some(cell) = snapshot.cell(row, target_column) else {
+                continue;
+            };
+            let partner = if cell.flags.contains(CellFlags::WIDE_CONT) {
+                target_column.checked_sub(1)
+            } else if cell.flags.contains(CellFlags::WIDE) {
+                target_column.checked_add(1)
+            } else {
+                None
+            };
+            if let Some(partner) = partner.filter(|partner| *partner < column || *partner >= end) {
+                layout.cleared_cells.push((row, partner));
+            }
+        }
+    }
+
+    layout.cleared_cells.sort_unstable();
+    layout.cleared_cells.dedup();
 }
 
 fn ime_layout_caret_position(
@@ -2603,7 +2736,7 @@ fn draw_grid_snapshot(
         return;
     };
     let cursor_background = snapshot
-        .cell(cursor.row, cursor.column)
+        .rendered_cell(cursor.row, cursor.column)
         .map(|cell| resolve_cell_colors(colors, cell).background)
         .unwrap_or_else(|| {
             let background = colors.default_background();
@@ -2629,6 +2762,20 @@ fn draw_ime_preedit(
     layout: &ImePreeditLayout,
 ) {
     let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
+
+    for &(row, column) in &layout.cleared_cells {
+        let Some(origin) = cell_origin(row, column, cell_dimensions) else {
+            continue;
+        };
+        let background = snapshot
+            .rendered_cell(row, column)
+            .map(|cell| resolve_cell_colors(colors, cell).background)
+            .unwrap_or_else(|| {
+                let background = colors.default_background();
+                rgb_to_xrgb(background.0, background.1, background.2)
+            });
+        fill_rect(frame, frame_size, origin, cell_size, background, u8::MAX);
+    }
 
     for glyph in &layout.glyphs {
         let Some(origin) = cell_origin(glyph.row, glyph.column, cell_dimensions) else {
@@ -2720,7 +2867,7 @@ fn ime_preedit_glyph_colors(
     glyph: &ImePreeditGlyph,
 ) -> (u32, u32) {
     let underlying = snapshot
-        .cell(glyph.row, glyph.column)
+        .rendered_cell(glyph.row, glyph.column)
         .map(|cell| resolve_cell_colors(colors, cell))
         .unwrap_or_else(|| {
             let foreground = colors.resolve_foreground(Color::Default, false);
@@ -2756,7 +2903,7 @@ fn ime_preedit_background_at(
         .map(|glyph| ime_preedit_glyph_colors(colors, snapshot, glyph).1)
         .or_else(|| {
             snapshot
-                .cell(row, column)
+                .rendered_cell(row, column)
                 .map(|cell| resolve_cell_colors(colors, cell).background)
         })
         .unwrap_or_else(|| {
@@ -2865,9 +3012,10 @@ mod tests {
         dispatch_keyboard_input_with, dispatch_mouse_button_and_motion_with,
         dispatch_mouse_button_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
         draw_cell_glyph, draw_grid_snapshot, draw_ime_preedit, drawable_dimensions,
-        focus_report_bytes, ime_cursor_area, ime_payload_from_event,
-        ime_preedit_payload_with_limits, immediate_surface_size_to_reconcile,
-        initial_window_dimensions, is_current_surface_size, layout_ime_preedit,
+        focus_report_bytes, ime_cursor_area, ime_payload_from_event, ime_preedit_background_at,
+        ime_preedit_glyph_colors, ime_preedit_payload_with_limits,
+        immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
+        layout_ime_preedit, layout_ime_preedit_for_snapshot, layout_ime_preedit_with_mode,
         modifiers_after_focus_change, mouse_button_code_from_winit, mouse_button_with_modifiers,
         physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
         replace_ime_preedit, resize_terminal_with, resolve_cell_colors, reveal_ime_input_viewport,
@@ -2988,11 +3136,7 @@ mod tests {
         let mut frame = vec![background; frame_len];
         let grid = Mutex::new(grid);
         let snapshot = snapshot_grid(&grid).expect("test grid should not be poisoned");
-        let layout = layout_ime_preedit(
-            preedit,
-            snapshot.input_cursor,
-            (snapshot.columns, snapshot.rows),
-        );
+        let layout = layout_ime_preedit_for_snapshot(preedit, &snapshot);
 
         draw_grid_snapshot(
             &mut frame,
@@ -3696,6 +3840,186 @@ mod tests {
             (0, 2)
         );
         assert_eq!(leading_combining.glyphs[0].width, 0);
+    }
+
+    #[test]
+    fn ime_preedit_obeys_disabled_auto_wrap_at_the_right_margin() {
+        let no_wrap = |text: &str, input_cursor| {
+            layout_ime_preedit_with_mode(
+                &accepted_preedit(text, Some((text.len(), text.len()))),
+                input_cursor,
+                (4, 2),
+                false,
+                None,
+            )
+        };
+
+        let pending = no_wrap("ab", (0, 4));
+        assert_eq!(
+            pending
+                .glyphs
+                .iter()
+                .map(|glyph| (glyph.character, glyph.row, glyph.column))
+                .collect::<Vec<_>>(),
+            [('b', 0, 3)]
+        );
+        assert_eq!(pending.caret_cell, Some((0, 3)));
+
+        let narrow = no_wrap("abc", (0, 2));
+        assert_eq!(
+            narrow
+                .glyphs
+                .iter()
+                .map(|glyph| (glyph.character, glyph.row, glyph.column))
+                .collect::<Vec<_>>(),
+            [('a', 0, 2), ('c', 0, 3)]
+        );
+        assert_eq!(narrow.caret_cell, Some((0, 3)));
+
+        let ignored_wide = no_wrap("a日", (0, 2));
+        assert_eq!(ignored_wide.glyphs.len(), 1);
+        assert_eq!(ignored_wide.glyphs[0].character, 'a');
+        assert_eq!(ignored_wide.caret_cell, Some((0, 3)));
+
+        let overwritten_wide = no_wrap("日x", (0, 2));
+        assert_eq!(overwritten_wide.glyphs.len(), 1);
+        assert_eq!(overwritten_wide.glyphs[0].character, 'x');
+        assert_eq!(
+            (
+                overwritten_wide.glyphs[0].row,
+                overwritten_wide.glyphs[0].column
+            ),
+            (0, 3)
+        );
+        assert_eq!(overwritten_wide.cleared_cells, [(0, 2)]);
+        assert_eq!(overwritten_wide.caret_cell, Some((0, 3)));
+
+        let ignored_wide_before_combining = no_wrap("日本\u{301}", (0, 2));
+        assert_eq!(ignored_wide_before_combining.glyphs.len(), 1);
+        assert_eq!(ignored_wide_before_combining.glyphs[0].character, '\u{301}');
+        assert_eq!(
+            (
+                ignored_wide_before_combining.glyphs[0].row,
+                ignored_wide_before_combining.glyphs[0].column
+            ),
+            (0, 3)
+        );
+        assert_eq!(ignored_wide_before_combining.cleared_cells, [(0, 2)]);
+
+        let ignored_wide_breaks_the_previous_cluster = no_wrap("ab日\u{301}", (0, 2));
+        assert_eq!(
+            ignored_wide_breaks_the_previous_cluster
+                .glyphs
+                .iter()
+                .map(|glyph| (glyph.character, glyph.row, glyph.column))
+                .collect::<Vec<_>>(),
+            [('a', 0, 2), ('\u{301}', 0, 3)]
+        );
+    }
+
+    #[test]
+    fn ime_preedit_uses_pending_wrap_with_the_physical_cursor_after_resize() {
+        let resized_snapshot = |auto_wrap| {
+            let mut grid = Grid::new(3, 2, 0);
+            for character in ['a', 'b', 'c'] {
+                grid.put_char(character);
+            }
+            grid.resize(5, 2);
+            grid.set_auto_wrap(auto_wrap);
+            snapshot_grid(&Mutex::new(grid)).expect("resized Grid snapshot should succeed")
+        };
+
+        let wrapping = resized_snapshot(true);
+        assert_eq!(wrapping.input_cursor, (0, 2));
+        assert!(wrapping.wrap_pending);
+        let wrapping_layout =
+            layout_ime_preedit_for_snapshot(&accepted_preedit("X", None), &wrapping);
+        assert_eq!(
+            wrapping_layout
+                .glyphs
+                .iter()
+                .map(|glyph| (glyph.character, glyph.row, glyph.column))
+                .collect::<Vec<_>>(),
+            [('X', 1, 0)]
+        );
+
+        let overwriting = resized_snapshot(false);
+        assert_eq!(overwriting.input_cursor, (0, 2));
+        assert!(overwriting.wrap_pending);
+        let overwriting_layout =
+            layout_ime_preedit_for_snapshot(&accepted_preedit("X", None), &overwriting);
+        assert_eq!(
+            overwriting_layout
+                .glyphs
+                .iter()
+                .map(|glyph| (glyph.character, glyph.row, glyph.column))
+                .collect::<Vec<_>>(),
+            [('X', 0, 2)]
+        );
+    }
+
+    #[test]
+    fn ime_preedit_clears_an_underlying_wide_leader_without_auto_wrap() {
+        let mut grid = Grid::new(4, 1, 0);
+        grid.set_auto_wrap(false);
+        grid.set_cursor_pos(0, 2);
+        grid.put_char('日');
+        let snapshot = snapshot_grid(&Mutex::new(grid)).expect("snapshot should succeed");
+
+        let layout =
+            layout_ime_preedit_for_snapshot(&accepted_preedit("x", Some((1, 1))), &snapshot);
+
+        assert!(!snapshot.auto_wrap);
+        assert_eq!(layout.glyphs.len(), 1);
+        assert_eq!(layout.glyphs[0].character, 'x');
+        assert_eq!((layout.glyphs[0].row, layout.glyphs[0].column), (0, 3));
+        assert_eq!(layout.cleared_cells, [(0, 2)]);
+        assert_eq!(layout.caret_cell, Some((0, 3)));
+
+        let combining =
+            layout_ime_preedit_for_snapshot(&accepted_preedit("\u{301}", Some((2, 2))), &snapshot);
+        assert_eq!(combining.glyphs.len(), 1);
+        assert_eq!(combining.glyphs[0].character, '\u{301}');
+        assert_eq!(
+            (combining.glyphs[0].row, combining.glyphs[0].column),
+            (0, 3)
+        );
+        assert_eq!(combining.cleared_cells, [(0, 2)]);
+    }
+
+    #[test]
+    fn ime_preedit_colors_project_a_wide_continuation_to_its_leader() {
+        let mut grid = Grid::new(4, 1, 0);
+        grid.cursor_visible = false;
+        grid.set_auto_wrap(false);
+        grid.set_cursor_pos(0, 2);
+        grid.fg = Color::Rgb(17, 34, 51);
+        grid.bg = Color::Rgb(68, 85, 102);
+        grid.flags = CellFlags::REVERSE;
+        grid.put_char('日');
+        let snapshot = snapshot_grid(&Mutex::new(grid)).expect("snapshot should succeed");
+        let layout = layout_ime_preedit_for_snapshot(&accepted_preedit("x", None), &snapshot);
+        let glyph = layout
+            .glyphs
+            .first()
+            .expect("preedit glyph should be visible");
+        assert_eq!((glyph.row, glyph.column), (0, 3));
+
+        let colors = test_colors();
+        let leader_colors = resolve_cell_colors(
+            colors,
+            snapshot
+                .cell(0, 2)
+                .expect("wide leader should be available in the snapshot"),
+        );
+        assert_eq!(
+            ime_preedit_glyph_colors(colors, &snapshot, glyph),
+            (leader_colors.foreground, leader_colors.background)
+        );
+        assert_eq!(
+            ime_preedit_background_at(colors, &snapshot, &ImePreeditLayout::default(), 0, 3,),
+            leader_colors.background
+        );
     }
 
     #[test]
@@ -6656,6 +6980,52 @@ mod tests {
     }
 
     #[test]
+    fn pending_cursor_uses_the_wide_leader_background_for_contrast() {
+        let mut atlas = test_atlas();
+
+        for shape in [CursorShape::Block, CursorShape::Bar, CursorShape::Underline] {
+            let mut grid = Grid::new(2, 1, 0);
+            grid.cursor_style.shape = shape;
+            *grid.buffer.cell_mut(0, 0) = Cell {
+                c: ' ',
+                fg: Color::Rgb(255, 255, 255),
+                bg: Color::Rgb(0, 0, 0),
+                flags: CellFlags::WIDE | CellFlags::REVERSE,
+                ..Cell::default()
+            };
+            *grid.buffer.cell_mut(0, 1) = Cell {
+                c: '\0',
+                fg: Color::Rgb(255, 255, 255),
+                bg: Color::Rgb(0, 0, 0),
+                flags: CellFlags::WIDE_CONT,
+                ..Cell::default()
+            };
+            grid.cursor_col = grid.cols();
+
+            let (frame, cell_dimensions) = render_grid(grid, &mut atlas);
+
+            let width = usize::from(cell_dimensions.0);
+            let height = usize::from(cell_dimensions.1);
+            let frame_width = width * 2;
+            let changed_pixels = (0..height)
+                .flat_map(|row| {
+                    let start = row * frame_width + width;
+                    frame[start..start + width].iter()
+                })
+                .filter(|&&pixel| pixel != rgb_to_xrgb(255, 255, 255))
+                .count();
+            let thickness = usize::try_from(super::CURSOR_THICKNESS)
+                .expect("cursor thickness should fit usize");
+            let expected = match shape {
+                CursorShape::Block => width * height,
+                CursorShape::Bar => thickness.min(width) * height,
+                CursorShape::Underline => width * thickness.min(height),
+            };
+            assert_eq!(changed_pixels, expected, "{shape:?}");
+        }
+    }
+
+    #[test]
     fn empty_grid_cursor_is_visible_and_follows_each_cursor_shape() {
         let background = rgb_to_xrgb(
             DEFAULT_BACKGROUND.0,
@@ -6697,7 +7067,14 @@ mod tests {
         let mut pending_wrap_grid = Grid::new(1, 1, 0);
         pending_wrap_grid.cursor_col = pending_wrap_grid.cols();
         let (pending_wrap_frame, _) = render_grid(pending_wrap_grid, &mut atlas);
-        assert!(pending_wrap_frame.iter().all(|&pixel| pixel == background));
+        assert!(pending_wrap_frame.iter().any(|&pixel| pixel != background));
+
+        let mut invalid_cursor_grid = Grid::new(1, 1, 0);
+        invalid_cursor_grid.cursor_col = invalid_cursor_grid.cols() + 1;
+        let (invalid_cursor_frame, _) = render_grid(invalid_cursor_grid, &mut atlas);
+        assert!(invalid_cursor_frame
+            .iter()
+            .all(|&pixel| pixel == background));
     }
 
     #[test]

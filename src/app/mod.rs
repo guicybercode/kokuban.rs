@@ -353,7 +353,10 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                                 let display_rows =
                                                     ((sixel_img.height as f32) / cell_h).ceil() as u32;
                                                 let cursor_row = pane.grid.cursor_row;
-                                                let cursor_col = pane.grid.cursor_col;
+                                                let cursor_col = pane
+                                                    .grid
+                                                    .screen_cursor_col()
+                                                    .unwrap_or(pane.grid.cols() - 1);
                                                 pane.grid.image_placements.push(
                                                     ImagePlacement {
                                                         image_id: stored_id,
