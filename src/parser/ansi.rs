@@ -1017,6 +1017,7 @@ mod tests {
         MAX_INTERMEDIATES,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
+    use crate::grid::marks::PromptMarkKind;
     use crate::grid::{Grid, MouseEncoding, MouseTracking, TerminalEvent};
     use crate::parser::kitty_graphics::{KittyAction, KittyCommand};
     use crate::parser::sixel::MAX_RGBA_BYTES;
@@ -1025,6 +1026,16 @@ mod tests {
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
+    }
+
+    fn screen_text(grid: &Grid) -> Vec<String> {
+        (0..grid.rows())
+            .map(|row| {
+                (0..grid.cols())
+                    .map(|column| grid.buffer.cell(row, column).c)
+                    .collect()
+            })
+            .collect()
     }
 
     fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
@@ -1280,6 +1291,68 @@ mod tests {
         assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
         assert_eq!(grid.buffer.cell(0, 1).c, 'b');
         assert_eq!(grid.buffer.cell(1, 0).c, 'c');
+    }
+
+    #[test]
+    fn csi_3j_erases_scrollback_without_erasing_the_screen() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(4, 2, 10);
+        parser.feed(b"old\r\nmid\r\nnew", &mut grid);
+        grid.scroll_viewport_up(1);
+        let cursor = (grid.cursor_row, grid.cursor_col);
+        let screen_before = screen_text(&grid);
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.scroll_offset, 1);
+
+        parser.feed(b"\x1b[3J", &mut grid);
+
+        assert_eq!(grid.scrollback_len(), 0);
+        assert_eq!(grid.scroll_offset, 0);
+        assert_eq!((grid.cursor_row, grid.cursor_col), cursor);
+        assert_eq!(screen_text(&grid), screen_before);
+    }
+
+    #[test]
+    fn csi_3j_preserves_delayed_wrap() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(2, 2, 10);
+
+        parser.feed(b"ab\x1b[3Jc", &mut grid);
+
+        assert_eq!(screen_text(&grid), ["ab", "c "]);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+        assert_eq!(grid.scrollback_len(), 0);
+    }
+
+    #[test]
+    fn csi_3j_on_alt_screen_preserves_primary_history_and_marks() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(4, 2, 10);
+        grid.marks
+            .push(PromptMarkKind::PromptStart, grid.current_absolute_row());
+        parser.feed(b"old\r\nmid\r\nnew", &mut grid);
+        grid.marks
+            .push(PromptMarkKind::PromptStart, grid.current_absolute_row());
+        let primary_screen = screen_text(&grid);
+        let primary_cursor = (grid.cursor_row, grid.cursor_col);
+        let total_lines_pushed = grid.total_lines_pushed;
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.marks.prev_prompt(usize::MAX), Some(2));
+
+        grid.enter_alt_screen();
+        parser.feed(b"alt", &mut grid);
+        let alternate_screen = screen_text(&grid);
+        parser.feed(b"\x1b[3J", &mut grid);
+        assert_eq!(screen_text(&grid), alternate_screen);
+        grid.leave_alt_screen();
+
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.scrollback_cell(0, 0), 'o');
+        assert_eq!(grid.total_lines_pushed, total_lines_pushed);
+        assert_eq!(screen_text(&grid), primary_screen);
+        assert_eq!((grid.cursor_row, grid.cursor_col), primary_cursor);
+        assert_eq!(grid.marks.prev_prompt(usize::MAX), Some(2));
+        assert_eq!(grid.marks.visible_prompt_rows(0, 1, grid.rows()), [1]);
     }
 
     #[test]
