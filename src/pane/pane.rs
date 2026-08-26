@@ -6,6 +6,7 @@ use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
+use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -121,13 +122,57 @@ impl Pane {
     }
 
     pub fn resize_grid(&mut self, cols: usize, rows: usize) {
-        if cols > 0 && rows > 0 && (cols != self.grid.cols() || rows != self.grid.rows()) {
-            self.grid.resize(cols, rows);
-            if let Err(e) = self.pty.resize(cols as u16, rows as u16) {
-                log::error!("Failed to resize PTY for pane {}: {e}", self.id);
-            }
+        let current_cols = self.grid.cols();
+        let current_rows = self.grid.rows();
+        let pty = Arc::clone(&self.pty);
+        if let Err(error) = resize_grid_transactionally(
+            current_cols,
+            current_rows,
+            cols,
+            rows,
+            move |pty_cols, pty_rows| pty.resize(pty_cols, pty_rows),
+            |grid_cols, grid_rows| self.grid.resize(grid_cols, grid_rows),
+        ) {
+            log::error!("Failed to resize PTY for pane {}: {error}", self.id);
         }
     }
+}
+
+fn resize_grid_transactionally<P, G>(
+    current_cols: usize,
+    current_rows: usize,
+    target_cols: usize,
+    target_rows: usize,
+    mut resize_pty: P,
+    mut resize_grid: G,
+) -> io::Result<bool>
+where
+    P: FnMut(u16, u16) -> io::Result<()>,
+    G: FnMut(usize, usize),
+{
+    if target_cols == 0
+        || target_rows == 0
+        || (target_cols == current_cols && target_rows == current_rows)
+    {
+        return Ok(false);
+    }
+
+    let pty_cols = u16::try_from(target_cols).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("terminal column count {target_cols} exceeds {}", u16::MAX),
+        )
+    })?;
+    let pty_rows = u16::try_from(target_rows).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("terminal row count {target_rows} exceeds {}", u16::MAX),
+        )
+    })?;
+
+    resize_pty(pty_cols, pty_rows)?;
+    resize_grid(target_cols, target_rows);
+    Ok(true)
 }
 
 fn record_enqueue_result(
@@ -175,13 +220,171 @@ fn mark_input_failed(input_failed: &AtomicBool, pane_id: PaneId, message: &str) 
 #[cfg(test)]
 mod tests {
     use super::{
-        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane,
-        TerminalWriteQueueError, WriterExit,
+        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane, TerminalWriteQueueError,
+        WriterExit,
     };
     use crate::parser::ansi::GraphicsSupport;
     use crate::renderer::kitty_handler::KittyHandlerOptions;
+    use std::cell::{Cell, RefCell};
     use std::io;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn pty_resize_completes_before_grid_commit() {
+        let events = RefCell::new(Vec::new());
+
+        let resized = super::resize_grid_transactionally(
+            80,
+            24,
+            120,
+            40,
+            |cols, rows| {
+                assert_eq!((cols, rows), (120, 40));
+                events.borrow_mut().push("pty");
+                Ok(())
+            },
+            |cols, rows| {
+                assert_eq!((cols, rows), (120, 40));
+                events.borrow_mut().push("grid");
+            },
+        )
+        .expect("transactional resize should succeed");
+
+        assert!(resized);
+        assert_eq!(*events.borrow(), ["pty", "grid"]);
+    }
+
+    #[test]
+    fn zero_and_unchanged_dimensions_skip_both_resize_callbacks() {
+        for (cols, rows) in [(0, 24), (80, 0), (80, 24)] {
+            let pty_called = Cell::new(false);
+            let grid_called = Cell::new(false);
+
+            let resized = super::resize_grid_transactionally(
+                80,
+                24,
+                cols,
+                rows,
+                |_, _| {
+                    pty_called.set(true);
+                    Ok(())
+                },
+                |_, _| grid_called.set(true),
+            )
+            .expect("ignored dimensions should remain a successful no-op");
+
+            assert!(!resized);
+            assert!(!pty_called.get());
+            assert!(!grid_called.get());
+        }
+    }
+
+    #[test]
+    fn failed_pty_resize_preserves_grid_and_same_target_can_retry() {
+        let mut grid = crate::grid::Grid::new(80, 24, 1_000);
+        let attempts = Cell::new(0);
+        let grid_called = Cell::new(false);
+
+        let current_cols = grid.cols();
+        let current_rows = grid.rows();
+        let failed = super::resize_grid_transactionally(
+            current_cols,
+            current_rows,
+            120,
+            40,
+            |cols, rows| {
+                attempts.set(attempts.get() + 1);
+                assert_eq!((cols, rows), (120, 40));
+                Err(io::Error::from_raw_os_error(5))
+            },
+            |cols, rows| {
+                grid_called.set(true);
+                grid.resize(cols, rows);
+            },
+        );
+
+        assert_eq!(
+            failed.expect_err("PTY resize should fail").raw_os_error(),
+            Some(5)
+        );
+        assert!(!grid_called.get());
+        assert_eq!((grid.cols(), grid.rows()), (80, 24));
+
+        let current_cols = grid.cols();
+        let current_rows = grid.rows();
+        let retried = super::resize_grid_transactionally(
+            current_cols,
+            current_rows,
+            120,
+            40,
+            |cols, rows| {
+                attempts.set(attempts.get() + 1);
+                assert_eq!((cols, rows), (120, 40));
+                Ok(())
+            },
+            |cols, rows| grid.resize(cols, rows),
+        )
+        .expect("the unchanged grid should permit an identical retry");
+
+        assert!(retried);
+        assert_eq!(attempts.get(), 2);
+        assert_eq!((grid.cols(), grid.rows()), (120, 40));
+    }
+
+    #[test]
+    fn accepts_pty_dimension_boundaries_and_single_axis_changes() {
+        let maximum = usize::from(u16::MAX);
+
+        for (current, target) in [((80, 24), (maximum, maximum)), ((80, 24), (80, 25))] {
+            let observed_pty = Cell::new(None);
+            let observed_grid = Cell::new(None);
+
+            assert!(super::resize_grid_transactionally(
+                current.0,
+                current.1,
+                target.0,
+                target.1,
+                |cols, rows| {
+                    observed_pty.set(Some((cols, rows)));
+                    Ok(())
+                },
+                |cols, rows| observed_grid.set(Some((cols, rows))),
+            )
+            .expect("valid PTY dimensions should resize"));
+
+            assert_eq!(
+                observed_pty.get(),
+                Some((target.0 as u16, target.1 as u16))
+            );
+            assert_eq!(observed_grid.get(), Some(target));
+        }
+    }
+
+    #[test]
+    fn overflow_is_rejected_before_resize_callbacks() {
+        let overflow = usize::from(u16::MAX) + 1;
+
+        for (cols, rows) in [(overflow, 24), (80, overflow)] {
+            let pty_called = Cell::new(false);
+            let grid_called = Cell::new(false);
+            let error = super::resize_grid_transactionally(
+                80,
+                24,
+                cols,
+                rows,
+                |_, _| {
+                    pty_called.set(true);
+                    Ok(())
+                },
+                |_, _| grid_called.set(true),
+            )
+            .expect_err("dimensions outside the PTY range should fail");
+
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert!(!pty_called.get());
+            assert!(!grid_called.get());
+        }
+    }
 
     #[test]
     fn lossless_queue_errors_mark_input_failed_once() {
