@@ -4,6 +4,9 @@ use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 pub(crate) const MOUSE_WHEEL_UP: u8 = 64;
 pub(crate) const MOUSE_WHEEL_DOWN: u8 = 65;
 pub(crate) const MAX_WHEEL_STEPS_PER_EVENT: u32 = 32;
+const MOUSE_SHIFT_MODIFIER: u8 = 4;
+const MOUSE_META_MODIFIER: u8 = 8;
+const MOUSE_CONTROL_MODIFIER: u8 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MouseWheelRoute {
@@ -22,6 +25,25 @@ pub(crate) fn mouse_wheel_route(grid: &Grid) -> MouseWheelRoute {
     } else {
         MouseWheelRoute::Scrollback
     }
+}
+
+pub(crate) fn mouse_button_with_modifier_flags(
+    button: u8,
+    shift: bool,
+    meta: bool,
+    control: bool,
+) -> u8 {
+    let mut encoded = button;
+    if shift {
+        encoded |= MOUSE_SHIFT_MODIFIER;
+    }
+    if meta {
+        encoded |= MOUSE_META_MODIFIER;
+    }
+    if control {
+        encoded |= MOUSE_CONTROL_MODIFIER;
+    }
+    encoded
 }
 
 pub(crate) fn encode_alternate_scroll_steps(
@@ -88,8 +110,9 @@ fn encode_legacy_coordinate(coordinate: usize) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
-        MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
+        encode_alternate_scroll_steps, encode_mouse_event, mouse_button_with_modifier_flags,
+        mouse_wheel_route, MouseWheelRoute, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
+        MAX_WHEEL_STEPS_PER_EVENT,
     };
     use crate::grid::{Grid, MouseEncoding, MouseTracking};
 
@@ -149,6 +172,29 @@ mod tests {
         grid.leave_alt_screen();
         assert!(grid.alternate_scroll);
         assert_eq!(mouse_wheel_route(&grid), MouseWheelRoute::Scrollback);
+    }
+
+    #[test]
+    fn mouse_modifier_flags_match_xterm_button_bits() {
+        for (shift, meta, control, expected) in [
+            (false, false, false, 64),
+            (true, false, false, 68),
+            (false, true, false, 72),
+            (false, false, true, 80),
+            (true, true, false, 76),
+            (true, false, true, 84),
+            (false, true, true, 88),
+            (true, true, true, 92),
+        ] {
+            assert_eq!(
+                mouse_button_with_modifier_flags(MOUSE_WHEEL_UP, shift, meta, control),
+                expected,
+            );
+        }
+        assert_eq!(
+            mouse_button_with_modifier_flags(MOUSE_WHEEL_DOWN, true, true, true),
+            93,
+        );
     }
 
     #[test]

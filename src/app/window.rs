@@ -3,7 +3,7 @@ use crate::glyph_atlas::GlyphAtlas;
 use crate::selection::GridPoint;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
-use crate::input::macos::translate_key_event;
+use crate::input::macos::{mouse_button_with_appkit_modifiers, translate_key_event};
 use crate::input::mouse::{
     encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
@@ -48,6 +48,7 @@ struct MacScrollContext {
     pane_id: PaneId,
     route: MouseWheelRoute,
     units: MacScrollUnits,
+    modifier_mask: u8,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,6 +60,7 @@ struct MacScrollSample {
     phase: MacScrollPhase,
     pane_id: PaneId,
     route: MouseWheelRoute,
+    modifier_mask: u8,
 }
 
 #[derive(Debug, Default)]
@@ -109,6 +111,11 @@ impl MacScrollState {
             pane_id: sample.pane_id,
             route: sample.route,
             units,
+            modifier_mask: if matches!(sample.route, MouseWheelRoute::Terminal(_)) {
+                sample.modifier_mask
+            } else {
+                0
+            },
         };
         if sample.phase == MacScrollPhase::Started || self.context != Some(context) {
             self.line_remainder = 0.0;
@@ -159,6 +166,45 @@ fn mac_scroll_phase(
         MacScrollPhase::Finished
     } else {
         MacScrollPhase::Continued
+    }
+}
+
+fn encode_macos_forwarded_wheel(
+    route: MouseWheelRoute,
+    steps: i32,
+    terminal_cell: Option<(usize, usize)>,
+    modifiers: NSEventModifierFlags,
+) -> Option<Vec<u8>> {
+    match route {
+        MouseWheelRoute::Terminal(mouse_encoding) => {
+            let (column, row) = terminal_cell
+                .expect("terminal mouse route should have a validated cell");
+            let button = if steps.is_positive() {
+                MOUSE_WHEEL_UP
+            } else {
+                MOUSE_WHEEL_DOWN
+            };
+            let button = mouse_button_with_appkit_modifiers(button, modifiers);
+            let report = encode_mouse_event(
+                button,
+                column + 1,
+                row + 1,
+                true,
+                mouse_encoding,
+            );
+            let report_count = usize::try_from(
+                steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT),
+            )
+                .expect("bounded wheel report count should fit usize");
+            Some(report.repeat(report_count))
+        }
+        MouseWheelRoute::AlternateScroll {
+            application_cursor_keys,
+        } => Some(encode_alternate_scroll_steps(
+            steps,
+            application_cursor_keys,
+        )),
+        MouseWheelRoute::Scrollback => None,
     }
 }
 
@@ -427,6 +473,8 @@ define_class!(
             let delta_y = event.scrollingDeltaY();
             let precise = event.hasPreciseScrollingDeltas();
             let phase = mac_scroll_phase(event.phase(), event.momentumPhase());
+            let modifiers = event.modifierFlags();
+            let modifier_mask = mouse_button_with_appkit_modifiers(0, modifiers);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
@@ -466,6 +514,7 @@ define_class!(
                         phase,
                         pane_id,
                         route,
+                        modifier_mask,
                     });
                     if steps == 0 {
                         return;
@@ -473,28 +522,17 @@ define_class!(
 
                     let mut viewport_changed = false;
                     match route {
-                        MouseWheelRoute::Terminal(mouse_encoding) => {
-                            let (column, row) = terminal_cell
-                                .expect("terminal mouse route should have a validated cell");
-                            let button = if steps.is_positive() { MOUSE_WHEEL_UP } else { MOUSE_WHEEL_DOWN };
-                            let report = encode_mouse_event(
-                                button,
-                                column + 1,
-                                row + 1,
-                                true,
-                                mouse_encoding,
-                            );
-                            let report_count = usize::try_from(steps.unsigned_abs())
-                                .expect("bounded wheel report count should fit usize");
-                            let reports = report.repeat(report_count);
+                        MouseWheelRoute::Terminal(_)
+                        | MouseWheelRoute::AlternateScroll { .. } => {
+                            let reports = encode_macos_forwarded_wheel(
+                                route,
+                                steps,
+                                terminal_cell,
+                                modifiers,
+                            )
+                            .expect("forwarded wheel route should produce terminal bytes");
                             if let Some(pane) = tree.focused_pane() {
                                 pane.pty.write_all(&reports).ok();
-                            }
-                        }
-                        MouseWheelRoute::AlternateScroll { application_cursor_keys } => {
-                            let seq = encode_alternate_scroll_steps(steps, application_cursor_keys);
-                            if let Some(pane) = tree.focused_pane() {
-                                pane.pty.write_all(&seq).ok();
                             }
                         }
                         MouseWheelRoute::Scrollback => {
@@ -1464,12 +1502,12 @@ pub(super) fn create_terminal_view(
 #[cfg(test)]
 mod tests {
     use super::{
-        mac_scroll_phase, sync_pending_window_title_with, MacScrollPhase, MacScrollSample,
-        MacScrollState, WindowTitleMailbox, WINDOW_TITLE,
+        encode_macos_forwarded_wheel, mac_scroll_phase, sync_pending_window_title_with,
+        MacScrollPhase, MacScrollSample, MacScrollState, WindowTitleMailbox, WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
     use crate::input::mouse::MouseWheelRoute;
-    use objc2_app_kit::NSEventPhase;
+    use objc2_app_kit::{NSEventModifierFlags, NSEventPhase};
     use std::cell::{Cell, RefCell};
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -1484,6 +1522,7 @@ mod tests {
             phase: MacScrollPhase::Continued,
             pane_id: 1,
             route: MouseWheelRoute::Scrollback,
+            modifier_mask: 0,
         }
     }
 
@@ -1630,7 +1669,7 @@ mod tests {
     }
 
     #[test]
-    fn scroll_remainder_is_scoped_to_route_pane_and_precise_geometry() {
+    fn scroll_remainder_is_scoped_to_route_pane_modifiers_and_precise_geometry() {
         let mut state = MacScrollState::default();
         let mut sample = scroll_sample(7.5);
         sample.precise = true;
@@ -1643,11 +1682,26 @@ mod tests {
         assert_remainder(&state, 0.25);
 
         sample.delta_y = 7.5;
+        sample.modifier_mask = 4;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.75);
+
+        sample.delta_y = 2.5;
+        sample.modifier_mask = 8;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.25);
+
+        sample.delta_y = 7.5;
         sample.route = MouseWheelRoute::AlternateScroll {
             application_cursor_keys: false,
         };
         assert_eq!(state.consume(sample), 0);
         assert_remainder(&state, 0.75);
+
+        sample.delta_y = 2.5;
+        sample.modifier_mask = 16;
+        assert_eq!(state.consume(sample), 1);
+        assert_remainder(&state, 0.0);
 
         sample.delta_y = 2.5;
         sample.route = MouseWheelRoute::AlternateScroll {
@@ -1675,6 +1729,74 @@ mod tests {
         sample.precise = false;
         assert_eq!(state.consume(sample), 0);
         assert_remainder(&state, 0.75);
+    }
+
+    #[test]
+    fn macos_tracking_wheel_preserves_modifiers_in_sgr_and_legacy_reports() {
+        let modifiers = NSEventModifierFlags::Shift
+            | NSEventModifierFlags::Option
+            | NSEventModifierFlags::Control;
+        assert_eq!(
+            encode_macos_forwarded_wheel(
+                MouseWheelRoute::Terminal(MouseEncoding::Sgr),
+                2,
+                Some((1, 2)),
+                modifiers,
+            )
+            .as_deref(),
+            Some(b"\x1b[<92;2;3M\x1b[<92;2;3M".as_slice()),
+        );
+        assert_eq!(
+            encode_macos_forwarded_wheel(
+                MouseWheelRoute::Terminal(MouseEncoding::Sgr),
+                -1,
+                Some((1, 2)),
+                modifiers,
+            )
+            .as_deref(),
+            Some(b"\x1b[<93;2;3M".as_slice()),
+        );
+        assert_eq!(
+            encode_macos_forwarded_wheel(
+                MouseWheelRoute::Terminal(MouseEncoding::Default),
+                2,
+                Some((1, 2)),
+                modifiers,
+            ),
+            Some([27, 91, 77, 124, 34, 35].repeat(2)),
+        );
+    }
+
+    #[test]
+    fn macos_alternate_scroll_ignores_mouse_modifiers() {
+        let modifiers = NSEventModifierFlags::Shift
+            | NSEventModifierFlags::Option
+            | NSEventModifierFlags::Control
+            | NSEventModifierFlags::Command;
+        assert_eq!(
+            encode_macos_forwarded_wheel(
+                MouseWheelRoute::AlternateScroll {
+                    application_cursor_keys: false,
+                },
+                2,
+                None,
+                modifiers,
+            )
+            .as_deref(),
+            Some(b"\x1b[A\x1b[A".as_slice()),
+        );
+        assert_eq!(
+            encode_macos_forwarded_wheel(
+                MouseWheelRoute::AlternateScroll {
+                    application_cursor_keys: true,
+                },
+                -2,
+                None,
+                modifiers,
+            )
+            .as_deref(),
+            Some(b"\x1bOB\x1bOB".as_slice()),
+        );
     }
 
     #[test]
