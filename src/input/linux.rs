@@ -1,9 +1,10 @@
 use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
+use crate::terminal_writer::TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 
-const MAX_IME_COMMIT_BYTES: usize = 64 * 1024;
+const MAX_IME_COMMIT_BYTES: usize = TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LinuxKeyPress<'a> {
@@ -42,7 +43,12 @@ fn ime_commit_payload_with_limit(text: String, limit: usize) -> ImeCommitPayload
         return ImeCommitPayload::TooLarge { byte_count, limit };
     }
 
-    ImeCommitPayload::Bytes(text.into_bytes())
+    let mut bytes = text.into_bytes();
+    if bytes.capacity() > limit {
+        bytes = bytes.into_boxed_slice().into_vec();
+    }
+    debug_assert!(bytes.capacity() <= limit);
+    ImeCommitPayload::Bytes(bytes)
 }
 
 pub(crate) fn key_press_from_winit<'a>(
@@ -281,6 +287,17 @@ mod tests {
             ImeCommitPayload::Bytes(expected)
         );
 
+        let mut overallocated = String::with_capacity(64);
+        overallocated.push_str("small");
+        assert!(overallocated.capacity() > overallocated.len());
+        match ime_commit_payload_with_limit(overallocated, 8) {
+            ImeCommitPayload::Bytes(bytes) => {
+                assert_eq!(bytes, b"small");
+                assert!(bytes.capacity() <= 8);
+            }
+            payload => panic!("expected normalized IME bytes, got {payload:?}"),
+        }
+
         assert_eq!(
             ime_commit_payload_with_limit("é".to_string(), 1),
             ImeCommitPayload::TooLarge {
@@ -293,7 +310,9 @@ mod tests {
         let maximum = "x".repeat(MAX_IME_COMMIT_BYTES);
         assert!(matches!(
             ime_commit_payload_with_limit(maximum, MAX_IME_COMMIT_BYTES),
-            ImeCommitPayload::Bytes(bytes) if bytes.len() == MAX_IME_COMMIT_BYTES
+            ImeCommitPayload::Bytes(bytes)
+                if bytes.len() == MAX_IME_COMMIT_BYTES
+                    && bytes.capacity() <= MAX_IME_COMMIT_BYTES
         ));
         assert_eq!(
             ime_commit_payload_with_limit(

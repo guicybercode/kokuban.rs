@@ -1064,7 +1064,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     |bytes| {
                         writer
                             .ok_or(TerminalWriteQueueError::Disconnected)?
-                            .enqueue(bytes)
+                            .enqueue_nonfatal(bytes)
                     },
                 );
                 self.handle_mouse_motion_result(event_loop, result);

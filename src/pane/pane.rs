@@ -73,8 +73,8 @@ impl Pane {
         self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal)
     }
 
-    pub fn max_input_bytes(&self) -> usize {
-        self.writer.max_input_bytes()
+    pub fn max_nonfatal_input_bytes(&self) -> usize {
+        self.writer.max_nonfatal_input_bytes()
     }
 
     fn queue_input_with_policy(
@@ -86,10 +86,14 @@ impl Pane {
             return Err(TerminalWriteQueueError::Disconnected);
         }
 
+        let enqueue_result = match full_policy {
+            FullQueuePolicy::FailPane => self.writer.enqueue(bytes),
+            FullQueuePolicy::NonFatal => self.writer.enqueue_nonfatal(bytes),
+        };
         record_enqueue_result(
             self.input_failed.as_ref(),
             self.id,
-            self.writer.enqueue(bytes),
+            enqueue_result,
             full_policy,
         )
     }
@@ -238,7 +242,7 @@ mod tests {
             },
         )
         .expect("paste policy test should spawn its shell");
-        let oversized = Vec::with_capacity(pane.max_input_bytes() + 1);
+        let oversized = Vec::with_capacity(pane.max_nonfatal_input_bytes() + 1);
 
         assert_eq!(
             pane.queue_paste_input(oversized),
