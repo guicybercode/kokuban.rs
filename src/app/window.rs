@@ -3,7 +3,9 @@ use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
-use crate::input::macos::{mouse_button_with_appkit_modifiers, translate_key_event};
+use crate::input::macos::{
+    key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, translate_key_event,
+};
 use crate::input::mouse::{
     encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
@@ -40,6 +42,40 @@ enum ClipboardPasteError {
         expected_bytes: usize,
         converted_bytes: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacKeyEquivalentRoute {
+    PassThrough,
+    Quit,
+    Copy,
+    Paste,
+    ZoomIn,
+    Keybind,
+}
+
+fn mac_key_equivalent_route(
+    key_code: u16,
+    modifiers: KeyModifiers,
+) -> MacKeyEquivalentRoute {
+    if !modifiers.contains(KeyModifiers::CMD) {
+        return MacKeyEquivalentRoute::PassThrough;
+    }
+
+    if modifiers == KeyModifiers::CMD {
+        return match key_code {
+            12 => MacKeyEquivalentRoute::Quit,
+            8 => MacKeyEquivalentRoute::Copy,
+            9 => MacKeyEquivalentRoute::Paste,
+            _ => MacKeyEquivalentRoute::Keybind,
+        };
+    }
+
+    if key_code == 24 && modifiers == (KeyModifiers::CMD | KeyModifiers::SHIFT) {
+        return MacKeyEquivalentRoute::ZoomIn;
+    }
+
+    MacKeyEquivalentRoute::Keybind
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -350,10 +386,10 @@ define_class!(
         #[unsafe(method(performKeyEquivalent:))]
         fn perform_key_equivalent(&self, event: &NSEvent) -> Bool {
             let key_code = event.keyCode();
-            let modifiers = event.modifierFlags();
-            let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
+            let modifiers = key_modifiers_from_appkit(event.modifierFlags());
+            let route = mac_key_equivalent_route(key_code, modifiers);
 
-            // If confirm dialog is active, route ALL keys to it (including Cmd+keys)
+            // If confirm dialog is active, route ALL keys to it (including Cmd+keys).
             let confirm_active = VIEW_STATE.with(|state| {
                 state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
             });
@@ -364,20 +400,12 @@ define_class!(
                 return Bool::YES;
             }
 
-            if !has_cmd {
+            if route == MacKeyEquivalentRoute::PassThrough {
                 return Bool::NO;
             }
 
-            let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
-
-            // Build modifier flags for keybind lookup
-            let mut km = KeyModifiers::CMD;
-            if has_shift {
-                km.insert(KeyModifiers::SHIFT);
-            }
-
             // Cmd+Q: show quit confirmation (or quit immediately if disabled)
-            if key_code == 12 && !has_shift {
+            if route == MacKeyEquivalentRoute::Quit {
                 VIEW_STATE.with(|state| {
                     let mut state = state.borrow_mut();
                     if let Some(state) = state.as_mut() {
@@ -396,7 +424,7 @@ define_class!(
             }
 
             // Cmd+C: copy or ctrl-c
-            if key_code == 8 && !has_shift {
+            if route == MacKeyEquivalentRoute::Copy {
                 let handled = VIEW_STATE.with(|state| {
                     let mut state = state.borrow_mut();
                     if let Some(state) = state.as_mut() {
@@ -424,7 +452,7 @@ define_class!(
             }
 
             // Cmd+V: paste
-            if key_code == 9 && !has_shift {
+            if route == MacKeyEquivalentRoute::Paste {
                 VIEW_STATE.with(|state| {
                     let state = state.borrow();
                     if let Some(state) = state.as_ref() {
@@ -504,7 +532,7 @@ define_class!(
             }
 
             // Cmd+Shift+= (i.e. Cmd++) should also zoom in
-            if key_code == 24 && has_shift {
+            if route == MacKeyEquivalentRoute::ZoomIn {
                 handle_pane_action(PaneAction::ZoomIn);
                 return Bool::YES;
             }
@@ -512,7 +540,9 @@ define_class!(
             // Check configurable keybinds
             let action = VIEW_STATE.with(|state| {
                 let state = state.borrow();
-                state.as_ref().and_then(|s| s.keybinds.lookup(key_code, km))
+                state
+                    .as_ref()
+                    .and_then(|s| s.keybinds.lookup(key_code, modifiers))
             });
 
             if let Some(action) = action {
@@ -1679,11 +1709,13 @@ pub(super) fn create_terminal_view(
 mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
-        mac_scroll_phase, sync_pending_window_title_with, ClipboardPasteError, MacScrollPhase,
-        MacScrollSample, MacScrollState, WindowTitleMailbox, BRACKETED_PASTE_END,
-        BRACKETED_PASTE_START, WINDOW_TITLE,
+        mac_key_equivalent_route, mac_scroll_phase, sync_pending_window_title_with,
+        ClipboardPasteError, MacKeyEquivalentRoute, MacScrollPhase, MacScrollSample,
+        MacScrollState, WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START,
+        WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
+    use crate::input::keybind::KeyModifiers;
     use crate::input::mouse::MouseWheelRoute;
     use objc2::AnyThread;
     use objc2_app_kit::{NSEventModifierFlags, NSEventPhase};
@@ -1713,6 +1745,47 @@ mod tests {
             "expected remainder {expected}, got {}",
             state.line_remainder,
         );
+    }
+
+    #[test]
+    fn mac_key_equivalent_routes_require_exact_relevant_modifiers() {
+        let cmd = KeyModifiers::CMD;
+        let cmd_shift = KeyModifiers::CMD | KeyModifiers::SHIFT;
+
+        for (key_code, modifiers, expected) in [
+            (12, cmd, MacKeyEquivalentRoute::Quit),
+            (8, cmd, MacKeyEquivalentRoute::Copy),
+            (9, cmd, MacKeyEquivalentRoute::Paste),
+            (24, cmd_shift, MacKeyEquivalentRoute::ZoomIn),
+            (12, KeyModifiers::empty(), MacKeyEquivalentRoute::PassThrough),
+            (8, KeyModifiers::SHIFT, MacKeyEquivalentRoute::PassThrough),
+            (
+                9,
+                KeyModifiers::CTRL | KeyModifiers::ALT,
+                MacKeyEquivalentRoute::PassThrough,
+            ),
+            (24, KeyModifiers::SHIFT, MacKeyEquivalentRoute::PassThrough),
+            (12, cmd_shift, MacKeyEquivalentRoute::Keybind),
+            (
+                8,
+                cmd | KeyModifiers::CTRL,
+                MacKeyEquivalentRoute::Keybind,
+            ),
+            (
+                9,
+                cmd | KeyModifiers::ALT,
+                MacKeyEquivalentRoute::Keybind,
+            ),
+            (24, cmd, MacKeyEquivalentRoute::Keybind),
+            (
+                24,
+                cmd_shift | KeyModifiers::CTRL,
+                MacKeyEquivalentRoute::Keybind,
+            ),
+            (0, cmd, MacKeyEquivalentRoute::Keybind),
+        ] {
+            assert_eq!(mac_key_equivalent_route(key_code, modifiers), expected);
+        }
     }
 
     #[test]

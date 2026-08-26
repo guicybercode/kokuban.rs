@@ -1,4 +1,5 @@
 use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
+use super::keybind::KeyModifiers;
 use super::mouse::mouse_button_with_modifier_flags;
 use objc2_app_kit::{NSEvent, NSEventModifierFlags};
 
@@ -58,6 +59,23 @@ pub(crate) fn mouse_button_with_appkit_modifiers(
     )
 }
 
+pub(crate) fn key_modifiers_from_appkit(modifiers: NSEventModifierFlags) -> KeyModifiers {
+    let mut key_modifiers = KeyModifiers::empty();
+    if modifiers.contains(NSEventModifierFlags::Command) {
+        key_modifiers.insert(KeyModifiers::CMD);
+    }
+    if modifiers.contains(NSEventModifierFlags::Shift) {
+        key_modifiers.insert(KeyModifiers::SHIFT);
+    }
+    if modifiers.contains(NSEventModifierFlags::Control) {
+        key_modifiers.insert(KeyModifiers::CTRL);
+    }
+    if modifiers.contains(NSEventModifierFlags::Option) {
+        key_modifiers.insert(KeyModifiers::ALT);
+    }
+    key_modifiers
+}
+
 fn encode_macos_terminal_key(
     key_code: u16,
     modifiers: NSEventModifierFlags,
@@ -112,9 +130,10 @@ fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<Terminal
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_macos_terminal_key, mouse_button_with_appkit_modifiers,
-        terminal_key_from_key_code,
+        encode_macos_terminal_key, key_modifiers_from_appkit,
+        mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
     };
+    use crate::input::keybind::KeyModifiers;
     use crate::input::keyboard::TerminalKey;
     use crate::input::mouse::{MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
     use objc2_app_kit::NSEventModifierFlags;
@@ -175,6 +194,35 @@ mod tests {
             encode_macos_terminal_key(48, NSEventModifierFlags::Shift, false).as_deref(),
             Some(b"\x1b[Z".as_slice())
         );
+    }
+
+    #[test]
+    fn maps_appkit_key_modifiers_and_ignores_irrelevant_flags() {
+        let irrelevant = NSEventModifierFlags::CapsLock
+            | NSEventModifierFlags::Function
+            | NSEventModifierFlags::NumericPad;
+
+        for mask in 0_u8..16 {
+            let mut appkit = irrelevant;
+            let mut expected = KeyModifiers::empty();
+            for (bit, appkit_flag, key_modifier) in [
+                (0, NSEventModifierFlags::Command, KeyModifiers::CMD),
+                (1, NSEventModifierFlags::Shift, KeyModifiers::SHIFT),
+                (2, NSEventModifierFlags::Control, KeyModifiers::CTRL),
+                (3, NSEventModifierFlags::Option, KeyModifiers::ALT),
+            ] {
+                if mask & (1 << bit) != 0 {
+                    appkit.insert(appkit_flag);
+                    expected.insert(key_modifier);
+                }
+            }
+
+            assert_eq!(
+                key_modifiers_from_appkit(appkit),
+                expected,
+                "unexpected mapping for relevant modifier mask {mask:04b}",
+            );
+        }
     }
 
     #[test]
