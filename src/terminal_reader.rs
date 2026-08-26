@@ -240,7 +240,7 @@ where
                         Err(error) => return Err(ReaderExit::ResponseWriteFailed(error)),
                     }
                 }
-                TerminalEvent::KittyGraphics { .. } => {
+                TerminalEvent::KittyGraphics { .. } | TerminalEvent::SixelGraphics { .. } => {
                     return Err(ReaderExit::UnexpectedProtocolEvent);
                 }
             }
@@ -903,6 +903,28 @@ mod tests {
         let mut decoder = TerminalDecoder::new(GraphicsSupport {
             kitty: true,
             sixel: false,
+        });
+
+        let exit = run_reader(
+            &fake,
+            &grid(),
+            &AtomicBool::new(false),
+            &mut decoder,
+            &mut || {},
+        );
+
+        assert!(matches!(exit, ReaderExit::UnexpectedProtocolEvent));
+    }
+
+    #[test]
+    fn rejects_unexpected_sixel_events() {
+        let fake = FakeIo::new(
+            vec![WaitAction::Ready],
+            vec![ReadAction::Data(b"\x1bPq~\x1b\\".to_vec())],
+        );
+        let mut decoder = TerminalDecoder::new(GraphicsSupport {
+            kitty: false,
+            sixel: true,
         });
 
         let exit = run_reader(

@@ -1049,7 +1049,7 @@ mod tests {
     use crate::grid::marks::PromptMarkKind;
     use crate::grid::{Grid, MouseEncoding, MouseTracking, TerminalEvent};
     use crate::parser::kitty_graphics::{KittyAction, KittyCommand};
-    use crate::parser::sixel::MAX_RGBA_BYTES;
+    use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES};
     use crate::parser::State;
     use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 
@@ -1076,7 +1076,17 @@ mod tests {
             .into_iter()
             .filter_map(|event| match event {
                 TerminalEvent::KittyGraphics { command, .. } => Some(command),
-                TerminalEvent::Response(_) => None,
+                TerminalEvent::Response(_) | TerminalEvent::SixelGraphics { .. } => None,
+            })
+            .collect()
+    }
+
+    fn drain_sixel_images(grid: &mut Grid) -> Vec<SixelImage> {
+        grid.drain_terminal_events()
+            .into_iter()
+            .filter_map(|event| match event {
+                TerminalEvent::SixelGraphics { image, .. } => Some(image),
+                TerminalEvent::Response(_) | TerminalEvent::KittyGraphics { .. } => None,
             })
             .collect()
     }
@@ -1089,14 +1099,21 @@ mod tests {
 
         grid.set_pending_sixel_bytes_for_test(MAX_RGBA_BYTES - 63);
         parser.feed(raster, &mut grid);
-        assert!(grid.drain_sixel_images().is_empty());
+        assert!(drain_sixel_images(&mut grid).is_empty());
 
         grid.set_pending_sixel_bytes_for_test(MAX_RGBA_BYTES - 64);
         parser.feed(raster, &mut grid);
-        let images = grid.drain_sixel_images();
+        let images = drain_sixel_images(&mut grid);
         assert_eq!(images.len(), 1);
         assert_eq!((images[0].width, images[0].height), (4, 4));
         assert_eq!(images[0].pixels.len(), 64);
+
+        grid.set_pending_sixel_bytes_for_test(MAX_RGBA_BYTES - 64);
+        parser.feed(&[raster.as_slice(), raster.as_slice()].concat(), &mut grid);
+        assert_eq!(drain_sixel_images(&mut grid).len(), 1);
+
+        parser.feed(raster, &mut grid);
+        assert_eq!(drain_sixel_images(&mut grid).len(), 1);
     }
 
     fn feed_st_string(
@@ -1131,7 +1148,7 @@ mod tests {
                 assert_eq!(parser.parser.dcs_data.capacity(), 0);
             }
             parser.feed(b"\x1b\\", &mut grid);
-            assert_eq!(grid.drain_sixel_images().len(), usize::from(sixel));
+            assert_eq!(drain_sixel_images(&mut grid).len(), usize::from(sixel));
 
             parser.feed(b"\x1b[c", &mut grid);
             let events = grid.drain_terminal_events();
@@ -1432,6 +1449,24 @@ mod tests {
                 cursor_col: 2,
                 ..
             }]
+        ));
+        assert_eq!(grid.cursor_col, grid.cols());
+    }
+
+    #[test]
+    fn sixel_events_project_pending_wrap_to_the_right_margin() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(3, 2, 0);
+
+        parser.feed(b"abc\x1bPq~\x1b\\", &mut grid);
+
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::SixelGraphics {
+                image,
+                cursor_row: 0,
+                cursor_col: 2,
+            }] if (image.width, image.height) == (1, 6)
         ));
         assert_eq!(grid.cursor_col, grid.cols());
     }
@@ -1916,7 +1951,9 @@ mod tests {
                 assert_eq!(command.action, KittyAction::Delete);
                 assert_eq!((*cursor_row, *cursor_col), (1, 2));
             }
-            TerminalEvent::Response(_) => panic!("expected a Kitty delete event"),
+            TerminalEvent::Response(_) | TerminalEvent::SixelGraphics { .. } => {
+                panic!("expected a Kitty delete event")
+            }
         }
         match &events[2] {
             TerminalEvent::KittyGraphics {
@@ -1927,7 +1964,9 @@ mod tests {
                 assert_eq!(command.action, KittyAction::Query);
                 assert_eq!((*cursor_row, *cursor_col), (2, 3));
             }
-            TerminalEvent::Response(_) => panic!("expected a Kitty query event"),
+            TerminalEvent::Response(_) | TerminalEvent::SixelGraphics { .. } => {
+                panic!("expected a Kitty query event")
+            }
         }
         assert!(matches!(
             &events[3],
@@ -2019,14 +2058,14 @@ mod tests {
         let mut grid = grid();
 
         feed_st_string(&mut parser, &mut grid, b"\x1bP", sixel);
-        let images = grid.drain_sixel_images();
+        let images = drain_sixel_images(&mut grid);
         assert_eq!(images.len(), 1);
         assert_eq!((images[0].width, images[0].height), (1, 6));
 
         parser.feed(b"\x1bP", &mut grid);
         parser.feed(sixel, &mut grid);
         parser.feed(b"~\x1b\\", &mut grid);
-        assert!(grid.drain_sixel_images().is_empty());
+        assert!(drain_sixel_images(&mut grid).is_empty());
         assert_eq!(parser.parser.dcs_data.capacity(), 0);
     }
 

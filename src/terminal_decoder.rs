@@ -39,9 +39,18 @@ mod tests {
     use crate::grid::cell::Color;
     use crate::grid::{Grid, TerminalEvent};
     use crate::parser::ansi::GraphicsSupport;
+    use crate::parser::sixel::SixelImage;
 
     fn decoder(graphics_support: GraphicsSupport) -> (TerminalDecoder, Grid) {
         (TerminalDecoder::new(graphics_support), Grid::new(12, 4, 32))
+    }
+
+    fn advance_past_sixel(grid: &mut Grid, image: &SixelImage) {
+        let cell_height = usize::from(grid.cell_pixel_height);
+        let display_rows = (image.height as usize).div_ceil(cell_height);
+        for _ in 0..display_rows {
+            grid.newline();
+        }
     }
 
     #[test]
@@ -107,7 +116,145 @@ mod tests {
             step.events.as_slice(),
             [TerminalEvent::Response(response)] if response == b"\x1b[?62;22c"
         ));
-        assert!(grid.drain_sixel_images().is_empty());
         assert!(!grid.has_pending_terminal_events());
+    }
+
+    #[test]
+    fn sixel_event_precedes_trailing_text_and_captures_its_cursor() {
+        let (mut decoder, mut grid) = decoder(GraphicsSupport {
+            kitty: false,
+            sixel: true,
+        });
+        let input = b"\x1b[2;3H\x1bPq~\x1b\\X";
+
+        let first = decoder.feed_until_event(input, &mut grid);
+
+        assert_eq!(first.consumed, input.len() - 1);
+        assert_eq!(grid.buffer.cell(1, 2).c, ' ');
+        let mut events = first.events.into_iter();
+        let (image, cursor_row, cursor_col) = match events.next() {
+            Some(TerminalEvent::SixelGraphics {
+                image,
+                cursor_row,
+                cursor_col,
+            }) => (image, cursor_row, cursor_col),
+            _ => panic!("expected one Sixel event"),
+        };
+        assert!(events.next().is_none());
+        assert_eq!((cursor_row, cursor_col), (1, 2));
+        assert_eq!((image.width, image.height), (1, 6));
+
+        advance_past_sixel(&mut grid, &image);
+        let second = decoder.feed_until_event(&input[first.consumed..], &mut grid);
+
+        assert_eq!(second.consumed, 1);
+        assert!(second.events.is_empty());
+        assert_eq!(grid.buffer.cell(2, 2).c, 'X');
+    }
+
+    #[test]
+    fn consecutive_sixel_events_observe_each_previous_cursor_advance() {
+        const FIRST: &[u8] = b"\x1bPq~\x1b\\";
+        const SECOND: &[u8] = b"\x1bPq~\x1b\\";
+        let (mut decoder, mut grid) = decoder(GraphicsSupport {
+            kitty: false,
+            sixel: true,
+        });
+        let input = [b"\x1b[2;3H".as_slice(), FIRST, SECOND, b"X"].concat();
+
+        let first = decoder.feed_until_event(&input, &mut grid);
+        let first_image = match first.events.as_slice() {
+            [TerminalEvent::SixelGraphics {
+                image,
+                cursor_row: 1,
+                cursor_col: 2,
+            }] => image,
+            _ => panic!("expected the first Sixel event"),
+        };
+        advance_past_sixel(&mut grid, first_image);
+
+        let second = decoder.feed_until_event(&input[first.consumed..], &mut grid);
+        assert_eq!(second.consumed, SECOND.len());
+        let second_image = match second.events.as_slice() {
+            [TerminalEvent::SixelGraphics {
+                image,
+                cursor_row: 2,
+                cursor_col: 2,
+            }] => image,
+            _ => panic!("expected the second Sixel event after the first advance"),
+        };
+        advance_past_sixel(&mut grid, second_image);
+
+        let text_offset = first.consumed + second.consumed;
+        let text = decoder.feed_until_event(&input[text_offset..], &mut grid);
+        assert_eq!(text.consumed, 1);
+        assert!(text.events.is_empty());
+        assert_eq!(grid.buffer.cell(3, 2).c, 'X');
+    }
+
+    #[test]
+    fn sixel_advance_precedes_following_response_and_kitty_snapshot() {
+        const SIXEL: &[u8] = b"\x1bPq~\x1b\\";
+        const CURSOR_QUERY: &[u8] = b"\x1b[6n";
+        const KITTY: &[u8] = b"\x1b_Ga=d,d=c\x1b\\";
+        let (mut decoder, mut grid) = decoder(GraphicsSupport {
+            kitty: true,
+            sixel: true,
+        });
+        let input = [b"\x1b[2;3H".as_slice(), SIXEL, CURSOR_QUERY, KITTY].concat();
+
+        let sixel = decoder.feed_until_event(&input, &mut grid);
+        let image = match sixel.events.as_slice() {
+            [TerminalEvent::SixelGraphics { image, .. }] => image,
+            _ => panic!("expected the Sixel event first"),
+        };
+        advance_past_sixel(&mut grid, image);
+
+        let response = decoder.feed_until_event(&input[sixel.consumed..], &mut grid);
+        assert!(matches!(
+            response.events.as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[3;3R"
+        ));
+
+        let kitty_offset = sixel.consumed + response.consumed;
+        let kitty = decoder.feed_until_event(&input[kitty_offset..], &mut grid);
+        assert_eq!(kitty.consumed, KITTY.len());
+        assert!(matches!(
+            kitty.events.as_slice(),
+            [TerminalEvent::KittyGraphics {
+                cursor_row: 2,
+                cursor_col: 2,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn title_revisions_survive_a_sixel_event_boundary() {
+        const BEFORE: &[u8] = b"\x1b]2;before\x1b\\";
+        const SIXEL: &[u8] = b"\x1bPq~\x1b\\";
+        const AFTER: &[u8] = b"\x1b]2;after\x1b\\";
+        let (mut decoder, mut grid) = decoder(GraphicsSupport {
+            kitty: false,
+            sixel: true,
+        });
+        let input = [BEFORE, SIXEL, AFTER].concat();
+
+        let first = decoder.feed_until_event(&input, &mut grid);
+
+        assert_eq!(first.consumed, BEFORE.len() + SIXEL.len());
+        assert!(matches!(
+            first.events.as_slice(),
+            [TerminalEvent::SixelGraphics { .. }]
+        ));
+        assert_eq!(grid.title(), "before");
+        assert_eq!(grid.title_revision(), 1);
+
+        let second = decoder.feed_until_event(&input[first.consumed..], &mut grid);
+
+        assert_eq!(second.consumed, AFTER.len());
+        assert!(second.events.is_empty());
+        assert_eq!(grid.title(), "after");
+        assert_eq!(grid.title_revision(), 2);
     }
 }
