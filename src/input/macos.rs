@@ -1,16 +1,17 @@
-use super::keyboard::{encode_terminal_key, TerminalKey};
+use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
 use objc2_app_kit::{NSEvent, NSEventModifierFlags};
 
 pub fn translate_key_event(event: &NSEvent, application_cursor_keys: bool) -> Option<Vec<u8>> {
     let key_code = event.keyCode();
     let modifiers = event.modifierFlags();
+
+    if let Some(sequence) = encode_macos_terminal_key(key_code, modifiers, application_cursor_keys)
+    {
+        return Some(sequence);
+    }
+
     let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
     let has_alt = modifiers.contains(NSEventModifierFlags::Option);
-    let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
-
-    if let Some(key) = terminal_key_from_key_code(key_code, has_shift) {
-        return encode_terminal_key(key, application_cursor_keys);
-    }
 
     let chars_str = event.characters()?.to_string();
     if chars_str.is_empty() {
@@ -42,6 +43,25 @@ pub fn translate_key_event(event: &NSEvent, application_cursor_keys: bool) -> Op
     }
 
     Some(chars_str.into_bytes())
+}
+
+fn encode_macos_terminal_key(
+    key_code: u16,
+    modifiers: NSEventModifierFlags,
+    application_cursor_keys: bool,
+) -> Option<Vec<u8>> {
+    let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
+    let key = terminal_key_from_key_code(key_code, has_shift)?;
+
+    encode_terminal_key_with_modifiers(
+        key,
+        application_cursor_keys,
+        TerminalKeyModifiers::new(
+            has_shift,
+            modifiers.contains(NSEventModifierFlags::Option),
+            modifiers.contains(NSEventModifierFlags::Control),
+        ),
+    )
 }
 
 fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<TerminalKey> {
@@ -78,8 +98,9 @@ fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<Terminal
 
 #[cfg(test)]
 mod tests {
-    use super::terminal_key_from_key_code;
+    use super::{encode_macos_terminal_key, terminal_key_from_key_code};
     use crate::input::keyboard::TerminalKey;
+    use objc2_app_kit::NSEventModifierFlags;
 
     #[test]
     fn maps_tab_and_shift_tab() {
@@ -103,5 +124,39 @@ mod tests {
                 Some(TerminalKey::Function((index + 1) as u8))
             );
         }
+    }
+
+    #[test]
+    fn encodes_macos_modifiers_for_named_terminal_keys() {
+        for application_cursor_keys in [false, true] {
+            assert_eq!(
+                encode_macos_terminal_key(
+                    123,
+                    NSEventModifierFlags::Control,
+                    application_cursor_keys,
+                )
+                .as_deref(),
+                Some(b"\x1b[1;5D".as_slice())
+            );
+        }
+        assert_eq!(
+            encode_macos_terminal_key(96, NSEventModifierFlags::Option, false).as_deref(),
+            Some(b"\x1b[15;3~".as_slice())
+        );
+        assert_eq!(
+            encode_macos_terminal_key(
+                123,
+                NSEventModifierFlags::Shift
+                    | NSEventModifierFlags::Option
+                    | NSEventModifierFlags::Control,
+                false,
+            )
+            .as_deref(),
+            Some(b"\x1b[1;8D".as_slice())
+        );
+        assert_eq!(
+            encode_macos_terminal_key(48, NSEventModifierFlags::Shift, false).as_deref(),
+            Some(b"\x1b[Z".as_slice())
+        );
     }
 }
