@@ -851,13 +851,42 @@ unsafe fn exec_child(
 
 unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
     unsafe {
-        let stage = [stage];
-        for _ in 0..8 {
-            if libc::write(error_writer_fd, stage.as_ptr().cast(), stage.len()) == 1 {
-                break;
-            }
-        }
+        write_child_stage_with(stage, |stage| {
+            let written = libc::write(error_writer_fd, stage.as_ptr().cast(), stage.len());
+            let error = if written == -1 { child_errno() } else { 0 };
+            (written, error)
+        });
         libc::_exit(126);
+    }
+}
+
+#[inline(always)]
+fn write_child_stage_with<W>(stage: u8, mut write_once: W)
+where
+    W: FnMut(&[u8]) -> (libc::ssize_t, libc::c_int),
+{
+    let stage = [stage];
+    loop {
+        let (written, error) = write_once(&stage);
+        if written == 1 {
+            return;
+        }
+        if written != -1 || error != libc::EINTR {
+            return;
+        }
+    }
+}
+
+#[inline(always)]
+unsafe fn child_errno() -> libc::c_int {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        *libc::__error()
+    }
+
+    #[cfg(target_os = "linux")]
+    unsafe {
+        *libc::__errno_location()
     }
 }
 
@@ -868,7 +897,7 @@ mod tests {
         classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
         poll_timeout_for, resize_with_ioctl, select_shell, set_cloexec, terminate_and_reap_with,
         wait_for_child_reap_with, wait_readable_with, write_all_cancellable_with, write_all_with,
-        CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
+        write_child_stage_with, CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -1525,6 +1554,66 @@ mod tests {
             (255, "unknown child setup stage"),
         ] {
             assert_eq!(child_stage_name(stage), expected);
+        }
+    }
+
+    #[test]
+    fn child_stage_write_retries_interrupts_until_the_byte_is_written() {
+        let mut write_calls = 0;
+
+        write_child_stage_with(4, |stage| {
+            assert_eq!(stage, &[4]);
+            write_calls += 1;
+            if write_calls <= 16 {
+                (-1, libc::EINTR)
+            } else {
+                (1, 0)
+            }
+        });
+
+        assert_eq!(write_calls, 17);
+    }
+
+    #[test]
+    fn child_stage_write_stops_after_a_permanent_error() {
+        for permanent_error in [libc::EPIPE, libc::EBADF] {
+            let mut outcomes = [(-1, libc::EINTR), (-1, permanent_error)].into_iter();
+            let mut write_calls = 0;
+
+            write_child_stage_with(4, |_| {
+                write_calls += 1;
+                outcomes
+                    .next()
+                    .expect("scripted stage write should have a result")
+            });
+
+            assert_eq!(write_calls, 2);
+        }
+    }
+
+    #[test]
+    fn child_stage_write_succeeds_in_one_call() {
+        let mut write_calls = 0;
+
+        write_child_stage_with(4, |_| {
+            write_calls += 1;
+            (1, 0)
+        });
+
+        assert_eq!(write_calls, 1);
+    }
+
+    #[test]
+    fn child_stage_write_stops_on_zero_or_non_exact_output() {
+        for written in [0, 2] {
+            let mut write_calls = 0;
+
+            write_child_stage_with(4, |_| {
+                write_calls += 1;
+                (written, libc::EINTR)
+            });
+
+            assert_eq!(write_calls, 1);
         }
     }
 
