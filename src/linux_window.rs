@@ -2726,6 +2726,10 @@ struct ResolvedCellColors {
     background: u32,
 }
 
+fn cell_content_is_visible(flags: CellFlags) -> bool {
+    !flags.contains(CellFlags::HIDDEN)
+}
+
 fn resolve_cell_colors(colors: TerminalColors, cell: &Cell) -> ResolvedCellColors {
     let resolved = colors.resolve_cell_colors(cell.fg, cell.bg, cell.flags);
 
@@ -2780,6 +2784,10 @@ fn draw_grid_snapshot(
                 resolved.background,
                 u8::MAX,
             );
+
+            if !cell_content_is_visible(cell.flags) {
+                continue;
+            }
 
             if cell.c == ' ' || cell.c == '\0' {
                 continue;
@@ -3091,8 +3099,9 @@ mod tests {
     use super::{
         accumulate_wheel_steps, apply_scrollback_action, apply_terminal_resize, arm_grid_redraw,
         arm_window_title_update, atlas_cell_dimensions, begin_grid_redraw,
-        begin_window_title_update, changed_window_title, classify_reader_exit,
-        classify_writer_exit, combine_launch_results, configured_terminal_dimensions,
+        begin_window_title_update, cell_content_is_visible, changed_window_title,
+        classify_reader_exit, classify_writer_exit, combine_launch_results,
+        configured_terminal_dimensions,
         contrasting_cursor_color, dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
         dispatch_keyboard_input_with, dispatch_mouse_button_and_motion_with,
         dispatch_mouse_button_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
@@ -3116,7 +3125,7 @@ mod tests {
         MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS, WINDOW_TITLE,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
-    use crate::grid::cell::{Cell, CellFlags, Color};
+    use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
     use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking};
     use crate::input::linux::{ime_commit_payload, ImeCommitPayload, ScrollbackAction};
     use crate::input::mouse::{
@@ -7209,6 +7218,88 @@ mod tests {
             .expect("printed cell should be present")
             .flags
             .contains(CellFlags::FAINT));
+    }
+
+    #[test]
+    fn concealed_linux_cells_never_render_content_or_decorations() {
+        for visible_flags in [
+            CellFlags::empty(),
+            CellFlags::BOLD | CellFlags::FAINT | CellFlags::REVERSE,
+            CellFlags::ITALIC | CellFlags::UNDERLINE | CellFlags::WIDE,
+        ] {
+            assert!(cell_content_is_visible(visible_flags));
+            assert!(!cell_content_is_visible(visible_flags | CellFlags::HIDDEN));
+        }
+    }
+
+    #[test]
+    fn hidden_wide_snapshot_keeps_resolved_background_without_glyph_or_underline() {
+        let character = '日';
+        let key = crate::glyph_atlas::GlyphKey {
+            c: character,
+            bold: true,
+            italic: true,
+        };
+        let mut grid = Grid::new(2, 1, 0);
+        grid.cursor_visible = false;
+        grid.fg = Color::Rgb(180, 120, 60);
+        grid.bg = Color::Rgb(10, 20, 30);
+        grid.flags = CellFlags::BOLD
+            | CellFlags::FAINT
+            | CellFlags::ITALIC
+            | CellFlags::UNDERLINE
+            | CellFlags::REVERSE
+            | CellFlags::HIDDEN;
+        grid.underline_style = UnderlineStyle::Double;
+        grid.put_char(character);
+
+        let grid = Mutex::new(grid);
+        let snapshot = snapshot_grid(&grid).expect("hidden grid should snapshot");
+        let leader = snapshot.cell(0, 0).expect("wide leader should exist");
+        assert!(leader.flags.contains(CellFlags::HIDDEN | CellFlags::WIDE));
+        assert_eq!(leader.underline_style, UnderlineStyle::Double);
+        assert_eq!(
+            snapshot.cell(0, 1).expect("wide continuation should exist").flags,
+            CellFlags::WIDE_CONT
+        );
+        assert!(snapshot
+            .rendered_cell(0, 1)
+            .expect("continuation should resolve through its leader")
+            .flags
+            .contains(CellFlags::HIDDEN));
+        let expected_background = resolve_cell_colors(test_colors(), leader).background;
+
+        let mut atlas = test_atlas();
+        assert!(!atlas.glyphs.contains_key(&key));
+        let (frame, _) = render_grid(grid.into_inner().unwrap(), &mut atlas);
+
+        assert!(frame.iter().all(|&pixel| pixel == expected_background));
+        assert!(!atlas.glyphs.contains_key(&key));
+    }
+
+    #[test]
+    fn terminal_cursor_remains_visible_over_hidden_linux_content() {
+        let character = 'é';
+        let key = crate::glyph_atlas::GlyphKey {
+            c: character,
+            bold: false,
+            italic: false,
+        };
+        let mut grid = Grid::new(1, 1, 0);
+        *grid.buffer.cell_mut(0, 0) = Cell {
+            c: character,
+            bg: Color::Rgb(10, 20, 30),
+            flags: CellFlags::HIDDEN,
+            ..Cell::default()
+        };
+        let background = rgb_to_xrgb(10, 20, 30);
+        let mut atlas = test_atlas();
+        assert!(!atlas.glyphs.contains_key(&key));
+
+        let (frame, _) = render_grid(grid, &mut atlas);
+
+        assert!(frame.iter().any(|&pixel| pixel != background));
+        assert!(!atlas.glyphs.contains_key(&key));
     }
 
     #[test]

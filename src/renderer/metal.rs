@@ -20,6 +20,10 @@ fn white_pixel_uv(atlas_width: u32, atlas_height: u32) -> (f32, f32) {
     (0.5 / atlas_width as f32, 0.5 / atlas_height as f32)
 }
 
+fn cell_content_is_visible(flags: CellFlags) -> bool {
+    !flags.contains(CellFlags::HIDDEN)
+}
+
 fn glyph_uv_bounds(
     atlas_width: u32,
     atlas_height: u32,
@@ -194,6 +198,24 @@ impl MetalRenderer {
         (r as u32) << 24 | (g as u32) << 16 | (b as u32) << 8 | a as u32
     }
 
+    fn pack_cell_colors(
+        foreground: (u8, u8, u8),
+        background: (u8, u8, u8),
+        selection_foreground: (u8, u8, u8),
+        selection_background: (u8, u8, u8),
+        selected: bool,
+    ) -> (u32, u32) {
+        let (foreground, background) = if selected {
+            (selection_foreground, selection_background)
+        } else {
+            (foreground, background)
+        };
+        (
+            Self::pack_color(foreground.0, foreground.1, foreground.2, 255),
+            Self::pack_color(background.0, background.1, background.2, 255),
+        )
+    }
+
     fn build_pane_vertices(
         &self,
         pane: &PaneRenderData,
@@ -224,6 +246,7 @@ impl MetalRenderer {
                 let bold = cell.flags.contains(CellFlags::BOLD);
                 let is_wide = cell.flags.contains(CellFlags::WIDE);
                 let render_width = if is_wide { 2.0 } else { 1.0 };
+                let content_is_visible = cell_content_is_visible(cell.flags);
 
                 let resolved =
                     self.colors
@@ -231,17 +254,16 @@ impl MetalRenderer {
                 let fg = resolved.foreground;
                 let bg = resolved.background;
 
-                let is_selected = pane.selection
+                let selected_by_range = pane.selection
                     .map(|s| s.contains(row, col, grid.scroll_offset, grid.scrollback_len()))
                     .unwrap_or(false);
-
-                let (fg_packed, bg_packed) = if is_selected {
-                    (Self::pack_color(selection_fg.0, selection_fg.1, selection_fg.2, 255),
-                     Self::pack_color(selection_bg.0, selection_bg.1, selection_bg.2, 255))
-                } else {
-                    (Self::pack_color(fg.0, fg.1, fg.2, 255),
-                     Self::pack_color(bg.0, bg.1, bg.2, 255))
-                };
+                let (fg_packed, bg_packed) = Self::pack_cell_colors(
+                    fg,
+                    bg,
+                    selection_fg,
+                    selection_bg,
+                    selected_by_range,
+                );
 
                 let x0 = rect.x + col as f32 * cell_w;
                 let y0 = rect.y + row as f32 * cell_h;
@@ -256,6 +278,10 @@ impl MetalRenderer {
                 vertices.push(Vertex::new(x1, y0, white_u, white_v, bg_packed, bg_packed));
                 vertices.push(Vertex::new(x1, y1, white_u, white_v, bg_packed, bg_packed));
                 vertices.push(Vertex::new(x0, y1, white_u, white_v, bg_packed, bg_packed));
+
+                if !content_is_visible {
+                    continue;
+                }
 
                 if cell.c != ' ' && cell.c != '\0' {
                     let cw = cell_w * render_width;
@@ -979,8 +1005,9 @@ impl MetalRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{glyph_uv_bounds, white_pixel_uv, MetalRenderer};
+    use super::{cell_content_is_visible, glyph_uv_bounds, white_pixel_uv, MetalRenderer};
     use crate::glyph_atlas::GlyphEntry;
+    use crate::grid::cell::CellFlags;
 
     fn assert_close(actual: f32, expected: f32) {
         assert!((actual - expected).abs() <= f32::EPSILON);
@@ -1014,5 +1041,39 @@ mod tests {
 
         assert_eq!(packed, 0x1234_56ff);
         assert_eq!(packed & 0xff, u32::from(u8::MAX));
+    }
+
+    #[test]
+    fn concealed_metal_cells_never_render_content_or_decorations() {
+        for visible_flags in [
+            CellFlags::empty(),
+            CellFlags::BOLD | CellFlags::FAINT | CellFlags::REVERSE,
+            CellFlags::ITALIC | CellFlags::UNDERLINE | CellFlags::WIDE,
+        ] {
+            assert!(cell_content_is_visible(visible_flags));
+            assert!(!cell_content_is_visible(visible_flags | CellFlags::HIDDEN));
+        }
+
+        assert!(!cell_content_is_visible(
+            CellFlags::HIDDEN | CellFlags::UNDERLINE | CellFlags::REVERSE
+        ));
+        let selection_foreground = (0x11, 0x22, 0x33);
+        let selection_background = (0x44, 0x55, 0x66);
+        let (foreground, background) = MetalRenderer::pack_cell_colors(
+            (0xaa, 0xbb, 0xcc),
+            (0xdd, 0xee, 0xff),
+            selection_foreground,
+            selection_background,
+            true,
+        );
+        assert_eq!(
+            foreground,
+            MetalRenderer::pack_color(0x11, 0x22, 0x33, u8::MAX)
+        );
+        assert_eq!(
+            background,
+            MetalRenderer::pack_color(0x44, 0x55, 0x66, u8::MAX)
+        );
+        assert!(!cell_content_is_visible(CellFlags::HIDDEN));
     }
 }

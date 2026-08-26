@@ -874,6 +874,7 @@ impl Parser {
                     }
                 }
                 7 => grid.flags.insert(CellFlags::REVERSE),
+                8 => grid.flags.insert(CellFlags::HIDDEN),
                 22 => grid.flags.remove(CellFlags::BOLD | CellFlags::FAINT),
                 23 => grid.flags.remove(CellFlags::ITALIC),
                 24 => {
@@ -881,6 +882,7 @@ impl Parser {
                     grid.underline_style = UnderlineStyle::None;
                 }
                 27 => grid.flags.remove(CellFlags::REVERSE),
+                28 => grid.flags.remove(CellFlags::HIDDEN),
                 30..=37 => grid.fg = Color::Indexed((params[i] - 30) as u8),
                 38 => {
                     if let Some(color) = self.parse_extended_color(params, &mut i) {
@@ -1969,6 +1971,56 @@ mod tests {
     }
 
     #[test]
+    fn conceal_is_cell_scoped_and_sgr_28_preserves_other_attributes() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[1;2;3;4;7;8m\xe6\x97\xa5", &mut grid);
+
+        let leader = grid.buffer.cell(0, 0);
+        assert_eq!(leader.c, '日');
+        assert!(leader.flags.contains(
+            CellFlags::BOLD
+                | CellFlags::FAINT
+                | CellFlags::ITALIC
+                | CellFlags::UNDERLINE
+                | CellFlags::REVERSE
+                | CellFlags::HIDDEN
+                | CellFlags::WIDE
+        ));
+        assert_eq!(grid.buffer.cell(0, 1).flags, CellFlags::WIDE_CONT);
+
+        parser.feed(b"\x1b[28mA", &mut grid);
+
+        assert!(!grid.flags.contains(CellFlags::HIDDEN));
+        assert!(grid.flags.contains(
+            CellFlags::BOLD
+                | CellFlags::FAINT
+                | CellFlags::ITALIC
+                | CellFlags::UNDERLINE
+                | CellFlags::REVERSE
+        ));
+        assert!(grid.buffer.cell(0, 0).flags.contains(CellFlags::HIDDEN));
+        assert!(!grid.buffer.cell(0, 2).flags.contains(CellFlags::HIDDEN));
+    }
+
+    #[test]
+    fn conceal_resets_with_sgr_zero_empty_sgr_and_ris_without_revealing_written_cells() {
+        for reset in [b"\x1b[0m".as_slice(), b"\x1b[m".as_slice(), b"\x1bc".as_slice()] {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+
+            parser.feed(b"\x1b[8mX", &mut grid);
+            parser.feed(reset, &mut grid);
+
+            assert!(grid.flags.is_empty());
+            if reset != b"\x1bc" {
+                assert!(grid.buffer.cell(0, 0).flags.contains(CellFlags::HIDDEN));
+            }
+        }
+    }
+
+    #[test]
     fn extended_color_modes_do_not_leak_faint_from_value_two() {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
@@ -1988,6 +2040,24 @@ mod tests {
         parser.feed(b"\x1b[38:2::1:2:3;2m", &mut grid);
         assert_eq!(grid.fg, Color::Rgb(1, 2, 3));
         assert!(grid.flags.contains(CellFlags::FAINT));
+    }
+
+    #[test]
+    fn extended_color_value_eight_does_not_enable_conceal() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[38;2;7;8;9m", &mut grid);
+        assert_eq!(grid.fg, Color::Rgb(7, 8, 9));
+        assert!(!grid.flags.contains(CellFlags::HIDDEN));
+
+        parser.feed(b"\x1b[48:2::7:8:9m", &mut grid);
+        assert_eq!(grid.bg, Color::Rgb(7, 8, 9));
+        assert!(!grid.flags.contains(CellFlags::HIDDEN));
+
+        parser.feed(b"\x1b[58;5;8m", &mut grid);
+        assert_eq!(grid.underline_color, Color::Indexed(8));
+        assert!(!grid.flags.contains(CellFlags::HIDDEN));
     }
 
     #[test]
