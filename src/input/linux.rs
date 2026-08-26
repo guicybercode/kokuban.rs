@@ -1,4 +1,4 @@
-use super::keyboard::{encode_terminal_key, TerminalKey};
+use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
@@ -42,7 +42,17 @@ pub(crate) fn encode_key_press(
         .named_key
         .and_then(|named_key| terminal_key_from_named(named_key, press.modifiers.shift_key()))
     {
-        Some(terminal_key) => encode_terminal_key(terminal_key, application_cursor_keys)?,
+        Some(terminal_key) => {
+            return encode_terminal_key_with_modifiers(
+                terminal_key,
+                application_cursor_keys,
+                TerminalKeyModifiers::new(
+                    press.modifiers.shift_key(),
+                    press.modifiers.alt_key(),
+                    press.modifiers.control_key(),
+                ),
+            );
+        }
         None => {
             let text = if press.modifiers.control_key() {
                 press.control_text?
@@ -57,8 +67,8 @@ pub(crate) fn encode_key_press(
     };
 
     if press.modifiers.alt_key() {
-        // Preserve the traditional terminal Meta behavior. Named terminal
-        // sequences already start with ESC, so Alt intentionally adds another.
+        // Preserve the traditional terminal Meta behavior for text. Named
+        // keys use xterm modifier parameters where the protocol defines them.
         let mut prefixed = Vec::with_capacity(bytes.len() + 1);
         prefixed.push(0x1b);
         prefixed.append(&mut bytes);
@@ -366,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_prefixes_text_control_and_named_sequences() {
+    fn alt_prefixes_text_and_control_but_parameterizes_named_sequences() {
         assert_eq!(
             encode_key_press(
                 press(None, Some("é"), Some("é"), ModifiersState::ALT),
@@ -392,7 +402,94 @@ mod tests {
                 false,
             )
             .as_deref(),
-            Some(b"\x1b\x1b[D".as_slice())
+            Some(b"\x1b[1;3D".as_slice())
+        );
+    }
+
+    #[test]
+    fn modified_named_keys_use_xterm_parameters_without_text_duplicates() {
+        assert_eq!(
+            encode_key_press(
+                press(
+                    Some(NamedKey::Delete),
+                    Some("text trap"),
+                    Some("control trap"),
+                    ModifiersState::CONTROL | ModifiersState::ALT,
+                ),
+                false,
+            )
+            .as_deref(),
+            Some(b"\x1b[3;7~".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(
+                press(
+                    Some(NamedKey::F1),
+                    Some("text trap"),
+                    Some("control trap"),
+                    ModifiersState::SHIFT,
+                ),
+                true,
+            )
+            .as_deref(),
+            Some(b"\x1b[1;2P".as_slice())
+        );
+    }
+
+    #[test]
+    fn tab_keeps_backtab_and_traditional_alt_behavior() {
+        let cases = [
+            (ModifiersState::empty(), b"\t".as_slice()),
+            (ModifiersState::SHIFT, b"\x1b[Z".as_slice()),
+            (ModifiersState::CONTROL, b"\t".as_slice()),
+            (ModifiersState::ALT, b"\x1b\t".as_slice()),
+            (
+                ModifiersState::SHIFT | ModifiersState::CONTROL,
+                b"\x1b[Z".as_slice(),
+            ),
+            (
+                ModifiersState::SHIFT | ModifiersState::ALT,
+                b"\x1b\x1b[Z".as_slice(),
+            ),
+            (
+                ModifiersState::CONTROL | ModifiersState::ALT,
+                b"\x1b\t".as_slice(),
+            ),
+            (
+                ModifiersState::SHIFT | ModifiersState::CONTROL | ModifiersState::ALT,
+                b"\x1b\x1b[Z".as_slice(),
+            ),
+        ];
+
+        for (modifiers, expected) in cases {
+            assert_eq!(
+                encode_key_press(
+                    press(Some(NamedKey::Tab), Some("trap"), Some("trap"), modifiers),
+                    false,
+                )
+                .as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn modified_numlock_text_stays_text_instead_of_navigation() {
+        assert_eq!(
+            encode_key_press(
+                press(None, Some("1"), Some("1"), ModifiersState::ALT),
+                false,
+            )
+            .as_deref(),
+            Some(b"\x1b1".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(
+                press(Some(NamedKey::End), None, None, ModifiersState::CONTROL,),
+                false,
+            )
+            .as_deref(),
+            Some(b"\x1b[1;5F".as_slice())
         );
     }
 
