@@ -20,10 +20,19 @@ use winit::window::{Window, WindowId};
 const WINDOW_TITLE: &str = "黒板kokuban";
 const INITIAL_CELL_WIDTH: u32 = 10;
 const INITIAL_CELL_HEIGHT: u32 = 20;
+// Keep the pre-atlas placeholder modest; Winit interprets this size in logical pixels.
+const MAX_INITIAL_LOGICAL_WIDTH: u32 = 1920;
+const MAX_INITIAL_LOGICAL_HEIGHT: u32 = 1080;
+// A full RGBA software frame at this bound is about 135 MiB.
+const MAX_REQUESTED_PHYSICAL_WIDTH: u32 = 8192;
+const MAX_REQUESTED_PHYSICAL_HEIGHT: u32 = 4320;
 const SCALE_CHANGE_EPSILON: f64 = 0.001;
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
 const CURSOR_THICKNESS: u32 = 2;
 const CURSOR_ALPHA: u8 = 180;
+// Limit the Grid/snapshot budget to 262,144 visible cells while still covering wide 8K layouts.
+const MAX_TERMINAL_COLUMNS: u16 = 1024;
+const MAX_TERMINAL_ROWS: u16 = 256;
 
 type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
 
@@ -50,6 +59,53 @@ struct GlyphSource<'a> {
 enum GridAccessError {
     #[error("Linux renderer could not access the terminal grid because its lock is poisoned")]
     Poisoned,
+    #[error("terminal grid dimensions {columns}x{rows} exceed the Linux PTY limit")]
+    DimensionsOutOfRange { columns: usize, rows: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalDimensions {
+    columns: u16,
+    rows: u16,
+}
+
+impl std::fmt::Display for TerminalDimensions {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}x{}", self.columns, self.rows)
+    }
+}
+
+#[derive(Debug, Error)]
+enum TerminalResizeError {
+    #[error("could not resize Linux terminal to {target}: {source}")]
+    Grid {
+        target: TerminalDimensions,
+        #[source]
+        source: GridAccessError,
+    },
+    #[error("could not resize Linux PTY to {target}: {source}")]
+    Pty {
+        target: TerminalDimensions,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+#[derive(Debug, Error)]
+enum GlyphAtlasRebuildError {
+    #[error("{0}")]
+    Atlas(String),
+    #[error(transparent)]
+    Grid(#[from] GridAccessError),
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+enum SurfaceSizeError {
+    #[error(
+        "Linux surface {width}x{height} exceeds the renderer budget of \
+         {MAX_REQUESTED_PHYSICAL_WIDTH}x{MAX_REQUESTED_PHYSICAL_HEIGHT} pixels"
+    )]
+    ExceedsRenderBudget { width: u32, height: u32 },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -87,8 +143,19 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         .map_err(|error| format!("could not connect to an X11 or Wayland display: {error}"))?;
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    let columns = config.window.columns.max(1);
-    let rows = config.window.rows.max(1);
+    let terminal_dimensions =
+        configured_terminal_dimensions(config.window.columns, config.window.rows);
+    if terminal_dimensions.columns != config.window.columns
+        || terminal_dimensions.rows != config.window.rows
+    {
+        eprintln!(
+            "kokuban: warning: configured Linux terminal size {}x{} is outside the supported \
+             1..={MAX_TERMINAL_COLUMNS} by 1..={MAX_TERMINAL_ROWS} range; using {terminal_dimensions}",
+            config.window.columns, config.window.rows
+        );
+    }
+    let columns = terminal_dimensions.columns;
+    let rows = terminal_dimensions.rows;
     let background = ColorConfig::parse_hex(&config.colors.background);
     let foreground = ColorConfig::parse_hex(&config.colors.foreground);
     let initial_size = initial_window_dimensions(columns, rows);
@@ -148,6 +215,7 @@ struct LinuxWindow {
     window: Option<Arc<Window>>,
     glyph_atlas: Option<GlyphAtlas>,
     atlas_scale_factor: Option<f64>,
+    cell_dimensions: Option<(u16, u16)>,
     background: u32,
     colors: TerminalColors,
     font_family: String,
@@ -156,7 +224,6 @@ struct LinuxWindow {
     exit_after_first_frame: bool,
     first_frame_presented: bool,
     grid: Arc<Mutex<Grid>>,
-    #[allow(dead_code)] // Kept alive for the reader and upcoming input/resize handling.
     pty: Arc<Pty>,
     reader: Option<TerminalReader>,
     redraw_pending: Arc<AtomicBool>,
@@ -183,6 +250,7 @@ impl LinuxWindow {
             window: None,
             glyph_atlas: None,
             atlas_scale_factor: None,
+            cell_dimensions: None,
             background: rgb_to_xrgb(background.0, background.1, background.2),
             colors: TerminalColors::new(foreground, background),
             font_family,
@@ -218,12 +286,26 @@ impl LinuxWindow {
         let cell_dimensions = atlas_cell_dimensions(&glyph_atlas)?;
         set_grid_cell_dimensions(self.grid.as_ref(), cell_dimensions)
             .map_err(|error| error.to_string())?;
+        let terminal_dimensions =
+            terminal_dimensions_from_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        let requested_inner_size = physical_size_for_terminal(terminal_dimensions, cell_dimensions)
+            .ok_or_else(|| {
+                format!(
+                    "could not calculate the Linux window size for terminal {terminal_dimensions}"
+                )
+            })?;
 
         self.surface = Some(surface);
         self.context = Some(context);
         self.window = Some(window.clone());
         self.glyph_atlas = Some(glyph_atlas);
         self.atlas_scale_factor = Some(scale_factor);
+        self.cell_dimensions = Some(cell_dimensions);
+        if let Some(applied_inner_size) =
+            immediate_surface_size_to_reconcile(window.request_inner_size(requested_inner_size))
+        {
+            self.resize_terminal_for_surface(applied_inner_size)?;
+        }
         window.request_redraw();
         Ok(())
     }
@@ -232,20 +314,50 @@ impl LinuxWindow {
         create_glyph_atlas(&self.font_family, self.font_size, scale_factor)
     }
 
-    fn rebuild_glyph_atlas(&mut self, scale_factor: f64) -> Result<bool, String> {
+    fn rebuild_glyph_atlas(&mut self, scale_factor: f64) -> Result<bool, GlyphAtlasRebuildError> {
         let grid = self.grid.clone();
-        replace_glyph_atlas_for_scale(
+        let mut replacement_dimensions = None;
+        let changed = replace_glyph_atlas_for_scale(
             &mut self.glyph_atlas,
             &mut self.atlas_scale_factor,
             &self.font_family,
             self.font_size,
             scale_factor,
-            move |replacement| {
-                let cell_dimensions = atlas_cell_dimensions(replacement)?;
-                set_grid_cell_dimensions(grid.as_ref(), cell_dimensions)
-                    .map_err(|error| error.to_string())
+            |_, cell_dimensions| {
+                set_grid_cell_dimensions(grid.as_ref(), cell_dimensions)?;
+                replacement_dimensions = Some(cell_dimensions);
+                Ok(())
             },
-        )
+        )?;
+        if changed {
+            self.cell_dimensions = replacement_dimensions;
+        }
+        Ok(changed)
+    }
+
+    fn resize_terminal_for_surface(&self, size: PhysicalSize<u32>) -> Result<bool, String> {
+        let cell_dimensions = self.cell_dimensions.ok_or_else(|| {
+            "could not resize the Linux terminal before glyph metrics were ready".to_string()
+        })?;
+        let Some(target) = terminal_dimensions_for_surface(size, cell_dimensions) else {
+            return Ok(false);
+        };
+
+        resize_terminal_with(self.grid.as_ref(), target, |columns, rows| {
+            self.pty.resize(columns, rows)
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn current_grid_physical_size(&self) -> Result<PhysicalSize<u32>, String> {
+        let cell_dimensions = self.cell_dimensions.ok_or_else(|| {
+            "could not size the Linux window before glyph metrics were ready".to_string()
+        })?;
+        let terminal_dimensions =
+            terminal_dimensions_from_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        physical_size_for_terminal(terminal_dimensions, cell_dimensions).ok_or_else(|| {
+            format!("could not calculate the Linux window size for terminal {terminal_dimensions}")
+        })
     }
 
     fn present_frame(&mut self) -> Result<Option<bool>, String> {
@@ -254,13 +366,17 @@ impl LinuxWindow {
                 "redraw requested before the Linux window was created".to_string()
             })?;
         let size = window.inner_size();
-        let Some((width, height)) = drawable_dimensions(size) else {
+        let Some((width, height)) = drawable_dimensions(size).map_err(|error| error.to_string())?
+        else {
             return Ok(None);
         };
         let surface = self
             .surface
             .as_mut()
             .ok_or_else(|| "redraw requested before the software renderer was ready".to_string())?;
+        let cell_dimensions = self
+            .cell_dimensions
+            .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let glyph_atlas = self
             .glyph_atlas
             .as_mut()
@@ -274,7 +390,6 @@ impl LinuxWindow {
             .map_err(|error| format!("could not acquire the software-rendering buffer: {error}"))?;
         buffer.fill(self.background);
         let snapshot = snapshot_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
-        let cell_dimensions = atlas_cell_dimensions(glyph_atlas)?;
         draw_grid_snapshot(
             &mut buffer,
             (width.get(), height.get()),
@@ -366,19 +481,65 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 self.request_reader_shutdown();
                 event_loop.exit();
             }
-            WindowEvent::Resized(_) => {
+            WindowEvent::Resized(size) => {
+                if let Some(current_size) = self.window.as_ref().map(|window| window.inner_size()) {
+                    if !is_current_surface_size(size, current_size) {
+                        log::debug!(
+                            "ignoring stale Linux resize event {size:?}; current surface is \
+                             {current_size:?}"
+                        );
+                        return;
+                    }
+                }
+                if let Err(error) = self.resize_terminal_for_surface(size) {
+                    self.fail(event_loop, error);
+                    return;
+                }
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
                 }
             }
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            WindowEvent::ScaleFactorChanged {
+                scale_factor,
+                mut inner_size_writer,
+            } => {
                 match self.rebuild_glyph_atlas(scale_factor) {
-                    Ok(true) => log::info!("Linux scale factor changed to {scale_factor}"),
-                    Ok(false) => {}
-                    Err(error) => log::error!(
+                    Ok(changed) => {
+                        if changed {
+                            log::info!("Linux scale factor changed to {scale_factor}");
+                        }
+                        let requested_inner_size = match self.current_grid_physical_size() {
+                            Ok(size) => size,
+                            Err(error) => {
+                                self.fail(event_loop, error);
+                                return;
+                            }
+                        };
+                        match inner_size_writer.request_inner_size(requested_inner_size) {
+                            Ok(()) => {
+                                if let Err(error) =
+                                    self.resize_terminal_for_surface(requested_inner_size)
+                                {
+                                    self.fail(event_loop, error);
+                                    return;
+                                }
+                            }
+                            Err(error) => {
+                                log::warn!(
+                                    "could not preserve the Linux terminal grid at scale \
+                                     {scale_factor}: {error}; waiting for the next resize event"
+                                );
+                            }
+                        }
+                    }
+                    Err(GlyphAtlasRebuildError::Atlas(error)) => log::error!(
                         "{error}; keeping scale {}",
                         self.atlas_scale_factor.unwrap_or(1.0)
                     ),
+                    Err(GlyphAtlasRebuildError::Grid(error)) => {
+                        self.fail(event_loop, error.to_string());
+                        return;
+                    }
                 }
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
@@ -505,9 +666,9 @@ fn replace_glyph_atlas_for_scale<F>(
     font_size: f32,
     scale_factor: f64,
     before_replace: F,
-) -> Result<bool, String>
+) -> Result<bool, GlyphAtlasRebuildError>
 where
-    F: FnOnce(&GlyphAtlas) -> Result<(), String>,
+    F: FnOnce(&GlyphAtlas, (u16, u16)) -> Result<(), GridAccessError>,
 {
     if atlas_scale_factor
         .is_some_and(|current| (current - scale_factor).abs() <= SCALE_CHANGE_EPSILON)
@@ -515,8 +676,11 @@ where
         return Ok(false);
     }
 
-    let replacement = create_glyph_atlas(font_family, font_size, scale_factor)?;
-    before_replace(&replacement)?;
+    let replacement = create_glyph_atlas(font_family, font_size, scale_factor)
+        .map_err(GlyphAtlasRebuildError::Atlas)?;
+    let cell_dimensions =
+        atlas_cell_dimensions(&replacement).map_err(GlyphAtlasRebuildError::Atlas)?;
+    before_replace(&replacement, cell_dimensions)?;
     *glyph_atlas = Some(replacement);
     *atlas_scale_factor = Some(scale_factor);
     Ok(true)
@@ -524,13 +688,42 @@ where
 
 fn initial_window_dimensions(columns: u16, rows: u16) -> LogicalSize<u32> {
     LogicalSize::new(
-        u32::from(columns).max(1) * INITIAL_CELL_WIDTH,
-        u32::from(rows).max(1) * INITIAL_CELL_HEIGHT,
+        (u32::from(columns).max(1) * INITIAL_CELL_WIDTH).min(MAX_INITIAL_LOGICAL_WIDTH),
+        (u32::from(rows).max(1) * INITIAL_CELL_HEIGHT).min(MAX_INITIAL_LOGICAL_HEIGHT),
     )
 }
 
-fn drawable_dimensions(size: PhysicalSize<u32>) -> Option<(NonZeroU32, NonZeroU32)> {
-    Some((NonZeroU32::new(size.width)?, NonZeroU32::new(size.height)?))
+fn configured_terminal_dimensions(columns: u16, rows: u16) -> TerminalDimensions {
+    TerminalDimensions {
+        columns: columns.clamp(1, MAX_TERMINAL_COLUMNS),
+        rows: rows.clamp(1, MAX_TERMINAL_ROWS),
+    }
+}
+
+fn immediate_surface_size_to_reconcile(
+    immediate: Option<PhysicalSize<u32>>,
+) -> Option<PhysicalSize<u32>> {
+    immediate
+}
+
+fn is_current_surface_size(event_size: PhysicalSize<u32>, current_size: PhysicalSize<u32>) -> bool {
+    event_size == current_size
+}
+
+fn drawable_dimensions(
+    size: PhysicalSize<u32>,
+) -> Result<Option<(NonZeroU32, NonZeroU32)>, SurfaceSizeError> {
+    let (Some(width), Some(height)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+    else {
+        return Ok(None);
+    };
+    if size.width > MAX_REQUESTED_PHYSICAL_WIDTH || size.height > MAX_REQUESTED_PHYSICAL_HEIGHT {
+        return Err(SurfaceSizeError::ExceedsRenderBudget {
+            width: size.width,
+            height: size.height,
+        });
+    }
+    Ok(Some((width, height)))
 }
 
 fn rgb_to_xrgb(red: u8, green: u8, blue: u8) -> u32 {
@@ -565,6 +758,109 @@ fn set_grid_cell_dimensions(
     grid.cell_pixel_width = cell_dimensions.0;
     grid.cell_pixel_height = cell_dimensions.1;
     Ok(())
+}
+
+fn terminal_dimensions_from_grid(
+    grid: &Mutex<Grid>,
+) -> Result<TerminalDimensions, GridAccessError> {
+    let grid = grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+    terminal_dimensions_from_locked_grid(&grid)
+}
+
+fn terminal_dimensions_from_locked_grid(
+    grid: &Grid,
+) -> Result<TerminalDimensions, GridAccessError> {
+    let columns = grid.cols();
+    let rows = grid.rows();
+    Ok(TerminalDimensions {
+        columns: u16::try_from(columns)
+            .map_err(|_| GridAccessError::DimensionsOutOfRange { columns, rows })?,
+        rows: u16::try_from(rows)
+            .map_err(|_| GridAccessError::DimensionsOutOfRange { columns, rows })?,
+    })
+}
+
+fn terminal_dimensions_for_surface(
+    surface_size: PhysicalSize<u32>,
+    cell_dimensions: (u16, u16),
+) -> Option<TerminalDimensions> {
+    if surface_size.width == 0
+        || surface_size.height == 0
+        || cell_dimensions.0 == 0
+        || cell_dimensions.1 == 0
+    {
+        return None;
+    }
+
+    let columns = (surface_size.width / u32::from(cell_dimensions.0))
+        .clamp(1, u32::from(MAX_TERMINAL_COLUMNS));
+    let rows =
+        (surface_size.height / u32::from(cell_dimensions.1)).clamp(1, u32::from(MAX_TERMINAL_ROWS));
+    Some(TerminalDimensions {
+        columns: u16::try_from(columns).ok()?,
+        rows: u16::try_from(rows).ok()?,
+    })
+}
+
+fn physical_size_for_terminal(
+    terminal_dimensions: TerminalDimensions,
+    cell_dimensions: (u16, u16),
+) -> Option<PhysicalSize<u32>> {
+    if terminal_dimensions.columns == 0
+        || terminal_dimensions.rows == 0
+        || cell_dimensions.0 == 0
+        || cell_dimensions.1 == 0
+    {
+        return None;
+    }
+
+    let width = u32::from(terminal_dimensions.columns)
+        .checked_mul(u32::from(cell_dimensions.0))?
+        .min(MAX_REQUESTED_PHYSICAL_WIDTH);
+    let height = u32::from(terminal_dimensions.rows)
+        .checked_mul(u32::from(cell_dimensions.1))?
+        .min(MAX_REQUESTED_PHYSICAL_HEIGHT);
+    Some(PhysicalSize::new(width, height))
+}
+
+fn apply_terminal_resize<P, G>(
+    current: TerminalDimensions,
+    target: TerminalDimensions,
+    resize_pty: P,
+    resize_grid: G,
+) -> std::io::Result<bool>
+where
+    P: FnOnce(u16, u16) -> std::io::Result<()>,
+    G: FnOnce(u16, u16),
+{
+    if current == target {
+        return Ok(false);
+    }
+
+    resize_pty(target.columns, target.rows)?;
+    resize_grid(target.columns, target.rows);
+    Ok(true)
+}
+
+fn resize_terminal_with<F>(
+    grid: &Mutex<Grid>,
+    target: TerminalDimensions,
+    resize_pty: F,
+) -> Result<bool, TerminalResizeError>
+where
+    F: FnOnce(u16, u16) -> std::io::Result<()>,
+{
+    let mut grid = grid.lock().map_err(|_| TerminalResizeError::Grid {
+        target,
+        source: GridAccessError::Poisoned,
+    })?;
+    let current = terminal_dimensions_from_locked_grid(&grid)
+        .map_err(|source| TerminalResizeError::Grid { target, source })?;
+
+    apply_terminal_resize(current, target, resize_pty, |columns, rows| {
+        grid.resize(usize::from(columns), usize::from(rows));
+    })
+    .map_err(|source| TerminalResizeError::Pty { target, source })
 }
 
 fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
@@ -801,20 +1097,26 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::{
-        arm_grid_redraw, atlas_cell_dimensions, begin_grid_redraw, classify_reader_exit,
-        draw_cell_glyph, draw_grid_snapshot, drawable_dimensions, initial_window_dimensions,
-        replace_glyph_atlas_for_scale, resolve_cell_colors, rgb_to_xrgb, rounded_i32,
-        set_grid_cell_dimensions, snapshot_grid, terminal_color_query_value, GridAccessError,
-        ReaderStatus, ResolvedCellColors,
+        apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions, begin_grid_redraw,
+        classify_reader_exit, configured_terminal_dimensions, draw_cell_glyph, draw_grid_snapshot,
+        drawable_dimensions, immediate_surface_size_to_reconcile, initial_window_dimensions,
+        is_current_surface_size, physical_size_for_terminal, replace_glyph_atlas_for_scale,
+        resize_terminal_with, resolve_cell_colors, rgb_to_xrgb, rounded_i32,
+        set_grid_cell_dimensions, snapshot_grid, terminal_color_query_value,
+        terminal_dimensions_for_surface, GridAccessError, ReaderStatus, ResolvedCellColors,
+        SurfaceSizeError, TerminalDimensions, TerminalResizeError, MAX_INITIAL_LOGICAL_HEIGHT,
+        MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH,
+        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
     use crate::grid::{CursorShape, Grid};
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_reader::ReaderExit;
+    use std::cell::RefCell;
     use std::io;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex, TryLockError};
     use winit::dpi::PhysicalSize;
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
@@ -889,15 +1191,354 @@ mod tests {
     }
 
     #[test]
+    fn initial_placeholder_dimensions_respect_the_logical_size_budget() {
+        let size = initial_window_dimensions(u16::MAX, u16::MAX);
+        assert_eq!(size.width, MAX_INITIAL_LOGICAL_WIDTH);
+        assert_eq!(size.height, MAX_INITIAL_LOGICAL_HEIGHT);
+    }
+
+    #[test]
+    fn configured_dimensions_are_clamped_before_allocating_grid_or_pty() {
+        assert_eq!(
+            configured_terminal_dimensions(0, 0),
+            TerminalDimensions {
+                columns: 1,
+                rows: 1,
+            }
+        );
+        assert_eq!(
+            configured_terminal_dimensions(u16::MAX, u16::MAX),
+            TerminalDimensions {
+                columns: MAX_TERMINAL_COLUMNS,
+                rows: MAX_TERMINAL_ROWS,
+            }
+        );
+        assert_eq!(
+            configured_terminal_dimensions(80, 24),
+            TerminalDimensions {
+                columns: 80,
+                rows: 24,
+            }
+        );
+    }
+
+    #[test]
+    fn immediate_surface_sizes_reconcile_and_stale_events_are_filtered() {
+        let requested = PhysicalSize::new(800, 480);
+        let constrained = PhysicalSize::new(790, 470);
+
+        assert_eq!(immediate_surface_size_to_reconcile(None), None);
+        assert_eq!(
+            immediate_surface_size_to_reconcile(Some(requested)),
+            Some(requested)
+        );
+        assert_eq!(
+            immediate_surface_size_to_reconcile(Some(constrained)),
+            Some(constrained)
+        );
+        assert!(is_current_surface_size(constrained, constrained));
+        assert!(!is_current_surface_size(requested, constrained));
+    }
+
+    #[test]
+    fn unchanged_capped_surface_reconciles_after_cell_metrics_grow() {
+        let configured = TerminalDimensions {
+            columns: 512,
+            rows: 135,
+        };
+        let current_surface = physical_size_for_terminal(configured, (16, 32))
+            .expect("the original cell metrics should produce a valid surface");
+        let grown_cell_dimensions = (32, 64);
+        let requested = physical_size_for_terminal(configured, grown_cell_dimensions)
+            .expect("the grown cell metrics should produce a capped request");
+        assert_eq!(
+            current_surface,
+            PhysicalSize::new(MAX_REQUESTED_PHYSICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT)
+        );
+        assert_eq!(requested, current_surface);
+        let target = terminal_dimensions_for_surface(requested, grown_cell_dimensions)
+            .expect("the capped physical size should map to a terminal grid");
+        let grid = Mutex::new(Grid::new(
+            usize::from(configured.columns),
+            usize::from(configured.rows),
+            0,
+        ));
+        let pty_size = RefCell::new(None);
+
+        assert!(resize_terminal_with(&grid, target, |columns, rows| {
+            pty_size.replace(Some((columns, rows)));
+            Ok(())
+        })
+        .expect("the unchanged capped size should reconcile successfully"));
+        assert_eq!(pty_size.into_inner(), Some((256, 67)));
+        let grid = grid
+            .lock()
+            .expect("reconciled grid should remain available");
+        assert_eq!((grid.cols(), grid.rows()), (256, 67));
+    }
+
+    #[test]
+    fn surface_dimensions_use_floor_minimum_and_memory_budget_limits() {
+        let cells = |width, height| {
+            terminal_dimensions_for_surface(PhysicalSize::new(width, height), (10, 20))
+        };
+
+        assert_eq!(cells(0, 480), None);
+        assert_eq!(cells(800, 0), None);
+        assert_eq!(
+            terminal_dimensions_for_surface(PhysicalSize::new(800, 480), (0, 20)),
+            None
+        );
+        assert_eq!(
+            cells(9, 19),
+            Some(TerminalDimensions {
+                columns: 1,
+                rows: 1,
+            })
+        );
+        assert_eq!(
+            cells(29, 59),
+            Some(TerminalDimensions {
+                columns: 2,
+                rows: 2,
+            })
+        );
+        assert_eq!(
+            cells(u32::MAX, u32::MAX),
+            Some(TerminalDimensions {
+                columns: MAX_TERMINAL_COLUMNS,
+                rows: MAX_TERMINAL_ROWS,
+            })
+        );
+    }
+
+    #[test]
+    fn physical_grid_size_is_checked_and_dpi_metrics_preserve_rows_and_columns() {
+        let maximum = TerminalDimensions {
+            columns: u16::MAX,
+            rows: u16::MAX,
+        };
+        let maximum_size = physical_size_for_terminal(maximum, (u16::MAX, u16::MAX))
+            .expect("u16 terminal and cell products should fit u32");
+        assert_eq!(
+            maximum_size,
+            PhysicalSize::new(MAX_REQUESTED_PHYSICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,)
+        );
+        assert_eq!(
+            physical_size_for_terminal(
+                TerminalDimensions {
+                    columns: 0,
+                    rows: 24,
+                },
+                (10, 20),
+            ),
+            None
+        );
+
+        let grid = TerminalDimensions {
+            columns: 80,
+            rows: 24,
+        };
+        for cell_dimensions in [(8, 16), (13, 29), (24, 48)] {
+            let physical_size = physical_size_for_terminal(grid, cell_dimensions)
+                .expect("normal DPI dimensions should fit");
+            assert_eq!(
+                terminal_dimensions_for_surface(physical_size, cell_dimensions),
+                Some(grid)
+            );
+        }
+
+        let capped = physical_size_for_terminal(
+            TerminalDimensions {
+                columns: MAX_TERMINAL_COLUMNS,
+                rows: MAX_TERMINAL_ROWS,
+            },
+            (20, 30),
+        )
+        .expect("large terminal requests should be capped, not overflow");
+        assert_eq!(
+            capped,
+            PhysicalSize::new(MAX_REQUESTED_PHYSICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,)
+        );
+        assert_ne!(
+            terminal_dimensions_for_surface(capped, (20, 30)),
+            Some(TerminalDimensions {
+                columns: MAX_TERMINAL_COLUMNS,
+                rows: MAX_TERMINAL_ROWS,
+            }),
+            "a capped window request must be reconciled by the following resize event"
+        );
+    }
+
+    #[test]
+    fn resize_transaction_calls_pty_before_grid_commit() {
+        let order = RefCell::new(Vec::new());
+        let current = TerminalDimensions {
+            columns: 80,
+            rows: 24,
+        };
+        let target = TerminalDimensions {
+            columns: 100,
+            rows: 30,
+        };
+
+        assert!(apply_terminal_resize(
+            current,
+            target,
+            |columns, rows| {
+                assert_eq!((columns, rows), (100, 30));
+                order.borrow_mut().push("pty");
+                Ok(())
+            },
+            |columns, rows| {
+                assert_eq!((columns, rows), (100, 30));
+                order.borrow_mut().push("grid");
+            },
+        )
+        .expect("fake PTY resize should succeed"));
+        assert_eq!(order.into_inner(), ["pty", "grid"]);
+    }
+
+    #[test]
+    fn unchanged_terminal_dimensions_do_not_call_the_pty() {
+        let grid = Mutex::new(Grid::new(80, 24, 0));
+        let pty_calls = AtomicUsize::new(0);
+        {
+            let mut grid = grid.lock().expect("test grid should be available");
+            grid.cursor_row = 7;
+            grid.cursor_col = 80;
+            grid.scroll_top = 3;
+            grid.scroll_bottom = 20;
+            grid.dirty[0] = false;
+            grid.buffer.cell_mut(0, 0).c = 'x';
+        }
+
+        assert!(!resize_terminal_with(
+            &grid,
+            TerminalDimensions {
+                columns: 80,
+                rows: 24,
+            },
+            |_, _| {
+                pty_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect("unchanged dimensions should be a no-op"));
+        assert_eq!(pty_calls.load(Ordering::Relaxed), 0);
+        let grid = grid.lock().expect("no-op should keep grid available");
+        assert_eq!((grid.cols(), grid.rows()), (80, 24));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
+        assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
+        assert!(!grid.dirty[0]);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'x');
+    }
+
+    #[test]
+    fn failed_pty_resize_preserves_grid_dimensions() {
+        let grid = Mutex::new(Grid::new(80, 24, 0));
+        {
+            let mut grid = grid.lock().expect("test grid should be available");
+            grid.cursor_row = 7;
+            grid.cursor_col = 80;
+            grid.scroll_top = 3;
+            grid.scroll_bottom = 20;
+            grid.dirty[0] = false;
+            grid.buffer.cell_mut(0, 0).c = 'x';
+        }
+        let error = resize_terminal_with(
+            &grid,
+            TerminalDimensions {
+                columns: 100,
+                rows: 30,
+            },
+            |_, _| Err(io::Error::from_raw_os_error(5)),
+        )
+        .expect_err("fake PTY failure should abort the transaction");
+
+        assert!(matches!(error, TerminalResizeError::Pty { .. }));
+        assert!(error.to_string().contains("100x30"));
+        let TerminalResizeError::Pty { source, .. } = &error else {
+            panic!("expected a PTY resize error");
+        };
+        assert_eq!(source.raw_os_error(), Some(5));
+        let grid = grid
+            .lock()
+            .expect("failed PTY resize should not poison grid");
+        assert_eq!((grid.cols(), grid.rows()), (80, 24));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
+        assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
+        assert!(!grid.dirty[0]);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'x');
+    }
+
+    #[test]
+    fn successful_terminal_resize_updates_pty_and_grid() {
+        let grid = Mutex::new(Grid::new(80, 24, 0));
+        let pty_size = RefCell::new(None);
+
+        assert!(resize_terminal_with(
+            &grid,
+            TerminalDimensions {
+                columns: 100,
+                rows: 30,
+            },
+            |columns, rows| {
+                assert!(matches!(grid.try_lock(), Err(TryLockError::WouldBlock)));
+                pty_size.replace(Some((columns, rows)));
+                Ok(())
+            },
+        )
+        .expect("fake PTY resize should commit"));
+
+        assert_eq!(pty_size.into_inner(), Some((100, 30)));
+        let grid = grid
+            .lock()
+            .expect("successful resize should keep grid available");
+        assert_eq!((grid.cols(), grid.rows()), (100, 30));
+    }
+
+    #[test]
     fn zero_sized_windows_do_not_create_a_surface_extent() {
-        assert!(drawable_dimensions(PhysicalSize::new(0, 480)).is_none());
-        assert!(drawable_dimensions(PhysicalSize::new(800, 0)).is_none());
-        assert!(drawable_dimensions(PhysicalSize::new(0, 0)).is_none());
+        assert_eq!(drawable_dimensions(PhysicalSize::new(0, 480)), Ok(None));
+        assert_eq!(drawable_dimensions(PhysicalSize::new(800, 0)), Ok(None));
+        assert_eq!(drawable_dimensions(PhysicalSize::new(0, 0)), Ok(None));
 
         let (width, height) = drawable_dimensions(PhysicalSize::new(800, 480))
+            .expect("normal dimensions should fit the renderer budget")
             .expect("non-zero dimensions should be drawable");
         assert_eq!(width.get(), 800);
         assert_eq!(height.get(), 480);
+    }
+
+    #[test]
+    fn surface_extent_guard_rejects_frames_above_the_physical_budget() {
+        assert!(drawable_dimensions(PhysicalSize::new(
+            MAX_REQUESTED_PHYSICAL_WIDTH,
+            MAX_REQUESTED_PHYSICAL_HEIGHT,
+        ))
+        .expect("the configured maximum must be drawable")
+        .is_some());
+        assert_eq!(
+            drawable_dimensions(PhysicalSize::new(
+                MAX_REQUESTED_PHYSICAL_WIDTH + 1,
+                MAX_REQUESTED_PHYSICAL_HEIGHT,
+            )),
+            Err(SurfaceSizeError::ExceedsRenderBudget {
+                width: MAX_REQUESTED_PHYSICAL_WIDTH + 1,
+                height: MAX_REQUESTED_PHYSICAL_HEIGHT,
+            })
+        );
+        assert_eq!(
+            drawable_dimensions(PhysicalSize::new(
+                MAX_REQUESTED_PHYSICAL_WIDTH,
+                MAX_REQUESTED_PHYSICAL_HEIGHT + 1,
+            )),
+            Err(SurfaceSizeError::ExceedsRenderBudget {
+                width: MAX_REQUESTED_PHYSICAL_WIDTH,
+                height: MAX_REQUESTED_PHYSICAL_HEIGHT + 1,
+            })
+        );
     }
 
     #[test]
@@ -1133,6 +1774,27 @@ mod tests {
             snapshot_grid(grid.as_ref()).expect_err("poisoned grid should not be recovered"),
             GridAccessError::Poisoned
         );
+        let pty_calls = AtomicUsize::new(0);
+        let error = resize_terminal_with(
+            grid.as_ref(),
+            TerminalDimensions {
+                columns: 2,
+                rows: 2,
+            },
+            |_, _| {
+                pty_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect_err("poisoned grid must reject terminal resize");
+        assert!(matches!(
+            error,
+            TerminalResizeError::Grid {
+                source: GridAccessError::Poisoned,
+                ..
+            }
+        ));
+        assert_eq!(pty_calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -1171,7 +1833,7 @@ mod tests {
             font_family,
             font_size,
             f64::NAN,
-            |_| Ok(()),
+            |_, _| Ok(()),
         )
         .is_err());
 
@@ -1187,7 +1849,7 @@ mod tests {
             font_family,
             font_size,
             2.0,
-            |_| Err("could not synchronize replacement metrics".to_string()),
+            |_, _| Err(GridAccessError::Poisoned),
         )
         .is_err());
         let preserved = glyph_atlas
@@ -1202,7 +1864,7 @@ mod tests {
             font_family,
             font_size,
             1.0,
-            |_| Ok(()),
+            |_, _| Ok(()),
         )
         .expect("duplicate scale should be a no-op"));
     }
