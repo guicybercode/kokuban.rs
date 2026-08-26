@@ -23,8 +23,8 @@ pub struct Pane {
 
 #[derive(Clone, Copy)]
 enum FullQueuePolicy {
-    Fail,
-    Drop,
+    FailPane,
+    NonFatal,
 }
 
 impl Pane {
@@ -62,16 +62,28 @@ impl Pane {
     }
 
     pub fn queue_input(&self, bytes: Vec<u8>) {
-        self.queue_input_with_policy(bytes, FullQueuePolicy::Fail);
+        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::FailPane);
     }
 
     pub fn queue_motion_input(&self, bytes: Vec<u8>) {
-        self.queue_input_with_policy(bytes, FullQueuePolicy::Drop);
+        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal);
     }
 
-    fn queue_input_with_policy(&self, bytes: Vec<u8>, full_policy: FullQueuePolicy) {
+    pub fn queue_paste_input(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
+        self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal)
+    }
+
+    pub fn max_input_bytes(&self) -> usize {
+        self.writer.max_input_bytes()
+    }
+
+    fn queue_input_with_policy(
+        &self,
+        bytes: Vec<u8>,
+        full_policy: FullQueuePolicy,
+    ) -> Result<(), TerminalWriteQueueError> {
         if self.input_failed.load(Ordering::Acquire) {
-            return;
+            return Err(TerminalWriteQueueError::Disconnected);
         }
 
         record_enqueue_result(
@@ -79,7 +91,7 @@ impl Pane {
             self.id,
             self.writer.enqueue(bytes),
             full_policy,
-        );
+        )
     }
 
     pub fn input_failed(&self) -> bool {
@@ -119,15 +131,19 @@ fn record_enqueue_result(
     pane_id: PaneId,
     result: Result<(), TerminalWriteQueueError>,
     full_policy: FullQueuePolicy,
-) -> bool {
+) -> Result<(), TerminalWriteQueueError> {
     match result {
-        Ok(()) => false,
-        Err(TerminalWriteQueueError::Full) if matches!(full_policy, FullQueuePolicy::Drop) => false,
+        Ok(()) => Ok(()),
+        Err(TerminalWriteQueueError::Full) if matches!(full_policy, FullQueuePolicy::NonFatal) => {
+            Err(TerminalWriteQueueError::Full)
+        }
         Err(TerminalWriteQueueError::Full) => {
-            mark_input_failed(input_failed, pane_id, "terminal input queue is full")
+            mark_input_failed(input_failed, pane_id, "terminal input queue is full");
+            Err(TerminalWriteQueueError::Full)
         }
         Err(TerminalWriteQueueError::Disconnected) => {
-            mark_input_failed(input_failed, pane_id, "terminal input queue disconnected")
+            mark_input_failed(input_failed, pane_id, "terminal input queue disconnected");
+            Err(TerminalWriteQueueError::Disconnected)
         }
     }
 }
@@ -155,9 +171,11 @@ fn mark_input_failed(input_failed: &AtomicBool, pane_id: PaneId, message: &str) 
 #[cfg(test)]
 mod tests {
     use super::{
-        record_enqueue_result, record_writer_exit, FullQueuePolicy, TerminalWriteQueueError,
-        WriterExit,
+        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane,
+        TerminalWriteQueueError, WriterExit,
     };
+    use crate::parser::ansi::GraphicsSupport;
+    use crate::renderer::kitty_handler::KittyHandlerOptions;
     use std::io;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -168,40 +186,66 @@ mod tests {
             TerminalWriteQueueError::Disconnected,
         ] {
             let failed = AtomicBool::new(false);
-            assert!(record_enqueue_result(
-                &failed,
-                7,
+            assert_eq!(
+                record_enqueue_result(&failed, 7, Err(error), FullQueuePolicy::FailPane),
                 Err(error),
-                FullQueuePolicy::Fail,
-            ));
+            );
             assert!(failed.load(Ordering::Acquire));
-            assert!(!record_enqueue_result(
-                &failed,
-                7,
+            assert_eq!(
+                record_enqueue_result(&failed, 7, Err(error), FullQueuePolicy::FailPane),
                 Err(error),
-                FullQueuePolicy::Fail,
-            ));
+            );
         }
     }
 
     #[test]
-    fn coalescible_motion_drops_only_full_backpressure() {
+    fn nonfatal_input_policy_drops_only_full_backpressure() {
         let failed = AtomicBool::new(false);
-        assert!(!record_enqueue_result(
-            &failed,
-            9,
+        assert_eq!(
+            record_enqueue_result(
+                &failed,
+                9,
+                Err(TerminalWriteQueueError::Full),
+                FullQueuePolicy::NonFatal,
+            ),
             Err(TerminalWriteQueueError::Full),
-            FullQueuePolicy::Drop,
-        ));
+        );
         assert!(!failed.load(Ordering::Acquire));
 
-        assert!(record_enqueue_result(
-            &failed,
-            9,
+        assert_eq!(
+            record_enqueue_result(
+                &failed,
+                9,
+                Err(TerminalWriteQueueError::Disconnected),
+                FullQueuePolicy::NonFatal,
+            ),
             Err(TerminalWriteQueueError::Disconnected),
-            FullQueuePolicy::Drop,
-        ));
+        );
         assert!(failed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn paste_queue_keeps_capacity_backpressure_nonfatal() {
+        let pane = Pane::new(
+            13,
+            80,
+            24,
+            1_000,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+        )
+        .expect("paste policy test should spawn its shell");
+        let oversized = Vec::with_capacity(pane.max_input_bytes() + 1);
+
+        assert_eq!(
+            pane.queue_paste_input(oversized),
+            Err(TerminalWriteQueueError::Full)
+        );
+        assert!(!pane.input_failed());
+        pane.retire();
     }
 
     #[test]

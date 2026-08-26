@@ -1,7 +1,6 @@
 use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
-use crate::selection::GridPoint;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::{mouse_button_with_appkit_modifiers, translate_key_event};
@@ -14,6 +13,8 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
+use crate::selection::GridPoint;
+use crate::terminal_writer::TerminalWriteQueueError;
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
 use objc2::rc::Retained;
@@ -30,6 +31,16 @@ use std::sync::{Arc, Mutex};
 
 const BRACKETED_PASTE_START: &[u8] = b"\x1b[200~";
 const BRACKETED_PASTE_END: &[u8] = b"\x1b[201~";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClipboardPasteError {
+    TooLarge { byte_count: usize, limit: usize },
+    AllocationFailed { byte_count: usize },
+    ConversionFailed {
+        expected_bytes: usize,
+        converted_bytes: usize,
+    },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MacScrollPhase {
@@ -418,13 +429,72 @@ define_class!(
                     let state = state.borrow();
                     if let Some(state) = state.as_ref() {
                         if let Some(text) = paste_from_clipboard() {
-                            let tree = state.pane_tree.lock().unwrap();
-                            if let Some(pane) = tree.focused_pane() {
-                                let bracketed = pane.grid.bracketed_paste;
-                                if let Some(bytes) = encode_clipboard_paste(text, bracketed) {
-                                    pane.queue_input(bytes);
-                                } else {
-                                    log::error!("clipboard paste is too large to frame");
+                            let paste_target = {
+                                let tree = state.pane_tree.lock().unwrap();
+                                tree.focused_pane().map(|pane| {
+                                    (
+                                        pane.id,
+                                        pane.grid.bracketed_paste,
+                                        pane.max_input_bytes(),
+                                    )
+                                })
+                            };
+                            if let Some((pane_id, bracketed, max_input_bytes)) = paste_target {
+                                match encode_clipboard_paste(
+                                    text.as_ref(),
+                                    bracketed,
+                                    max_input_bytes,
+                                ) {
+                                    Ok(bytes) => {
+                                        let byte_count = bytes.len();
+                                        let tree = state.pane_tree.lock().unwrap();
+                                        match tree.pane(pane_id) {
+                                            Some(pane)
+                                                if pane.grid.bracketed_paste == bracketed => {
+                                                match pane.queue_paste_input(bytes) {
+                                                    Ok(()) => {}
+                                                    Err(TerminalWriteQueueError::Full) => {
+                                                        log::warn!(
+                                                            "dropping macOS clipboard paste of {byte_count} bytes: terminal input queue is full"
+                                                        );
+                                                    }
+                                                    Err(TerminalWriteQueueError::Disconnected) => {
+                                                        log::warn!(
+                                                            "macOS clipboard paste was not queued: terminal input is disconnected"
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            Some(_) => {
+                                                log::warn!(
+                                                    "dropping macOS clipboard paste: bracketed paste mode changed while encoding"
+                                                );
+                                            }
+                                            None => {
+                                                log::warn!(
+                                                    "dropping macOS clipboard paste: target pane closed while encoding"
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Err(ClipboardPasteError::TooLarge { byte_count, limit }) => {
+                                        log::warn!(
+                                            "dropping macOS clipboard paste requiring at least {byte_count} bytes; limit is {limit}"
+                                        );
+                                    }
+                                    Err(ClipboardPasteError::AllocationFailed { byte_count }) => {
+                                        log::warn!(
+                                            "dropping macOS clipboard paste: failed to allocate {byte_count} bytes"
+                                        );
+                                    }
+                                    Err(ClipboardPasteError::ConversionFailed {
+                                        expected_bytes,
+                                        converted_bytes,
+                                    }) => {
+                                        log::warn!(
+                                            "dropping macOS clipboard paste: converted {converted_bytes} of {expected_bytes} UTF-8 bytes"
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -1221,33 +1291,104 @@ fn copy_to_clipboard(text: &str) {
     }
 }
 
-fn paste_from_clipboard() -> Option<String> {
+fn paste_from_clipboard() -> Option<Retained<NSString>> {
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
-        let types = NSArray::from_retained_slice(&[NSPasteboardTypeString.copy()]);
-        let available = pasteboard.availableTypeFromArray(&types);
-        if available.is_some() {
-            if let Some(s) = pasteboard.stringForType(NSPasteboardTypeString) {
-                return Some(s.to_string());
-            }
-        }
-        None
+        pasteboard.stringForType(NSPasteboardTypeString)
     }
 }
 
-fn encode_clipboard_paste(text: String, bracketed: bool) -> Option<Vec<u8>> {
-    if !bracketed {
-        return Some(text.into_bytes());
+fn encode_clipboard_paste(
+    text: &NSString,
+    bracketed: bool,
+    capacity_budget: usize,
+) -> Result<Vec<u8>, ClipboardPasteError> {
+    let utf16_len = text.len_utf16();
+    let minimum_framed_len = if bracketed {
+        bracketed_paste_len(utf16_len).unwrap_or(usize::MAX)
+    } else {
+        utf16_len
+    };
+    if minimum_framed_len > capacity_budget {
+        return Err(ClipboardPasteError::TooLarge {
+            byte_count: minimum_framed_len,
+            limit: capacity_budget,
+        });
     }
 
-    let framed_len = bracketed_paste_len(text.len())?;
+    let payload_len = text.len();
+    let framed_len = if bracketed {
+        bracketed_paste_len(payload_len).ok_or(ClipboardPasteError::TooLarge {
+            byte_count: usize::MAX,
+            limit: capacity_budget,
+        })?
+    } else {
+        payload_len
+    };
+    if framed_len > capacity_budget {
+        return Err(ClipboardPasteError::TooLarge {
+            byte_count: framed_len,
+            limit: capacity_budget,
+        });
+    }
+
     let mut bytes = Vec::new();
-    bytes.try_reserve_exact(framed_len).ok()?;
-    bytes.extend_from_slice(BRACKETED_PASTE_START);
-    bytes.extend_from_slice(text.as_bytes());
-    bytes.extend_from_slice(BRACKETED_PASTE_END);
-    debug_assert_eq!(bytes.len(), framed_len);
-    Some(bytes)
+    bytes
+        .try_reserve_exact(framed_len)
+        .map_err(|_| ClipboardPasteError::AllocationFailed {
+            byte_count: framed_len,
+        })?;
+    if bytes.capacity() > capacity_budget {
+        return Err(ClipboardPasteError::TooLarge {
+            byte_count: bytes.capacity(),
+            limit: capacity_budget,
+        });
+    }
+    bytes.resize(framed_len, 0);
+
+    let payload_start = if bracketed {
+        BRACKETED_PASTE_START.len()
+    } else {
+        0
+    };
+    if payload_len == 0 {
+        if utf16_len != 0 {
+            return Err(ClipboardPasteError::ConversionFailed {
+                expected_bytes: payload_len,
+                converted_bytes: 0,
+            });
+        }
+    } else {
+        let mut converted_bytes = 0;
+        let mut remaining_range = NSRange::default();
+        let source_range = NSRange::new(0, utf16_len);
+        let converted = unsafe {
+            text.getBytes_maxLength_usedLength_encoding_options_range_remainingRange(
+                bytes[payload_start..payload_start + payload_len]
+                    .as_mut_ptr()
+                    .cast(),
+                payload_len,
+                &mut converted_bytes,
+                NSUTF8StringEncoding,
+                NSStringEncodingConversionOptions::empty(),
+                source_range,
+                &mut remaining_range,
+            )
+        };
+        if !converted || converted_bytes != payload_len || !remaining_range.is_empty() {
+            return Err(ClipboardPasteError::ConversionFailed {
+                expected_bytes: payload_len,
+                converted_bytes,
+            });
+        }
+    }
+
+    if bracketed {
+        bytes[..BRACKETED_PASTE_START.len()].copy_from_slice(BRACKETED_PASTE_START);
+        bytes[framed_len - BRACKETED_PASTE_END.len()..]
+            .copy_from_slice(BRACKETED_PASTE_END);
+    }
+    Ok(bytes)
 }
 
 fn bracketed_paste_len(payload_len: usize) -> Option<usize> {
@@ -1538,14 +1679,17 @@ pub(super) fn create_terminal_view(
 mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
-        mac_scroll_phase, sync_pending_window_title_with, MacScrollPhase, MacScrollSample,
-        MacScrollState, WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START,
-        WINDOW_TITLE,
+        mac_scroll_phase, sync_pending_window_title_with, ClipboardPasteError, MacScrollPhase,
+        MacScrollSample, MacScrollState, WindowTitleMailbox, BRACKETED_PASTE_END,
+        BRACKETED_PASTE_START, WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
     use crate::input::mouse::MouseWheelRoute;
+    use objc2::AnyThread;
     use objc2_app_kit::{NSEventModifierFlags, NSEventPhase};
+    use objc2_foundation::NSString;
     use std::cell::{Cell, RefCell};
+    use std::ptr::NonNull;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::thread;
@@ -1572,33 +1716,60 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_paste_encoding_reuses_plain_storage_and_frames_bracketed_input() {
-        let mut plain_text = String::with_capacity(64);
-        plain_text.push_str("plain é");
-        let plain_pointer = plain_text.as_ptr();
-        let plain_capacity = plain_text.capacity();
-        let plain = encode_clipboard_paste(plain_text, false)
-            .expect("plain paste length should fit usize");
-        assert_eq!(plain, "plain é".as_bytes());
-        assert_eq!(plain.as_ptr(), plain_pointer);
-        assert_eq!(plain.capacity(), plain_capacity);
+    fn clipboard_paste_encoding_copies_utf8_and_embedded_nul_directly() {
+        let plain_text = NSString::from_str("plain\0é");
+        let plain = encode_clipboard_paste(plain_text.as_ref(), false, 64)
+            .expect("plain UTF-8 paste should fit its budget");
+        assert_eq!(plain, "plain\0é".as_bytes());
 
-        let text = "x".repeat(1024);
-        let framed = encode_clipboard_paste(text.clone(), true)
-            .expect("bracketed paste length should fit usize");
-        let expected_len = text.len() + BRACKETED_PASTE_START.len() + BRACKETED_PASTE_END.len();
-        assert_eq!(framed.len(), expected_len);
+        let supplementary_text = NSString::from_str("😀");
+        assert_eq!(supplementary_text.len_utf16(), 2);
+        assert_eq!(supplementary_text.len(), 4);
         assert_eq!(
-            &framed[..BRACKETED_PASTE_START.len()],
-            BRACKETED_PASTE_START
+            encode_clipboard_paste(supplementary_text.as_ref(), false, 64)
+                .expect("a supplementary scalar should convert across its full UTF-16 range"),
+            "😀".as_bytes()
+        );
+
+        let bracketed_text = NSString::from_str("a\0é");
+        let framed = encode_clipboard_paste(bracketed_text.as_ref(), true, 64)
+            .expect("bracketed UTF-8 paste should fit its budget");
+        let mut expected = BRACKETED_PASTE_START.to_vec();
+        expected.extend_from_slice("a\0é".as_bytes());
+        expected.extend_from_slice(BRACKETED_PASTE_END);
+        assert_eq!(framed, expected);
+
+        let empty = NSString::from_str("");
+        assert!(encode_clipboard_paste(empty.as_ref(), false, 0)
+            .expect("empty plain paste should not allocate")
+            .is_empty());
+        assert_eq!(
+            encode_clipboard_paste(
+                empty.as_ref(),
+                true,
+                BRACKETED_PASTE_START.len() + BRACKETED_PASTE_END.len(),
+            )
+            .expect("empty bracketed paste should contain only its frame"),
+            [BRACKETED_PASTE_START, BRACKETED_PASTE_END].concat()
+        );
+    }
+
+    #[test]
+    fn clipboard_paste_preflight_accepts_exact_budget_and_rejects_one_less() {
+        let text = NSString::from_str("é");
+        let required_bytes = text.len() + BRACKETED_PASTE_START.len() + BRACKETED_PASTE_END.len();
+        assert_eq!(
+            encode_clipboard_paste(text.as_ref(), true, required_bytes)
+                .expect("the exact retained-byte budget should be accepted")
+                .len(),
+            required_bytes
         );
         assert_eq!(
-            &framed[BRACKETED_PASTE_START.len()..BRACKETED_PASTE_START.len() + text.len()],
-            text.as_bytes()
-        );
-        assert_eq!(
-            &framed[framed.len() - BRACKETED_PASTE_END.len()..],
-            BRACKETED_PASTE_END
+            encode_clipboard_paste(text.as_ref(), true, required_bytes - 1),
+            Err(ClipboardPasteError::TooLarge {
+                byte_count: required_bytes,
+                limit: required_bytes - 1,
+            })
         );
 
         let framing_bytes = BRACKETED_PASTE_START.len() + BRACKETED_PASTE_END.len();
@@ -1611,6 +1782,26 @@ mod tests {
             None
         );
         assert_eq!(bracketed_paste_len(usize::MAX), None);
+    }
+
+    #[test]
+    fn clipboard_paste_rejects_unconvertible_utf16() {
+        let unpaired_surrogate = [0xd800_u16];
+        let text = unsafe {
+            NSString::initWithCharacters_length(
+                NSString::alloc(),
+                NonNull::from(&unpaired_surrogate[0]),
+                unpaired_surrogate.len(),
+            )
+        };
+        assert_eq!(text.len_utf16(), 1);
+        assert_eq!(
+            encode_clipboard_paste(text.as_ref(), false, 64),
+            Err(ClipboardPasteError::ConversionFailed {
+                expected_bytes: 0,
+                converted_bytes: 0,
+            })
+        );
     }
 
     #[test]
