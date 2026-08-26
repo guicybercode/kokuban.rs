@@ -250,12 +250,18 @@ impl Parser {
                     self.state = State::CsiIgnore;
                 }
             }
-            b'?' | b'>' | b'!' => {
+            b'?' | b'>' => {
                 if self.push_intermediate(byte) {
                     self.state = State::CsiParam;
                 } else {
                     self.state = State::CsiIgnore;
                 }
+            }
+            b'<' | b'=' => {
+                // These are valid CSI private parameter markers, but Kokuban
+                // does not implement their namespaces. Consume the complete
+                // sequence without letting it reach standard CSI handlers.
+                self.state = State::CsiIgnore;
             }
             0x20..=0x2f => {
                 if self.push_intermediate(byte) {
@@ -306,6 +312,11 @@ impl Parser {
                     self.state = State::CsiIgnore;
                 }
             }
+            b'<'..=b'?' => {
+                // Private parameter markers are only valid at CSI entry.
+                // Ignore the rest atomically so malformed input cannot leak.
+                self.state = State::CsiIgnore;
+            }
             0x20..=0x2f => {
                 if let Some(param) = self.current_param.take() {
                     if !self.push_param(param, self.current_is_sub) {
@@ -341,6 +352,7 @@ impl Parser {
                     self.state = State::CsiIgnore;
                 }
             }
+            0x30..=0x3f => { self.state = State::CsiIgnore; }
             0x40..=0x7e => {
                 let accepted = match self.current_param.take() {
                     Some(param) => self.push_param(param, self.current_is_sub),
@@ -351,6 +363,7 @@ impl Parser {
                 }
                 self.state = State::Ground;
             }
+            0x1b => { self.state = State::Escape; }
             _ => { self.state = State::Ground; }
         }
     }
@@ -624,9 +637,24 @@ impl Parser {
 
     fn dispatch_csi(&mut self, final_byte: u8, grid: &mut Grid) {
         let params = &self.params;
-        let has_question = self.intermediates.contains(&b'?');
-        let has_gt = self.intermediates.contains(&b'>');
-        let has_space = self.intermediates.contains(&0x20);
+        let namespace = self.intermediates.as_slice();
+        match namespace {
+            [] => {}
+            [b'?'] if matches!(final_byte, b'h' | b'l') => {}
+            [b'>'] if matches!(final_byte, b'c' | b'q') => {}
+            [b' '] if final_byte == b'q' => {}
+            [b'!'] if final_byte == b'p' => {}
+            _ => {
+                log::trace!(
+                    "Ignoring CSI outside supported namespace: params={:?} intermediates={:?} final={}",
+                    params, namespace, final_byte as char
+                );
+                return;
+            }
+        }
+        let has_question = matches!(namespace, [b'?']);
+        let has_gt = matches!(namespace, [b'>']);
+        let has_space = matches!(namespace, [b' ']);
 
         match final_byte {
             // DECSCUSR — cursor shape (CSI Ps SP q)
@@ -1047,7 +1075,7 @@ mod tests {
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::marks::PromptMarkKind;
-    use crate::grid::{Grid, MouseEncoding, MouseTracking, TerminalEvent};
+    use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking, TerminalEvent};
     use crate::parser::kitty_graphics::{KittyAction, KittyCommand};
     use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES};
     use crate::parser::State;
@@ -1064,6 +1092,12 @@ mod tests {
                     .map(|column| grid.buffer.cell(row, column).c)
                     .collect()
             })
+            .collect()
+    }
+
+    fn row_prefix(grid: &Grid, columns: usize) -> String {
+        (0..columns)
+            .map(|column| grid.buffer.cell(0, column).c)
             .collect()
     }
 
@@ -1671,6 +1705,140 @@ mod tests {
             encode_terminal_key(TerminalKey::Up, grid.application_cursor_keys),
             Some(b"\x1b[A".to_vec())
         );
+    }
+
+    #[test]
+    fn consumes_less_than_private_csi_at_every_read_boundary() {
+        const STREAM: &[u8] = b"A\x1b[<1uB";
+
+        for split in 0..=STREAM.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+
+            parser.feed(&STREAM[..split], &mut grid);
+            parser.feed(&STREAM[split..], &mut grid);
+
+            assert_eq!(row_prefix(&grid, 3), "AB ", "split at byte {split}");
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
+            assert_eq!(parser.parser.state, State::Ground);
+            assert!(grid.drain_terminal_events().is_empty());
+            assert!(!grid.insert_mode);
+        }
+    }
+
+    #[test]
+    fn consumes_equal_private_csi_and_recovers_for_text_and_valid_csi() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[=7uX\x1b[31mY", &mut grid);
+
+        assert_eq!(row_prefix(&grid, 3), "XY ");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
+        assert_eq!(grid.buffer.cell(0, 0).fg, Color::Default);
+        assert_eq!(grid.buffer.cell(0, 1).fg, Color::Indexed(1));
+        assert_eq!(parser.parser.state, State::Ground);
+        assert!(grid.drain_terminal_events().is_empty());
+    }
+
+    #[test]
+    fn malformed_private_markers_do_not_leak_or_enable_ansi_modes() {
+        for marker in b"<=>?" {
+            for prefix in [b"\x1b[4".as_slice(), b"\x1b[ ".as_slice()] {
+                let mut parser = Utf8Parser::new();
+                let mut grid = grid();
+                let stream = [prefix, &[*marker], b"123hZ"].concat();
+
+                parser.feed(&stream, &mut grid);
+
+                assert_eq!(row_prefix(&grid, 2), "Z ", "marker {marker:#04x}");
+                assert_eq!((grid.cursor_row, grid.cursor_col), (0, 1));
+                assert_eq!(parser.parser.state, State::Ground);
+                assert!(!grid.insert_mode);
+                assert!(grid.drain_terminal_events().is_empty());
+            }
+        }
+
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b[=4hZ", &mut grid);
+
+        assert_eq!(row_prefix(&grid, 2), "Z ");
+        assert!(!grid.insert_mode);
+    }
+
+    #[test]
+    fn private_csi_namespaces_cannot_reach_standard_handlers() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        parser.feed(b"\x1b[?31mA\x1b[>4hB\x1b[?6nC", &mut grid);
+
+        assert_eq!(row_prefix(&grid, 4), "ABC ");
+        assert_eq!(grid.fg, Color::Default);
+        assert!(!grid.insert_mode);
+        assert_eq!(parser.parser.state, State::Ground);
+        assert!(grid.drain_terminal_events().is_empty());
+    }
+
+    #[test]
+    fn malformed_intermediate_parameters_are_ignored_across_read_boundaries() {
+        const STREAM: &[u8] = b"A\x1b[!31mB\x1b[ 1qC\x1b[!pD";
+
+        for split in 0..=STREAM.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            grid.cursor_style.shape = CursorShape::Bar;
+            grid.cursor_style.blinking = false;
+
+            parser.feed(&STREAM[..split], &mut grid);
+            parser.feed(&STREAM[split..], &mut grid);
+
+            assert_eq!(row_prefix(&grid, 5), "ABCD ", "split at byte {split}");
+            assert_eq!(grid.fg, Color::Default);
+            assert_eq!(grid.cursor_style.shape, CursorShape::Bar);
+            assert!(!grid.cursor_style.blinking);
+            assert_eq!(parser.parser.state, State::Ground);
+            assert!(grid.drain_terminal_events().is_empty());
+        }
+    }
+
+    #[test]
+    fn escape_restarts_csi_from_the_intermediate_state_at_every_read_boundary() {
+        const STREAM: &[u8] = b"A\x1b[!\x1b[31mB";
+
+        for split in 0..=STREAM.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+
+            parser.feed(&STREAM[..split], &mut grid);
+            parser.feed(&STREAM[split..], &mut grid);
+
+            assert_eq!(row_prefix(&grid, 3), "AB ", "split at byte {split}");
+            assert_eq!(grid.buffer.cell(0, 0).fg, Color::Default);
+            assert_eq!(grid.buffer.cell(0, 1).fg, Color::Indexed(1));
+            assert_eq!(parser.parser.state, State::Ground);
+            assert!(grid.drain_terminal_events().is_empty());
+        }
+    }
+
+    #[test]
+    fn preserves_supported_private_and_intermediate_csi_routes() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        grid.cursor_style.shape = CursorShape::Bar;
+        grid.cursor_style.blinking = false;
+
+        parser.feed(b"\x1b[?1h\x1b[>q\x1b[ q", &mut grid);
+
+        assert!(grid.application_cursor_keys);
+        assert_eq!(grid.cursor_style.shape, CursorShape::Block);
+        assert!(grid.cursor_style.blinking);
+        assert!(matches!(
+            grid.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)]
+                if response == b"\x1bP>|Kokuban 0.1.0\x1b\\"
+        ));
     }
 
     #[test]
