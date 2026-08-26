@@ -203,16 +203,37 @@ impl Pty {
             ws_xpixel: 0,
             ws_ypixel: 0,
         };
-        let ret = unsafe { libc::ioctl(self.master().as_raw_fd(), libc::TIOCSWINSZ, &win_size) };
-        if ret < 0 {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(())
-        }
+        resize_with_ioctl(
+            &win_size,
+            |size| unsafe { libc::ioctl(self.master().as_raw_fd(), libc::TIOCSWINSZ, size) },
+            std::io::Error::last_os_error,
+        )
     }
 
     fn master(&self) -> &OwnedFd {
         self.master.as_ref().expect("PTY master is available")
+    }
+}
+
+fn resize_with_ioctl<I, E>(
+    win_size: &libc::winsize,
+    mut ioctl: I,
+    mut last_error: E,
+) -> std::io::Result<()>
+where
+    I: FnMut(&libc::winsize) -> libc::c_int,
+    E: FnMut() -> std::io::Error,
+{
+    loop {
+        if ioctl(win_size) >= 0 {
+            return Ok(());
+        }
+
+        let error = last_error();
+        if error.raw_os_error() == Some(libc::EINTR) {
+            continue;
+        }
+        return Err(error);
     }
 }
 
@@ -661,9 +682,9 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        child_environment, classify_readable_events, poll_timeout_for, select_shell, set_cloexec,
-        wait_readable_with, write_all_cancellable_with, write_all_with, CancellableWriteOutcome,
-        Pty, ReadPollResult,
+        child_environment, classify_readable_events, poll_timeout_for, resize_with_ioctl,
+        select_shell, set_cloexec, wait_readable_with, write_all_cancellable_with, write_all_with,
+        CancellableWriteOutcome, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -727,6 +748,137 @@ mod tests {
     #[test]
     fn pty_can_be_shared_with_a_reader_thread() {
         assert_send_sync::<Pty>();
+    }
+
+    #[test]
+    fn resize_success_uses_one_ioctl_without_reading_errno() {
+        let win_size = libc::winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let mut ioctl_calls = 0;
+
+        resize_with_ioctl(
+            &win_size,
+            |_| {
+                ioctl_calls += 1;
+                0
+            },
+            || panic!("a successful resize must not read errno"),
+        )
+        .expect("the first resize ioctl should succeed");
+
+        assert_eq!(ioctl_calls, 1);
+    }
+
+    #[test]
+    fn resize_retries_only_interrupted_ioctls_with_the_same_window_size() {
+        let win_size = libc::winsize {
+            ws_row: 43,
+            ws_col: 137,
+            ws_xpixel: 1920,
+            ws_ypixel: 1080,
+        };
+        let expected = (43, 137, 1920, 1080);
+        let mut ioctl_results = [-1, -1, 0].into_iter();
+        let mut errors = [libc::EINTR, libc::EINTR].into_iter();
+        let mut observed_sizes = Vec::new();
+        let mut error_lookups = 0;
+
+        resize_with_ioctl(
+            &win_size,
+            |actual| {
+                observed_sizes.push((
+                    actual.ws_row,
+                    actual.ws_col,
+                    actual.ws_xpixel,
+                    actual.ws_ypixel,
+                ));
+                ioctl_results
+                    .next()
+                    .expect("scripted resize ioctl should have a result")
+            },
+            || {
+                error_lookups += 1;
+                std::io::Error::from_raw_os_error(
+                    errors
+                        .next()
+                        .expect("each failed ioctl should have an errno"),
+                )
+            },
+        )
+        .expect("EINTR retries should eventually succeed");
+
+        assert_eq!(observed_sizes, [expected, expected, expected]);
+        assert_eq!(error_lookups, 2);
+    }
+
+    #[test]
+    fn resize_preserves_non_interrupted_errno_without_retrying() {
+        let win_size = libc::winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let mut ioctl_calls = 0;
+        let mut error_lookups = 0;
+
+        let error = resize_with_ioctl(
+            &win_size,
+            |_| {
+                ioctl_calls += 1;
+                -1
+            },
+            || {
+                error_lookups += 1;
+                std::io::Error::from_raw_os_error(libc::EIO)
+            },
+        )
+        .expect_err("non-EINTR resize failures must be returned");
+
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(ioctl_calls, 1);
+        assert_eq!(error_lookups, 1);
+    }
+
+    #[test]
+    fn resize_returns_an_error_that_follows_an_interruption() {
+        let win_size = libc::winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let mut ioctl_results = [-1, -1].into_iter();
+        let mut errors = [libc::EINTR, libc::EIO].into_iter();
+        let mut ioctl_calls = 0;
+        let mut error_lookups = 0;
+
+        let error = resize_with_ioctl(
+            &win_size,
+            |_| {
+                ioctl_calls += 1;
+                ioctl_results
+                    .next()
+                    .expect("scripted resize ioctl should have a result")
+            },
+            || {
+                error_lookups += 1;
+                std::io::Error::from_raw_os_error(
+                    errors
+                        .next()
+                        .expect("each failed ioctl should have an errno"),
+                )
+            },
+        )
+        .expect_err("the error following EINTR must be returned");
+
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(ioctl_calls, 2);
+        assert_eq!(error_lookups, 2);
     }
 
     #[test]
