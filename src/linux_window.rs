@@ -12,8 +12,8 @@ use crate::software_raster::{draw_glyph_a8, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
+use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 use softbuffer::{Context, Surface};
-use std::borrow::Cow;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -28,8 +28,6 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::window::{ImePurpose, Window, WindowId};
 
-const WINDOW_TITLE: &str = "黒板kokuban";
-const MAX_WINDOW_TITLE_BYTES: usize = 1024;
 const INITIAL_CELL_WIDTH: u32 = 10;
 const INITIAL_CELL_HEIGHT: u32 = 20;
 // Keep the pre-atlas placeholder modest; Winit interprets this size in logical pixels.
@@ -1434,45 +1432,6 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
 
 fn terminal_color_query_value(color: (u8, u8, u8)) -> String {
     format!("{:02x}{:02x}{:02x}", color.0, color.1, color.2)
-}
-
-fn sync_window_title_with<F>(applied_title: &mut String, osc_title: &str, set_title: F) -> bool
-where
-    F: FnOnce(&str),
-{
-    let next_title = normalized_window_title(osc_title);
-    if applied_title == next_title.as_ref() {
-        return false;
-    }
-
-    set_title(next_title.as_ref());
-    applied_title.clear();
-    applied_title.push_str(next_title.as_ref());
-    true
-}
-
-fn normalized_window_title(title: &str) -> Cow<'_, str> {
-    if title.is_empty() {
-        return Cow::Borrowed(WINDOW_TITLE);
-    }
-
-    let needs_filter = title.chars().any(char::is_control);
-    if !needs_filter && title.len() <= MAX_WINDOW_TITLE_BYTES {
-        return Cow::Borrowed(title);
-    }
-
-    let mut normalized = String::with_capacity(title.len().min(MAX_WINDOW_TITLE_BYTES));
-    for character in title.chars().filter(|character| !character.is_control()) {
-        if normalized.len() + character.len_utf8() > MAX_WINDOW_TITLE_BYTES {
-            break;
-        }
-        normalized.push(character);
-    }
-    if normalized.is_empty() {
-        Cow::Borrowed(WINDOW_TITLE)
-    } else {
-        Cow::Owned(normalized)
-    }
 }
 
 fn changed_window_title(
@@ -3145,17 +3104,16 @@ mod tests {
         physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
         replace_ime_preedit, resize_terminal_with, resolve_cell_colors, reveal_ime_input_viewport,
         rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid, snapshot_window_title,
-        sync_ime_cursor_area_with, sync_window_title_with, terminal_accepts_input,
-        terminal_cell_at_pointer, terminal_color_query_value, terminal_dimensions_for_surface,
-        GridAccessError, ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph,
-        ImePreeditLayout, ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome,
-        MouseMotionDispatchOutcome, MouseMotionState, MouseWheelRoute, MouseWheelState,
-        PointerRouteState, ReaderStatus, ResolvedCellColors, SurfaceSizeError, TerminalDimensions,
-        TerminalResizeError, WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT,
-        MAX_IME_PREEDIT_BYTES, MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT,
-        MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH,
-        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS, MAX_WHEEL_STEPS_PER_EVENT, MAX_WINDOW_TITLE_BYTES,
-        WINDOW_TITLE,
+        sync_ime_cursor_area_with, terminal_accepts_input, terminal_cell_at_pointer,
+        terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
+        ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
+        ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseMotionDispatchOutcome,
+        MouseMotionState, MouseWheelRoute, MouseWheelState, PointerRouteState, ReaderStatus,
+        ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
+        WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES,
+        MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
+        MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
+        MAX_TERMINAL_ROWS, MAX_WHEEL_STEPS_PER_EVENT, WINDOW_TITLE,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
@@ -3298,35 +3256,6 @@ mod tests {
     }
 
     #[test]
-    fn window_title_sync_applies_osc_changes_once_and_restores_the_default() {
-        let mut applied_title = WINDOW_TITLE.to_string();
-        let applied = RefCell::new(Vec::new());
-
-        assert!(!sync_window_title_with(&mut applied_title, "", |title| {
-            applied.borrow_mut().push(title.to_string())
-        },));
-        assert!(sync_window_title_with(
-            &mut applied_title,
-            "htop — 日本",
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert!(!sync_window_title_with(
-            &mut applied_title,
-            "htop — 日本",
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert!(sync_window_title_with(&mut applied_title, "", |title| {
-            applied.borrow_mut().push(title.to_string())
-        },));
-
-        assert_eq!(applied_title, WINDOW_TITLE);
-        assert_eq!(
-            applied.into_inner(),
-            ["htop — 日本".to_string(), WINDOW_TITLE.to_string()]
-        );
-    }
-
-    #[test]
     fn window_title_snapshot_reads_the_latest_grid_title() {
         let mut grid = Grid::new(2, 1, 0);
         grid.title = "Codex — kokuban".to_string();
@@ -3335,43 +3264,6 @@ mod tests {
             snapshot_window_title(&Mutex::new(grid)).expect("title snapshot should succeed");
 
         assert_eq!(title, "Codex — kokuban");
-    }
-
-    #[test]
-    fn window_title_sync_removes_controls_and_truncates_on_utf8_boundaries() {
-        let mut applied_title = WINDOW_TITLE.to_string();
-        let applied = RefCell::new(Vec::new());
-
-        assert!(sync_window_title_with(
-            &mut applied_title,
-            "a\0b\nc\u{7f}\u{85}",
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert_eq!(applied_title, "abc");
-        assert!(!sync_window_title_with(
-            &mut applied_title,
-            "a\tb\rc",
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert!(sync_window_title_with(
-            &mut applied_title,
-            "\0\n\u{7f}",
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert_eq!(applied_title, WINDOW_TITLE);
-
-        let oversized = format!("{}日", "x".repeat(MAX_WINDOW_TITLE_BYTES - 1));
-        assert!(sync_window_title_with(
-            &mut applied_title,
-            &oversized,
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert_eq!(applied_title.len(), MAX_WINDOW_TITLE_BYTES - 1);
-        assert!(applied_title.bytes().all(|byte| byte == b'x'));
-        assert_eq!(
-            applied.borrow().as_slice(),
-            ["abc", WINDOW_TITLE, applied_title.as_str()]
-        );
     }
 
     #[test]

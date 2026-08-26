@@ -25,6 +25,8 @@ mod terminal_writer;
 mod terminal_colors;
 #[cfg(target_os = "macos")]
 mod renderer;
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+mod window_title;
 
 #[cfg(target_os = "macos")]
 fn main() -> std::process::ExitCode {
