@@ -126,7 +126,8 @@ pub struct Grid {
     pub underline_style: UnderlineStyle,
     pub underline_color: Color,
     // Terminal state from OSC sequences
-    pub title: String,
+    title: String,
+    title_revision: u64,
     pub cwd: String,
     // Prompt marks
     pub marks: MarkIndex,
@@ -185,6 +186,7 @@ impl Grid {
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
             title: String::new(),
+            title_revision: 0,
             cwd: String::new(),
             marks: MarkIndex::default(),
             total_lines_pushed: 0,
@@ -213,6 +215,28 @@ impl Grid {
     }
     pub fn scrollback_len(&self) -> usize { self.scrollback.len() }
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
+
+    pub(crate) fn title(&self) -> &str { &self.title }
+    pub(crate) fn title_revision(&self) -> u64 { self.title_revision }
+
+    pub(crate) fn set_title(&mut self, title: &str) {
+        if self.title == title {
+            return;
+        }
+
+        self.title.clear();
+        self.title.push_str(title);
+        self.title_revision = self.title_revision.wrapping_add(1);
+    }
+
+    pub(crate) fn reset_terminal_state(&mut self) {
+        let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
+        // RIS clears the title, but consumers still need a monotonic change signal.
+        reset.title_revision = self
+            .title_revision
+            .wrapping_add(u64::from(!self.title.is_empty()));
+        *self = reset;
+    }
 
     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
         self.scrollback_cell_data(row, col).c
