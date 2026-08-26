@@ -13,6 +13,7 @@ use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
 use softbuffer::{Context, Surface};
+use std::borrow::Cow;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -28,6 +29,7 @@ use winit::keyboard::ModifiersState;
 use winit::window::{ImePurpose, Window, WindowId};
 
 const WINDOW_TITLE: &str = "黒板kokuban";
+const MAX_WINDOW_TITLE_BYTES: usize = 1024;
 const INITIAL_CELL_WIDTH: u32 = 10;
 const INITIAL_CELL_HEIGHT: u32 = 20;
 // Keep the pre-atlas placeholder modest; Winit interprets this size in logical pixels.
@@ -60,6 +62,7 @@ type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
 #[derive(Debug)]
 enum LinuxEvent {
     GridUpdated,
+    WindowTitleChanged,
     ReaderExited(ReaderStatus),
     WriterExited(WriterStatus),
 }
@@ -575,6 +578,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
             .map_err(|error| format!("could not start the Linux shell: {error}"))?,
     );
     let redraw_pending = Arc::new(AtomicBool::new(false));
+    let window_title_pending = Arc::new(AtomicBool::new(false));
     let event_proxy = event_loop.create_proxy();
     let writer_proxy = event_proxy.clone();
     let mut writer = TerminalWriter::spawn(pty.clone(), move |exit| {
@@ -583,10 +587,20 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     .map_err(|error| format!("could not start the Linux terminal writer: {error}"))?;
     let update_proxy = event_proxy.clone();
     let update_pending = redraw_pending.clone();
+    let update_title_grid = grid.clone();
+    let update_title_pending = window_title_pending.clone();
+    let mut observed_window_title = WINDOW_TITLE.to_string();
     let reader = match TerminalReader::spawn_text(
         pty.clone(),
         grid.clone(),
-        move || signal_grid_update(&update_proxy, update_pending.as_ref()),
+        move || {
+            signal_grid_update(&update_proxy, update_pending.as_ref());
+            if changed_window_title(update_title_grid.as_ref(), &mut observed_window_title)
+                .unwrap_or(false)
+            {
+                signal_window_title_update(&update_proxy, update_title_pending.as_ref());
+            }
+        },
         move |exit| {
             let _ = event_proxy.send_event(LinuxEvent::ReaderExited(classify_reader_exit(exit)));
         },
@@ -616,6 +630,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         reader,
         writer,
         redraw_pending,
+        window_title_pending,
     );
 
     let run_result = event_loop
@@ -649,11 +664,13 @@ struct LinuxWindow {
     initial_size: LogicalSize<u32>,
     exit_after_first_frame: bool,
     first_frame_presented: bool,
+    applied_window_title: String,
     grid: Arc<Mutex<Grid>>,
     pty: Arc<Pty>,
     reader: Option<TerminalReader>,
     writer: Option<TerminalWriter>,
     redraw_pending: Arc<AtomicBool>,
+    window_title_pending: Arc<AtomicBool>,
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
@@ -677,6 +694,7 @@ impl LinuxWindow {
         reader: TerminalReader,
         writer: TerminalWriter,
         redraw_pending: Arc<AtomicBool>,
+        window_title_pending: Arc<AtomicBool>,
     ) -> Self {
         Self {
             surface: None,
@@ -692,11 +710,13 @@ impl LinuxWindow {
             initial_size,
             exit_after_first_frame,
             first_frame_presented: false,
+            applied_window_title: WINDOW_TITLE.to_string(),
             grid,
             pty,
             reader: Some(reader),
             writer: Some(writer),
             redraw_pending,
+            window_title_pending,
             reader_status: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
@@ -718,6 +738,11 @@ impl LinuxWindow {
                 .create_window(attributes)
                 .map_err(|error| format!("could not create an opaque window: {error}"))?,
         );
+        let initial_title =
+            snapshot_window_title(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        sync_window_title_with(&mut self.applied_window_title, &initial_title, |title| {
+            window.set_title(title)
+        });
         window.set_ime_purpose(ImePurpose::Terminal);
         window.set_ime_allowed(true);
         let context = Context::new(window.clone())
@@ -1367,6 +1392,22 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     window.request_redraw();
                 }
             }
+            LinuxEvent::WindowTitleChanged => {
+                begin_window_title_update(self.window_title_pending.as_ref());
+                let Some(window) = self.window.as_ref() else {
+                    return;
+                };
+                let title = match snapshot_window_title(self.grid.as_ref()) {
+                    Ok(title) => title,
+                    Err(error) => {
+                        self.fail(event_loop, error.to_string());
+                        return;
+                    }
+                };
+                sync_window_title_with(&mut self.applied_window_title, &title, |title| {
+                    window.set_title(title)
+                });
+            }
             LinuxEvent::ReaderExited(status) => {
                 self.update_ime_preedit(None);
                 if self.reader_status.is_none() {
@@ -1395,6 +1436,60 @@ fn terminal_color_query_value(color: (u8, u8, u8)) -> String {
     format!("{:02x}{:02x}{:02x}", color.0, color.1, color.2)
 }
 
+fn sync_window_title_with<F>(applied_title: &mut String, osc_title: &str, set_title: F) -> bool
+where
+    F: FnOnce(&str),
+{
+    let next_title = normalized_window_title(osc_title);
+    if applied_title == next_title.as_ref() {
+        return false;
+    }
+
+    set_title(next_title.as_ref());
+    applied_title.clear();
+    applied_title.push_str(next_title.as_ref());
+    true
+}
+
+fn normalized_window_title(title: &str) -> Cow<'_, str> {
+    if title.is_empty() {
+        return Cow::Borrowed(WINDOW_TITLE);
+    }
+
+    let needs_filter = title.chars().any(char::is_control);
+    if !needs_filter && title.len() <= MAX_WINDOW_TITLE_BYTES {
+        return Cow::Borrowed(title);
+    }
+
+    let mut normalized = String::with_capacity(title.len().min(MAX_WINDOW_TITLE_BYTES));
+    for character in title.chars().filter(|character| !character.is_control()) {
+        if normalized.len() + character.len_utf8() > MAX_WINDOW_TITLE_BYTES {
+            break;
+        }
+        normalized.push(character);
+    }
+    if normalized.is_empty() {
+        Cow::Borrowed(WINDOW_TITLE)
+    } else {
+        Cow::Owned(normalized)
+    }
+}
+
+fn changed_window_title(
+    grid: &Mutex<Grid>,
+    observed_title: &mut String,
+) -> Result<bool, GridAccessError> {
+    let grid = grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+    let next_title = normalized_window_title(&grid.title);
+    if observed_title == next_title.as_ref() {
+        return Ok(false);
+    }
+
+    observed_title.clear();
+    observed_title.push_str(next_title.as_ref());
+    Ok(true)
+}
+
 fn signal_grid_update(
     event_proxy: &winit::event_loop::EventLoopProxy<LinuxEvent>,
     redraw_pending: &AtomicBool,
@@ -1402,6 +1497,29 @@ fn signal_grid_update(
     if arm_grid_redraw(redraw_pending) && event_proxy.send_event(LinuxEvent::GridUpdated).is_err() {
         redraw_pending.store(false, Ordering::Release);
     }
+}
+
+fn signal_window_title_update(
+    event_proxy: &winit::event_loop::EventLoopProxy<LinuxEvent>,
+    update_pending: &AtomicBool,
+) {
+    if arm_window_title_update(update_pending)
+        && event_proxy
+            .send_event(LinuxEvent::WindowTitleChanged)
+            .is_err()
+    {
+        update_pending.store(false, Ordering::Release);
+    }
+}
+
+fn arm_window_title_update(update_pending: &AtomicBool) -> bool {
+    update_pending
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn begin_window_title_update(update_pending: &AtomicBool) {
+    update_pending.store(false, Ordering::Release);
 }
 
 fn arm_grid_redraw(redraw_pending: &AtomicBool) -> bool {
@@ -2318,6 +2436,12 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
     })
 }
 
+fn snapshot_window_title(grid: &Mutex<Grid>) -> Result<String, GridAccessError> {
+    grid.lock()
+        .map(|grid| normalized_window_title(&grid.title).into_owned())
+        .map_err(|_| GridAccessError::Poisoned)
+}
+
 fn ime_cursor_area(
     input_cursor: (usize, usize),
     grid_dimensions: (usize, usize),
@@ -3006,9 +3130,10 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
 mod tests {
     use super::{
         accumulate_wheel_steps, apply_scrollback_action, apply_terminal_resize, arm_grid_redraw,
-        atlas_cell_dimensions, begin_grid_redraw, classify_reader_exit, classify_writer_exit,
-        combine_launch_results, configured_terminal_dimensions, contrasting_cursor_color,
-        dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
+        arm_window_title_update, atlas_cell_dimensions, begin_grid_redraw,
+        begin_window_title_update, changed_window_title, classify_reader_exit,
+        classify_writer_exit, combine_launch_results, configured_terminal_dimensions,
+        contrasting_cursor_color, dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
         dispatch_keyboard_input_with, dispatch_mouse_button_and_motion_with,
         dispatch_mouse_button_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
         draw_cell_glyph, draw_grid_snapshot, draw_ime_preedit, drawable_dimensions,
@@ -3019,17 +3144,18 @@ mod tests {
         modifiers_after_focus_change, mouse_button_code_from_winit, mouse_button_with_modifiers,
         physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
         replace_ime_preedit, resize_terminal_with, resolve_cell_colors, reveal_ime_input_viewport,
-        rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
-        sync_ime_cursor_area_with, terminal_accepts_input, terminal_cell_at_pointer,
-        terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
-        ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
-        ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseMotionDispatchOutcome,
-        MouseMotionState, MouseWheelRoute, MouseWheelState, PointerRouteState, ReaderStatus,
-        ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
-        WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES,
-        MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
-        MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
-        MAX_TERMINAL_ROWS, MAX_WHEEL_STEPS_PER_EVENT,
+        rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid, snapshot_window_title,
+        sync_ime_cursor_area_with, sync_window_title_with, terminal_accepts_input,
+        terminal_cell_at_pointer, terminal_color_query_value, terminal_dimensions_for_surface,
+        GridAccessError, ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph,
+        ImePreeditLayout, ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome,
+        MouseMotionDispatchOutcome, MouseMotionState, MouseWheelRoute, MouseWheelState,
+        PointerRouteState, ReaderStatus, ResolvedCellColors, SurfaceSizeError, TerminalDimensions,
+        TerminalResizeError, WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT,
+        MAX_IME_PREEDIT_BYTES, MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT,
+        MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH,
+        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS, MAX_WHEEL_STEPS_PER_EVENT, MAX_WINDOW_TITLE_BYTES,
+        WINDOW_TITLE,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
@@ -3169,6 +3295,122 @@ mod tests {
     #[test]
     fn terminal_query_colors_are_canonical_six_digit_hex() {
         assert_eq!(terminal_color_query_value((0, 10, 255)), "000aff");
+    }
+
+    #[test]
+    fn window_title_sync_applies_osc_changes_once_and_restores_the_default() {
+        let mut applied_title = WINDOW_TITLE.to_string();
+        let applied = RefCell::new(Vec::new());
+
+        assert!(!sync_window_title_with(&mut applied_title, "", |title| {
+            applied.borrow_mut().push(title.to_string())
+        },));
+        assert!(sync_window_title_with(
+            &mut applied_title,
+            "htop — 日本",
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert!(!sync_window_title_with(
+            &mut applied_title,
+            "htop — 日本",
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert!(sync_window_title_with(&mut applied_title, "", |title| {
+            applied.borrow_mut().push(title.to_string())
+        },));
+
+        assert_eq!(applied_title, WINDOW_TITLE);
+        assert_eq!(
+            applied.into_inner(),
+            ["htop — 日本".to_string(), WINDOW_TITLE.to_string()]
+        );
+    }
+
+    #[test]
+    fn window_title_snapshot_reads_the_latest_grid_title() {
+        let mut grid = Grid::new(2, 1, 0);
+        grid.title = "Codex — kokuban".to_string();
+
+        let title =
+            snapshot_window_title(&Mutex::new(grid)).expect("title snapshot should succeed");
+
+        assert_eq!(title, "Codex — kokuban");
+    }
+
+    #[test]
+    fn window_title_sync_removes_controls_and_truncates_on_utf8_boundaries() {
+        let mut applied_title = WINDOW_TITLE.to_string();
+        let applied = RefCell::new(Vec::new());
+
+        assert!(sync_window_title_with(
+            &mut applied_title,
+            "a\0b\nc\u{7f}\u{85}",
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert_eq!(applied_title, "abc");
+        assert!(!sync_window_title_with(
+            &mut applied_title,
+            "a\tb\rc",
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert!(sync_window_title_with(
+            &mut applied_title,
+            "\0\n\u{7f}",
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert_eq!(applied_title, WINDOW_TITLE);
+
+        let oversized = format!("{}日", "x".repeat(MAX_WINDOW_TITLE_BYTES - 1));
+        assert!(sync_window_title_with(
+            &mut applied_title,
+            &oversized,
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert_eq!(applied_title.len(), MAX_WINDOW_TITLE_BYTES - 1);
+        assert!(applied_title.bytes().all(|byte| byte == b'x'));
+        assert_eq!(
+            applied.borrow().as_slice(),
+            ["abc", WINDOW_TITLE, applied_title.as_str()]
+        );
+    }
+
+    #[test]
+    fn window_title_change_detection_is_independent_from_frame_redraws() {
+        let grid = Mutex::new(Grid::new(2, 1, 0));
+        let mut observed_title = WINDOW_TITLE.to_string();
+
+        assert!(!changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        grid.lock().expect("Grid should lock").title = "btop\0 — 日本".to_string();
+        assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        assert_eq!(observed_title, "btop — 日本");
+        assert!(!changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        grid.lock().expect("Grid should lock").title = "\0\n".to_string();
+        assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        assert_eq!(observed_title, WINDOW_TITLE);
+    }
+
+    #[test]
+    fn window_title_events_coalesce_while_preserving_the_latest_value() {
+        let grid = Mutex::new(Grid::new(2, 1, 0));
+        let pending = AtomicBool::new(false);
+        let mut observed_title = WINDOW_TITLE.to_string();
+
+        grid.lock().expect("Grid should lock").title = "first".to_string();
+        assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        assert!(arm_window_title_update(&pending));
+
+        grid.lock().expect("Grid should lock").title = "latest".to_string();
+        assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        assert!(!arm_window_title_update(&pending));
+
+        begin_window_title_update(&pending);
+        assert_eq!(
+            snapshot_window_title(&grid).expect("latest title should be readable"),
+            "latest"
+        );
+        grid.lock().expect("Grid should lock").title = "after".to_string();
+        assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
+        assert!(arm_window_title_update(&pending));
     }
 
     #[test]
@@ -7092,6 +7334,17 @@ mod tests {
 
         assert_eq!(
             snapshot_grid(grid.as_ref()).expect_err("poisoned grid should not be recovered"),
+            GridAccessError::Poisoned
+        );
+        assert_eq!(
+            snapshot_window_title(grid.as_ref())
+                .expect_err("poisoned grid title should not be recovered"),
+            GridAccessError::Poisoned
+        );
+        let mut observed_title = WINDOW_TITLE.to_string();
+        assert_eq!(
+            changed_window_title(grid.as_ref(), &mut observed_title)
+                .expect_err("poisoned grid title changes should not be recovered"),
             GridAccessError::Poisoned
         );
         let pty_calls = AtomicUsize::new(0);
