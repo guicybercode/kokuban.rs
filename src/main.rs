@@ -19,6 +19,8 @@ mod software_raster;
 mod terminal_decoder;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod terminal_reader;
+#[cfg(target_os = "linux")]
+mod terminal_writer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
 #[cfg(target_os = "macos")]
