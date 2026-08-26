@@ -13,6 +13,7 @@ pub enum TerminalKey {
     End,
     PageUp,
     PageDown,
+    Insert,
     Delete,
     Function(u8),
 }
@@ -38,6 +39,7 @@ pub fn encode_terminal_key(key: TerminalKey, application_cursor_keys: bool) -> O
         TerminalKey::End => b"\x1b[F",
         TerminalKey::PageUp => b"\x1b[5~",
         TerminalKey::PageDown => b"\x1b[6~",
+        TerminalKey::Insert => b"\x1b[2~",
         TerminalKey::Delete => b"\x1b[3~",
         TerminalKey::Function(1) => b"\x1bOP",
         TerminalKey::Function(2) => b"\x1bOQ",
@@ -95,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn encodes_backtab_and_function_keys() {
+    fn encodes_backtab_editing_and_function_keys() {
         assert_eq!(
             encode_terminal_key(TerminalKey::Tab, true).as_deref(),
             Some(b"\t".as_slice())
@@ -103,6 +105,16 @@ mod tests {
         assert_eq!(
             encode_terminal_key(TerminalKey::BackTab, false).as_deref(),
             Some(b"\x1b[Z".as_slice())
+        );
+        for application_cursor_keys in [false, true] {
+            assert_eq!(
+                encode_terminal_key(TerminalKey::Insert, application_cursor_keys).as_deref(),
+                Some(b"\x1b[2~".as_slice())
+            );
+        }
+        assert_eq!(
+            encode_terminal_key(TerminalKey::Delete, true).as_deref(),
+            Some(b"\x1b[3~".as_slice())
         );
 
         let expected = [
