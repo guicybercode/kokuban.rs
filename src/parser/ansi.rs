@@ -13,6 +13,12 @@ const MAX_OSC_BYTES: usize = 64 * 1024;
 const MAX_APC_BYTES: usize = 16 * 1024;
 const MAX_DCS_BYTES: usize = 16 * 1024 * 1024;
 
+fn terminal_pixel_extent(cells: usize, cell_pixels: u16) -> u64 {
+    u64::try_from(cells)
+        .unwrap_or(u64::MAX)
+        .saturating_mul(u64::from(cell_pixels))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ControlStringKind {
     Osc,
@@ -757,8 +763,8 @@ impl Parser {
                 match ps {
                     14 => {
                         // Report terminal size in pixels
-                        let h = grid.rows() as u16 * grid.cell_pixel_height;
-                        let w = grid.cols() as u16 * grid.cell_pixel_width;
+                        let h = terminal_pixel_extent(grid.rows(), grid.cell_pixel_height);
+                        let w = terminal_pixel_extent(grid.cols(), grid.cell_pixel_width);
                         let resp = format!("\x1b[4;{h};{w}t");
                         grid.queue_response(resp.into_bytes());
                     }
@@ -1033,7 +1039,8 @@ impl Utf8Parser {
 #[cfg(test)]
 mod tests {
     use super::{
-        ControlStringLimits, GraphicsSupport, Utf8Parser, MAX_CSI_PARAMS, MAX_INTERMEDIATES,
+        terminal_pixel_extent, ControlStringLimits, GraphicsSupport, Utf8Parser, MAX_CSI_PARAMS,
+        MAX_INTERMEDIATES,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::{Grid, TerminalEvent};
@@ -1124,6 +1131,41 @@ mod tests {
                 [TerminalEvent::Response(response)] if response == expected_da1
             ));
         }
+    }
+
+    #[test]
+    fn terminal_pixel_extent_saturates_at_the_u64_limit() {
+        let exact_extent = u128::try_from(usize::MAX)
+            .unwrap_or(u128::MAX)
+            .saturating_mul(u128::from(u16::MAX));
+        let expected = u64::try_from(exact_extent).unwrap_or(u64::MAX);
+
+        assert_eq!(terminal_pixel_extent(usize::MAX, u16::MAX), expected);
+    }
+
+    #[test]
+    fn terminal_pixel_report_preserves_extents_larger_than_u16() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(1024, 256, 0);
+        grid.cell_pixel_width = u16::MAX;
+        grid.cell_pixel_height = u16::MAX;
+
+        parser.feed(b"\x1b[14t", &mut grid);
+
+        assert_eq!(
+            terminal_pixel_extent(grid.cols(), grid.cell_pixel_width),
+            67_107_840
+        );
+        assert_eq!(
+            terminal_pixel_extent(grid.rows(), grid.cell_pixel_height),
+            16_776_960
+        );
+        let events = grid.drain_terminal_events();
+        assert!(matches!(
+            events.as_slice(),
+            [TerminalEvent::Response(response)]
+                if response == b"\x1b[4;16776960;67107840t"
+        ));
     }
 
     #[test]
