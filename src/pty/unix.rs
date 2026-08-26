@@ -15,6 +15,7 @@ use std::sync::{Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
 const WRITE_RETRY_INTERVAL: Duration = Duration::from_millis(1);
+const CHILD_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CancellableWriteOutcome {
@@ -84,6 +85,7 @@ impl Pty {
         let (error_reader, error_writer) = pipe()?;
         let error_reader = prepare_child_fd(error_reader)?;
         let error_writer = prepare_child_fd(error_writer)?;
+        set_nonblocking(error_reader.as_raw_fd())?;
 
         // Everything the child needs is allocated before fork. New panes can
         // be created after renderer and PTY threads exist, so the child must
@@ -529,24 +531,53 @@ fn prepare_child_fd(fd: OwnedFd) -> Result<OwnedFd, PtyError> {
 }
 
 fn child_startup_status(error_reader: &OwnedFd) -> Result<Option<u8>, PtyError> {
+    let started = Instant::now();
     let mut poll_fds = [PollFd::new(
         error_reader.as_fd(),
         PollFlags::POLLIN | PollFlags::POLLHUP,
     )];
-    loop {
-        match poll(&mut poll_fds, 5_000u16) {
-            Ok(0) => return Err(PtyError::ChildStartupTimeout),
-            Ok(_) => break,
-            Err(nix::errno::Errno::EINTR) => continue,
-            Err(error) => return Err(PtyError::OpenPty(error)),
-        }
-    }
 
+    child_startup_status_with(
+        CHILD_STARTUP_TIMEOUT,
+        || started.elapsed(),
+        |timeout| match poll(&mut poll_fds, timeout)? {
+            0 => Ok(ReadPollResult::TimedOut),
+            _ => Ok(ReadPollResult::Events(poll_fds[0].revents())),
+        },
+        |stage| nix::unistd::read(error_reader.as_raw_fd(), stage),
+    )
+}
+
+fn child_startup_status_with<E, P, R>(
+    timeout: Duration,
+    mut elapsed: E,
+    mut poll_once: P,
+    mut read_once: R,
+) -> Result<Option<u8>, PtyError>
+where
+    E: FnMut() -> Duration,
+    P: FnMut(PollTimeout) -> nix::Result<ReadPollResult>,
+    R: FnMut(&mut [u8]) -> nix::Result<usize>,
+{
     let mut stage = [0u8; 1];
     loop {
-        match nix::unistd::read(error_reader.as_raw_fd(), &mut stage) {
-            Ok(0) => return Ok(None),
-            Ok(_) => return Ok(Some(stage[0])),
+        let elapsed = elapsed();
+        if elapsed >= timeout {
+            return Err(PtyError::ChildStartupTimeout);
+        }
+
+        let remaining = timeout.saturating_sub(elapsed);
+        match poll_once(poll_timeout_for(remaining)) {
+            Ok(ReadPollResult::TimedOut) => continue,
+            Ok(ReadPollResult::Events(events)) => {
+                classify_readable_events(events)?;
+                match read_once(&mut stage) {
+                    Ok(0) => return Ok(None),
+                    Ok(_) => return Ok(Some(stage[0])),
+                    Err(nix::errno::Errno::EINTR | nix::errno::Errno::EAGAIN) => continue,
+                    Err(error) => return Err(PtyError::OpenPty(error)),
+                }
+            }
             Err(nix::errno::Errno::EINTR) => continue,
             Err(error) => return Err(PtyError::OpenPty(error)),
         }
@@ -677,9 +708,9 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        child_environment, classify_readable_events, poll_timeout_for, resize_with_ioctl,
-        select_shell, set_cloexec, wait_readable_with, write_all_cancellable_with, write_all_with,
-        CancellableWriteOutcome, Pty, ReadPollResult,
+        child_environment, child_startup_status_with, classify_readable_events, poll_timeout_for,
+        resize_with_ioctl, select_shell, set_cloexec, wait_readable_with,
+        write_all_cancellable_with, write_all_with, CancellableWriteOutcome, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -1217,6 +1248,213 @@ mod tests {
 
         assert!(!readable);
         assert_eq!(observed_timeouts, [Some(100), Some(70), Some(30)]);
+    }
+
+    #[test]
+    fn child_startup_interrupts_share_the_original_deadline() {
+        let mut elapsed = [
+            Duration::ZERO,
+            Duration::from_millis(20),
+            Duration::from_millis(50),
+            Duration::from_millis(80),
+            Duration::from_millis(100),
+        ]
+        .into_iter();
+        let mut poll_outcomes = [
+            Err(nix::errno::Errno::EINTR),
+            Ok(ReadPollResult::Events(Some(PollFlags::POLLIN))),
+            Ok(ReadPollResult::Events(Some(PollFlags::POLLIN))),
+            Ok(ReadPollResult::TimedOut),
+        ]
+        .into_iter();
+        let mut read_outcomes = [
+            Err(nix::errno::Errno::EINTR),
+            Err(nix::errno::Errno::EAGAIN),
+        ]
+        .into_iter();
+        let mut observed_timeouts = Vec::new();
+        let mut read_calls = 0;
+
+        let error = child_startup_status_with(
+            Duration::from_millis(100),
+            || elapsed.next().expect("scripted clock should have a value"),
+            |poll_timeout| {
+                observed_timeouts.push(poll_timeout.as_millis());
+                poll_outcomes
+                    .next()
+                    .expect("scripted poll should have a result")
+            },
+            |_| {
+                read_calls += 1;
+                read_outcomes
+                    .next()
+                    .expect("scripted read should have a result")
+            },
+        )
+        .expect_err("the shared startup deadline should expire");
+
+        assert!(matches!(error, PtyError::ChildStartupTimeout));
+        assert_eq!(observed_timeouts, [Some(100), Some(80), Some(50), Some(20)]);
+        assert_eq!(read_calls, 2);
+    }
+
+    #[test]
+    fn child_startup_read_interrupt_stops_at_the_deadline() {
+        let mut elapsed = [Duration::ZERO, Duration::from_millis(100)].into_iter();
+        let mut poll_calls = 0;
+        let mut read_calls = 0;
+
+        let error = child_startup_status_with(
+            Duration::from_millis(100),
+            || elapsed.next().expect("scripted clock should have a value"),
+            |poll_timeout| {
+                poll_calls += 1;
+                assert_eq!(poll_timeout.as_millis(), Some(100));
+                Ok(ReadPollResult::Events(Some(PollFlags::POLLIN)))
+            },
+            |_| {
+                read_calls += 1;
+                Err(nix::errno::Errno::EINTR)
+            },
+        )
+        .expect_err("an interrupted read must not outlive the startup deadline");
+
+        assert!(matches!(error, PtyError::ChildStartupTimeout));
+        assert_eq!(poll_calls, 1);
+        assert_eq!(read_calls, 1);
+    }
+
+    #[test]
+    fn child_startup_interrupts_can_finish_before_the_deadline() {
+        let mut elapsed = [
+            Duration::ZERO,
+            Duration::from_millis(10),
+            Duration::from_millis(20),
+            Duration::from_millis(30),
+        ]
+        .into_iter();
+        let mut poll_calls = 0;
+        let mut read_calls = 0;
+
+        let status = child_startup_status_with(
+            Duration::from_millis(100),
+            || elapsed.next().expect("scripted clock should have a value"),
+            |_| {
+                poll_calls += 1;
+                if poll_calls == 1 {
+                    Err(nix::errno::Errno::EINTR)
+                } else {
+                    Ok(ReadPollResult::Events(Some(PollFlags::POLLIN)))
+                }
+            },
+            |stage| {
+                read_calls += 1;
+                match read_calls {
+                    1 => Err(nix::errno::Errno::EINTR),
+                    2 => Err(nix::errno::Errno::EAGAIN),
+                    _ => {
+                        stage[0] = 4;
+                        Ok(1)
+                    }
+                }
+            },
+        )
+        .expect("the child status should arrive within the shared deadline");
+
+        assert_eq!(status, Some(4));
+        assert_eq!(poll_calls, 4);
+        assert_eq!(read_calls, 3);
+    }
+
+    #[test]
+    fn child_startup_preserves_native_poll_and_read_errors() {
+        let mut poll_calls = 0;
+        let mut read_calls = 0;
+        let poll_error = child_startup_status_with(
+            Duration::from_secs(1),
+            || Duration::ZERO,
+            |_| {
+                poll_calls += 1;
+                Err(nix::errno::Errno::EIO)
+            },
+            |_| {
+                read_calls += 1;
+                Ok(0)
+            },
+        )
+        .expect_err("native poll failures should be returned");
+        assert!(matches!(
+            poll_error,
+            PtyError::OpenPty(nix::errno::Errno::EIO)
+        ));
+        assert_eq!(poll_calls, 1);
+        assert_eq!(read_calls, 0);
+
+        let mut poll_calls = 0;
+        let mut read_calls = 0;
+        let read_error = child_startup_status_with(
+            Duration::from_secs(1),
+            || Duration::ZERO,
+            |_| {
+                poll_calls += 1;
+                Ok(ReadPollResult::Events(Some(PollFlags::POLLIN)))
+            },
+            |_| {
+                read_calls += 1;
+                Err(nix::errno::Errno::EIO)
+            },
+        )
+        .expect_err("native read failures should be returned");
+        assert!(matches!(
+            read_error,
+            PtyError::OpenPty(nix::errno::Errno::EIO)
+        ));
+        assert_eq!(poll_calls, 1);
+        assert_eq!(read_calls, 1);
+    }
+
+    #[test]
+    fn child_startup_hangup_preserves_eof_and_failure_stage_statuses() {
+        let success = child_startup_status_with(
+            Duration::from_secs(1),
+            || Duration::ZERO,
+            |_| Ok(ReadPollResult::Events(Some(PollFlags::POLLHUP))),
+            |_| Ok(0),
+        )
+        .expect("EOF should report successful exec");
+        assert_eq!(success, None);
+
+        let failure = child_startup_status_with(
+            Duration::from_secs(1),
+            || Duration::ZERO,
+            |_| Ok(ReadPollResult::Events(Some(PollFlags::POLLHUP))),
+            |stage| {
+                stage[0] = 4;
+                Ok(1)
+            },
+        )
+        .expect("a child failure stage should be reported");
+        assert_eq!(failure, Some(4));
+    }
+
+    #[test]
+    fn child_startup_rejects_invalid_poll_events_without_reading() {
+        for events in [Some(PollFlags::POLLNVAL), Some(PollFlags::empty()), None] {
+            let mut read_calls = 0;
+            let error = child_startup_status_with(
+                Duration::from_secs(1),
+                || Duration::ZERO,
+                |_| Ok(ReadPollResult::Events(events)),
+                |_| {
+                    read_calls += 1;
+                    Ok(0)
+                },
+            )
+            .expect_err("invalid poll events should fail the startup handshake");
+
+            assert!(matches!(error, PtyError::Io(_)));
+            assert_eq!(read_calls, 0);
+        }
     }
 
     #[test]
