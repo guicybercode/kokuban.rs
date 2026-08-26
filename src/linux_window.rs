@@ -7,8 +7,9 @@ use crate::input::linux::{
     ImeCommitPayload, ScrollbackAction,
 };
 use crate::input::mouse::{
-    encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
-    MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
+    encode_alternate_scroll_steps, encode_mouse_event, mouse_button_with_modifier_flags,
+    mouse_wheel_route, MouseWheelRoute, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
+    MAX_WHEEL_STEPS_PER_EVENT,
 };
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, fill_rect};
@@ -48,9 +49,6 @@ const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 const MAX_IME_PREEDIT_BYTES: usize = 4 * 1024;
 const MAX_IME_PREEDIT_RENDER_CELLS: usize = 1024;
 const IME_PREEDIT_REPLACEMENT: char = '\u{fffd}';
-const MOUSE_SHIFT_MODIFIER: u8 = 4;
-const MOUSE_META_MODIFIER: u8 = 8;
-const MOUSE_CONTROL_MODIFIER: u8 = 16;
 const MOUSE_MOTION_FLAG: u8 = 32;
 const MOUSE_NO_BUTTON: u8 = 3;
 // Limit the Grid/snapshot budget to 262,144 visible cells while still covering wide 8K layouts.
@@ -1902,17 +1900,12 @@ fn apply_wheel_scrollback(grid: &mut Grid, steps: i32) -> bool {
 }
 
 fn mouse_button_with_modifiers(button: u8, modifiers: ModifiersState) -> u8 {
-    let mut encoded = button;
-    if modifiers.shift_key() {
-        encoded |= MOUSE_SHIFT_MODIFIER;
-    }
-    if modifiers.alt_key() {
-        encoded |= MOUSE_META_MODIFIER;
-    }
-    if modifiers.control_key() {
-        encoded |= MOUSE_CONTROL_MODIFIER;
-    }
-    encoded
+    mouse_button_with_modifier_flags(
+        button,
+        modifiers.shift_key(),
+        modifiers.alt_key(),
+        modifiers.control_key(),
+    )
 }
 
 fn mouse_button_code_from_winit(button: MouseButton) -> Option<u8> {

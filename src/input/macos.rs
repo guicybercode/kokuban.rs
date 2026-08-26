@@ -1,4 +1,5 @@
 use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
+use super::mouse::mouse_button_with_modifier_flags;
 use objc2_app_kit::{NSEvent, NSEventModifierFlags};
 
 pub fn translate_key_event(event: &NSEvent, application_cursor_keys: bool) -> Option<Vec<u8>> {
@@ -43,6 +44,18 @@ pub fn translate_key_event(event: &NSEvent, application_cursor_keys: bool) -> Op
     }
 
     Some(chars_str.into_bytes())
+}
+
+pub(crate) fn mouse_button_with_appkit_modifiers(
+    button: u8,
+    modifiers: NSEventModifierFlags,
+) -> u8 {
+    mouse_button_with_modifier_flags(
+        button,
+        modifiers.contains(NSEventModifierFlags::Shift),
+        modifiers.contains(NSEventModifierFlags::Option),
+        modifiers.contains(NSEventModifierFlags::Control),
+    )
 }
 
 fn encode_macos_terminal_key(
@@ -98,8 +111,12 @@ fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<Terminal
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_macos_terminal_key, terminal_key_from_key_code};
+    use super::{
+        encode_macos_terminal_key, mouse_button_with_appkit_modifiers,
+        terminal_key_from_key_code,
+    };
     use crate::input::keyboard::TerminalKey;
+    use crate::input::mouse::{MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
     use objc2_app_kit::NSEventModifierFlags;
 
     #[test]
@@ -157,6 +174,49 @@ mod tests {
         assert_eq!(
             encode_macos_terminal_key(48, NSEventModifierFlags::Shift, false).as_deref(),
             Some(b"\x1b[Z".as_slice())
+        );
+    }
+
+    #[test]
+    fn macos_mouse_modifiers_map_exact_xterm_bits() {
+        for (modifiers, expected) in [
+            (NSEventModifierFlags::empty(), 64),
+            (NSEventModifierFlags::Shift, 68),
+            (NSEventModifierFlags::Option, 72),
+            (NSEventModifierFlags::Control, 80),
+            (NSEventModifierFlags::Shift | NSEventModifierFlags::Option, 76),
+            (NSEventModifierFlags::Shift | NSEventModifierFlags::Control, 84),
+            (NSEventModifierFlags::Option | NSEventModifierFlags::Control, 88),
+            (
+                NSEventModifierFlags::Shift
+                    | NSEventModifierFlags::Option
+                    | NSEventModifierFlags::Control,
+                92,
+            ),
+        ] {
+            assert_eq!(
+                mouse_button_with_appkit_modifiers(MOUSE_WHEEL_UP, modifiers),
+                expected,
+            );
+        }
+
+        let ignored = NSEventModifierFlags::Command
+            | NSEventModifierFlags::CapsLock
+            | NSEventModifierFlags::Function
+            | NSEventModifierFlags::NumericPad;
+        assert_eq!(
+            mouse_button_with_appkit_modifiers(MOUSE_WHEEL_UP, ignored),
+            MOUSE_WHEEL_UP,
+        );
+        assert_eq!(
+            mouse_button_with_appkit_modifiers(
+                MOUSE_WHEEL_DOWN,
+                ignored
+                    | NSEventModifierFlags::Shift
+                    | NSEventModifierFlags::Option
+                    | NSEventModifierFlags::Control,
+            ),
+            93,
         );
     }
 }
