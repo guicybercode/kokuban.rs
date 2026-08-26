@@ -16,6 +16,8 @@ use std::time::{Duration, Instant};
 
 const WRITE_RETRY_INTERVAL: Duration = Duration::from_millis(1);
 const CHILD_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+const FINAL_REAP_TIMEOUT: Duration = Duration::from_millis(100);
+const CHILD_REAP_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CancellableWriteOutcome {
@@ -117,7 +119,7 @@ impl Pty {
                     Ok(None) => {}
                     Ok(Some(stage)) => {
                         drop(master);
-                        reap_child(child);
+                        cleanup_reported_child_failure(child);
                         return Err(PtyError::ChildSetup(child_stage_name(stage)));
                     }
                     Err(error) => {
@@ -387,11 +389,13 @@ impl Drop for Pty {
         // behavior before the bounded cleanup routine escalates signals.
         drop(self.master.take());
 
-        let child_reaped = match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-            Ok(WaitStatus::StillAlive) | Ok(WaitStatus::Stopped(_, _)) => false,
-            Err(nix::errno::Errno::EINTR) => false,
-            Ok(_) | Err(nix::errno::Errno::ECHILD) => true,
-            Err(_) => return,
+        let child_reaped = match classify_child_wait(waitpid(pid, Some(WaitPidFlag::WNOHANG))) {
+            ChildWaitState::Reaped => true,
+            ChildWaitState::Pending => false,
+            ChildWaitState::Error(error) => {
+                log::warn!("failed to check PTY child {pid} during drop: {error}; cleaning up");
+                false
+            }
         };
         if child_reaped && !process_groups_alive(pid, foreground_group) {
             return;
@@ -594,25 +598,170 @@ fn child_stage_name(stage: u8) -> &'static str {
     }
 }
 
+fn cleanup_reported_child_failure(child: Pid) {
+    cleanup_reported_child_failure_with(
+        child,
+        |pid, signal| {
+            let _ = kill(pid, signal);
+        },
+        |timeout| wait_for_child_reap(child, timeout),
+        handoff_child_reap,
+    );
+}
+
+fn cleanup_reported_child_failure_with<K, W, H>(
+    child: Pid,
+    kill_child: K,
+    wait_for_reap: W,
+    handoff_reap: H,
+) where
+    K: FnOnce(Pid, Signal),
+    W: FnOnce(Duration) -> bool,
+    H: FnOnce(Pid),
+{
+    kill_child(child, Signal::SIGKILL);
+    if !wait_for_reap(FINAL_REAP_TIMEOUT) {
+        handoff_reap(child);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ChildWaitState {
+    Reaped,
+    Pending,
+    Error(nix::errno::Errno),
+}
+
+fn classify_child_wait(result: nix::Result<WaitStatus>) -> ChildWaitState {
+    match result {
+        Ok(WaitStatus::Exited(_, _)) | Ok(WaitStatus::Signaled(_, _, _)) => ChildWaitState::Reaped,
+        Err(nix::errno::Errno::ECHILD) => ChildWaitState::Reaped,
+        Ok(_) | Err(nix::errno::Errno::EINTR) => ChildWaitState::Pending,
+        Err(error) => ChildWaitState::Error(error),
+    }
+}
+
 fn reap_child(pid: Pid) {
-    while let Err(nix::errno::Errno::EINTR) = waitpid(pid, None) {}
+    let mut logged_wait_error = false;
+    loop {
+        match classify_child_wait(waitpid(pid, None)) {
+            ChildWaitState::Reaped => return,
+            ChildWaitState::Pending => {}
+            ChildWaitState::Error(error) => {
+                if !logged_wait_error {
+                    log::warn!("failed to reap PTY child {pid}: {error}; retrying");
+                    logged_wait_error = true;
+                }
+            }
+        }
+        std::thread::sleep(CHILD_REAP_RETRY_INTERVAL);
+    }
 }
 
 fn terminate_and_reap(pid: Pid, foreground_group: Option<Pid>) {
-    signal_process_tree(pid, foreground_group, Signal::SIGHUP);
-    signal_process_tree(pid, foreground_group, Signal::SIGCONT);
-    if wait_for_cleanup(pid, foreground_group, Duration::from_millis(250)) {
+    terminate_and_reap_with(
+        pid,
+        foreground_group,
+        signal_process_tree,
+        |timeout| wait_for_cleanup(pid, foreground_group, timeout),
+        handoff_child_reap,
+    );
+}
+
+fn terminate_and_reap_with<S, W, H>(
+    pid: Pid,
+    foreground_group: Option<Pid>,
+    mut signal: S,
+    mut wait_for_reap: W,
+    handoff_reap: H,
+) where
+    S: FnMut(Pid, Option<Pid>, Signal),
+    W: FnMut(Duration) -> bool,
+    H: FnOnce(Pid),
+{
+    signal(pid, foreground_group, Signal::SIGHUP);
+    signal(pid, foreground_group, Signal::SIGCONT);
+    if wait_for_reap(Duration::from_millis(250)) {
         return;
     }
 
-    signal_process_tree(pid, foreground_group, Signal::SIGTERM);
-    signal_process_tree(pid, foreground_group, Signal::SIGCONT);
-    if wait_for_cleanup(pid, foreground_group, Duration::from_millis(500)) {
+    signal(pid, foreground_group, Signal::SIGTERM);
+    signal(pid, foreground_group, Signal::SIGCONT);
+    if wait_for_reap(Duration::from_millis(500)) {
         return;
     }
 
-    signal_process_tree(pid, foreground_group, Signal::SIGKILL);
-    reap_child(pid);
+    signal(pid, foreground_group, Signal::SIGKILL);
+    if !wait_for_reap(FINAL_REAP_TIMEOUT) {
+        handoff_reap(pid);
+    }
+}
+
+fn handoff_child_reap(pid: Pid) {
+    handoff_child_reap_with(
+        pid,
+        |pid| {
+            std::thread::Builder::new()
+                .name(format!("pty-final-reaper-{}", pid.as_raw()))
+                .spawn(move || reap_child(pid))
+                .map(|_| ())
+        },
+        reap_child,
+    );
+}
+
+fn handoff_child_reap_with<S, R>(pid: Pid, spawn_reaper: S, fallback_reap: R)
+where
+    S: FnOnce(Pid) -> std::io::Result<()>,
+    R: FnOnce(Pid),
+{
+    if let Err(error) = spawn_reaper(pid) {
+        log::warn!("failed to start final PTY child reaper for {pid}: {error}; reaping inline");
+        fallback_reap(pid);
+    }
+}
+
+fn wait_for_child_reap(pid: Pid, timeout: Duration) -> bool {
+    let started = Instant::now();
+    wait_for_child_reap_with(
+        pid,
+        timeout,
+        || started.elapsed(),
+        || waitpid(pid, Some(WaitPidFlag::WNOHANG)),
+        || std::thread::sleep(CHILD_REAP_RETRY_INTERVAL),
+    )
+}
+
+fn wait_for_child_reap_with<E, W, B>(
+    pid: Pid,
+    timeout: Duration,
+    mut elapsed: E,
+    mut wait_once: W,
+    mut backoff: B,
+) -> bool
+where
+    E: FnMut() -> Duration,
+    W: FnMut() -> nix::Result<WaitStatus>,
+    B: FnMut(),
+{
+    let mut logged_wait_error = false;
+    loop {
+        match classify_child_wait(wait_once()) {
+            ChildWaitState::Reaped => return true,
+            ChildWaitState::Pending => {}
+            ChildWaitState::Error(error) => {
+                if !logged_wait_error {
+                    log::warn!("failed to check PTY child {pid}: {error}; retrying until deadline");
+                    logged_wait_error = true;
+                }
+            }
+        }
+
+        if elapsed() >= timeout {
+            return false;
+        }
+        backoff();
+    }
 }
 
 fn signal_process_tree(pid: Pid, foreground_group: Option<Pid>, signal: Signal) {
@@ -628,14 +777,21 @@ fn signal_process_tree(pid: Pid, foreground_group: Option<Pid>, signal: Signal) 
 fn wait_for_cleanup(pid: Pid, foreground_group: Option<Pid>, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
     let mut child_reaped = false;
+    let mut logged_wait_error = false;
     loop {
         if !child_reaped {
-            child_reaped = match waitpid(pid, Some(WaitPidFlag::WNOHANG)) {
-                Ok(WaitStatus::StillAlive) | Ok(WaitStatus::Stopped(_, _)) => false,
-                Err(nix::errno::Errno::EINTR) => false,
-                Ok(_) | Err(nix::errno::Errno::ECHILD) => true,
-                Err(_) => true,
-            };
+            match classify_child_wait(waitpid(pid, Some(WaitPidFlag::WNOHANG))) {
+                ChildWaitState::Reaped => child_reaped = true,
+                ChildWaitState::Pending => {}
+                ChildWaitState::Error(error) => {
+                    if !logged_wait_error {
+                        log::warn!(
+                            "failed to check PTY cleanup for child {pid}: {error}; retrying"
+                        );
+                        logged_wait_error = true;
+                    }
+                }
+            }
         }
 
         if child_reaped && !process_groups_alive(pid, foreground_group) {
@@ -644,7 +800,7 @@ fn wait_for_cleanup(pid: Pid, foreground_group: Option<Pid>, timeout: Duration) 
         if Instant::now() >= deadline {
             return false;
         }
-        std::thread::sleep(Duration::from_millis(10));
+        std::thread::sleep(CHILD_REAP_RETRY_INTERVAL);
     }
 }
 
@@ -708,15 +864,20 @@ unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        child_environment, child_startup_status_with, classify_readable_events, poll_timeout_for,
-        resize_with_ioctl, select_shell, set_cloexec, wait_readable_with,
-        write_all_cancellable_with, write_all_with, CancellableWriteOutcome, Pty, ReadPollResult,
+        child_environment, child_stage_name, child_startup_status_with, classify_child_wait,
+        classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
+        poll_timeout_for, resize_with_ioctl, select_shell, set_cloexec, terminate_and_reap_with,
+        wait_for_child_reap_with, wait_readable_with, write_all_cancellable_with, write_all_with,
+        CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
     use nix::libc;
     use nix::poll::{PollFlags, PollTimeout};
+    use nix::sys::signal::Signal;
     use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+    use nix::unistd::Pid;
+    use std::cell::{Cell, RefCell};
     use std::ffi::{CString, OsString};
     use std::os::fd::AsRawFd;
     use std::path::Path;
@@ -1248,6 +1409,244 @@ mod tests {
 
         assert!(!readable);
         assert_eq!(observed_timeouts, [Some(100), Some(70), Some(30)]);
+    }
+
+    #[test]
+    fn reported_child_cleanup_kills_only_the_child_then_hands_off_reaping() {
+        let child = Pid::from_raw(42_424);
+        let kill_calls = Cell::new(0);
+        let wait_calls = Cell::new(0);
+        let handoff_calls = Cell::new(0);
+
+        cleanup_reported_child_failure_with(
+            child,
+            |actual_child, signal| {
+                assert_eq!(actual_child, child);
+                assert_eq!(signal, Signal::SIGKILL);
+                kill_calls.set(kill_calls.get() + 1);
+            },
+            |timeout| {
+                assert_eq!(kill_calls.get(), 1);
+                assert_eq!(timeout, Duration::from_millis(100));
+                wait_calls.set(wait_calls.get() + 1);
+                false
+            },
+            |actual_child| {
+                assert_eq!(kill_calls.get(), 1);
+                assert_eq!(wait_calls.get(), 1);
+                assert_eq!(actual_child, child);
+                handoff_calls.set(handoff_calls.get() + 1);
+            },
+        );
+
+        assert_eq!(kill_calls.get(), 1);
+        assert_eq!(wait_calls.get(), 1);
+        assert_eq!(handoff_calls.get(), 1);
+    }
+
+    #[test]
+    fn child_reap_handoff_falls_back_when_thread_spawn_fails() {
+        let child = Pid::from_raw(42_424);
+        let spawn_calls = Cell::new(0);
+        let fallback_calls = Cell::new(0);
+
+        handoff_child_reap_with(
+            child,
+            |actual_child| {
+                assert_eq!(actual_child, child);
+                spawn_calls.set(spawn_calls.get() + 1);
+                Err(std::io::Error::other("scripted thread failure"))
+            },
+            |actual_child| {
+                assert_eq!(spawn_calls.get(), 1);
+                assert_eq!(actual_child, child);
+                fallback_calls.set(fallback_calls.get() + 1);
+            },
+        );
+
+        assert_eq!(spawn_calls.get(), 1);
+        assert_eq!(fallback_calls.get(), 1);
+
+        handoff_child_reap_with(
+            child,
+            |_| Ok(()),
+            |_| panic!("successful handoff must not reap inline"),
+        );
+    }
+
+    #[test]
+    fn child_wait_classifier_only_accepts_terminal_states() {
+        let child = Pid::from_raw(42_424);
+
+        assert_eq!(
+            classify_child_wait(Ok(WaitStatus::Exited(child, 0))),
+            ChildWaitState::Reaped
+        );
+        assert_eq!(
+            classify_child_wait(Ok(WaitStatus::Signaled(child, Signal::SIGKILL, false,))),
+            ChildWaitState::Reaped
+        );
+        assert_eq!(
+            classify_child_wait(Err(nix::errno::Errno::ECHILD)),
+            ChildWaitState::Reaped
+        );
+
+        for status in [
+            WaitStatus::StillAlive,
+            WaitStatus::Stopped(child, Signal::SIGSTOP),
+            WaitStatus::Continued(child),
+        ] {
+            assert_eq!(classify_child_wait(Ok(status)), ChildWaitState::Pending);
+        }
+        #[cfg(target_os = "linux")]
+        for status in [
+            WaitStatus::PtraceEvent(child, Signal::SIGTRAP, 1),
+            WaitStatus::PtraceSyscall(child),
+        ] {
+            assert_eq!(classify_child_wait(Ok(status)), ChildWaitState::Pending);
+        }
+        assert_eq!(
+            classify_child_wait(Err(nix::errno::Errno::EINTR)),
+            ChildWaitState::Pending
+        );
+        assert_eq!(
+            classify_child_wait(Err(nix::errno::Errno::EIO)),
+            ChildWaitState::Error(nix::errno::Errno::EIO)
+        );
+    }
+
+    #[test]
+    fn child_setup_stage_names_remain_stable() {
+        for (stage, expected) in [
+            (1, "setsid"),
+            (2, "controlling terminal setup"),
+            (3, "standard stream setup"),
+            (4, "exec"),
+            (255, "unknown child setup stage"),
+        ] {
+            assert_eq!(child_stage_name(stage), expected);
+        }
+    }
+
+    #[test]
+    fn bounded_child_reap_retries_pending_states_and_wait_errors() {
+        let child = Pid::from_raw(42_424);
+        let mut elapsed = [
+            Duration::ZERO,
+            Duration::from_millis(10),
+            Duration::from_millis(20),
+        ]
+        .into_iter();
+        let mut waits = [
+            Ok(WaitStatus::Stopped(child, Signal::SIGSTOP)),
+            Err(nix::errno::Errno::EINTR),
+            Err(nix::errno::Errno::EIO),
+            Err(nix::errno::Errno::ECHILD),
+        ]
+        .into_iter();
+        let backoffs = Cell::new(0);
+
+        let reaped = wait_for_child_reap_with(
+            child,
+            Duration::from_millis(100),
+            || elapsed.next().expect("scripted clock should have a value"),
+            || waits.next().expect("scripted wait should have a result"),
+            || backoffs.set(backoffs.get() + 1),
+        );
+
+        assert!(reaped);
+        assert_eq!(backoffs.get(), 3);
+    }
+
+    #[test]
+    fn bounded_child_reap_hands_back_control_at_the_deadline() {
+        let child = Pid::from_raw(42_424);
+        let mut elapsed = [Duration::ZERO, Duration::from_millis(100)].into_iter();
+        let mut wait_calls = 0;
+        let backoffs = Cell::new(0);
+
+        let reaped = wait_for_child_reap_with(
+            child,
+            Duration::from_millis(100),
+            || elapsed.next().expect("scripted clock should have a value"),
+            || {
+                wait_calls += 1;
+                Ok(WaitStatus::StillAlive)
+            },
+            || backoffs.set(backoffs.get() + 1),
+        );
+
+        assert!(!reaped);
+        assert_eq!(wait_calls, 2);
+        assert_eq!(backoffs.get(), 1);
+    }
+
+    #[test]
+    fn child_cleanup_escalates_then_hands_off_the_final_reap() {
+        let child = Pid::from_raw(42_424);
+        let foreground_group = Some(Pid::from_raw(42_425));
+        let signals = RefCell::new(Vec::new());
+        let waits = RefCell::new(Vec::new());
+        let handed_off = Cell::new(None);
+
+        terminate_and_reap_with(
+            child,
+            foreground_group,
+            |actual_child, actual_group, signal| {
+                signals
+                    .borrow_mut()
+                    .push((actual_child, actual_group, signal));
+            },
+            |timeout| {
+                waits.borrow_mut().push(timeout);
+                false
+            },
+            |actual_child| handed_off.set(Some(actual_child)),
+        );
+
+        assert_eq!(
+            signals.into_inner(),
+            [
+                (child, foreground_group, Signal::SIGHUP),
+                (child, foreground_group, Signal::SIGCONT),
+                (child, foreground_group, Signal::SIGTERM),
+                (child, foreground_group, Signal::SIGCONT),
+                (child, foreground_group, Signal::SIGKILL),
+            ]
+        );
+        assert_eq!(
+            waits.into_inner(),
+            [
+                Duration::from_millis(250),
+                Duration::from_millis(500),
+                Duration::from_millis(100),
+            ]
+        );
+        assert_eq!(handed_off.get(), Some(child));
+    }
+
+    #[test]
+    fn child_cleanup_stops_after_a_successful_reap() {
+        let child = Pid::from_raw(42_424);
+        let signals = RefCell::new(Vec::new());
+        let wait_calls = Cell::new(0);
+        let handoff_calls = Cell::new(0);
+
+        terminate_and_reap_with(
+            child,
+            None,
+            |_, _, signal| signals.borrow_mut().push(signal),
+            |timeout| {
+                assert_eq!(timeout, Duration::from_millis(250));
+                wait_calls.set(wait_calls.get() + 1);
+                true
+            },
+            |_| handoff_calls.set(handoff_calls.get() + 1),
+        );
+
+        assert_eq!(signals.into_inner(), [Signal::SIGHUP, Signal::SIGCONT,]);
+        assert_eq!(wait_calls.get(), 1);
+        assert_eq!(handoff_calls.get(), 0);
     }
 
     #[test]
