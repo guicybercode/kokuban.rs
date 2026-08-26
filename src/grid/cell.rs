@@ -17,6 +17,7 @@ bitflags! {
         const WIDE      = 0b0001_0000;
         const WIDE_CONT = 0b0010_0000;
         const FAINT     = 0b0100_0000;
+        const HIDDEN    = 0b1000_0000;
     }
 }
 
@@ -50,5 +51,16 @@ impl Default for Cell {
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CellFlags;
+
+    #[test]
+    fn hidden_uses_the_last_unassigned_cell_flag_bit() {
+        assert_eq!(CellFlags::HIDDEN.bits(), 0b1000_0000);
+        assert_eq!(CellFlags::all().bits(), u8::MAX);
     }
 }
