@@ -20,7 +20,7 @@ use thiserror::Error;
 use unicode_width::UnicodeWidthChar;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
-use winit::event::{Ime, MouseScrollDelta, TouchPhase, WindowEvent};
+use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::window::{ImePurpose, Window, WindowId};
@@ -734,6 +734,26 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 self.last_pointer_position = None;
                 self.mouse_wheel_state.reset();
             }
+            WindowEvent::MouseInput { state, button, .. } => {
+                if !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
+                    return;
+                }
+                let result = dispatch_mouse_button_with(
+                    self.grid.as_ref(),
+                    self.last_pointer_position,
+                    self.cell_dimensions,
+                    state,
+                    button,
+                    self.modifiers,
+                    |bytes| {
+                        self.writer
+                            .as_ref()
+                            .ok_or(TerminalWriteQueueError::Disconnected)?
+                            .enqueue(bytes)
+                    },
+                );
+                self.handle_terminal_input_result(event_loop, result);
+            }
             WindowEvent::MouseWheel { delta, phase, .. } => {
                 if !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     return;
@@ -1407,6 +1427,21 @@ fn terminal_cell_at_pointer(
     Some((column + 1, row + 1))
 }
 
+fn terminal_cell_at_mouse_button(
+    position: PhysicalPosition<f64>,
+    cell_dimensions: (u16, u16),
+    terminal_dimensions: TerminalDimensions,
+    state: ElementState,
+) -> Option<(usize, usize)> {
+    let position =
+        if state == ElementState::Released && position.x.is_finite() && position.y.is_finite() {
+            PhysicalPosition::new(position.x.max(0.0), position.y.max(0.0))
+        } else {
+            position
+        };
+    terminal_cell_at_pointer(position, cell_dimensions, terminal_dimensions)
+}
+
 fn apply_wheel_scrollback(grid: &mut Grid, steps: i32) -> bool {
     let previous_offset = grid.scroll_offset;
     let lines = usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
@@ -1439,6 +1474,72 @@ fn mouse_button_with_modifiers(button: u8, modifiers: ModifiersState) -> u8 {
         encoded |= MOUSE_CONTROL_MODIFIER;
     }
     encoded
+}
+
+fn mouse_button_code_from_winit(button: MouseButton) -> Option<u8> {
+    match button {
+        MouseButton::Left => Some(0),
+        MouseButton::Middle => Some(1),
+        MouseButton::Right => Some(2),
+        MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => None,
+    }
+}
+
+fn dispatch_mouse_button_with<W>(
+    grid: &Mutex<Grid>,
+    pointer_position: Option<PhysicalPosition<f64>>,
+    cell_dimensions: Option<(u16, u16)>,
+    state: ElementState,
+    button: MouseButton,
+    modifiers: ModifiersState,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let Some(button) = mouse_button_code_from_winit(button) else {
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    };
+    let Some((pointer_position, cell_dimensions)) = pointer_position.zip(cell_dimensions) else {
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    };
+
+    let (mouse_encoding, terminal_dimensions) = {
+        let grid = grid
+            .lock()
+            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
+        if grid.mouse_tracking == MouseTracking::None {
+            return Ok(KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            });
+        }
+        (
+            grid.mouse_encoding,
+            terminal_dimensions_from_locked_grid(&grid)?,
+        )
+    };
+
+    let Some((column, row)) = terminal_cell_at_mouse_button(
+        pointer_position,
+        cell_dimensions,
+        terminal_dimensions,
+        state,
+    ) else {
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    };
+
+    let button = mouse_button_with_modifiers(button, modifiers);
+    let report = encode_mouse_event(button, column, row, state.is_pressed(), mouse_encoding);
+    write(report)?;
+    Ok(KeyboardInputOutcome::Forwarded {
+        viewport_changed: false,
+    })
 }
 
 fn dispatch_mouse_wheel_with<W>(
@@ -2266,11 +2367,12 @@ mod tests {
         atlas_cell_dimensions, begin_grid_redraw, classify_reader_exit, classify_writer_exit,
         combine_launch_results, configured_terminal_dimensions, contrasting_cursor_color,
         dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
-        dispatch_keyboard_input_with, dispatch_mouse_wheel_with, draw_cell_glyph,
-        draw_grid_snapshot, draw_ime_preedit, drawable_dimensions, focus_report_bytes,
-        ime_cursor_area, ime_payload_from_event, ime_preedit_payload_with_limits,
-        immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
-        layout_ime_preedit, modifiers_after_focus_change, mouse_button_with_modifiers,
+        dispatch_keyboard_input_with, dispatch_mouse_button_with, dispatch_mouse_wheel_with,
+        draw_cell_glyph, draw_grid_snapshot, draw_ime_preedit, drawable_dimensions,
+        focus_report_bytes, ime_cursor_area, ime_payload_from_event,
+        ime_preedit_payload_with_limits, immediate_surface_size_to_reconcile,
+        initial_window_dimensions, is_current_surface_size, layout_ime_preedit,
+        modifiers_after_focus_change, mouse_button_code_from_winit, mouse_button_with_modifiers,
         physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
         replace_ime_preedit, resize_terminal_with, resolve_cell_colors, reveal_ime_input_viewport,
         rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
@@ -2297,7 +2399,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, TryLockError};
     use winit::dpi::{PhysicalPosition, PhysicalSize};
-    use winit::event::{Ime, MouseScrollDelta, TouchPhase};
+    use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase};
     use winit::keyboard::ModifiersState;
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
@@ -3759,6 +3861,7 @@ mod tests {
     fn mouse_wheel_modifiers_match_xterm_button_bits() {
         for (modifiers, expected) in [
             (ModifiersState::empty(), MOUSE_WHEEL_UP),
+            (ModifiersState::SUPER, MOUSE_WHEEL_UP),
             (ModifiersState::SHIFT, MOUSE_WHEEL_UP | 4),
             (ModifiersState::ALT, MOUSE_WHEEL_UP | 8),
             (ModifiersState::CONTROL, MOUSE_WHEEL_UP | 16),
@@ -3771,6 +3874,297 @@ mod tests {
                 mouse_button_with_modifiers(MOUSE_WHEEL_UP, modifiers),
                 expected
             );
+        }
+    }
+
+    #[test]
+    fn maps_only_primary_winit_mouse_buttons_to_xterm_codes() {
+        for (button, expected) in [
+            (MouseButton::Left, Some(0)),
+            (MouseButton::Middle, Some(1)),
+            (MouseButton::Right, Some(2)),
+            (MouseButton::Back, None),
+            (MouseButton::Forward, None),
+            (MouseButton::Other(0), None),
+            (MouseButton::Other(u16::MAX), None),
+        ] {
+            assert_eq!(mouse_button_code_from_winit(button), expected);
+        }
+    }
+
+    #[test]
+    fn every_supported_mouse_tracking_mode_forwards_button_press_and_release() {
+        for tracking in [
+            MouseTracking::Normal,
+            MouseTracking::ButtonEvent,
+            MouseTracking::AnyEvent,
+        ] {
+            let mut history = grid_with_scrollback(4, 10);
+            history.mouse_tracking = tracking;
+            history.mouse_encoding = MouseEncoding::Sgr;
+            let grid = Mutex::new(history);
+            let writes = RefCell::new(Vec::new());
+            let dispatch = |state| {
+                dispatch_mouse_button_with(
+                    &grid,
+                    Some(PhysicalPosition::new(25.0, 45.0)),
+                    Some((10, 20)),
+                    state,
+                    MouseButton::Left,
+                    ModifiersState::empty(),
+                    |bytes| {
+                        writes.borrow_mut().push(bytes);
+                        Ok(())
+                    },
+                )
+                .expect("supported mouse tracking should forward button input")
+            };
+
+            assert_eq!(
+                dispatch(ElementState::Pressed),
+                KeyboardInputOutcome::Forwarded {
+                    viewport_changed: false,
+                }
+            );
+            assert_eq!(
+                dispatch(ElementState::Released),
+                KeyboardInputOutcome::Forwarded {
+                    viewport_changed: false,
+                }
+            );
+            assert_eq!(
+                writes.into_inner(),
+                [b"\x1b[<0;3;3M".to_vec(), b"\x1b[<0;3;3m".to_vec()]
+            );
+        }
+    }
+
+    #[test]
+    fn mouse_button_release_clamps_negative_grab_coordinates_to_the_terminal_edge() {
+        let mut history = grid_with_scrollback(4, 10);
+        history.mouse_tracking = MouseTracking::Normal;
+        history.mouse_encoding = MouseEncoding::Sgr;
+        let grid = Mutex::new(history);
+        let writes = RefCell::new(Vec::new());
+        let dispatch = |state, position| {
+            dispatch_mouse_button_with(
+                &grid,
+                Some(position),
+                Some((10, 20)),
+                state,
+                MouseButton::Left,
+                ModifiersState::empty(),
+                |bytes| {
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("implicit-grab mouse button input should be handled")
+        };
+
+        assert_eq!(
+            dispatch(ElementState::Pressed, PhysicalPosition::new(15.0, 25.0)),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            dispatch(ElementState::Released, PhysicalPosition::new(-15.0, -25.0),),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            writes.into_inner(),
+            [b"\x1b[<0;2;2M".to_vec(), b"\x1b[<0;1;1m".to_vec()]
+        );
+    }
+
+    #[test]
+    fn mouse_buttons_encode_modifiers_without_holding_the_grid_lock_or_scrolling() {
+        let mut history = grid_with_scrollback(4, 10);
+        history.mouse_tracking = MouseTracking::Normal;
+        history.mouse_encoding = MouseEncoding::Sgr;
+        history.scroll_viewport_up(2);
+        let grid = Mutex::new(history);
+        let writes = RefCell::new(Vec::new());
+        let modified = ModifiersState::SHIFT | ModifiersState::ALT | ModifiersState::CONTROL;
+        let dispatch = |state, button| {
+            dispatch_mouse_button_with(
+                &grid,
+                Some(PhysicalPosition::new(25.0, 45.0)),
+                Some((10, 20)),
+                state,
+                button,
+                modified,
+                |bytes| {
+                    assert!(
+                        grid.try_lock().is_ok(),
+                        "mouse button enqueue must run without the Grid lock"
+                    );
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("tracked mouse button should be queued")
+        };
+
+        assert_eq!(
+            dispatch(ElementState::Pressed, MouseButton::Right),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            dispatch(ElementState::Released, MouseButton::Right),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+
+        grid.lock()
+            .expect("mouse button grid should select legacy encoding")
+            .mouse_encoding = MouseEncoding::Default;
+        assert_eq!(
+            dispatch(ElementState::Pressed, MouseButton::Middle),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            dispatch(ElementState::Released, MouseButton::Middle),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+
+        assert_eq!(
+            writes.into_inner(),
+            [
+                b"\x1b[<30;3;3M".to_vec(),
+                b"\x1b[<30;3;3m".to_vec(),
+                vec![0x1b, b'[', b'M', 61, 35, 35],
+                vec![0x1b, b'[', b'M', 63, 35, 35],
+            ]
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("mouse button grid should remain available")
+                .scroll_offset,
+            2,
+            "tracked mouse buttons must preserve scrollback"
+        );
+    }
+
+    #[test]
+    fn mouse_buttons_ignore_disabled_unsupported_or_missing_geometry_and_preserve_queue_errors() {
+        let grid = Mutex::new(grid_with_scrollback(4, 10));
+        let enqueue_calls = AtomicUsize::new(0);
+
+        assert_eq!(
+            dispatch_mouse_button_with(
+                &grid,
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                ElementState::Pressed,
+                MouseButton::Left,
+                ModifiersState::empty(),
+                |_| {
+                    enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+            )
+            .expect("disabled mouse tracking should ignore button input"),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+
+        {
+            let mut grid = grid
+                .lock()
+                .expect("mouse button grid should enable tracking");
+            grid.mouse_tracking = MouseTracking::AnyEvent;
+            grid.mouse_encoding = MouseEncoding::Sgr;
+        }
+        for (position, dimensions, button) in [
+            (None, Some((10, 20)), MouseButton::Left),
+            (
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                None,
+                MouseButton::Left,
+            ),
+            (
+                Some(PhysicalPosition::new(-1.0, 1.0)),
+                Some((10, 20)),
+                MouseButton::Left,
+            ),
+            (
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((0, 20)),
+                MouseButton::Left,
+            ),
+            (
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                MouseButton::Back,
+            ),
+            (
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                MouseButton::Forward,
+            ),
+            (
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                MouseButton::Other(9),
+            ),
+        ] {
+            assert_eq!(
+                dispatch_mouse_button_with(
+                    &grid,
+                    position,
+                    dimensions,
+                    ElementState::Pressed,
+                    button,
+                    ModifiersState::empty(),
+                    |_| {
+                        enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    },
+                )
+                .expect("invalid mouse button input should be ignored"),
+                KeyboardInputOutcome::Ignored {
+                    viewport_changed: false,
+                }
+            );
+        }
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+
+        for queue_error in [
+            TerminalWriteQueueError::Full,
+            TerminalWriteQueueError::Disconnected,
+        ] {
+            let error = dispatch_mouse_button_with(
+                &grid,
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                ElementState::Released,
+                MouseButton::Left,
+                ModifiersState::empty(),
+                |_| {
+                    assert!(
+                        grid.try_lock().is_ok(),
+                        "mouse button queue errors must occur outside the Grid lock"
+                    );
+                    Err(queue_error)
+                },
+            )
+            .expect_err("mouse button queue failures should be preserved");
+            assert!(matches!(
+                error,
+                KeyboardInputError::Queue(actual) if actual == queue_error
+            ));
         }
     }
 
@@ -4376,6 +4770,25 @@ mod tests {
         .expect_err("poisoned Grid must reject mouse input");
         assert!(matches!(
             mouse_error,
+            KeyboardInputError::Grid(GridAccessError::Poisoned)
+        ));
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+
+        let mouse_button_error = dispatch_mouse_button_with(
+            grid.as_ref(),
+            Some(PhysicalPosition::new(1.0, 1.0)),
+            Some((10, 20)),
+            ElementState::Pressed,
+            MouseButton::Left,
+            ModifiersState::empty(),
+            |_| {
+                enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect_err("poisoned Grid must reject mouse button input");
+        assert!(matches!(
+            mouse_button_error,
             KeyboardInputError::Grid(GridAccessError::Poisoned)
         ));
         assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
