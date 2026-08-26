@@ -1043,7 +1043,7 @@ mod tests {
         MAX_INTERMEDIATES,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
-    use crate::grid::{Grid, TerminalEvent};
+    use crate::grid::{Grid, MouseEncoding, MouseTracking, TerminalEvent};
     use crate::parser::kitty_graphics::{KittyAction, KittyCommand};
     use crate::parser::sixel::MAX_RGBA_BYTES;
     use crate::parser::State;
@@ -1242,6 +1242,38 @@ mod tests {
 
         parser.feed(b"\x1b[?1004h\x1bc", &mut grid);
         assert!(!grid.focus_events);
+    }
+
+    #[test]
+    fn toggles_mouse_tracking_and_encoding_with_dec_private_modes_and_ris() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        assert_eq!(grid.mouse_tracking, MouseTracking::None);
+        assert_eq!(grid.mouse_encoding, MouseEncoding::Default);
+
+        for (mode, tracking) in [
+            (1000, MouseTracking::Normal),
+            (1002, MouseTracking::ButtonEvent),
+            (1003, MouseTracking::AnyEvent),
+        ] {
+            parser.feed(format!("\x1b[?{mode}h").as_bytes(), &mut grid);
+            assert_eq!(grid.mouse_tracking, tracking);
+            parser.feed(format!("\x1b[?{mode}l").as_bytes(), &mut grid);
+            assert_eq!(grid.mouse_tracking, MouseTracking::None);
+        }
+
+        parser.feed(b"\x1b[?1000;1006h", &mut grid);
+        assert_eq!(grid.mouse_tracking, MouseTracking::Normal);
+        assert_eq!(grid.mouse_encoding, MouseEncoding::Sgr);
+
+        parser.feed(b"\x1b[?1006l", &mut grid);
+        assert_eq!(grid.mouse_tracking, MouseTracking::Normal);
+        assert_eq!(grid.mouse_encoding, MouseEncoding::Default);
+
+        parser.feed(b"\x1b[?1003;1006h\x1bc", &mut grid);
+        assert_eq!(grid.mouse_tracking, MouseTracking::None);
+        assert_eq!(grid.mouse_encoding, MouseEncoding::Default);
     }
 
     #[test]

@@ -1,9 +1,10 @@
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::selection::GridPoint;
-use crate::grid::{MouseEncoding, MouseTracking};
+use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::translate_key_event;
+use crate::input::mouse::{encode_mouse_event, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
 use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
@@ -223,11 +224,11 @@ define_class!(
                     drop(atlas);
                     let mut tree = state.pane_tree.lock().unwrap();
                     let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
-                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
+                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
                     if let (Some(mt), Some((_id, gc, gr))) = (tracking, cell_info) {
                         if mt.0 != MouseTracking::None {
-                            let button = if delta_y > 0.0 { 64u8 } else { 65u8 };
-                            let seq = encode_sgr_mouse(button, gc + 1, gr + 1, true, mt.1);
+                            let button = if delta_y > 0.0 { MOUSE_WHEEL_UP } else { MOUSE_WHEEL_DOWN };
+                            let seq = encode_mouse_event(button, gc + 1, gr + 1, true, mt.1);
                             if let Some(pane) = tree.focused_pane() {
                                 pane.pty.write_all(&seq).ok();
                             }
@@ -263,10 +264,10 @@ define_class!(
                     let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     if let Some((pane_id, gc, gr)) = cell_info {
                         tree.focused = pane_id;
-                        let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
-                        if let Some((mt, sgr)) = tracking {
+                        let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
+                        if let Some((mt, encoding)) = tracking {
                             if mt != MouseTracking::None && !has_shift {
-                                let seq = encode_sgr_mouse(0, gc + 1, gr + 1, true, sgr);
+                                let seq = encode_mouse_event(0, gc + 1, gr + 1, true, encoding);
                                 if let Some(pane) = tree.pane(pane_id) {
                                     pane.pty.write_all(&seq).ok();
                                 }
@@ -301,12 +302,12 @@ define_class!(
                     let mut tree = state.pane_tree.lock().unwrap();
                     let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     let focused = tree.focused;
-                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding == MouseEncoding::Sgr));
-                    if let Some((mt, sgr)) = tracking {
+                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
+                    if let Some((mt, encoding)) = tracking {
                         let forward = (mt == MouseTracking::ButtonEvent || mt == MouseTracking::AnyEvent) && !has_shift;
                         if forward {
                             if let Some((_id, gc, gr)) = cell_info {
-                                let seq = encode_sgr_mouse(32, gc + 1, gr + 1, true, sgr);
+                                let seq = encode_mouse_event(32, gc + 1, gr + 1, true, encoding);
                                 if let Some(pane) = tree.pane(focused) {
                                     pane.pty.write_all(&seq).ok();
                                 }
@@ -342,8 +343,7 @@ define_class!(
                     if let Some(pane) = tree.focused_pane() {
                         if pane.grid.mouse_tracking != MouseTracking::None {
                             if let Some((_id, gc, gr)) = cell_info {
-                                let sgr = pane.grid.mouse_encoding == MouseEncoding::Sgr;
-                                let seq = encode_sgr_mouse(0, gc + 1, gr + 1, false, sgr);
+                                let seq = encode_mouse_event(0, gc + 1, gr + 1, false, pane.grid.mouse_encoding);
                                 pane.pty.write_all(&seq).ok();
                             }
                         }
@@ -848,23 +848,6 @@ fn pixel_to_cell(
     let col = ((px - pane.rect.x) / cell_w).max(0.0) as usize;
     let row = ((py - pane.rect.y) / cell_h).max(0.0) as usize;
     Some((pane_id, col.min(pane.grid.cols().saturating_sub(1)), row.min(pane.grid.rows().saturating_sub(1))))
-}
-
-fn encode_sgr_mouse(button: u8, col: usize, row: usize, press: bool, sgr: bool) -> Vec<u8> {
-    if sgr {
-        let suffix = if press { 'M' } else { 'm' };
-        format!("\x1b[<{button};{col};{row}{suffix}").into_bytes()
-    } else {
-        // Legacy X10 encoding
-        let cb = button + 32;
-        let cx = (col as u8).min(223) + 32;
-        let cy = (row as u8).min(223) + 32;
-        if press {
-            vec![0x1b, b'[', b'M', cb, cx, cy]
-        } else {
-            vec![0x1b, b'[', b'M', 3 + 32, cx, cy] // release = button 3
-        }
-    }
 }
 
 fn pixel_to_grid_point(
