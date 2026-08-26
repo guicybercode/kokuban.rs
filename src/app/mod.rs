@@ -16,7 +16,7 @@ use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use crate::window_title::WINDOW_TITLE;
 
-use objc2::{MainThreadMarker, Message};
+use objc2::{runtime::ProtocolObject, MainThreadMarker, Message};
 use objc2_app_kit::*;
 use objc2_foundation::*;
 use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
@@ -326,6 +326,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     );
 
     window.setContentView(Some(&view));
+    // NSWindow keeps its delegate weakly; the content view retains TerminalView
+    // for the full window lifetime.
+    window.setDelegate(Some(ProtocolObject::from_ref(&*view)));
     window.makeFirstResponder(Some(&view));
     window.makeKeyAndOrderFront(None);
     window.center();

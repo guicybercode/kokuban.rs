@@ -33,6 +33,8 @@ use std::sync::{Arc, Mutex};
 
 const BRACKETED_PASTE_START: &[u8] = b"\x1b[200~";
 const BRACKETED_PASTE_END: &[u8] = b"\x1b[201~";
+const FOCUS_IN_REPORT: &[u8] = b"\x1b[I";
+const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClipboardPasteError {
@@ -312,6 +314,7 @@ struct ViewState {
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
     mouse_wheel_state: MacScrollState,
+    last_window_focus: Option<bool>,
     confirm_dialog: Option<ConfirmDialog>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
@@ -379,6 +382,64 @@ pub(super) fn publish_focused_window_title(
 
 thread_local! {
     static VIEW_STATE: RefCell<Option<ViewState>> = RefCell::new(None);
+}
+
+fn focus_report_bytes(focused: bool) -> &'static [u8] {
+    if focused {
+        FOCUS_IN_REPORT
+    } else {
+        FOCUS_OUT_REPORT
+    }
+}
+
+fn record_window_focus_change(last_window_focus: &mut Option<bool>, focused: bool) -> bool {
+    last_window_focus.replace(focused) != Some(focused)
+}
+
+fn pending_window_focus_report(
+    last_window_focus: &mut Option<bool>,
+    focused: bool,
+) -> Option<Vec<u8>> {
+    record_window_focus_change(last_window_focus, focused)
+        .then(|| focus_report_bytes(focused).to_vec())
+}
+
+fn dispatch_current_focus_report_with<State, Dispatch>(
+    source: &Mutex<State>,
+    bytes: Vec<u8>,
+    dispatch: Dispatch,
+) -> bool
+where
+    Dispatch: FnOnce(&State, Vec<u8>) -> bool,
+{
+    let source = source
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    dispatch(&source, bytes)
+}
+
+fn dispatch_window_focus_transition(focused: bool) {
+    let report = VIEW_STATE.with(|view_state| {
+        let mut view_state = view_state.borrow_mut();
+        let state = view_state.as_mut()?;
+        let bytes = pending_window_focus_report(&mut state.last_window_focus, focused)?;
+        Some((Arc::clone(&state.pane_tree), bytes))
+    });
+
+    let Some((pane_tree, bytes)) = report else {
+        return;
+    };
+    dispatch_current_focus_report_with(pane_tree.as_ref(), bytes, |tree, bytes| {
+        let Some(pane) = tree.focused_pane() else {
+            return false;
+        };
+        if !pane.grid.focus_events {
+            return false;
+        }
+
+        pane.queue_input(bytes);
+        true
+    });
 }
 
 define_class!(
@@ -944,6 +1005,23 @@ define_class!(
                 drop(tree);
                 state.dirty.store(true, Ordering::Relaxed);
             });
+        }
+    }
+
+    // SAFETY: NSObjectProtocol has no additional safety requirements.
+    unsafe impl NSObjectProtocol for TerminalView {}
+
+    // SAFETY: TerminalView is main-thread-only and both methods use the exact
+    // signatures required by NSWindowDelegate.
+    unsafe impl NSWindowDelegate for TerminalView {
+        #[unsafe(method(windowDidBecomeKey:))]
+        fn window_did_become_key(&self, _notification: &NSNotification) {
+            dispatch_window_focus_transition(true);
+        }
+
+        #[unsafe(method(windowDidResignKey:))]
+        fn window_did_resign_key(&self, _notification: &NSNotification) {
+            dispatch_window_focus_transition(false);
         }
     }
 );
@@ -1720,6 +1798,7 @@ pub(super) fn create_terminal_view(
             prompt_indicator_color,
             image_store,
             mouse_wheel_state: MacScrollState::default(),
+            last_window_focus: None,
             confirm_dialog: None,
             confirm_on_close_pane,
             confirm_on_quit,
@@ -1733,7 +1812,9 @@ pub(super) fn create_terminal_view(
 mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
+        dispatch_current_focus_report_with, focus_report_bytes,
         mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
+        pending_window_focus_report,
         sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
         MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
         WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START, WINDOW_TITLE,
@@ -1750,7 +1831,7 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::ptr::NonNull;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::thread;
 
     fn scroll_sample(delta_y: f64) -> MacScrollSample {
@@ -1772,6 +1853,100 @@ mod tests {
             "expected remainder {expected}, got {}",
             state.line_remainder,
         );
+    }
+
+    #[test]
+    fn macos_focus_reports_use_exact_dec_private_mode_bytes() {
+        assert_eq!(focus_report_bytes(true), b"\x1b[I");
+        assert_eq!(focus_report_bytes(false), b"\x1b[O");
+    }
+
+    #[test]
+    fn disabled_macos_focus_reporting_still_updates_deduplication_state() {
+        let enabled = Mutex::new(false);
+        let writes = RefCell::new(Vec::new());
+        let mut last_window_focus = None;
+        let dispatch = |last_window_focus: &mut Option<bool>, focused| {
+            let Some(bytes) = pending_window_focus_report(last_window_focus, focused) else {
+                return false;
+            };
+            dispatch_current_focus_report_with(&enabled, bytes, |enabled, bytes| {
+                if !enabled {
+                    return false;
+                }
+                writes.borrow_mut().push(bytes);
+                true
+            })
+        };
+
+        assert!(!dispatch(&mut last_window_focus, true));
+        assert_eq!(last_window_focus, Some(true));
+        assert!(writes.borrow().is_empty());
+
+        *enabled.lock().unwrap() = true;
+        assert!(!dispatch(&mut last_window_focus, true));
+        assert!(dispatch(&mut last_window_focus, false));
+        assert_eq!(writes.into_inner(), [b"\x1b[O".to_vec()]);
+    }
+
+    #[test]
+    fn macos_focus_reporting_deduplicates_and_preserves_transition_order() {
+        let enabled = Mutex::new(true);
+        let writes = RefCell::new(Vec::new());
+        let mut last_window_focus = None;
+
+        for (focused, expected_dispatch) in [
+            (true, true),
+            (true, false),
+            (false, true),
+            (false, false),
+            (true, true),
+        ] {
+            let dispatched = pending_window_focus_report(&mut last_window_focus, focused)
+                .is_some_and(|bytes| {
+                    dispatch_current_focus_report_with(&enabled, bytes, |enabled, bytes| {
+                        if !enabled {
+                            return false;
+                        }
+                        writes.borrow_mut().push(bytes);
+                        true
+                    })
+                });
+            assert_eq!(dispatched, expected_dispatch);
+        }
+
+        assert_eq!(
+            writes.into_inner(),
+            [b"\x1b[I".to_vec(), b"\x1b[O".to_vec(), b"\x1b[I".to_vec()]
+        );
+    }
+
+    #[test]
+    fn macos_focus_report_targets_the_current_pane_after_recording_the_transition() {
+        let current_pane = Mutex::new((1_u8, true));
+        let writes = RefCell::new(Vec::new());
+        let mut last_window_focus = None;
+        let bytes = pending_window_focus_report(&mut last_window_focus, true)
+            .expect("first focus transition should create a report");
+
+        *current_pane.lock().unwrap() = (2, true);
+
+        assert!(dispatch_current_focus_report_with(
+            &current_pane,
+            bytes,
+            |&(pane_id, enabled), bytes| {
+                assert!(
+                    current_pane.try_lock().is_err(),
+                    "pane selection and enqueue must share one tree lock"
+                );
+                if !enabled {
+                    return false;
+                }
+                writes.borrow_mut().push((pane_id, bytes));
+                true
+            },
+        ));
+        assert_eq!(writes.into_inner(), [(2, b"\x1b[I".to_vec())]);
     }
 
     #[test]
