@@ -1,6 +1,6 @@
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
-use crate::grid::cell::{Cell, CellFlags};
+use crate::grid::cell::{Cell, CellFlags, Color};
 use crate::grid::{CursorShape, Grid};
 use crate::input::linux::{
     encode_key_press, ime_commit_payload, key_press_from_winit, scrollback_action_from_winit,
@@ -16,6 +16,7 @@ use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
+use unicode_width::UnicodeWidthChar;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{Ime, WindowEvent};
@@ -36,6 +37,9 @@ const SCALE_CHANGE_EPSILON: f64 = 0.001;
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
 const CURSOR_THICKNESS: u32 = 2;
 const CURSOR_ALPHA: u8 = 180;
+const MAX_IME_PREEDIT_BYTES: usize = 4 * 1024;
+const MAX_IME_PREEDIT_RENDER_CELLS: usize = 1024;
+const IME_PREEDIT_REPLACEMENT: char = '\u{fffd}';
 // Limit the Grid/snapshot budget to 262,144 visible cells while still covering wide 8K layouts.
 const MAX_TERMINAL_COLUMNS: u16 = 1024;
 const MAX_TERMINAL_ROWS: u16 = 256;
@@ -157,6 +161,44 @@ struct CursorSnapshot {
 struct ImeCursorArea {
     position: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImePreeditCursor {
+    selection_start: usize,
+    selection_end: usize,
+    caret: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ImePreedit {
+    text: String,
+    cursor: Option<ImePreeditCursor>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ImePreeditPayload {
+    Clear,
+    Text(ImePreedit),
+    TooManyBytes { byte_count: usize, limit: usize },
+    TooManyRenderCells { cell_count: usize, limit: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImePreeditGlyph {
+    character: char,
+    byte_start: usize,
+    byte_end: usize,
+    row: usize,
+    column: usize,
+    width: u8,
+    selected: bool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ImePreeditLayout {
+    glyphs: Vec<ImePreeditGlyph>,
+    caret_cell: Option<(usize, usize)>,
 }
 
 #[derive(Debug)]
@@ -300,6 +342,7 @@ struct LinuxWindow {
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     ime_active: bool,
+    ime_preedit: Option<ImePreedit>,
     last_ime_cursor_area: Option<ImeCursorArea>,
     error: Option<String>,
 }
@@ -340,6 +383,7 @@ impl LinuxWindow {
             reader_status: None,
             modifiers: ModifiersState::empty(),
             ime_active: false,
+            ime_preedit: None,
             last_ime_cursor_area: None,
             error: None,
         }
@@ -454,8 +498,19 @@ impl LinuxWindow {
             .cell_dimensions
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let snapshot = snapshot_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        let preedit_layout = self.ime_preedit.as_ref().map(|preedit| {
+            layout_ime_preedit(
+                preedit,
+                snapshot.input_cursor,
+                (snapshot.columns, snapshot.rows),
+            )
+        });
+        let ime_cursor = preedit_layout
+            .as_ref()
+            .and_then(|layout| layout.caret_cell)
+            .unwrap_or(snapshot.input_cursor);
         let next_ime_cursor_area = ime_cursor_area(
-            snapshot.input_cursor,
+            ime_cursor,
             (snapshot.columns, snapshot.rows),
             cell_dimensions,
             (width.get(), height.get()),
@@ -483,7 +538,19 @@ impl LinuxWindow {
             self.colors,
             cell_dimensions,
             &snapshot,
+            preedit_layout.is_none(),
         );
+        if let Some(layout) = preedit_layout.as_ref() {
+            draw_ime_preedit(
+                &mut buffer,
+                (width.get(), height.get()),
+                glyph_atlas,
+                self.colors,
+                cell_dimensions,
+                &snapshot,
+                layout,
+            );
+        }
         let terminal_content_visible =
             !self.exit_after_first_frame || buffer.iter().any(|&pixel| pixel != self.background);
         window.pre_present_notify();
@@ -507,6 +574,16 @@ impl LinuxWindow {
         event_loop.exit();
     }
 
+    fn update_ime_preedit(&mut self, next: Option<ImePreedit>) -> bool {
+        if !replace_ime_preedit(&mut self.ime_preedit, next) {
+            return false;
+        }
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
+        }
+        true
+    }
+
     fn handle_terminal_input_result(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -525,6 +602,7 @@ impl LinuxWindow {
     }
 
     fn request_terminal_shutdown(&mut self) {
+        self.ime_preedit = None;
         if let Some(reader) = self.reader.as_ref() {
             reader.request_shutdown();
         }
@@ -619,9 +697,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             }
             WindowEvent::Focused(focused) => {
                 self.modifiers = modifiers_after_focus_change(self.modifiers, focused);
+                if !focused {
+                    self.update_ime_preedit(None);
+                }
             }
             WindowEvent::Ime(Ime::Enabled) => {
                 self.ime_active = true;
+                self.update_ime_preedit(None);
                 self.last_ime_cursor_area = None;
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
@@ -629,9 +711,48 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             }
             WindowEvent::Ime(Ime::Disabled) => {
                 self.ime_active = false;
+                self.update_ime_preedit(None);
                 self.last_ime_cursor_area = None;
             }
+            WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                if !self.ime_active || !terminal_accepts_keyboard_input(self.reader_status.as_ref())
+                {
+                    return;
+                }
+                let next = match ime_preedit_payload(text, cursor) {
+                    ImePreeditPayload::Clear => None,
+                    ImePreeditPayload::Text(preedit) => {
+                        let viewport_changed = match reveal_ime_input_viewport(self.grid.as_ref()) {
+                            Ok(changed) => changed,
+                            Err(error) => {
+                                self.fail(event_loop, error.to_string());
+                                return;
+                            }
+                        };
+                        if viewport_changed {
+                            if let Some(window) = self.window.as_ref() {
+                                window.request_redraw();
+                            }
+                        }
+                        Some(preedit)
+                    }
+                    ImePreeditPayload::TooManyBytes { byte_count, limit } => {
+                        log::warn!(
+                            "dropping Linux IME preedit of {byte_count} bytes; limit is {limit}"
+                        );
+                        None
+                    }
+                    ImePreeditPayload::TooManyRenderCells { cell_count, limit } => {
+                        log::warn!(
+                            "dropping Linux IME preedit requiring {cell_count} render cells; limit is {limit}"
+                        );
+                        None
+                    }
+                };
+                self.update_ime_preedit(next);
+            }
             WindowEvent::Ime(event) => {
+                self.update_ime_preedit(None);
                 if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
                     return;
                 }
@@ -791,6 +912,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 }
             }
             LinuxEvent::ReaderExited(status) => {
+                self.update_ime_preedit(None);
                 if self.reader_status.is_none() {
                     self.reader_status = Some(status);
                     if let Some(writer) = self.writer.as_mut() {
@@ -1150,6 +1272,73 @@ fn ime_payload_from_event(event: Ime) -> Option<ImeCommitPayload> {
     }
 }
 
+fn ime_preedit_payload(text: String, cursor: Option<(usize, usize)>) -> ImePreeditPayload {
+    ime_preedit_payload_with_limits(
+        text,
+        cursor,
+        MAX_IME_PREEDIT_BYTES,
+        MAX_IME_PREEDIT_RENDER_CELLS,
+    )
+}
+
+fn ime_preedit_payload_with_limits(
+    text: String,
+    cursor: Option<(usize, usize)>,
+    byte_limit: usize,
+    render_cell_limit: usize,
+) -> ImePreeditPayload {
+    if text.is_empty() {
+        return ImePreeditPayload::Clear;
+    }
+    let byte_count = text.len();
+    if byte_count > byte_limit {
+        return ImePreeditPayload::TooManyBytes {
+            byte_count,
+            limit: byte_limit,
+        };
+    }
+
+    let mut cell_count = 0_usize;
+    for character in text.chars() {
+        let render_cells = character.width().unwrap_or(1).max(1);
+        cell_count = cell_count.saturating_add(render_cells);
+        if cell_count > render_cell_limit {
+            return ImePreeditPayload::TooManyRenderCells {
+                cell_count,
+                limit: render_cell_limit,
+            };
+        }
+    }
+
+    let cursor = cursor.and_then(|(anchor, caret)| {
+        (anchor <= text.len()
+            && caret <= text.len()
+            && text.is_char_boundary(anchor)
+            && text.is_char_boundary(caret))
+        .then_some(ImePreeditCursor {
+            selection_start: anchor.min(caret),
+            selection_end: anchor.max(caret),
+            caret,
+        })
+    });
+    ImePreeditPayload::Text(ImePreedit { text, cursor })
+}
+
+fn replace_ime_preedit(current: &mut Option<ImePreedit>, next: Option<ImePreedit>) -> bool {
+    if *current == next {
+        return false;
+    }
+    *current = next;
+    true
+}
+
+fn reveal_ime_input_viewport(grid: &Mutex<Grid>) -> Result<bool, GridAccessError> {
+    let mut grid = grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+    let changed = grid.scroll_offset != 0;
+    grid.scroll_to_bottom();
+    Ok(changed)
+}
+
 fn dispatch_encoded_terminal_input_with<W>(
     grid: &Mutex<Grid>,
     bytes: Option<Vec<u8>>,
@@ -1284,6 +1473,121 @@ fn sync_ime_cursor_area_with<F>(
     *last_area = Some(next_area);
 }
 
+fn layout_ime_preedit(
+    preedit: &ImePreedit,
+    input_cursor: (usize, usize),
+    grid_dimensions: (usize, usize),
+) -> ImePreeditLayout {
+    let (columns, rows) = grid_dimensions;
+    if columns == 0 || rows == 0 || input_cursor.0 >= rows || input_cursor.1 > columns {
+        return ImePreeditLayout::default();
+    }
+
+    let mut layout = ImePreeditLayout::default();
+    let mut row = input_cursor.0;
+    let mut column = input_cursor.1;
+    let mut previous_cell = None;
+
+    for (byte_start, character) in preedit.text.char_indices() {
+        let byte_end = byte_start + character.len_utf8();
+        let (mut display_character, mut width) = match character.width() {
+            Some(width) => (character, u8::try_from(width.min(2)).unwrap_or(2)),
+            None => (IME_PREEDIT_REPLACEMENT, 1),
+        };
+        if usize::from(width) > columns {
+            display_character = IME_PREEDIT_REPLACEMENT;
+            width = 1;
+        }
+        let selected = preedit.cursor.is_some_and(|cursor| {
+            cursor.selection_start < byte_end && byte_start < cursor.selection_end
+        });
+        let width_usize = usize::from(width);
+
+        if width != 0 && (column >= columns || width_usize > columns.saturating_sub(column)) {
+            row = row.saturating_add(1);
+            column = 0;
+        }
+        if preedit
+            .cursor
+            .is_some_and(|cursor| cursor.caret == byte_start)
+        {
+            layout.caret_cell = clamp_ime_layout_position((row, column), grid_dimensions);
+        }
+
+        if width == 0 {
+            let position =
+                previous_cell.or_else(|| clamp_ime_layout_position((row, column), grid_dimensions));
+            if let Some((glyph_row, glyph_column)) =
+                position.filter(|(row, column)| *row < rows && *column < columns)
+            {
+                layout.glyphs.push(ImePreeditGlyph {
+                    character: display_character,
+                    byte_start,
+                    byte_end,
+                    row: glyph_row,
+                    column: glyph_column,
+                    width,
+                    selected,
+                });
+            }
+            continue;
+        }
+
+        if row < rows {
+            layout.glyphs.push(ImePreeditGlyph {
+                character: display_character,
+                byte_start,
+                byte_end,
+                row,
+                column,
+                width,
+                selected,
+            });
+        }
+        previous_cell = Some((row, column));
+        column = column.saturating_add(width_usize);
+    }
+    normalize_ime_preedit_cluster_selection(&mut layout.glyphs);
+
+    if preedit
+        .cursor
+        .is_some_and(|cursor| cursor.caret == preedit.text.len())
+    {
+        layout.caret_cell = clamp_ime_layout_position((row, column), grid_dimensions);
+    }
+    layout
+}
+
+fn normalize_ime_preedit_cluster_selection(glyphs: &mut [ImePreeditGlyph]) {
+    let mut selected_anchors = glyphs
+        .iter()
+        .filter(|glyph| glyph.selected)
+        .map(|glyph| (glyph.row, glyph.column))
+        .collect::<Vec<_>>();
+    selected_anchors.sort_unstable();
+    selected_anchors.dedup();
+
+    for glyph in glyphs {
+        if selected_anchors
+            .binary_search(&(glyph.row, glyph.column))
+            .is_ok()
+        {
+            glyph.selected = true;
+        }
+    }
+}
+
+fn clamp_ime_layout_position(
+    position: (usize, usize),
+    grid_dimensions: (usize, usize),
+) -> Option<(usize, usize)> {
+    let (columns, rows) = grid_dimensions;
+    Some((
+        position.0.min(rows.checked_sub(1)?),
+        position.1.min(columns.checked_sub(1)?),
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ResolvedCellColors {
     foreground: u32,
@@ -1313,6 +1617,7 @@ fn draw_grid_snapshot(
     colors: TerminalColors,
     cell_dimensions: (u16, u16),
     snapshot: &GridSnapshot,
+    draw_terminal_cursor: bool,
 ) {
     let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
 
@@ -1368,6 +1673,9 @@ fn draw_grid_snapshot(
         }
     }
 
+    if !draw_terminal_cursor {
+        return;
+    }
     let Some(cursor) = snapshot.cursor else {
         return;
     };
@@ -1393,6 +1701,152 @@ fn draw_grid_snapshot(
         contrasting_cursor_color(cursor_background),
         CURSOR_ALPHA,
     );
+}
+
+fn draw_ime_preedit(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    atlas: &mut GlyphAtlas,
+    colors: TerminalColors,
+    cell_dimensions: (u16, u16),
+    snapshot: &GridSnapshot,
+    layout: &ImePreeditLayout,
+) {
+    let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
+
+    for glyph in &layout.glyphs {
+        let Some(origin) = cell_origin(glyph.row, glyph.column, cell_dimensions) else {
+            continue;
+        };
+        let Some(width) = cell_size.0.checked_mul(u32::from(glyph.width.max(1))) else {
+            continue;
+        };
+        let (_, background) = ime_preedit_glyph_colors(colors, snapshot, glyph);
+        fill_rect(
+            frame,
+            frame_size,
+            origin,
+            (width, cell_size.1),
+            background,
+            u8::MAX,
+        );
+    }
+
+    for glyph in &layout.glyphs {
+        if glyph.character == ' ' || glyph.character == '\0' {
+            continue;
+        }
+        let Some(origin) = cell_origin(glyph.row, glyph.column, cell_dimensions) else {
+            continue;
+        };
+        let (foreground, _) = ime_preedit_glyph_colors(colors, snapshot, glyph);
+        let atlas_glyph = atlas.get_or_insert(GlyphKey {
+            c: glyph.character,
+            bold: false,
+            italic: false,
+        });
+        let source = GlyphSource {
+            pixels: &atlas.pixels,
+            size: (atlas.width, atlas.height),
+            ascent: atlas.ascent,
+        };
+        draw_cell_glyph(frame, frame_size, source, atlas_glyph, origin, foreground);
+    }
+
+    let underline_height = CURSOR_THICKNESS.min(cell_size.1);
+    for glyph in &layout.glyphs {
+        let Some(origin) = cell_origin(glyph.row, glyph.column, cell_dimensions) else {
+            continue;
+        };
+        let Some(width) = cell_size.0.checked_mul(u32::from(glyph.width.max(1))) else {
+            continue;
+        };
+        let Some(y_offset) = cell_size.1.checked_sub(underline_height) else {
+            continue;
+        };
+        let Some(y) = i32::try_from(y_offset)
+            .ok()
+            .and_then(|offset| origin.1.checked_add(offset))
+        else {
+            continue;
+        };
+        let (foreground, _) = ime_preedit_glyph_colors(colors, snapshot, glyph);
+        fill_rect(
+            frame,
+            frame_size,
+            (origin.0, y),
+            (width, underline_height),
+            foreground,
+            u8::MAX,
+        );
+    }
+
+    let Some((row, column)) = layout.caret_cell else {
+        return;
+    };
+    let Some(origin) = cell_origin(row, column, cell_dimensions) else {
+        return;
+    };
+    let background = ime_preedit_background_at(colors, snapshot, layout, row, column);
+    fill_rect(
+        frame,
+        frame_size,
+        origin,
+        (CURSOR_THICKNESS.min(cell_size.0), cell_size.1),
+        contrasting_cursor_color(background),
+        u8::MAX,
+    );
+}
+
+fn ime_preedit_glyph_colors(
+    colors: TerminalColors,
+    snapshot: &GridSnapshot,
+    glyph: &ImePreeditGlyph,
+) -> (u32, u32) {
+    let underlying = snapshot
+        .cell(glyph.row, glyph.column)
+        .map(|cell| resolve_cell_colors(colors, cell))
+        .unwrap_or_else(|| {
+            let foreground = colors.resolve_foreground(Color::Default, false);
+            let background = colors.default_background();
+            ResolvedCellColors {
+                foreground: rgb_to_xrgb(foreground.0, foreground.1, foreground.2),
+                background: rgb_to_xrgb(background.0, background.1, background.2),
+            }
+        });
+    if glyph.selected {
+        (underlying.background, underlying.foreground)
+    } else {
+        (underlying.foreground, underlying.background)
+    }
+}
+
+fn ime_preedit_background_at(
+    colors: TerminalColors,
+    snapshot: &GridSnapshot,
+    layout: &ImePreeditLayout,
+    row: usize,
+    column: usize,
+) -> u32 {
+    layout
+        .glyphs
+        .iter()
+        .rev()
+        .find(|glyph| {
+            glyph.row == row
+                && column >= glyph.column
+                && column < glyph.column.saturating_add(usize::from(glyph.width.max(1)))
+        })
+        .map(|glyph| ime_preedit_glyph_colors(colors, snapshot, glyph).1)
+        .or_else(|| {
+            snapshot
+                .cell(row, column)
+                .map(|cell| resolve_cell_colors(colors, cell).background)
+        })
+        .unwrap_or_else(|| {
+            let background = colors.default_background();
+            rgb_to_xrgb(background.0, background.1, background.2)
+        })
 }
 
 fn cell_origin(row: usize, column: usize, cell_dimensions: (u16, u16)) -> Option<(i32, i32)> {
@@ -1490,18 +1944,23 @@ mod tests {
     use super::{
         apply_scrollback_action, apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions,
         begin_grid_redraw, classify_reader_exit, classify_writer_exit, combine_launch_results,
-        configured_terminal_dimensions, dispatch_encoded_terminal_input_with,
-        dispatch_keyboard_input_with, draw_cell_glyph, draw_grid_snapshot, drawable_dimensions,
-        ime_cursor_area, ime_payload_from_event, immediate_surface_size_to_reconcile,
-        initial_window_dimensions, is_current_surface_size, modifiers_after_focus_change,
-        physical_size_for_terminal, replace_glyph_atlas_for_scale, resize_terminal_with,
-        resolve_cell_colors, rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
-        sync_ime_cursor_area_with, terminal_accepts_keyboard_input, terminal_color_query_value,
-        terminal_dimensions_for_surface, GridAccessError, ImeCursorArea, KeyboardInputError,
+        configured_terminal_dimensions, contrasting_cursor_color,
+        dispatch_encoded_terminal_input_with, dispatch_keyboard_input_with, draw_cell_glyph,
+        draw_grid_snapshot, draw_ime_preedit, drawable_dimensions, ime_cursor_area,
+        ime_payload_from_event, ime_preedit_payload_with_limits,
+        immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
+        layout_ime_preedit, modifiers_after_focus_change, physical_size_for_terminal,
+        replace_glyph_atlas_for_scale, replace_ime_preedit, resize_terminal_with,
+        resolve_cell_colors, reveal_ime_input_viewport, rgb_to_xrgb, rounded_i32,
+        set_grid_cell_dimensions, snapshot_grid, sync_ime_cursor_area_with,
+        terminal_accepts_keyboard_input, terminal_color_query_value,
+        terminal_dimensions_for_surface, GridAccessError, ImeCursorArea, ImePreedit,
+        ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout, ImePreeditPayload, KeyboardInputError,
         KeyboardInputOutcome, ReaderStatus, ResolvedCellColors, SurfaceSizeError,
-        TerminalDimensions, TerminalResizeError, WriterStatus, MAX_INITIAL_LOGICAL_HEIGHT,
-        MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH,
-        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        TerminalDimensions, TerminalResizeError, WriterStatus, CURSOR_THICKNESS,
+        IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES, MAX_IME_PREEDIT_RENDER_CELLS,
+        MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,
+        MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
@@ -1528,6 +1987,13 @@ mod tests {
     fn test_atlas() -> GlyphAtlas {
         GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0)
             .expect("system monospace fallback should be available")
+    }
+
+    fn accepted_preedit(text: &str, cursor: Option<(usize, usize)>) -> ImePreedit {
+        match ime_preedit_payload_with_limits(text.to_string(), cursor, usize::MAX, usize::MAX) {
+            ImePreeditPayload::Text(preedit) => preedit,
+            payload => panic!("expected accepted IME preedit, got {payload:?}"),
+        }
     }
 
     fn grid_with_scrollback(rows: usize, history_lines: usize) -> Grid {
@@ -1569,9 +2035,63 @@ mod tests {
             test_colors(),
             cell_dimensions,
             &snapshot,
+            true,
         );
 
         (frame, cell_dimensions)
+    }
+
+    fn render_preedit(
+        grid: Grid,
+        preedit: &ImePreedit,
+        atlas: &mut GlyphAtlas,
+    ) -> (Vec<u32>, (u16, u16), ImePreeditLayout) {
+        let columns = grid.cols();
+        let rows = grid.rows();
+        let cell_dimensions =
+            atlas_cell_dimensions(atlas).expect("test atlas should have valid cell metrics");
+        let frame_size = (
+            u32::try_from(columns).expect("test grid width should fit u32")
+                * u32::from(cell_dimensions.0),
+            u32::try_from(rows).expect("test grid height should fit u32")
+                * u32::from(cell_dimensions.1),
+        );
+        let frame_len = usize::try_from(u64::from(frame_size.0) * u64::from(frame_size.1))
+            .expect("test preedit frame should fit memory");
+        let background = rgb_to_xrgb(
+            DEFAULT_BACKGROUND.0,
+            DEFAULT_BACKGROUND.1,
+            DEFAULT_BACKGROUND.2,
+        );
+        let mut frame = vec![background; frame_len];
+        let grid = Mutex::new(grid);
+        let snapshot = snapshot_grid(&grid).expect("test grid should not be poisoned");
+        let layout = layout_ime_preedit(
+            preedit,
+            snapshot.input_cursor,
+            (snapshot.columns, snapshot.rows),
+        );
+
+        draw_grid_snapshot(
+            &mut frame,
+            frame_size,
+            atlas,
+            test_colors(),
+            cell_dimensions,
+            &snapshot,
+            false,
+        );
+        draw_ime_preedit(
+            &mut frame,
+            frame_size,
+            atlas,
+            test_colors(),
+            cell_dimensions,
+            &snapshot,
+            &layout,
+        );
+
+        (frame, cell_dimensions, layout)
     }
 
     #[test]
@@ -1954,19 +2474,526 @@ mod tests {
 
     #[test]
     fn only_final_ime_commits_become_terminal_payloads() {
-        assert_eq!(ime_payload_from_event(Ime::Enabled), None);
+        let grid = Mutex::new(Grid::new(8, 2, 0));
+        let written = RefCell::new(Vec::new());
+        {
+            let forward_if_committed = |event| {
+                let Some(ImeCommitPayload::Bytes(bytes)) = ime_payload_from_event(event) else {
+                    return;
+                };
+                dispatch_encoded_terminal_input_with(&grid, Some(bytes), |bytes| {
+                    written.borrow_mut().extend_from_slice(&bytes);
+                    Ok(())
+                })
+                .expect("fresh Grid should accept committed IME text");
+            };
+
+            forward_if_committed(Ime::Enabled);
+            forward_if_committed(Ime::Preedit("に".to_string(), Some((3, 3))));
+            forward_if_committed(Ime::Preedit(String::new(), None));
+            forward_if_committed(Ime::Disabled);
+            assert!(
+                written.borrow().is_empty(),
+                "provisional IME events must never reach the terminal writer"
+            );
+
+            forward_if_committed(Ime::Commit("日".to_string()));
+        }
+        assert_eq!(written.into_inner(), "日".as_bytes());
+    }
+
+    #[test]
+    fn ime_preedit_preserves_utf8_ranges_and_hides_malformed_cursors() {
+        let text = "aé日🙂";
+        for boundary in [0, 1, 3, 6, 10] {
+            let preedit = accepted_preedit(text, Some((boundary, boundary)));
+            assert_eq!(
+                preedit.cursor,
+                Some(ImePreeditCursor {
+                    selection_start: boundary,
+                    selection_end: boundary,
+                    caret: boundary,
+                })
+            );
+        }
+
+        let reverse = accepted_preedit(text, Some((10, 1)));
         assert_eq!(
-            ime_payload_from_event(Ime::Preedit("に".to_string(), Some((3, 3)))),
-            None
+            reverse.cursor,
+            Some(ImePreeditCursor {
+                selection_start: 1,
+                selection_end: 10,
+                caret: 1,
+            }),
+            "the second directional endpoint remains the active caret"
+        );
+
+        for malformed in [Some((2, 3)), Some((1, 7)), Some((0, 11))] {
+            let preedit = accepted_preedit(text, malformed);
+            assert_eq!(preedit.text, text);
+            assert_eq!(preedit.cursor, None);
+        }
+        assert_eq!(accepted_preedit(text, None).cursor, None);
+    }
+
+    #[test]
+    fn ime_preedit_limits_are_atomic_and_never_truncate_utf8() {
+        assert_eq!(
+            ime_preedit_payload_with_limits(String::new(), Some((0, 0)), 0, 0),
+            ImePreeditPayload::Clear
+        );
+
+        let exact_bytes = "é".repeat(MAX_IME_PREEDIT_BYTES / "é".len());
+        assert_eq!(exact_bytes.len(), MAX_IME_PREEDIT_BYTES);
+        assert!(matches!(
+            ime_preedit_payload_with_limits(
+                exact_bytes.clone(),
+                None,
+                MAX_IME_PREEDIT_BYTES,
+                usize::MAX,
+            ),
+            ImePreeditPayload::Text(ImePreedit { text, .. }) if text == exact_bytes
+        ));
+        assert_eq!(
+            ime_preedit_payload_with_limits(
+                format!("{exact_bytes}x"),
+                None,
+                MAX_IME_PREEDIT_BYTES,
+                usize::MAX,
+            ),
+            ImePreeditPayload::TooManyBytes {
+                byte_count: MAX_IME_PREEDIT_BYTES + 1,
+                limit: MAX_IME_PREEDIT_BYTES,
+            }
+        );
+
+        let exact_cells = "x".repeat(MAX_IME_PREEDIT_RENDER_CELLS);
+        assert!(matches!(
+            ime_preedit_payload_with_limits(
+                exact_cells,
+                None,
+                usize::MAX,
+                MAX_IME_PREEDIT_RENDER_CELLS,
+            ),
+            ImePreeditPayload::Text(_)
+        ));
+        assert_eq!(
+            ime_preedit_payload_with_limits(
+                "x".repeat(MAX_IME_PREEDIT_RENDER_CELLS + 1),
+                None,
+                usize::MAX,
+                MAX_IME_PREEDIT_RENDER_CELLS,
+            ),
+            ImePreeditPayload::TooManyRenderCells {
+                cell_count: MAX_IME_PREEDIT_RENDER_CELLS + 1,
+                limit: MAX_IME_PREEDIT_RENDER_CELLS,
+            }
+        );
+
+        let mut visible = Some(accepted_preedit("old", None));
+        assert!(replace_ime_preedit(&mut visible, None));
+        assert_eq!(
+            visible, None,
+            "a rejected update must clear the old overlay"
+        );
+        assert!(!replace_ime_preedit(&mut visible, None));
+    }
+
+    #[test]
+    fn ime_preedit_layout_handles_wide_combining_selection_and_controls() {
+        let preedit = accepted_preedit("A日🙂\u{301}B", Some((10, 4)));
+        let layout = layout_ime_preedit(&preedit, (0, 0), (6, 2));
+
+        assert_eq!(
+            layout.glyphs,
+            vec![
+                ImePreeditGlyph {
+                    character: 'A',
+                    byte_start: 0,
+                    byte_end: 1,
+                    row: 0,
+                    column: 0,
+                    width: 1,
+                    selected: false,
+                },
+                ImePreeditGlyph {
+                    character: '日',
+                    byte_start: 1,
+                    byte_end: 4,
+                    row: 0,
+                    column: 1,
+                    width: 2,
+                    selected: false,
+                },
+                ImePreeditGlyph {
+                    character: '🙂',
+                    byte_start: 4,
+                    byte_end: 8,
+                    row: 0,
+                    column: 3,
+                    width: 2,
+                    selected: true,
+                },
+                ImePreeditGlyph {
+                    character: '\u{301}',
+                    byte_start: 8,
+                    byte_end: 10,
+                    row: 0,
+                    column: 3,
+                    width: 0,
+                    selected: true,
+                },
+                ImePreeditGlyph {
+                    character: 'B',
+                    byte_start: 10,
+                    byte_end: 11,
+                    row: 0,
+                    column: 5,
+                    width: 1,
+                    selected: false,
+                },
+            ]
+        );
+        assert_eq!(layout.caret_cell, Some((0, 3)));
+
+        let controls = accepted_preedit("\0\t\n\r\u{1b}\u{7f}", None);
+        let control_layout = layout_ime_preedit(&controls, (0, 0), (8, 1));
+        assert_eq!(control_layout.glyphs.len(), 6);
+        for (column, glyph) in control_layout.glyphs.iter().enumerate() {
+            assert_eq!(glyph.character, IME_PREEDIT_REPLACEMENT);
+            assert_eq!(glyph.column, column);
+            assert_eq!(glyph.width, 1);
+            assert_eq!((glyph.byte_start, glyph.byte_end), (column, column + 1));
+        }
+    }
+
+    #[test]
+    fn ime_preedit_cluster_selection_keeps_base_and_combining_colors_coherent() {
+        for cursor in [Some((0, 1)), Some((1, 3))] {
+            let layout = layout_ime_preedit(&accepted_preedit("e\u{301}", cursor), (0, 0), (4, 1));
+            assert_eq!(layout.glyphs.len(), 2);
+            assert!(layout.glyphs.iter().all(|glyph| glyph.selected));
+            assert!(layout
+                .glyphs
+                .iter()
+                .all(|glyph| (glyph.row, glyph.column) == (0, 0)));
+        }
+
+        let unselected =
+            layout_ime_preedit(&accepted_preedit("e\u{301}", Some((3, 3))), (0, 0), (4, 1));
+        assert!(unselected.glyphs.iter().all(|glyph| !glyph.selected));
+
+        let wide = layout_ime_preedit(&accepted_preedit("日\u{301}", Some((3, 5))), (0, 0), (4, 1));
+        assert_eq!(wide.glyphs[0].width, 2);
+        assert_eq!(wide.glyphs[1].width, 0);
+        assert!(wide.glyphs.iter().all(|glyph| glyph.selected));
+        assert!(wide
+            .glyphs
+            .iter()
+            .all(|glyph| (glyph.row, glyph.column) == (0, 0)));
+    }
+
+    #[test]
+    fn ime_preedit_layout_wraps_without_half_wide_glyphs_and_clips_at_bottom() {
+        let ascii = layout_ime_preedit(&accepted_preedit("abc", Some((3, 3))), (0, 3), (4, 3));
+        assert_eq!(
+            ascii
+                .glyphs
+                .iter()
+                .map(|glyph| (glyph.character, glyph.row, glyph.column))
+                .collect::<Vec<_>>(),
+            [('a', 0, 3), ('b', 1, 0), ('c', 1, 1)]
+        );
+        assert_eq!(ascii.caret_cell, Some((1, 2)));
+
+        let wide = layout_ime_preedit(&accepted_preedit("日", Some((3, 3))), (0, 3), (4, 3));
+        assert_eq!((wide.glyphs[0].row, wide.glyphs[0].column), (1, 0));
+        assert_eq!(wide.glyphs[0].width, 2);
+        assert_eq!(wide.caret_cell, Some((1, 2)));
+
+        let pending = layout_ime_preedit(&accepted_preedit("a", Some((1, 1))), (0, 4), (4, 3));
+        assert_eq!((pending.glyphs[0].row, pending.glyphs[0].column), (1, 0));
+
+        let pending_start =
+            layout_ime_preedit(&accepted_preedit("a", Some((0, 0))), (0, 4), (4, 3));
+        assert_eq!(pending_start.caret_cell, Some((1, 0)));
+        assert_eq!(
+            (pending_start.glyphs[0].row, pending_start.glyphs[0].column),
+            (1, 0),
+            "a caret before a wrapped glyph must follow it onto the next line"
+        );
+
+        let wide_start = layout_ime_preedit(&accepted_preedit("日", Some((0, 0))), (0, 3), (4, 3));
+        assert_eq!(wide_start.caret_cell, Some((1, 0)));
+        assert_eq!(
+            (wide_start.glyphs[0].row, wide_start.glyphs[0].column),
+            (1, 0)
+        );
+
+        let clipped = layout_ime_preedit(&accepted_preedit("ab", Some((2, 2))), (1, 3), (4, 2));
+        assert_eq!(clipped.glyphs.len(), 1);
+        assert_eq!((clipped.glyphs[0].row, clipped.glyphs[0].column), (1, 3));
+        assert_eq!(clipped.caret_cell, Some((1, 3)));
+
+        let one_column = layout_ime_preedit(&accepted_preedit("日", None), (0, 0), (1, 1));
+        assert_eq!(one_column.glyphs[0].character, IME_PREEDIT_REPLACEMENT);
+        assert_eq!(one_column.glyphs[0].width, 1);
+
+        let leading_combining =
+            layout_ime_preedit(&accepted_preedit("\u{301}", None), (0, 2), (4, 1));
+        assert_eq!(
+            (
+                leading_combining.glyphs[0].row,
+                leading_combining.glyphs[0].column
+            ),
+            (0, 2)
+        );
+        assert_eq!(leading_combining.glyphs[0].width, 0);
+    }
+
+    #[test]
+    fn ime_preedit_reveals_live_input_and_replaces_provisional_state() {
+        let mut history = grid_with_scrollback(3, 5);
+        history.scroll_viewport_up(history.scrollback_len());
+        let grid = Mutex::new(history);
+        let mut state = None;
+
+        assert!(reveal_ime_input_viewport(&grid).expect("fresh Grid should reveal input"));
+        assert_eq!(
+            grid.lock()
+                .expect("preedit reveal should release the Grid lock")
+                .scroll_offset,
+            0
+        );
+        assert!(!reveal_ime_input_viewport(&grid).expect("visible input should be a no-op"));
+
+        let first = accepted_preedit("に", Some((3, 3)));
+        let second = accepted_preedit("日本", Some((6, 6)));
+        assert!(replace_ime_preedit(&mut state, Some(first)));
+        let unchanged = state.clone();
+        assert!(!replace_ime_preedit(&mut state, unchanged));
+        assert!(replace_ime_preedit(&mut state, Some(second.clone())));
+        assert_eq!(state, Some(second));
+        assert!(replace_ime_preedit(&mut state, None));
+        assert_eq!(state, None);
+    }
+
+    #[test]
+    fn ime_preedit_render_uses_reverse_selection_underline_and_topmost_caret() {
+        let grid = Mutex::new(Grid::new(3, 1, 0));
+        let snapshot = snapshot_grid(&grid).expect("fresh Grid snapshot should succeed");
+        let preedit = accepted_preedit("  ", Some((0, 1)));
+        let layout = layout_ime_preedit(&preedit, snapshot.input_cursor, (3, 1));
+        assert_eq!(layout.caret_cell, Some((0, 1)));
+
+        let mut atlas = test_atlas();
+        let cell_dimensions =
+            atlas_cell_dimensions(&atlas).expect("test atlas should have valid metrics");
+        let cell_width = u32::from(cell_dimensions.0);
+        let cell_height = u32::from(cell_dimensions.1);
+        assert!(cell_width > CURSOR_THICKNESS);
+        assert!(cell_height > CURSOR_THICKNESS);
+        let frame_size = (cell_width * 3, cell_height);
+        let mut frame = vec![
+            rgb_to_xrgb(
+                DEFAULT_BACKGROUND.0,
+                DEFAULT_BACKGROUND.1,
+                DEFAULT_BACKGROUND.2,
+            );
+            usize::try_from(frame_size.0 * frame_size.1)
+                .expect("small preedit frame should fit usize")
+        ];
+        draw_grid_snapshot(
+            &mut frame,
+            frame_size,
+            &mut atlas,
+            test_colors(),
+            cell_dimensions,
+            &snapshot,
+            false,
+        );
+        draw_ime_preedit(
+            &mut frame,
+            frame_size,
+            &mut atlas,
+            test_colors(),
+            cell_dimensions,
+            &snapshot,
+            &layout,
+        );
+
+        let pixel = |x: u32, y: u32| {
+            let index = usize::try_from(y * frame_size.0 + x)
+                .expect("small preedit pixel should fit usize");
+            frame[index]
+        };
+        let foreground = rgb_to_xrgb(
+            DEFAULT_FOREGROUND.0,
+            DEFAULT_FOREGROUND.1,
+            DEFAULT_FOREGROUND.2,
+        );
+        let background = rgb_to_xrgb(
+            DEFAULT_BACKGROUND.0,
+            DEFAULT_BACKGROUND.1,
+            DEFAULT_BACKGROUND.2,
+        );
+        let middle = cell_width / 2;
+
+        assert_eq!(
+            pixel(middle, 0),
+            foreground,
+            "selection uses reverse background"
         );
         assert_eq!(
-            ime_payload_from_event(Ime::Preedit(String::new(), None)),
-            None
+            pixel(cell_width + middle, 0),
+            background,
+            "unselected preedit preserves the terminal background"
         );
-        assert_eq!(ime_payload_from_event(Ime::Disabled), None);
         assert_eq!(
-            ime_payload_from_event(Ime::Commit("日".to_string())),
-            Some(ImeCommitPayload::Bytes("日".as_bytes().to_vec()))
+            pixel(middle, cell_height - 1),
+            background,
+            "selected preedit remains underlined with its reversed foreground"
+        );
+        assert_eq!(
+            pixel(cell_width + middle, cell_height - 1),
+            foreground,
+            "unselected preedit has a visible underline"
+        );
+        assert_eq!(
+            pixel(cell_width, 0),
+            contrasting_cursor_color(background),
+            "the caret bar is drawn after the overlay"
+        );
+        assert_eq!(
+            ime_cursor_area(
+                layout
+                    .caret_cell
+                    .expect("valid preedit should expose a caret"),
+                (snapshot.columns, snapshot.rows),
+                cell_dimensions,
+                frame_size,
+            ),
+            Some(ImeCursorArea {
+                position: PhysicalPosition::new(
+                    i32::try_from(cell_width).expect("cell width should fit i32"),
+                    0,
+                ),
+                size: PhysicalSize::new(cell_width, cell_height),
+            })
+        );
+    }
+
+    #[test]
+    fn ime_preedit_render_preserves_contrast_on_reversed_terminal_cells() {
+        let mut grid = Grid::new(1, 1, 0);
+        grid.cursor_visible = false;
+        grid.buffer.cell_mut(0, 0).flags = CellFlags::REVERSE;
+        let mut atlas = test_atlas();
+
+        let (frame, cell_dimensions, layout) =
+            render_preedit(grid, &accepted_preedit(" ", None), &mut atlas);
+
+        assert_eq!(layout.caret_cell, None);
+        let cell_width = usize::from(cell_dimensions.0);
+        let cell_height = usize::from(cell_dimensions.1);
+        let pixel = |x: usize, y: usize| frame[y * cell_width + x];
+        let foreground = rgb_to_xrgb(
+            DEFAULT_FOREGROUND.0,
+            DEFAULT_FOREGROUND.1,
+            DEFAULT_FOREGROUND.2,
+        );
+        let background = rgb_to_xrgb(
+            DEFAULT_BACKGROUND.0,
+            DEFAULT_BACKGROUND.1,
+            DEFAULT_BACKGROUND.2,
+        );
+
+        assert_eq!(pixel(cell_width / 2, 0), foreground);
+        assert_eq!(pixel(cell_width / 2, cell_height - 1), background);
+        assert_ne!(
+            pixel(cell_width / 2, 0),
+            pixel(cell_width / 2, cell_height - 1),
+            "the underline must contrast with a reversed cell background"
+        );
+    }
+
+    #[test]
+    fn ime_preedit_render_decorates_zero_width_glyphs_without_advancing_them() {
+        let combining_grid = || {
+            let mut grid = Grid::new(1, 1, 0);
+            grid.cursor_visible = false;
+            *grid.buffer.cell_mut(0, 0) = Cell {
+                fg: Color::Rgb(17, 34, 51),
+                bg: Color::Rgb(68, 85, 102),
+                ..Cell::default()
+            };
+            grid
+        };
+        let mut atlas = test_atlas();
+
+        let (selected_frame, _, selected_layout) = render_preedit(
+            combining_grid(),
+            &accepted_preedit("\u{301}", Some((0, 2))),
+            &mut atlas,
+        );
+        assert_eq!(selected_layout.glyphs[0].width, 0);
+        assert_eq!(selected_layout.glyphs[0].column, 0);
+        let selected_background = rgb_to_xrgb(17, 34, 51);
+        assert!(
+            selected_frame.contains(&selected_background),
+            "a selected combining mark needs a one-cell reverse background"
+        );
+
+        let (underlined_frame, cell_dimensions, underlined_layout) = render_preedit(
+            combining_grid(),
+            &accepted_preedit("\u{301}", None),
+            &mut atlas,
+        );
+        assert_eq!(underlined_layout.glyphs[0].width, 0);
+        assert_eq!(underlined_layout.glyphs[0].column, 0);
+        let cell_width = usize::from(cell_dimensions.0);
+        let cell_height = usize::from(cell_dimensions.1);
+        let underline_start = (cell_height - 1) * cell_width;
+        assert!(
+            underlined_frame[underline_start..]
+                .iter()
+                .all(|&pixel| pixel == rgb_to_xrgb(17, 34, 51)),
+            "a zero-width glyph needs a visible one-cell underline"
+        );
+    }
+
+    #[test]
+    fn ime_preedit_render_hides_the_terminal_cursor_before_a_wrapped_wide_glyph() {
+        let mut grid = Grid::new(4, 2, 0);
+        grid.cursor_row = 0;
+        grid.cursor_col = 3;
+        grid.cursor_style.shape = CursorShape::Block;
+        let mut atlas = test_atlas();
+
+        let (frame, cell_dimensions, layout) =
+            render_preedit(grid, &accepted_preedit("日", Some((0, 0))), &mut atlas);
+
+        assert_eq!(layout.caret_cell, Some((1, 0)));
+        assert_eq!((layout.glyphs[0].row, layout.glyphs[0].column), (1, 0));
+        let cell_width = usize::from(cell_dimensions.0);
+        let cell_height = usize::from(cell_dimensions.1);
+        let frame_width = cell_width * 4;
+        let pixel = |x: usize, y: usize| frame[y * frame_width + x];
+        let background = rgb_to_xrgb(
+            DEFAULT_BACKGROUND.0,
+            DEFAULT_BACKGROUND.1,
+            DEFAULT_BACKGROUND.2,
+        );
+
+        assert_eq!(
+            pixel(3 * cell_width + cell_width / 2, cell_height / 2),
+            background,
+            "composition must suppress the stale terminal cursor on the previous line"
+        );
+        assert_ne!(
+            pixel(0, cell_height),
+            background,
+            "the preedit caret should appear beside the wrapped glyph"
         );
     }
 
