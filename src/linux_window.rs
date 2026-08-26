@@ -2,10 +2,12 @@ use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags};
 use crate::grid::{CursorShape, Grid};
+use crate::input::linux::{encode_key_press, key_press_from_winit};
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
+use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
 use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,6 +17,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
 const WINDOW_TITLE: &str = "黒板kokuban";
@@ -40,10 +43,17 @@ type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
 enum LinuxEvent {
     GridUpdated,
     ReaderExited(ReaderStatus),
+    WriterExited(WriterStatus),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ReaderStatus {
+    Normal,
+    Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WriterStatus {
     Normal,
     Failed(String),
 }
@@ -57,7 +67,7 @@ struct GlyphSource<'a> {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 enum GridAccessError {
-    #[error("Linux renderer could not access the terminal grid because its lock is poisoned")]
+    #[error("could not access the Linux terminal grid because its lock is poisoned")]
     Poisoned,
     #[error("terminal grid dimensions {columns}x{rows} exceed the Linux PTY limit")]
     DimensionsOutOfRange { columns: usize, rows: usize },
@@ -89,6 +99,14 @@ enum TerminalResizeError {
         #[source]
         source: std::io::Error,
     },
+}
+
+#[derive(Debug, Error)]
+enum KeyboardInputError {
+    #[error("could not read the Linux terminal keyboard mode: {0}")]
+    Grid(#[from] GridAccessError),
+    #[error("could not queue Linux keyboard input: {0}")]
+    Queue(#[from] TerminalWriteQueueError),
 }
 
 #[derive(Debug, Error)]
@@ -174,17 +192,34 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     );
     let redraw_pending = Arc::new(AtomicBool::new(false));
     let event_proxy = event_loop.create_proxy();
+    let writer_proxy = event_proxy.clone();
+    let mut writer = TerminalWriter::spawn(pty.clone(), move |exit| {
+        let _ = writer_proxy.send_event(LinuxEvent::WriterExited(classify_writer_exit(exit)));
+    })
+    .map_err(|error| format!("could not start the Linux terminal writer: {error}"))?;
     let update_proxy = event_proxy.clone();
     let update_pending = redraw_pending.clone();
-    let reader = TerminalReader::spawn_text(
+    let reader = match TerminalReader::spawn_text(
         pty.clone(),
         grid.clone(),
         move || signal_grid_update(&update_proxy, update_pending.as_ref()),
         move |exit| {
             let _ = event_proxy.send_event(LinuxEvent::ReaderExited(classify_reader_exit(exit)));
         },
-    )
-    .map_err(|error| format!("could not start the Linux terminal reader: {error}"))?;
+    ) {
+        Ok(reader) => reader,
+        Err(error) => {
+            writer.request_shutdown();
+            let cleanup_result = writer.shutdown_and_join();
+            let error = format!("could not start the Linux terminal reader: {error}");
+            return match cleanup_result {
+                Ok(_) => Err(error),
+                Err(_) => Err(format!(
+                    "{error}; Linux terminal writer thread panicked during startup cleanup"
+                )),
+            };
+        }
+    };
     let mut application = LinuxWindow::new(
         background,
         foreground,
@@ -195,17 +230,24 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         grid,
         pty,
         reader,
+        writer,
         redraw_pending,
     );
 
     let run_result = event_loop
         .run_app(&mut application)
         .map_err(|error| format!("Linux event loop failed: {error}"));
-    application.request_reader_shutdown();
-    let join_result = application.join_reader();
+    application.request_terminal_shutdown();
+    let reader_join_result = application.join_reader();
+    let writer_join_result = application.join_writer();
     let finish_result = application.finish();
 
-    run_result.and(finish_result).and(join_result)
+    combine_launch_results(
+        run_result,
+        reader_join_result,
+        writer_join_result,
+        finish_result,
+    )
 }
 
 struct LinuxWindow {
@@ -226,8 +268,10 @@ struct LinuxWindow {
     grid: Arc<Mutex<Grid>>,
     pty: Arc<Pty>,
     reader: Option<TerminalReader>,
+    writer: Option<TerminalWriter>,
     redraw_pending: Arc<AtomicBool>,
     reader_status: Option<ReaderStatus>,
+    modifiers: ModifiersState,
     error: Option<String>,
 }
 
@@ -242,6 +286,7 @@ impl LinuxWindow {
         grid: Arc<Mutex<Grid>>,
         pty: Arc<Pty>,
         reader: TerminalReader,
+        writer: TerminalWriter,
         redraw_pending: Arc<AtomicBool>,
     ) -> Self {
         Self {
@@ -261,8 +306,10 @@ impl LinuxWindow {
             grid,
             pty,
             reader: Some(reader),
+            writer: Some(writer),
             redraw_pending,
             reader_status: None,
+            modifiers: ModifiersState::empty(),
             error: None,
         }
     }
@@ -411,12 +458,16 @@ impl LinuxWindow {
         if self.error.is_none() {
             self.error = Some(error);
         }
+        self.request_terminal_shutdown();
         event_loop.exit();
     }
 
-    fn request_reader_shutdown(&self) {
+    fn request_terminal_shutdown(&mut self) {
         if let Some(reader) = self.reader.as_ref() {
             reader.request_shutdown();
+        }
+        if let Some(writer) = self.writer.as_mut() {
+            writer.request_shutdown();
         }
     }
 
@@ -428,6 +479,17 @@ impl LinuxWindow {
         match reader.shutdown_and_join() {
             Ok(exit) => reader_status_result(classify_reader_exit(&exit)),
             Err(_) => Err("Linux terminal reader thread panicked".to_string()),
+        }
+    }
+
+    fn join_writer(&mut self) -> Result<(), String> {
+        let Some(writer) = self.writer.take() else {
+            return Ok(());
+        };
+
+        match writer.shutdown_and_join() {
+            Ok(exit) => writer_status_result(classify_writer_exit(&exit)),
+            Err(_) => Err("Linux terminal writer thread panicked".to_string()),
         }
     }
 
@@ -451,8 +513,17 @@ impl LinuxWindow {
                 self.error = Some(error);
             }
         }
-        self.request_reader_shutdown();
+        self.request_terminal_shutdown();
         event_loop.exit();
+    }
+}
+
+impl Drop for LinuxWindow {
+    fn drop(&mut self) {
+        // An exceptional unwind can bypass `launch`'s ordered joins. Signalling
+        // both workers before field drop lets TerminalWriter's joining Drop break
+        // output-lock contention with the independently cancellable reader.
+        self.request_terminal_shutdown();
     }
 }
 
@@ -478,8 +549,39 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
 
         match event {
             WindowEvent::CloseRequested => {
-                self.request_reader_shutdown();
+                self.request_terminal_shutdown();
                 event_loop.exit();
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+            }
+            WindowEvent::Focused(focused) => {
+                self.modifiers = modifiers_after_focus_change(self.modifiers, focused);
+            }
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic,
+                ..
+            } => {
+                if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
+                    return;
+                }
+                let Some(key_press) = key_press_from_winit(&event, is_synthetic, self.modifiers)
+                else {
+                    return;
+                };
+                if let Err(error) = forward_keyboard_input_with(
+                    self.grid.as_ref(),
+                    |application_cursor_keys| encode_key_press(key_press, application_cursor_keys),
+                    |bytes| {
+                        self.writer
+                            .as_ref()
+                            .ok_or(TerminalWriteQueueError::Disconnected)?
+                            .enqueue(bytes)
+                    },
+                ) {
+                    self.fail(event_loop, error.to_string());
+                }
             }
             WindowEvent::Resized(size) => {
                 if let Some(current_size) = self.window.as_ref().map(|window| window.inner_size()) {
@@ -552,7 +654,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                         self.first_frame_presented = true;
                         if self.exit_after_first_frame {
                             if terminal_content_visible {
-                                self.request_reader_shutdown();
+                                self.request_terminal_shutdown();
                                 event_loop.exit();
                             } else {
                                 self.fail(
@@ -572,7 +674,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: LinuxEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: LinuxEvent) {
         match event {
             LinuxEvent::GridUpdated => {
                 if let Some(window) = self.window.as_ref() {
@@ -582,16 +684,23 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             LinuxEvent::ReaderExited(status) => {
                 if self.reader_status.is_none() {
                     self.reader_status = Some(status);
+                    if let Some(writer) = self.writer.as_mut() {
+                        writer.request_shutdown();
+                    }
                 }
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
                 }
             }
+            LinuxEvent::WriterExited(WriterStatus::Normal) => {}
+            LinuxEvent::WriterExited(WriterStatus::Failed(error)) => {
+                self.fail(event_loop, error);
+            }
         }
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        self.request_reader_shutdown();
+        self.request_terminal_shutdown();
     }
 }
 
@@ -647,6 +756,41 @@ fn reader_status_result(status: ReaderStatus) -> Result<(), String> {
         ReaderStatus::Normal => Ok(()),
         ReaderStatus::Failed(error) => Err(error),
     }
+}
+
+fn classify_writer_exit(exit: &WriterExit) -> WriterStatus {
+    match exit {
+        WriterExit::Shutdown => WriterStatus::Normal,
+        WriterExit::ChannelClosed => {
+            WriterStatus::Failed("terminal writer lost its input queue".to_string())
+        }
+        WriterExit::WriteFailed(error) => WriterStatus::Failed(format!(
+            "terminal writer could not write keyboard input to the PTY: {error}"
+        )),
+    }
+}
+
+fn writer_status_result(status: WriterStatus) -> Result<(), String> {
+    match status {
+        WriterStatus::Normal => Ok(()),
+        WriterStatus::Failed(error) => Err(error),
+    }
+}
+
+fn combine_launch_results(
+    run_result: Result<(), String>,
+    reader_join_result: Result<(), String>,
+    writer_join_result: Result<(), String>,
+    finish_result: Result<(), String>,
+) -> Result<(), String> {
+    run_result
+        .and(reader_join_result)
+        .and(writer_join_result)
+        .and(finish_result)
+}
+
+fn terminal_accepts_keyboard_input(reader_status: Option<&ReaderStatus>) -> bool {
+    reader_status.is_none()
 }
 
 fn create_glyph_atlas(
@@ -861,6 +1005,36 @@ where
         grid.resize(usize::from(columns), usize::from(rows));
     })
     .map_err(|source| TerminalResizeError::Pty { target, source })
+}
+
+fn forward_keyboard_input_with<E, W>(
+    grid: &Mutex<Grid>,
+    encode: E,
+    write: W,
+) -> Result<bool, KeyboardInputError>
+where
+    E: FnOnce(bool) -> Option<Vec<u8>>,
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let application_cursor_keys = {
+        let grid = grid
+            .lock()
+            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
+        grid.application_cursor_keys
+    };
+    let Some(bytes) = encode(application_cursor_keys) else {
+        return Ok(false);
+    };
+    write(bytes)?;
+    Ok(true)
+}
+
+fn modifiers_after_focus_change(current: ModifiersState, focused: bool) -> ModifiersState {
+    if focused {
+        current
+    } else {
+        ModifiersState::empty()
+    }
 }
 
 fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
@@ -1098,26 +1272,31 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
 mod tests {
     use super::{
         apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions, begin_grid_redraw,
-        classify_reader_exit, configured_terminal_dimensions, draw_cell_glyph, draw_grid_snapshot,
-        drawable_dimensions, immediate_surface_size_to_reconcile, initial_window_dimensions,
-        is_current_surface_size, physical_size_for_terminal, replace_glyph_atlas_for_scale,
-        resize_terminal_with, resolve_cell_colors, rgb_to_xrgb, rounded_i32,
-        set_grid_cell_dimensions, snapshot_grid, terminal_color_query_value,
-        terminal_dimensions_for_surface, GridAccessError, ReaderStatus, ResolvedCellColors,
-        SurfaceSizeError, TerminalDimensions, TerminalResizeError, MAX_INITIAL_LOGICAL_HEIGHT,
-        MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH,
-        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        classify_reader_exit, classify_writer_exit, combine_launch_results,
+        configured_terminal_dimensions, draw_cell_glyph, draw_grid_snapshot, drawable_dimensions,
+        forward_keyboard_input_with, immediate_surface_size_to_reconcile,
+        initial_window_dimensions, is_current_surface_size, modifiers_after_focus_change,
+        physical_size_for_terminal, replace_glyph_atlas_for_scale, resize_terminal_with,
+        resolve_cell_colors, rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
+        terminal_accepts_keyboard_input, terminal_color_query_value,
+        terminal_dimensions_for_surface, GridAccessError, KeyboardInputError, ReaderStatus,
+        ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
+        WriterStatus, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
+        MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
+        MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
     use crate::grid::{CursorShape, Grid};
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_reader::ReaderExit;
+    use crate::terminal_writer::{TerminalWriteQueueError, WriterExit};
     use std::cell::RefCell;
     use std::io;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, TryLockError};
     use winit::dpi::PhysicalSize;
+    use winit::keyboard::ModifiersState;
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
     const DEFAULT_BACKGROUND: (u8, u8, u8) = (26, 26, 46);
@@ -1496,6 +1675,111 @@ mod tests {
             .lock()
             .expect("successful resize should keep grid available");
         assert_eq!((grid.cols(), grid.rows()), (100, 30));
+    }
+
+    #[test]
+    fn keyboard_forwarding_releases_the_grid_before_encoding_and_enqueueing() {
+        let grid = Mutex::new(Grid::new(80, 24, 0));
+        grid.lock()
+            .expect("test grid should be available")
+            .application_cursor_keys = true;
+        let written = RefCell::new(Vec::new());
+
+        assert!(forward_keyboard_input_with(
+            &grid,
+            |application_cursor_keys| {
+                assert!(application_cursor_keys);
+                assert!(
+                    grid.try_lock().is_ok(),
+                    "encoder must run without the Grid lock"
+                );
+                Some(b"\x1bOA".to_vec())
+            },
+            |bytes| {
+                assert!(
+                    grid.try_lock().is_ok(),
+                    "queue enqueue must run without the Grid lock"
+                );
+                written.borrow_mut().extend_from_slice(&bytes);
+                Ok(())
+            },
+        )
+        .expect("fake keyboard write should succeed"));
+        assert_eq!(written.into_inner(), b"\x1bOA");
+    }
+
+    #[test]
+    fn focus_loss_clears_stale_keyboard_modifiers() {
+        let active = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SHIFT;
+
+        assert_eq!(modifiers_after_focus_change(active, true), active);
+        assert_eq!(
+            modifiers_after_focus_change(active, false),
+            ModifiersState::empty()
+        );
+    }
+
+    #[test]
+    fn keyboard_forwarding_skips_empty_output_and_preserves_queue_errors() {
+        let grid = Mutex::new(Grid::new(80, 24, 0));
+        let writes = AtomicUsize::new(0);
+
+        assert!(!forward_keyboard_input_with(
+            &grid,
+            |_| None,
+            |_| {
+                writes.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect("empty keyboard output should be a no-op"));
+        assert_eq!(writes.load(Ordering::Relaxed), 0);
+
+        let error = forward_keyboard_input_with(
+            &grid,
+            |_| Some(b"x".to_vec()),
+            |_| Err(TerminalWriteQueueError::Full),
+        )
+        .expect_err("fake queue failure should be preserved");
+        assert!(matches!(
+            error,
+            KeyboardInputError::Queue(TerminalWriteQueueError::Full)
+        ));
+    }
+
+    #[test]
+    fn poisoned_grid_prevents_keyboard_encoding_and_queue_writes() {
+        let grid = Arc::new(Mutex::new(Grid::new(80, 24, 0)));
+        let poison_target = grid.clone();
+        assert!(std::thread::spawn(move || {
+            let _guard = poison_target
+                .lock()
+                .expect("fresh test grid should lock before poisoning");
+            panic!("poison the keyboard test grid");
+        })
+        .join()
+        .is_err());
+        let encode_calls = AtomicUsize::new(0);
+        let enqueue_calls = AtomicUsize::new(0);
+
+        let error = forward_keyboard_input_with(
+            grid.as_ref(),
+            |_| {
+                encode_calls.fetch_add(1, Ordering::Relaxed);
+                Some(b"x".to_vec())
+            },
+            |_| {
+                enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect_err("poisoned Grid must reject keyboard input");
+        assert!(matches!(
+            error,
+            KeyboardInputError::Grid(GridAccessError::Poisoned)
+        ));
+        assert_eq!(encode_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -1910,6 +2194,74 @@ mod tests {
                 "missing `{expected_context}` in `{message}`"
             );
         }
+    }
+
+    #[test]
+    fn writer_shutdown_is_normal_and_failures_include_actionable_context() {
+        assert_eq!(
+            classify_writer_exit(&WriterExit::Shutdown),
+            WriterStatus::Normal
+        );
+
+        let channel_status = classify_writer_exit(&WriterExit::ChannelClosed);
+        let WriterStatus::Failed(channel_message) = channel_status else {
+            panic!("closed writer queue should be a failure");
+        };
+        assert!(channel_message.contains("input queue"));
+
+        let write_status =
+            classify_writer_exit(&WriterExit::WriteFailed(io::Error::from_raw_os_error(5)));
+        let WriterStatus::Failed(write_message) = write_status else {
+            panic!("PTY write error should be a failure");
+        };
+        assert!(write_message.contains("write keyboard input to the PTY"));
+        assert!(write_message.contains("5"));
+    }
+
+    #[test]
+    fn launch_result_preserves_worker_failures_before_late_finish_errors() {
+        assert_eq!(
+            combine_launch_results(
+                Ok(()),
+                Ok(()),
+                Err("native writer failure".to_string()),
+                Err("input queue disconnected".to_string()),
+            ),
+            Err("native writer failure".to_string())
+        );
+        assert_eq!(
+            combine_launch_results(
+                Ok(()),
+                Err("reader failure".to_string()),
+                Err("writer failure".to_string()),
+                Err("finish failure".to_string()),
+            ),
+            Err("reader failure".to_string())
+        );
+        assert_eq!(
+            combine_launch_results(
+                Err("event loop failure".to_string()),
+                Err("reader failure".to_string()),
+                Err("writer failure".to_string()),
+                Err("finish failure".to_string()),
+            ),
+            Err("event loop failure".to_string())
+        );
+        assert_eq!(
+            combine_launch_results(Ok(()), Ok(()), Ok(()), Err("finish failure".to_string()),),
+            Err("finish failure".to_string())
+        );
+    }
+
+    #[test]
+    fn terminal_stops_accepting_keyboard_input_after_the_reader_exits() {
+        assert!(terminal_accepts_keyboard_input(None));
+        assert!(!terminal_accepts_keyboard_input(Some(
+            &ReaderStatus::Normal
+        )));
+        assert!(!terminal_accepts_keyboard_input(Some(
+            &ReaderStatus::Failed("read failed".to_string())
+        )));
     }
 
     #[test]
