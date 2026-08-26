@@ -368,8 +368,7 @@ impl MetalRenderer {
         // Cursor rendering
         if pane.show_cursor && grid.scroll_offset == 0 {
             let crow = grid.cursor_row;
-            let ccol = grid.cursor_col;
-            if crow < grid.rows() && ccol < grid.cols() {
+            if let Some(ccol) = grid.screen_cursor_col().filter(|_| crow < grid.rows()) {
                 let cx0 = rect.x + ccol as f32 * cell_w;
                 let cy0 = rect.y + crow as f32 * cell_h;
                 if cy0 + cell_h <= rect.y + grid_height {

@@ -24,6 +24,11 @@ impl Buffer {
         &mut self.cells[row * self.cols + col]
     }
 
+    pub fn row_mut(&mut self, row: usize) -> &mut [Cell] {
+        let start = row * self.cols;
+        &mut self.cells[start..start + self.cols]
+    }
+
     pub fn cols(&self) -> usize {
         self.cols
     }
