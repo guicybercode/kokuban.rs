@@ -7,6 +7,7 @@ use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
 use crate::grid::TerminalEvent;
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
+use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::render_scene::ChromeColors;
@@ -20,9 +21,76 @@ use objc2_foundation::*;
 use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread::JoinHandle;
 
 use window::create_terminal_view;
+
+enum CleanupCommand<T> {
+    Retire(Box<T>),
+    Shutdown,
+}
+
+#[derive(Clone)]
+pub(super) struct PaneCleanup {
+    sender: mpsc::Sender<CleanupCommand<Pane>>,
+    fallback: Arc<Mutex<Vec<Pane>>>,
+}
+
+impl PaneCleanup {
+    fn spawn() -> (Self, JoinHandle<()>) {
+        let (sender, receiver) = mpsc::channel();
+        let fallback = Arc::new(Mutex::new(Vec::new()));
+        let handle = std::thread::Builder::new()
+            .name("pane-cleanup".to_string())
+            .spawn(move || run_cleanup(receiver, Pane::retire))
+            .expect("Failed to spawn pane cleanup thread");
+
+        (Self { sender, fallback }, handle)
+    }
+
+    pub(super) fn retire(&self, pane: Pane) {
+        if let Err(error) = self
+            .sender
+            .send(CleanupCommand::Retire(Box::new(pane)))
+        {
+            let CleanupCommand::Retire(pane) = error.0 else {
+                unreachable!("retire sends only retire commands");
+            };
+            log::error!("Pane cleanup worker is unavailable; deferring local cleanup");
+            match self.fallback.lock() {
+                Ok(mut fallback) => fallback.push(*pane),
+                Err(poisoned) => poisoned.into_inner().push(*pane),
+            }
+        }
+    }
+
+    fn shutdown(&self) {
+        if self.sender.send(CleanupCommand::Shutdown).is_err() {
+            log::warn!("Pane cleanup worker stopped before shutdown");
+        }
+    }
+
+    fn take_fallback(&self) -> Vec<Pane> {
+        let mut fallback = match self.fallback.lock() {
+            Ok(fallback) => fallback,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        std::mem::take(&mut *fallback)
+    }
+}
+
+fn run_cleanup<T, F>(receiver: mpsc::Receiver<CleanupCommand<T>>, mut retire: F)
+where
+    F: FnMut(T),
+{
+    while let Ok(command) = receiver.recv() {
+        match command {
+            CleanupCommand::Retire(value) => retire(*value),
+            CleanupCommand::Shutdown => break,
+        }
+    }
+}
 
 pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let mtm = MainThreadMarker::new().expect("Must be called from the main thread");
@@ -64,6 +132,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let dirty = Arc::new(AtomicBool::new(true));
     let window_title = Arc::new(window::WindowTitleMailbox::new());
     let should_close = Arc::new(AtomicBool::new(false));
+    let (pane_cleanup, pane_cleanup_handle) = PaneCleanup::spawn();
 
     let default_fg = ColorConfig::parse_hex(&config.colors.foreground);
     let default_bg = ColorConfig::parse_hex(&config.colors.background);
@@ -179,6 +248,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         mtm,
         &device,
         pane_tree.clone(),
+        pane_cleanup.clone(),
         atlas.clone(),
         dirty.clone(),
         should_close.clone(),
@@ -217,8 +287,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let reader_image_store = image_store.clone();
     let reader_atlas = atlas.clone();
     let reader_window_title = window_title.clone();
+    let reader_pane_cleanup = pane_cleanup.clone();
 
-    std::thread::Builder::new()
+    let reader_handle = std::thread::Builder::new()
         .name("pty-reader".to_string())
         .spawn(move || {
             let mut buf = [0u8; 4096];
@@ -242,6 +313,10 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                     let pane_ids = tree.pane_ids();
 
                     for id in pane_ids {
+                        if tree.pane(id).is_some_and(|pane| pane.input_failed()) {
+                            dead_panes.push(id);
+                            continue;
+                        }
                         let title_revision_before = tree
                             .pane(id)
                             .map(|pane| pane.grid.title_revision())
@@ -275,8 +350,8 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                     for event in terminal_events {
                                         match event {
                                             TerminalEvent::Response(response) => {
-                                                if let Some(pane) = tree.pane_mut(id) {
-                                                    pane.pty.write_all(&response).ok();
+                                                if let Some(pane) = tree.pane(id) {
+                                                    pane.queue_input(response);
                                                 }
                                             }
                                             TerminalEvent::KittyGraphics {
@@ -309,7 +384,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                                         )
                                                     };
                                                     if let Some(response) = outcome.response {
-                                                        pane.pty.write_all(&response).ok();
+                                                        pane.queue_input(response);
                                                     }
                                                     // Advance cursor for inline images
                                                     if let Some(adv) = outcome.advance {
@@ -412,20 +487,29 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                         }
                     }
 
+                    let mut retired_panes = Vec::new();
                     // Close dead panes
                     for id in dead_panes {
                         let previous_focus = tree.focused;
-                        let should_terminate = tree.close(id);
+                        let outcome = tree.close(id);
+                        if let Some(pane) = outcome.closed_pane {
+                            retired_panes.push(pane);
+                        }
                         if tree.focused != previous_focus {
                             window::publish_focused_window_title(
                                 &tree,
                                 reader_window_title.as_ref(),
                             );
                         }
-                        if should_terminate {
+                        if outcome.should_terminate {
                             reader_should_close.store(true, Ordering::Relaxed);
                             break;
                         }
+                    }
+
+                    drop(tree);
+                    for pane in retired_panes {
+                        reader_pane_cleanup.retire(pane);
                     }
                 }
 
@@ -469,6 +553,27 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     app.activate();
     log::info!("Starting application run loop");
     app.run();
+
+    should_close.store(true, Ordering::Release);
+    if reader_handle.join().is_err() {
+        log::error!("PTY reader thread panicked during shutdown");
+    }
+
+    let remaining_panes = {
+        let mut tree = pane_tree.lock().unwrap();
+        tree.take_all_panes()
+    };
+    for pane in remaining_panes {
+        pane_cleanup.retire(pane);
+    }
+    pane_cleanup.shutdown();
+    if pane_cleanup_handle.join().is_err() {
+        log::error!("Pane cleanup thread panicked during shutdown");
+    }
+    for pane in pane_cleanup.take_fallback() {
+        pane.retire();
+    }
+
     Ok(())
 }
 
@@ -491,5 +596,62 @@ fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
         app_menu_item.setSubmenu(Some(&app_menu));
 
         app.setMainMenu(Some(&menu_bar));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{run_cleanup, CleanupCommand};
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::time::Duration;
+
+    struct LockingDropProbe {
+        lock: Arc<Mutex<()>>,
+        started: mpsc::Sender<std::thread::ThreadId>,
+        finished: mpsc::Sender<()>,
+    }
+
+    impl Drop for LockingDropProbe {
+        fn drop(&mut self) {
+            self.started
+                .send(std::thread::current().id())
+                .expect("cleanup test should observe the retire thread");
+            let _guard = self.lock.lock().unwrap();
+            self.finished
+                .send(())
+                .expect("cleanup test should observe retirement completion");
+        }
+    }
+
+    #[test]
+    fn cleanup_retires_before_shutdown_without_blocking_the_callers_lock() {
+        let (sender, receiver) = mpsc::channel();
+        let (started_sender, started_receiver) = mpsc::channel();
+        let (finished_sender, finished_receiver) = mpsc::channel();
+        let lock = Arc::new(Mutex::new(()));
+        let caller_guard = lock.lock().unwrap();
+        let caller_thread = std::thread::current().id();
+        let worker = std::thread::spawn(move || run_cleanup(receiver, drop));
+
+        sender
+            .send(CleanupCommand::Retire(Box::new(LockingDropProbe {
+                lock: lock.clone(),
+                started: started_sender,
+                finished: finished_sender,
+            })))
+            .unwrap();
+        sender.send(CleanupCommand::Shutdown).unwrap();
+
+        let retire_thread = started_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("retirement should start on the cleanup worker");
+        assert_ne!(retire_thread, caller_thread);
+        assert!(finished_receiver.try_recv().is_err());
+
+        drop(caller_guard);
+        finished_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("retirement should finish after the caller releases its lock");
+        worker.join().expect("cleanup worker should process shutdown");
     }
 }

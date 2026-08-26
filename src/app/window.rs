@@ -1,3 +1,4 @@
+use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::selection::GridPoint;
@@ -210,6 +211,7 @@ fn encode_macos_forwarded_wheel(
 
 struct ViewState {
     pane_tree: Arc<Mutex<PaneTree>>,
+    pane_cleanup: PaneCleanup,
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
     window_title: Arc<WindowTitleMailbox>,
@@ -397,9 +399,7 @@ define_class!(
                                 return true;
                             }
                             // No selection: send Ctrl-C
-                            if let Err(e) = pane.pty.write_all(&[0x03]) {
-                                log::error!("Failed to write to PTY: {e}");
-                            }
+                            pane.queue_input(vec![0x03]);
                         }
                     }
                     true // Always consume Cmd+C
@@ -426,9 +426,7 @@ define_class!(
                                 if bracketed {
                                     bytes.extend_from_slice(b"\x1b[201~");
                                 }
-                                if let Err(e) = pane.pty.write_all(&bytes) {
-                                    log::error!("Failed to write to PTY: {e}");
-                                }
+                                pane.queue_input(bytes);
                             }
                         }
                     }
@@ -532,7 +530,7 @@ define_class!(
                             )
                             .expect("forwarded wheel route should produce terminal bytes");
                             if let Some(pane) = tree.focused_pane() {
-                                pane.pty.write_all(&reports).ok();
+                                pane.queue_input(reports);
                             }
                         }
                         MouseWheelRoute::Scrollback => {
@@ -578,7 +576,7 @@ define_class!(
                             if mt != MouseTracking::None && !has_shift {
                                 let seq = encode_mouse_event(0, gc + 1, gr + 1, true, encoding);
                                 if let Some(pane) = tree.pane(pane_id) {
-                                    pane.pty.write_all(&seq).ok();
+                                    pane.queue_input(seq);
                                 }
                             } else {
                                 let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
@@ -618,7 +616,7 @@ define_class!(
                             if let Some((_id, gc, gr)) = cell_info {
                                 let seq = encode_mouse_event(32, gc + 1, gr + 1, true, encoding);
                                 if let Some(pane) = tree.pane(focused) {
-                                    pane.pty.write_all(&seq).ok();
+                                    pane.queue_motion_input(seq);
                                 }
                             }
                         } else {
@@ -653,7 +651,7 @@ define_class!(
                         if pane.grid.mouse_tracking != MouseTracking::None {
                             if let Some((_id, gc, gr)) = cell_info {
                                 let seq = encode_mouse_event(0, gc + 1, gr + 1, false, pane.grid.mouse_encoding);
-                                pane.pty.write_all(&seq).ok();
+                                pane.queue_input(seq);
                             }
                         }
                     }
@@ -723,9 +721,7 @@ define_class!(
                         if let Some(bytes) =
                             translate_key_event(event, pane.grid.application_cursor_keys)
                         {
-                            if let Err(e) = pane.pty.write_all(&bytes) {
-                                log::error!("Failed to write to PTY: {e}");
-                            }
+                            pane.queue_input(bytes);
                         }
                     }
                 }
@@ -844,6 +840,7 @@ fn handle_pane_action(action: PaneAction) {
 
         let mut tree = state.pane_tree.lock().unwrap();
         let previous_focus = tree.focused;
+        let mut closed_pane = None;
 
         match action {
             PaneAction::SplitVertical => {
@@ -890,9 +887,13 @@ fn handle_pane_action(action: PaneAction) {
                 }
                 // No confirmation — close immediately
                 let id = tree.focused;
-                let should_terminate = tree.close(id);
-                if should_terminate {
+                let outcome = tree.close(id);
+                closed_pane = outcome.closed_pane;
+                if outcome.should_terminate {
                     drop(tree);
+                    if let Some(pane) = closed_pane {
+                        state.pane_cleanup.retire(pane);
+                    }
                     state.should_close.store(true, Ordering::Relaxed);
                     return;
                 }
@@ -1020,6 +1021,9 @@ fn handle_pane_action(action: PaneAction) {
             publish_focused_window_title(&tree, state.window_title.as_ref());
         }
         drop(tree);
+        if let Some(pane) = closed_pane {
+            state.pane_cleanup.retire(pane);
+        }
         state.dirty.store(true, Ordering::Relaxed);
     });
 }
@@ -1064,9 +1068,14 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
 
             let mut tree = state.pane_tree.lock().unwrap();
             let previous_focus = tree.focused;
-            let should_terminate = tree.close(pane_id);
+            let outcome = tree.close(pane_id);
+            let should_terminate = outcome.should_terminate;
+            let closed_pane = outcome.closed_pane;
             if should_terminate {
                 drop(tree);
+                if let Some(pane) = closed_pane {
+                    state.pane_cleanup.retire(pane);
+                }
                 state.should_close.store(true, Ordering::Relaxed);
                 return;
             }
@@ -1080,6 +1089,10 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
             tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             if tree.focused != previous_focus {
                 publish_focused_window_title(&tree, state.window_title.as_ref());
+            }
+            drop(tree);
+            if let Some(pane) = closed_pane {
+                state.pane_cleanup.retire(pane);
             }
         }
         ConfirmAction::QuitApp => {
@@ -1401,6 +1414,7 @@ pub(super) fn create_terminal_view(
     mtm: MainThreadMarker,
     device: &ProtocolObject<dyn MTLDevice>,
     pane_tree: Arc<Mutex<PaneTree>>,
+    pane_cleanup: PaneCleanup,
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
     should_close: Arc<AtomicBool>,
@@ -1465,6 +1479,7 @@ pub(super) fn create_terminal_view(
     VIEW_STATE.with(|state| {
         *state.borrow_mut() = Some(ViewState {
             pane_tree,
+            pane_cleanup,
             atlas,
             dirty,
             window_title,

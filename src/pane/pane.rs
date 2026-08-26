@@ -5,15 +5,26 @@ use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
+use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub struct Pane {
     pub id: PaneId,
-    pub pty: Pty,
+    writer: TerminalWriter,
+    pub pty: Arc<Pty>,
+    input_failed: Arc<AtomicBool>,
     pub decoder: TerminalDecoder,
     pub grid: Grid,
     pub selection: SelectionState,
     pub rect: PixelRect,
     pub kitty_handler: KittyHandler,
+}
+
+#[derive(Clone, Copy)]
+enum FullQueuePolicy {
+    Fail,
+    Drop,
 }
 
 impl Pane {
@@ -25,17 +36,72 @@ impl Pane {
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
     ) -> Result<Self, crate::pty::PtyError> {
-        let pty = Pty::spawn(cols, rows, graphics_support.kitty, graphics_support.sixel)?;
+        let pty = Arc::new(Pty::spawn(
+            cols,
+            rows,
+            graphics_support.kitty,
+            graphics_support.sixel,
+        )?);
+        let input_failed = Arc::new(AtomicBool::new(false));
+        let writer_input_failed = input_failed.clone();
+        let writer = TerminalWriter::spawn(pty.clone(), move |exit| {
+            record_writer_exit(writer_input_failed.as_ref(), id, exit);
+        })?;
         let grid = Grid::new(cols as usize, rows as usize, scrollback_max);
         Ok(Self {
             id,
+            writer,
             pty,
+            input_failed,
             decoder: TerminalDecoder::new(graphics_support),
             grid,
             selection: SelectionState::default(),
             rect: PixelRect::ZERO,
             kitty_handler: KittyHandler::new(kitty_options),
         })
+    }
+
+    pub fn queue_input(&self, bytes: Vec<u8>) {
+        self.queue_input_with_policy(bytes, FullQueuePolicy::Fail);
+    }
+
+    pub fn queue_motion_input(&self, bytes: Vec<u8>) {
+        self.queue_input_with_policy(bytes, FullQueuePolicy::Drop);
+    }
+
+    fn queue_input_with_policy(&self, bytes: Vec<u8>, full_policy: FullQueuePolicy) {
+        if self.input_failed.load(Ordering::Acquire) {
+            return;
+        }
+
+        record_enqueue_result(
+            self.input_failed.as_ref(),
+            self.id,
+            self.writer.enqueue(bytes),
+            full_policy,
+        );
+    }
+
+    pub fn input_failed(&self) -> bool {
+        self.input_failed.load(Ordering::Acquire)
+    }
+
+    pub fn retire(self) {
+        match self.writer.shutdown_and_join() {
+            Ok(WriterExit::Shutdown) => {}
+            Ok(WriterExit::ChannelClosed) => {
+                log::error!(
+                    "Terminal writer channel closed unexpectedly for pane {}",
+                    self.id
+                );
+            }
+            Ok(WriterExit::WriteFailed(error)) => {
+                log::error!("Terminal writer failed for pane {}: {error}", self.id);
+            }
+            Err(_) => {
+                log::error!("Terminal writer thread panicked for pane {}", self.id);
+            }
+        }
     }
 
     pub fn resize_grid(&mut self, cols: usize, rows: usize) {
@@ -45,5 +111,108 @@ impl Pane {
                 log::error!("Failed to resize PTY for pane {}: {e}", self.id);
             }
         }
+    }
+}
+
+fn record_enqueue_result(
+    input_failed: &AtomicBool,
+    pane_id: PaneId,
+    result: Result<(), TerminalWriteQueueError>,
+    full_policy: FullQueuePolicy,
+) -> bool {
+    match result {
+        Ok(()) => false,
+        Err(TerminalWriteQueueError::Full) if matches!(full_policy, FullQueuePolicy::Drop) => false,
+        Err(TerminalWriteQueueError::Full) => {
+            mark_input_failed(input_failed, pane_id, "terminal input queue is full")
+        }
+        Err(TerminalWriteQueueError::Disconnected) => {
+            mark_input_failed(input_failed, pane_id, "terminal input queue disconnected")
+        }
+    }
+}
+
+fn record_writer_exit(input_failed: &AtomicBool, pane_id: PaneId, exit: &WriterExit) -> bool {
+    match exit {
+        WriterExit::Shutdown => false,
+        WriterExit::ChannelClosed => {
+            mark_input_failed(input_failed, pane_id, "terminal input queue disconnected")
+        }
+        WriterExit::WriteFailed(error) => {
+            mark_input_failed(input_failed, pane_id, &format!("PTY write failed: {error}"))
+        }
+    }
+}
+
+fn mark_input_failed(input_failed: &AtomicBool, pane_id: PaneId, message: &str) -> bool {
+    let transitioned = !input_failed.swap(true, Ordering::AcqRel);
+    if transitioned {
+        log::error!("Terminal input failed for pane {pane_id}: {message}");
+    }
+    transitioned
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        record_enqueue_result, record_writer_exit, FullQueuePolicy, TerminalWriteQueueError,
+        WriterExit,
+    };
+    use std::io;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn lossless_queue_errors_mark_input_failed_once() {
+        for error in [
+            TerminalWriteQueueError::Full,
+            TerminalWriteQueueError::Disconnected,
+        ] {
+            let failed = AtomicBool::new(false);
+            assert!(record_enqueue_result(
+                &failed,
+                7,
+                Err(error),
+                FullQueuePolicy::Fail,
+            ));
+            assert!(failed.load(Ordering::Acquire));
+            assert!(!record_enqueue_result(
+                &failed,
+                7,
+                Err(error),
+                FullQueuePolicy::Fail,
+            ));
+        }
+    }
+
+    #[test]
+    fn coalescible_motion_drops_only_full_backpressure() {
+        let failed = AtomicBool::new(false);
+        assert!(!record_enqueue_result(
+            &failed,
+            9,
+            Err(TerminalWriteQueueError::Full),
+            FullQueuePolicy::Drop,
+        ));
+        assert!(!failed.load(Ordering::Acquire));
+
+        assert!(record_enqueue_result(
+            &failed,
+            9,
+            Err(TerminalWriteQueueError::Disconnected),
+            FullQueuePolicy::Drop,
+        ));
+        assert!(failed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn writer_failures_are_observable_but_shutdown_is_healthy() {
+        let failed = AtomicBool::new(false);
+        assert!(!record_writer_exit(&failed, 11, &WriterExit::Shutdown));
+        assert!(!failed.load(Ordering::Acquire));
+
+        let exit = WriterExit::WriteFailed(io::Error::from_raw_os_error(5));
+        assert!(record_writer_exit(&failed, 11, &exit));
+        assert!(failed.load(Ordering::Acquire));
+        assert!(!record_writer_exit(&failed, 11, &WriterExit::ChannelClosed));
     }
 }
