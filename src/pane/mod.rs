@@ -25,6 +25,12 @@ pub struct PaneTree {
     graphics_support: GraphicsSupport,
 }
 
+#[must_use]
+pub struct PaneCloseOutcome {
+    pub should_terminate: bool,
+    pub closed_pane: Option<Pane>,
+}
+
 impl PaneTree {
     pub fn new(
         cols: u16,
@@ -147,23 +153,46 @@ impl PaneTree {
         Ok(new_id)
     }
 
-    /// Close a pane. Returns true if the app should terminate (last pane closed).
-    pub fn close(&mut self, id: PaneId) -> bool {
-        if self.root.is_single_leaf() {
-            // Last pane
-            self.panes.remove(&id);
-            return true;
+    /// Detach a pane so its PTY workers can be retired outside the tree lock.
+    pub fn close(&mut self, id: PaneId) -> PaneCloseOutcome {
+        if !self.panes.contains_key(&id) || !PaneNode::contains(&self.root, id) {
+            return PaneCloseOutcome {
+                should_terminate: false,
+                closed_pane: None,
+            };
         }
 
-        self.root.remove_leaf(id);
-        self.panes.remove(&id);
+        if self.root.is_single_leaf() {
+            // Last pane
+            let closed_pane = self.panes.remove(&id);
+            return PaneCloseOutcome {
+                should_terminate: closed_pane.is_some(),
+                closed_pane,
+            };
+        }
+
+        if !self.root.remove_leaf(id) {
+            return PaneCloseOutcome {
+                should_terminate: false,
+                closed_pane: None,
+            };
+        }
+        let closed_pane = self.panes.remove(&id);
 
         // If focused pane was closed, focus the first remaining pane
         if self.focused == id {
             let ids = self.pane_ids();
             self.focused = ids.first().copied().unwrap_or(0);
         }
-        false
+        PaneCloseOutcome {
+            should_terminate: false,
+            closed_pane,
+        }
+    }
+
+    /// Drain panes only after the application has stopped using the layout tree.
+    pub fn take_all_panes(&mut self) -> Vec<Pane> {
+        self.panes.drain().map(|(_, pane)| pane).collect()
     }
 
     /// Adjust the split ratio near the focused pane.
@@ -250,5 +279,60 @@ impl PaneTree {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GraphicsSupport, KittyHandlerOptions, PaneTree, PixelRect, SplitDirection};
+
+    #[test]
+    fn close_detaches_valid_panes_and_preserves_stale_ids() {
+        let mut tree = PaneTree::new(
+            80,
+            24,
+            1_000,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+        )
+        .expect("pane tree should spawn its initial shell");
+        tree.relayout(
+            PixelRect {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 480.0,
+            },
+            10.0,
+            20.0,
+            0.0,
+        );
+        let second = tree
+            .split(SplitDirection::Vertical, 10.0, 20.0)
+            .expect("split pane should spawn its shell");
+
+        let stale = tree.close(999);
+        assert!(!stale.should_terminate);
+        assert!(stale.closed_pane.is_none());
+        assert_eq!(tree.pane_count(), 2);
+
+        let detached = tree.close(second);
+        assert!(!detached.should_terminate);
+        assert!(tree.pane(second).is_none());
+        assert_eq!(tree.pane_count(), 1);
+        detached
+            .closed_pane
+            .expect("closed split should be returned for cleanup")
+            .retire();
+
+        let last = tree.close(1);
+        assert!(last.should_terminate);
+        assert_eq!(tree.pane_count(), 0);
+        last.closed_pane
+            .expect("last pane should be returned for cleanup")
+            .retire();
     }
 }

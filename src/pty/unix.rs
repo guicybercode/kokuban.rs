@@ -176,12 +176,6 @@ impl Pty {
         }
     }
 
-    pub fn write_all(&self, data: &[u8]) -> std::io::Result<()> {
-        write_all_with(&self.output_lock, data, |remaining| {
-            nix::unistd::write(self.master(), remaining)
-        })
-    }
-
     pub(crate) fn write_all_cancellable(
         &self,
         data: &[u8],
@@ -237,6 +231,7 @@ where
     }
 }
 
+#[cfg(test)]
 fn write_all_with<W>(output_lock: &Mutex<()>, data: &[u8], mut write_once: W) -> std::io::Result<()>
 where
     W: FnMut(&[u8]) -> nix::Result<usize>,

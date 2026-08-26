@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use thiserror::Error;
 
-const KEYBOARD_QUEUE_CAPACITY: usize = 256;
+const TERMINAL_INPUT_QUEUE_CAPACITY: usize = 256;
 
 trait WriterIo: Send + Sync + 'static {
     fn write_all_cancellable(
@@ -28,9 +28,9 @@ impl WriterIo for Pty {
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalWriteQueueError {
-    #[error("the Linux terminal input queue is full")]
+    #[error("the terminal input queue is full")]
     Full,
-    #[error("the Linux terminal input queue is disconnected")]
+    #[error("the terminal input queue is disconnected")]
     Disconnected,
 }
 
@@ -52,7 +52,7 @@ impl TerminalWriter {
     where
         F: FnOnce(&WriterExit) + Send + 'static,
     {
-        Self::spawn_with_io(pty, KEYBOARD_QUEUE_CAPACITY, on_exit)
+        Self::spawn_with_io(pty, TERMINAL_INPUT_QUEUE_CAPACITY, on_exit)
     }
 
     fn spawn_with_io<I, F>(io: Arc<I>, queue_capacity: usize, on_exit: F) -> io::Result<Self>
