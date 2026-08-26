@@ -1487,6 +1487,7 @@ fn layout_ime_preedit(
     let mut row = input_cursor.0;
     let mut column = input_cursor.1;
     let mut previous_cell = None;
+    let mut last_visible_cell = clamp_ime_layout_position(input_cursor, grid_dimensions);
 
     for (byte_start, character) in preedit.text.char_indices() {
         let byte_end = byte_start + character.len_utf8();
@@ -1511,7 +1512,8 @@ fn layout_ime_preedit(
             .cursor
             .is_some_and(|cursor| cursor.caret == byte_start)
         {
-            layout.caret_cell = clamp_ime_layout_position((row, column), grid_dimensions);
+            layout.caret_cell =
+                ime_layout_caret_position((row, column), grid_dimensions, last_visible_cell);
         }
 
         if width == 0 {
@@ -1529,6 +1531,11 @@ fn layout_ime_preedit(
                     width,
                     selected,
                 });
+                last_visible_cell = Some(
+                    last_visible_cell
+                        .map(|cell| cell.max((glyph_row, glyph_column)))
+                        .unwrap_or((glyph_row, glyph_column)),
+                );
             }
             continue;
         }
@@ -1543,6 +1550,14 @@ fn layout_ime_preedit(
                 width,
                 selected,
             });
+            let last_column = column
+                .saturating_add(width_usize.saturating_sub(1))
+                .min(columns - 1);
+            last_visible_cell = Some(
+                last_visible_cell
+                    .map(|cell| cell.max((row, last_column)))
+                    .unwrap_or((row, last_column)),
+            );
         }
         previous_cell = Some((row, column));
         column = column.saturating_add(width_usize);
@@ -1553,9 +1568,22 @@ fn layout_ime_preedit(
         .cursor
         .is_some_and(|cursor| cursor.caret == preedit.text.len())
     {
-        layout.caret_cell = clamp_ime_layout_position((row, column), grid_dimensions);
+        layout.caret_cell =
+            ime_layout_caret_position((row, column), grid_dimensions, last_visible_cell);
     }
     layout
+}
+
+fn ime_layout_caret_position(
+    position: (usize, usize),
+    grid_dimensions: (usize, usize),
+    last_visible_cell: Option<(usize, usize)>,
+) -> Option<(usize, usize)> {
+    let (columns, rows) = grid_dimensions;
+    if position.0 >= rows {
+        return last_visible_cell;
+    }
+    Some((position.0, position.1.min(columns.checked_sub(1)?)))
 }
 
 fn normalize_ime_preedit_cluster_selection(glyphs: &mut [ImePreeditGlyph]) {
@@ -2734,6 +2762,31 @@ mod tests {
         assert_eq!(clipped.glyphs.len(), 1);
         assert_eq!((clipped.glyphs[0].row, clipped.glyphs[0].column), (1, 3));
         assert_eq!(clipped.caret_cell, Some((1, 3)));
+
+        let clipped_wide =
+            layout_ime_preedit(&accepted_preedit("a日", Some((4, 4))), (1, 2), (4, 2));
+        assert_eq!(clipped_wide.glyphs.len(), 1);
+        assert_eq!(
+            (clipped_wide.glyphs[0].row, clipped_wide.glyphs[0].column),
+            (1, 2)
+        );
+        assert_eq!(
+            clipped_wide.caret_cell,
+            Some((1, 2)),
+            "an offscreen wide glyph must anchor the caret to the last visible preedit cell"
+        );
+
+        let clipped_wide_at_edge =
+            layout_ime_preedit(&accepted_preedit("a日", Some((4, 4))), (1, 3), (4, 2));
+        assert_eq!(clipped_wide_at_edge.glyphs.len(), 1);
+        assert_eq!(
+            (
+                clipped_wide_at_edge.glyphs[0].row,
+                clipped_wide_at_edge.glyphs[0].column
+            ),
+            (1, 3)
+        );
+        assert_eq!(clipped_wide_at_edge.caret_cell, Some((1, 3)));
 
         let one_column = layout_ime_preedit(&accepted_preedit("日", None), (0, 0), (1, 1));
         assert_eq!(one_column.glyphs[0].character, IME_PREEDIT_REPLACEMENT);
