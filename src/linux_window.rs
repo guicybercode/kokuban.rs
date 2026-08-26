@@ -3817,9 +3817,13 @@ mod tests {
                 viewport_changed: false,
             }
         );
-        grid.lock()
-            .expect("wheel grid should switch to terminal reporting")
-            .mouse_tracking = MouseTracking::Normal;
+        {
+            let mut grid = grid
+                .lock()
+                .expect("wheel grid should switch to SGR terminal reporting");
+            grid.mouse_tracking = MouseTracking::Normal;
+            grid.mouse_encoding = MouseEncoding::Sgr;
+        }
         assert_eq!(
             dispatch(0.5, TouchPhase::Moved, &mut state),
             KeyboardInputOutcome::Ignored {
