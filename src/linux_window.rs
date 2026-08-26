@@ -2,7 +2,9 @@ use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags};
 use crate::grid::{CursorShape, Grid};
-use crate::input::linux::{encode_key_press, key_press_from_winit};
+use crate::input::linux::{
+    encode_key_press, key_press_from_winit, scrollback_action_from_winit, ScrollbackAction,
+};
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, fill_rect};
 use crate::terminal_colors::TerminalColors;
@@ -103,10 +105,27 @@ enum TerminalResizeError {
 
 #[derive(Debug, Error)]
 enum KeyboardInputError {
-    #[error("could not read the Linux terminal keyboard mode: {0}")]
+    #[error("could not access Linux terminal input state: {0}")]
     Grid(#[from] GridAccessError),
     #[error("could not queue Linux keyboard input: {0}")]
     Queue(#[from] TerminalWriteQueueError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyboardInputOutcome {
+    Ignored { viewport_changed: bool },
+    Forwarded { viewport_changed: bool },
+    Scrollback { viewport_changed: bool },
+}
+
+impl KeyboardInputOutcome {
+    fn viewport_changed(self) -> bool {
+        match self {
+            Self::Ignored { viewport_changed }
+            | Self::Forwarded { viewport_changed }
+            | Self::Scrollback { viewport_changed } => viewport_changed,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -566,13 +585,20 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
                     return;
                 }
-                let Some(key_press) = key_press_from_winit(&event, is_synthetic, self.modifiers)
-                else {
+                let scrollback_action =
+                    scrollback_action_from_winit(&event, is_synthetic, self.modifiers);
+                let key_press = key_press_from_winit(&event, is_synthetic, self.modifiers);
+                if scrollback_action.is_none() && key_press.is_none() {
                     return;
-                };
-                if let Err(error) = forward_keyboard_input_with(
+                }
+                match dispatch_keyboard_input_with(
                     self.grid.as_ref(),
-                    |application_cursor_keys| encode_key_press(key_press, application_cursor_keys),
+                    scrollback_action,
+                    |application_cursor_keys| {
+                        key_press.and_then(|key_press| {
+                            encode_key_press(key_press, application_cursor_keys)
+                        })
+                    },
                     |bytes| {
                         self.writer
                             .as_ref()
@@ -580,7 +606,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             .enqueue(bytes)
                     },
                 ) {
-                    self.fail(event_loop, error.to_string());
+                    Ok(outcome) => {
+                        if outcome.viewport_changed() {
+                            if let Some(window) = self.window.as_ref() {
+                                window.request_redraw();
+                            }
+                        }
+                    }
+                    Err(error) => self.fail(event_loop, error.to_string()),
                 }
             }
             WindowEvent::Resized(size) => {
@@ -1007,26 +1040,57 @@ where
     .map_err(|source| TerminalResizeError::Pty { target, source })
 }
 
-fn forward_keyboard_input_with<E, W>(
+fn dispatch_keyboard_input_with<E, W>(
     grid: &Mutex<Grid>,
+    scrollback_action: Option<ScrollbackAction>,
     encode: E,
     write: W,
-) -> Result<bool, KeyboardInputError>
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
 where
     E: FnOnce(bool) -> Option<Vec<u8>>,
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
     let application_cursor_keys = {
-        let grid = grid
+        let mut grid = grid
             .lock()
             .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
+
+        if let Some(action) = scrollback_action {
+            let viewport_changed = apply_scrollback_action(&mut grid, action);
+            return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
+        }
+
         grid.application_cursor_keys
     };
     let Some(bytes) = encode(application_cursor_keys) else {
-        return Ok(false);
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    };
+    let viewport_changed = {
+        let mut grid = grid
+            .lock()
+            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
+        let viewport_changed = grid.scroll_offset != 0;
+        grid.scroll_to_bottom();
+        viewport_changed
     };
     write(bytes)?;
-    Ok(true)
+    Ok(KeyboardInputOutcome::Forwarded { viewport_changed })
+}
+
+fn apply_scrollback_action(grid: &mut Grid, action: ScrollbackAction) -> bool {
+    let previous_offset = grid.scroll_offset;
+    let page_lines = grid.rows().saturating_sub(1).max(1);
+
+    match action {
+        ScrollbackAction::PageUp => grid.scroll_viewport_up(page_lines),
+        ScrollbackAction::PageDown => grid.scroll_viewport_down(page_lines),
+        ScrollbackAction::Top => grid.scroll_viewport_up(grid.scrollback_len()),
+        ScrollbackAction::Bottom => grid.scroll_to_bottom(),
+    }
+
+    grid.scroll_offset != previous_offset
 }
 
 fn modifiers_after_focus_change(current: ModifiersState, focused: bool) -> ModifiersState {
@@ -1271,23 +1335,24 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions, begin_grid_redraw,
-        classify_reader_exit, classify_writer_exit, combine_launch_results,
-        configured_terminal_dimensions, draw_cell_glyph, draw_grid_snapshot, drawable_dimensions,
-        forward_keyboard_input_with, immediate_surface_size_to_reconcile,
+        apply_scrollback_action, apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions,
+        begin_grid_redraw, classify_reader_exit, classify_writer_exit, combine_launch_results,
+        configured_terminal_dimensions, dispatch_keyboard_input_with, draw_cell_glyph,
+        draw_grid_snapshot, drawable_dimensions, immediate_surface_size_to_reconcile,
         initial_window_dimensions, is_current_surface_size, modifiers_after_focus_change,
         physical_size_for_terminal, replace_glyph_atlas_for_scale, resize_terminal_with,
         resolve_cell_colors, rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
         terminal_accepts_keyboard_input, terminal_color_query_value,
-        terminal_dimensions_for_surface, GridAccessError, KeyboardInputError, ReaderStatus,
-        ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
-        WriterStatus, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
+        terminal_dimensions_for_surface, GridAccessError, KeyboardInputError, KeyboardInputOutcome,
+        ReaderStatus, ResolvedCellColors, SurfaceSizeError, TerminalDimensions,
+        TerminalResizeError, WriterStatus, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
         MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
         MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
     use crate::grid::{CursorShape, Grid};
+    use crate::input::linux::ScrollbackAction;
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_reader::ReaderExit;
     use crate::terminal_writer::{TerminalWriteQueueError, WriterExit};
@@ -1308,6 +1373,16 @@ mod tests {
     fn test_atlas() -> GlyphAtlas {
         GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0)
             .expect("system monospace fallback should be available")
+    }
+
+    fn grid_with_scrollback(rows: usize, history_lines: usize) -> Grid {
+        let mut grid = Grid::new(8, rows, history_lines + rows);
+        grid.cursor_row = rows - 1;
+        for _ in 0..history_lines {
+            grid.newline();
+        }
+        assert_eq!(grid.scrollback_len(), history_lines);
+        grid
     }
 
     fn render_grid(grid: Grid, atlas: &mut GlyphAtlas) -> (Vec<u32>, (u16, u16)) {
@@ -1679,14 +1754,15 @@ mod tests {
 
     #[test]
     fn keyboard_forwarding_releases_the_grid_before_encoding_and_enqueueing() {
-        let grid = Mutex::new(Grid::new(80, 24, 0));
-        grid.lock()
-            .expect("test grid should be available")
-            .application_cursor_keys = true;
+        let mut history = grid_with_scrollback(4, 10);
+        history.application_cursor_keys = true;
+        history.scroll_viewport_up(history.scrollback_len());
+        let grid = Mutex::new(history);
         let written = RefCell::new(Vec::new());
 
-        assert!(forward_keyboard_input_with(
+        let outcome = dispatch_keyboard_input_with(
             &grid,
+            None,
             |application_cursor_keys| {
                 assert!(application_cursor_keys);
                 assert!(
@@ -1704,8 +1780,126 @@ mod tests {
                 Ok(())
             },
         )
-        .expect("fake keyboard write should succeed"));
+        .expect("fake keyboard write should succeed");
+
+        assert_eq!(
+            outcome,
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: true,
+            }
+        );
         assert_eq!(written.into_inner(), b"\x1bOA");
+        assert_eq!(
+            grid.lock()
+                .expect("keyboard dispatch should keep the grid available")
+                .scroll_offset,
+            0
+        );
+    }
+
+    #[test]
+    fn scrollback_shortcuts_navigate_locally_without_queueing_input() {
+        let grid = Mutex::new(grid_with_scrollback(4, 10));
+        let encode_calls = AtomicUsize::new(0);
+        let enqueue_calls = AtomicUsize::new(0);
+        let dispatch = |action| {
+            dispatch_keyboard_input_with(
+                &grid,
+                Some(action),
+                |_| {
+                    encode_calls.fetch_add(1, Ordering::Relaxed);
+                    Some(b"trap".to_vec())
+                },
+                |_| {
+                    enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+            )
+            .expect("local scrollback action should succeed")
+        };
+
+        assert_eq!(
+            dispatch(ScrollbackAction::PageUp),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("scrollback dispatch should keep the grid available")
+                .scroll_offset,
+            3
+        );
+        assert_eq!(
+            dispatch(ScrollbackAction::PageUp),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("scrollback dispatch should keep the grid available")
+                .scroll_offset,
+            6
+        );
+        assert_eq!(
+            dispatch(ScrollbackAction::PageDown),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("scrollback dispatch should keep the grid available")
+                .scroll_offset,
+            3
+        );
+        assert_eq!(
+            dispatch(ScrollbackAction::Top),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("scrollback dispatch should keep the grid available")
+                .scroll_offset,
+            10
+        );
+        assert_eq!(
+            dispatch(ScrollbackAction::Top),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: false,
+            },
+            "a shortcut at its limit must still be consumed"
+        );
+        assert_eq!(
+            dispatch(ScrollbackAction::Bottom),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("scrollback dispatch should keep the grid available")
+                .scroll_offset,
+            0
+        );
+        assert_eq!(encode_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn one_row_scrollback_pages_by_one_line_without_underflow() {
+        let mut grid = grid_with_scrollback(1, 3);
+
+        assert!(apply_scrollback_action(&mut grid, ScrollbackAction::PageUp));
+        assert_eq!(grid.scroll_offset, 1);
+        assert!(apply_scrollback_action(
+            &mut grid,
+            ScrollbackAction::PageDown
+        ));
+        assert_eq!(grid.scroll_offset, 0);
     }
 
     #[test]
@@ -1721,22 +1915,38 @@ mod tests {
 
     #[test]
     fn keyboard_forwarding_skips_empty_output_and_preserves_queue_errors() {
-        let grid = Mutex::new(Grid::new(80, 24, 0));
+        let mut history = grid_with_scrollback(4, 6);
+        history.scroll_viewport_up(history.scrollback_len());
+        let grid = Mutex::new(history);
         let writes = AtomicUsize::new(0);
 
-        assert!(!forward_keyboard_input_with(
-            &grid,
-            |_| None,
-            |_| {
-                writes.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            },
-        )
-        .expect("empty keyboard output should be a no-op"));
+        assert_eq!(
+            dispatch_keyboard_input_with(
+                &grid,
+                None,
+                |_| None,
+                |_| {
+                    writes.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+            )
+            .expect("empty keyboard output should be a no-op"),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("keyboard dispatch should keep the grid available")
+                .scroll_offset,
+            6,
+            "ignored keys must preserve the scrollback position"
+        );
         assert_eq!(writes.load(Ordering::Relaxed), 0);
 
-        let error = forward_keyboard_input_with(
+        let error = dispatch_keyboard_input_with(
             &grid,
+            None,
             |_| Some(b"x".to_vec()),
             |_| Err(TerminalWriteQueueError::Full),
         )
@@ -1762,8 +1972,9 @@ mod tests {
         let encode_calls = AtomicUsize::new(0);
         let enqueue_calls = AtomicUsize::new(0);
 
-        let error = forward_keyboard_input_with(
+        let error = dispatch_keyboard_input_with(
             grid.as_ref(),
+            Some(ScrollbackAction::PageUp),
             |_| {
                 encode_calls.fetch_add(1, Ordering::Relaxed);
                 Some(b"x".to_vec())
