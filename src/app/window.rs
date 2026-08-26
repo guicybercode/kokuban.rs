@@ -79,6 +79,31 @@ fn mac_key_equivalent_route(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacScrollbackAction {
+    PageUp,
+    PageDown,
+    Home,
+    End,
+}
+
+fn mac_scrollback_action(
+    key_code: u16,
+    modifiers: KeyModifiers,
+) -> Option<MacScrollbackAction> {
+    if modifiers != KeyModifiers::SHIFT {
+        return None;
+    }
+
+    match key_code {
+        116 => Some(MacScrollbackAction::PageUp),
+        121 => Some(MacScrollbackAction::PageDown),
+        115 => Some(MacScrollbackAction::Home),
+        119 => Some(MacScrollbackAction::End),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MacScrollPhase {
     Started,
     Continued,
@@ -762,7 +787,7 @@ define_class!(
         fn key_down(&self, event: &NSEvent) {
             let key_code = event.keyCode();
             let modifiers = event.modifierFlags();
-            let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
+            let key_modifiers = key_modifiers_from_appkit(modifiers);
             let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
 
             // If confirm dialog is active, route keys to it
@@ -779,20 +804,19 @@ define_class!(
                 return;
             }
 
-            // Shift+PageUp/Down/Home/End: viewport scrolling
-            if has_shift {
+            // Exact Shift+PageUp/Down/Home/End: viewport scrolling
+            if let Some(action) = mac_scrollback_action(key_code, key_modifiers) {
                 let handled = VIEW_STATE.with(|state| {
                     let mut state = state.borrow_mut();
                     if let Some(state) = state.as_mut() {
                         let mut tree = state.pane_tree.lock().unwrap();
                         if let Some(pane) = tree.focused_pane_mut() {
                             let rows = pane.grid.rows();
-                            match key_code {
-                                116 => { pane.grid.scroll_viewport_up(rows.saturating_sub(1)); }
-                                121 => { pane.grid.scroll_viewport_down(rows.saturating_sub(1)); }
-                                115 => { let max = pane.grid.scrollback_len(); pane.grid.scroll_viewport_up(max); }
-                                119 => { pane.grid.scroll_to_bottom(); }
-                                _ => return false,
+                            match action {
+                                MacScrollbackAction::PageUp => { pane.grid.scroll_viewport_up(rows.saturating_sub(1)); }
+                                MacScrollbackAction::PageDown => { pane.grid.scroll_viewport_down(rows.saturating_sub(1)); }
+                                MacScrollbackAction::Home => { let max = pane.grid.scrollback_len(); pane.grid.scroll_viewport_up(max); }
+                                MacScrollbackAction::End => { pane.grid.scroll_to_bottom(); }
                             }
                             drop(tree);
                             state.dirty.store(true, Ordering::Relaxed);
@@ -1709,13 +1733,16 @@ pub(super) fn create_terminal_view(
 mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
-        mac_key_equivalent_route, mac_scroll_phase, sync_pending_window_title_with,
-        ClipboardPasteError, MacKeyEquivalentRoute, MacScrollPhase, MacScrollSample,
-        MacScrollState, WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START,
-        WINDOW_TITLE,
+        mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
+        sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
+        MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
+        WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START, WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
     use crate::input::keybind::KeyModifiers;
+    use crate::input::keyboard::{
+        encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers,
+    };
     use crate::input::mouse::MouseWheelRoute;
     use objc2::AnyThread;
     use objc2_app_kit::{NSEventModifierFlags, NSEventPhase};
@@ -1785,6 +1812,64 @@ mod tests {
             (0, cmd, MacKeyEquivalentRoute::Keybind),
         ] {
             assert_eq!(mac_key_equivalent_route(key_code, modifiers), expected);
+        }
+    }
+
+    #[test]
+    fn macos_scrollback_requires_exact_shift_for_all_local_keys() {
+        for (key_code, expected) in [
+            (116, MacScrollbackAction::PageUp),
+            (121, MacScrollbackAction::PageDown),
+            (115, MacScrollbackAction::Home),
+            (119, MacScrollbackAction::End),
+        ] {
+            assert_eq!(
+                mac_scrollback_action(key_code, KeyModifiers::SHIFT),
+                Some(expected),
+            );
+
+            for modifiers in [
+                KeyModifiers::SHIFT | KeyModifiers::CTRL,
+                KeyModifiers::SHIFT | KeyModifiers::ALT,
+            ] {
+                assert_eq!(
+                    mac_scrollback_action(key_code, modifiers),
+                    None,
+                    "{modifiers:?} with key code {key_code} must stay on the terminal input path",
+                );
+            }
+        }
+
+        assert_eq!(
+            mac_scrollback_action(123, KeyModifiers::SHIFT),
+            None,
+        );
+    }
+
+    #[test]
+    fn macos_modified_shift_page_up_keeps_xterm_sequences() {
+        for (modifiers, terminal_modifiers, expected) in [
+            (
+                KeyModifiers::SHIFT | KeyModifiers::CTRL,
+                TerminalKeyModifiers::new(true, false, true),
+                b"\x1b[5;6~".as_slice(),
+            ),
+            (
+                KeyModifiers::SHIFT | KeyModifiers::ALT,
+                TerminalKeyModifiers::new(true, true, false),
+                b"\x1b[5;4~".as_slice(),
+            ),
+        ] {
+            assert_eq!(mac_scrollback_action(116, modifiers), None);
+            assert_eq!(
+                encode_terminal_key_with_modifiers(
+                    TerminalKey::PageUp,
+                    false,
+                    terminal_modifiers,
+                )
+                .as_deref(),
+                Some(expected),
+            );
         }
     }
 
