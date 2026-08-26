@@ -3,6 +3,8 @@ use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 
+const MAX_IME_COMMIT_BYTES: usize = 64 * 1024;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LinuxKeyPress<'a> {
     named_key: Option<NamedKey>,
@@ -17,6 +19,30 @@ pub(crate) enum ScrollbackAction {
     PageDown,
     Top,
     Bottom,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ImeCommitPayload {
+    Empty,
+    Bytes(Vec<u8>),
+    TooLarge { byte_count: usize, limit: usize },
+}
+
+pub(crate) fn ime_commit_payload(text: String) -> ImeCommitPayload {
+    ime_commit_payload_with_limit(text, MAX_IME_COMMIT_BYTES)
+}
+
+fn ime_commit_payload_with_limit(text: String, limit: usize) -> ImeCommitPayload {
+    if text.is_empty() {
+        return ImeCommitPayload::Empty;
+    }
+
+    let byte_count = text.len();
+    if byte_count > limit {
+        return ImeCommitPayload::TooLarge { byte_count, limit };
+    }
+
+    ImeCommitPayload::Bytes(text.into_bytes())
 }
 
 pub(crate) fn key_press_from_winit<'a>(
@@ -176,8 +202,9 @@ fn terminal_key_from_named(named_key: NamedKey, has_shift: bool) -> Option<Termi
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_key_press, named_key_from_logical, scrollback_action_for_key_event,
-        should_forward_key_event, terminal_key_from_named, LinuxKeyPress, ScrollbackAction,
+        encode_key_press, ime_commit_payload_with_limit, named_key_from_logical,
+        scrollback_action_for_key_event, should_forward_key_event, terminal_key_from_named,
+        ImeCommitPayload, LinuxKeyPress, ScrollbackAction, MAX_IME_COMMIT_BYTES,
     };
     use crate::input::keyboard::TerminalKey;
     use winit::event::ElementState;
@@ -237,6 +264,46 @@ mod tests {
         assert_eq!(
             named_key_from_logical(Key::Named(NamedKey::End)),
             Some(NamedKey::End)
+        );
+    }
+
+    #[test]
+    fn ime_commits_preserve_bytes_and_enforce_the_atomic_limit() {
+        assert_eq!(
+            ime_commit_payload_with_limit(String::new(), 0),
+            ImeCommitPayload::Empty
+        );
+
+        let text = "é日本🙂\0".to_string();
+        let expected = text.as_bytes().to_vec();
+        assert_eq!(
+            ime_commit_payload_with_limit(text, expected.len()),
+            ImeCommitPayload::Bytes(expected)
+        );
+
+        assert_eq!(
+            ime_commit_payload_with_limit("é".to_string(), 1),
+            ImeCommitPayload::TooLarge {
+                byte_count: "é".len(),
+                limit: 1,
+            },
+            "the byte limit must never truncate a multibyte character"
+        );
+
+        let maximum = "x".repeat(MAX_IME_COMMIT_BYTES);
+        assert!(matches!(
+            ime_commit_payload_with_limit(maximum, MAX_IME_COMMIT_BYTES),
+            ImeCommitPayload::Bytes(bytes) if bytes.len() == MAX_IME_COMMIT_BYTES
+        ));
+        assert_eq!(
+            ime_commit_payload_with_limit(
+                "x".repeat(MAX_IME_COMMIT_BYTES + 1),
+                MAX_IME_COMMIT_BYTES,
+            ),
+            ImeCommitPayload::TooLarge {
+                byte_count: MAX_IME_COMMIT_BYTES + 1,
+                limit: MAX_IME_COMMIT_BYTES,
+            }
         );
     }
 

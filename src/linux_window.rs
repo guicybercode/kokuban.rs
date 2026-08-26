@@ -3,7 +3,8 @@ use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags};
 use crate::grid::{CursorShape, Grid};
 use crate::input::linux::{
-    encode_key_press, key_press_from_winit, scrollback_action_from_winit, ScrollbackAction,
+    encode_key_press, ime_commit_payload, key_press_from_winit, scrollback_action_from_winit,
+    ImeCommitPayload, ScrollbackAction,
 };
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, fill_rect};
@@ -17,10 +18,10 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
-use winit::event::WindowEvent;
+use winit::event::{Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
-use winit::window::{Window, WindowId};
+use winit::window::{ImePurpose, Window, WindowId};
 
 const WINDOW_TITLE: &str = "黒板kokuban";
 const INITIAL_CELL_WIDTH: u32 = 10;
@@ -107,7 +108,7 @@ enum TerminalResizeError {
 enum KeyboardInputError {
     #[error("could not access Linux terminal input state: {0}")]
     Grid(#[from] GridAccessError),
-    #[error("could not queue Linux keyboard input: {0}")]
+    #[error("could not queue Linux terminal input: {0}")]
     Queue(#[from] TerminalWriteQueueError),
 }
 
@@ -343,6 +344,8 @@ impl LinuxWindow {
                 .create_window(attributes)
                 .map_err(|error| format!("could not create an opaque window: {error}"))?,
         );
+        window.set_ime_purpose(ImePurpose::Terminal);
+        window.set_ime_allowed(true);
         let context = Context::new(window.clone())
             .map_err(|error| format!("could not initialize the software renderer: {error}"))?;
         let surface = Surface::new(&context, window.clone())
@@ -481,6 +484,23 @@ impl LinuxWindow {
         event_loop.exit();
     }
 
+    fn handle_terminal_input_result(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        result: Result<KeyboardInputOutcome, KeyboardInputError>,
+    ) {
+        match result {
+            Ok(outcome) => {
+                if outcome.viewport_changed() {
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
+                }
+            }
+            Err(error) => self.fail(event_loop, error.to_string()),
+        }
+    }
+
     fn request_terminal_shutdown(&mut self) {
         if let Some(reader) = self.reader.as_ref() {
             reader.request_shutdown();
@@ -577,6 +597,35 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             WindowEvent::Focused(focused) => {
                 self.modifiers = modifiers_after_focus_change(self.modifiers, focused);
             }
+            WindowEvent::Ime(event) => {
+                if !terminal_accepts_keyboard_input(self.reader_status.as_ref()) {
+                    return;
+                }
+                let Some(payload) = ime_payload_from_event(event) else {
+                    return;
+                };
+                let bytes = match payload {
+                    ImeCommitPayload::Empty => return,
+                    ImeCommitPayload::Bytes(bytes) => bytes,
+                    ImeCommitPayload::TooLarge { byte_count, limit } => {
+                        log::warn!(
+                            "dropping Linux IME commit of {byte_count} bytes; limit is {limit}"
+                        );
+                        return;
+                    }
+                };
+                let result = dispatch_encoded_terminal_input_with(
+                    self.grid.as_ref(),
+                    Some(bytes),
+                    |bytes| {
+                        self.writer
+                            .as_ref()
+                            .ok_or(TerminalWriteQueueError::Disconnected)?
+                            .enqueue(bytes)
+                    },
+                );
+                self.handle_terminal_input_result(event_loop, result);
+            }
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic,
@@ -591,7 +640,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if scrollback_action.is_none() && key_press.is_none() {
                     return;
                 }
-                match dispatch_keyboard_input_with(
+                let result = dispatch_keyboard_input_with(
                     self.grid.as_ref(),
                     scrollback_action,
                     |application_cursor_keys| {
@@ -605,16 +654,8 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             .ok_or(TerminalWriteQueueError::Disconnected)?
                             .enqueue(bytes)
                     },
-                ) {
-                    Ok(outcome) => {
-                        if outcome.viewport_changed() {
-                            if let Some(window) = self.window.as_ref() {
-                                window.request_redraw();
-                            }
-                        }
-                    }
-                    Err(error) => self.fail(event_loop, error.to_string()),
-                }
+                );
+                self.handle_terminal_input_result(event_loop, result);
             }
             WindowEvent::Resized(size) => {
                 if let Some(current_size) = self.window.as_ref().map(|window| window.inner_size()) {
@@ -1062,7 +1103,27 @@ where
 
         grid.application_cursor_keys
     };
-    let Some(bytes) = encode(application_cursor_keys) else {
+    dispatch_encoded_terminal_input_with(grid, encode(application_cursor_keys), write)
+}
+
+fn ime_payload_from_event(event: Ime) -> Option<ImeCommitPayload> {
+    match event {
+        Ime::Commit(text) => Some(ime_commit_payload(text)),
+        // Preedit is provisional UI state. Sending it to the PTY would duplicate
+        // every revision before Winit emits the final commit.
+        Ime::Enabled | Ime::Preedit(_, _) | Ime::Disabled => None,
+    }
+}
+
+fn dispatch_encoded_terminal_input_with<W>(
+    grid: &Mutex<Grid>,
+    bytes: Option<Vec<u8>>,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let Some(bytes) = bytes else {
         return Ok(KeyboardInputOutcome::Ignored {
             viewport_changed: false,
         });
@@ -1337,22 +1398,22 @@ mod tests {
     use super::{
         apply_scrollback_action, apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions,
         begin_grid_redraw, classify_reader_exit, classify_writer_exit, combine_launch_results,
-        configured_terminal_dimensions, dispatch_keyboard_input_with, draw_cell_glyph,
-        draw_grid_snapshot, drawable_dimensions, immediate_surface_size_to_reconcile,
-        initial_window_dimensions, is_current_surface_size, modifiers_after_focus_change,
-        physical_size_for_terminal, replace_glyph_atlas_for_scale, resize_terminal_with,
-        resolve_cell_colors, rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
-        terminal_accepts_keyboard_input, terminal_color_query_value,
-        terminal_dimensions_for_surface, GridAccessError, KeyboardInputError, KeyboardInputOutcome,
-        ReaderStatus, ResolvedCellColors, SurfaceSizeError, TerminalDimensions,
-        TerminalResizeError, WriterStatus, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
-        MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
-        MAX_TERMINAL_ROWS,
+        configured_terminal_dimensions, dispatch_encoded_terminal_input_with,
+        dispatch_keyboard_input_with, draw_cell_glyph, draw_grid_snapshot, drawable_dimensions,
+        ime_payload_from_event, immediate_surface_size_to_reconcile, initial_window_dimensions,
+        is_current_surface_size, modifiers_after_focus_change, physical_size_for_terminal,
+        replace_glyph_atlas_for_scale, resize_terminal_with, resolve_cell_colors, rgb_to_xrgb,
+        rounded_i32, set_grid_cell_dimensions, snapshot_grid, terminal_accepts_keyboard_input,
+        terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
+        KeyboardInputError, KeyboardInputOutcome, ReaderStatus, ResolvedCellColors,
+        SurfaceSizeError, TerminalDimensions, TerminalResizeError, WriterStatus,
+        MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,
+        MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
     use crate::grid::{CursorShape, Grid};
-    use crate::input::linux::ScrollbackAction;
+    use crate::input::linux::{ime_commit_payload, ImeCommitPayload, ScrollbackAction};
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_reader::ReaderExit;
     use crate::terminal_writer::{TerminalWriteQueueError, WriterExit};
@@ -1361,6 +1422,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, TryLockError};
     use winit::dpi::PhysicalSize;
+    use winit::event::Ime;
     use winit::keyboard::ModifiersState;
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
@@ -1798,6 +1860,66 @@ mod tests {
     }
 
     #[test]
+    fn only_final_ime_commits_become_terminal_payloads() {
+        assert_eq!(ime_payload_from_event(Ime::Enabled), None);
+        assert_eq!(
+            ime_payload_from_event(Ime::Preedit("に".to_string(), Some((3, 3)))),
+            None
+        );
+        assert_eq!(
+            ime_payload_from_event(Ime::Preedit(String::new(), None)),
+            None
+        );
+        assert_eq!(ime_payload_from_event(Ime::Disabled), None);
+        assert_eq!(
+            ime_payload_from_event(Ime::Commit("日".to_string())),
+            Some(ImeCommitPayload::Bytes("日".as_bytes().to_vec()))
+        );
+    }
+
+    #[test]
+    fn ime_commit_is_queued_once_as_raw_utf8_outside_the_grid_lock() {
+        let mut history = grid_with_scrollback(4, 10);
+        history.bracketed_paste = true;
+        history.scroll_viewport_up(history.scrollback_len());
+        let grid = Mutex::new(history);
+        let text = "é日本🙂\0".to_string();
+        let expected = text.as_bytes().to_vec();
+        let ImeCommitPayload::Bytes(bytes) = ime_commit_payload(text) else {
+            panic!("normal IME text should fit the commit budget");
+        };
+        let writes = RefCell::new(Vec::new());
+
+        let outcome = dispatch_encoded_terminal_input_with(&grid, Some(bytes), |bytes| {
+            assert!(
+                grid.try_lock().is_ok(),
+                "IME enqueue must run without the Grid lock"
+            );
+            writes.borrow_mut().push(bytes);
+            Ok(())
+        })
+        .expect("fake IME write should succeed");
+
+        assert_eq!(
+            outcome,
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            writes.into_inner(),
+            vec![expected],
+            "IME text must not receive modifier or bracketed-paste framing"
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("IME dispatch should keep the grid available")
+                .scroll_offset,
+            0
+        );
+    }
+
+    #[test]
     fn scrollback_shortcuts_navigate_locally_without_queueing_input() {
         let grid = Mutex::new(grid_with_scrollback(4, 10));
         let encode_calls = AtomicUsize::new(0);
@@ -1958,7 +2080,7 @@ mod tests {
     }
 
     #[test]
-    fn poisoned_grid_prevents_keyboard_encoding_and_queue_writes() {
+    fn poisoned_grid_prevents_keyboard_and_ime_queue_writes() {
         let grid = Arc::new(Mutex::new(Grid::new(80, 24, 0)));
         let poison_target = grid.clone();
         assert!(std::thread::spawn(move || {
@@ -1990,6 +2112,20 @@ mod tests {
             KeyboardInputError::Grid(GridAccessError::Poisoned)
         ));
         assert_eq!(encode_calls.load(Ordering::Relaxed), 0);
+
+        let ime_error = dispatch_encoded_terminal_input_with(
+            grid.as_ref(),
+            Some("é".as_bytes().to_vec()),
+            |_| {
+                enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect_err("poisoned Grid must reject IME input");
+        assert!(matches!(
+            ime_error,
+            KeyboardInputError::Grid(GridAccessError::Poisoned)
+        ));
         assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
     }
 
