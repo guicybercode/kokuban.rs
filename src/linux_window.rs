@@ -1,11 +1,12 @@
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags, Color};
-use crate::grid::{CursorShape, Grid};
+use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking};
 use crate::input::linux::{
     encode_key_press, ime_commit_payload, key_press_from_winit, scrollback_action_from_winit,
     ImeCommitPayload, ScrollbackAction,
 };
+use crate::input::mouse::{encode_mouse_event, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, fill_rect};
 use crate::terminal_colors::TerminalColors;
@@ -19,7 +20,7 @@ use thiserror::Error;
 use unicode_width::UnicodeWidthChar;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
-use winit::event::{Ime, WindowEvent};
+use winit::event::{Ime, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::window::{ImePurpose, Window, WindowId};
@@ -42,6 +43,10 @@ const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 const MAX_IME_PREEDIT_BYTES: usize = 4 * 1024;
 const MAX_IME_PREEDIT_RENDER_CELLS: usize = 1024;
 const IME_PREEDIT_REPLACEMENT: char = '\u{fffd}';
+const MAX_WHEEL_STEPS_PER_EVENT: u32 = 32;
+const MOUSE_SHIFT_MODIFIER: u8 = 4;
+const MOUSE_META_MODIFIER: u8 = 8;
+const MOUSE_CONTROL_MODIFIER: u8 = 16;
 // Limit the Grid/snapshot budget to 262,144 visible cells while still covering wide 8K layouts.
 const MAX_TERMINAL_COLUMNS: u16 = 1024;
 const MAX_TERMINAL_ROWS: u16 = 256;
@@ -86,6 +91,25 @@ enum GridAccessError {
 struct TerminalDimensions {
     columns: u16,
     rows: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MouseWheelRoute {
+    Scrollback,
+    Terminal(MouseEncoding),
+}
+
+#[derive(Debug, Default)]
+struct MouseWheelState {
+    line_remainder: f64,
+    last_route: Option<MouseWheelRoute>,
+}
+
+impl MouseWheelState {
+    fn reset(&mut self) {
+        self.line_remainder = 0.0;
+        self.last_route = None;
+    }
 }
 
 impl std::fmt::Display for TerminalDimensions {
@@ -344,6 +368,8 @@ struct LinuxWindow {
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
+    last_pointer_position: Option<PhysicalPosition<f64>>,
+    mouse_wheel_state: MouseWheelState,
     ime_active: bool,
     ime_preedit: Option<ImePreedit>,
     last_ime_cursor_area: Option<ImeCursorArea>,
@@ -386,6 +412,8 @@ impl LinuxWindow {
             reader_status: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
+            last_pointer_position: None,
+            mouse_wheel_state: MouseWheelState::default(),
             ime_active: false,
             ime_preedit: None,
             last_ime_cursor_area: None,
@@ -699,6 +727,34 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.last_pointer_position = Some(position);
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.last_pointer_position = None;
+                self.mouse_wheel_state.reset();
+            }
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                if !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
+                    return;
+                }
+                let result = dispatch_mouse_wheel_with(
+                    self.grid.as_ref(),
+                    self.last_pointer_position,
+                    self.cell_dimensions,
+                    delta,
+                    phase,
+                    self.modifiers,
+                    &mut self.mouse_wheel_state,
+                    |bytes| {
+                        self.writer
+                            .as_ref()
+                            .ok_or(TerminalWriteQueueError::Disconnected)?
+                            .enqueue(bytes)
+                    },
+                );
+                self.handle_terminal_input_result(event_loop, result);
+            }
             WindowEvent::Focused(focused) => {
                 self.modifiers = modifiers_after_focus_change(self.modifiers, focused);
                 if !focused {
@@ -852,6 +908,8 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 scale_factor,
                 mut inner_size_writer,
             } => {
+                self.last_pointer_position = None;
+                self.mouse_wheel_state.reset();
                 self.last_ime_cursor_area = None;
                 match self.rebuild_glyph_atlas(scale_factor) {
                     Ok(changed) => {
@@ -1279,6 +1337,186 @@ where
         grid.application_cursor_keys
     };
     dispatch_encoded_terminal_input_with(grid, encode(application_cursor_keys), write)
+}
+
+fn accumulate_wheel_steps(
+    delta: MouseScrollDelta,
+    cell_height: Option<u16>,
+    remainder: &mut f64,
+) -> i32 {
+    let line_delta = match delta {
+        MouseScrollDelta::LineDelta(_, vertical) => f64::from(vertical),
+        MouseScrollDelta::PixelDelta(position) => {
+            let Some(cell_height) = cell_height.filter(|height| *height != 0) else {
+                *remainder = 0.0;
+                return 0;
+            };
+            position.y / f64::from(cell_height)
+        }
+    };
+    if !line_delta.is_finite() {
+        *remainder = 0.0;
+        return 0;
+    }
+
+    let total = *remainder + line_delta;
+    if !total.is_finite() {
+        *remainder = 0.0;
+        return 0;
+    }
+    let whole_steps = total.trunc();
+    let limit = f64::from(MAX_WHEEL_STEPS_PER_EVENT);
+    if whole_steps.abs() > limit {
+        *remainder = 0.0;
+        return if whole_steps.is_sign_positive() {
+            i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
+        } else {
+            -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
+        };
+    }
+
+    *remainder = total - whole_steps;
+    whole_steps as i32
+}
+
+fn terminal_cell_at_pointer(
+    position: PhysicalPosition<f64>,
+    cell_dimensions: (u16, u16),
+    terminal_dimensions: TerminalDimensions,
+) -> Option<(usize, usize)> {
+    if !position.x.is_finite()
+        || !position.y.is_finite()
+        || position.x < 0.0
+        || position.y < 0.0
+        || cell_dimensions.0 == 0
+        || cell_dimensions.1 == 0
+        || terminal_dimensions.columns == 0
+        || terminal_dimensions.rows == 0
+    {
+        return None;
+    }
+
+    let last_column = terminal_dimensions.columns - 1;
+    let last_row = terminal_dimensions.rows - 1;
+    let column = (position.x / f64::from(cell_dimensions.0))
+        .floor()
+        .min(f64::from(last_column)) as usize;
+    let row = (position.y / f64::from(cell_dimensions.1))
+        .floor()
+        .min(f64::from(last_row)) as usize;
+    Some((column + 1, row + 1))
+}
+
+fn apply_wheel_scrollback(grid: &mut Grid, steps: i32) -> bool {
+    let previous_offset = grid.scroll_offset;
+    let lines = usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
+        .expect("bounded wheel steps should fit usize");
+    if steps.is_positive() {
+        grid.scroll_viewport_up(lines);
+    } else {
+        grid.scroll_viewport_down(lines);
+    }
+    grid.scroll_offset != previous_offset
+}
+
+fn mouse_wheel_route(grid: &Grid) -> MouseWheelRoute {
+    if grid.mouse_tracking == MouseTracking::None {
+        MouseWheelRoute::Scrollback
+    } else {
+        MouseWheelRoute::Terminal(grid.mouse_encoding)
+    }
+}
+
+fn mouse_button_with_modifiers(button: u8, modifiers: ModifiersState) -> u8 {
+    let mut encoded = button;
+    if modifiers.shift_key() {
+        encoded |= MOUSE_SHIFT_MODIFIER;
+    }
+    if modifiers.alt_key() {
+        encoded |= MOUSE_META_MODIFIER;
+    }
+    if modifiers.control_key() {
+        encoded |= MOUSE_CONTROL_MODIFIER;
+    }
+    encoded
+}
+
+fn dispatch_mouse_wheel_with<W>(
+    grid: &Mutex<Grid>,
+    pointer_position: Option<PhysicalPosition<f64>>,
+    cell_dimensions: Option<(u16, u16)>,
+    delta: MouseScrollDelta,
+    phase: TouchPhase,
+    modifiers: ModifiersState,
+    state: &mut MouseWheelState,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let (steps, mouse_encoding, terminal_dimensions) = {
+        let mut grid = grid
+            .lock()
+            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
+        let route = mouse_wheel_route(&grid);
+        if state.last_route.replace(route) != Some(route) || phase == TouchPhase::Started {
+            state.line_remainder = 0.0;
+        }
+        let steps = accumulate_wheel_steps(
+            delta,
+            cell_dimensions.map(|(_, height)| height),
+            &mut state.line_remainder,
+        );
+        if matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled) {
+            state.line_remainder = 0.0;
+        }
+        if steps == 0 {
+            return Ok(KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            });
+        }
+
+        let MouseWheelRoute::Terminal(mouse_encoding) = route else {
+            let viewport_changed = apply_wheel_scrollback(&mut grid, steps);
+            return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
+        };
+
+        (
+            steps,
+            mouse_encoding,
+            terminal_dimensions_from_locked_grid(&grid)?,
+        )
+    };
+
+    let Some((column, row)) =
+        pointer_position
+            .zip(cell_dimensions)
+            .and_then(|(position, dimensions)| {
+                terminal_cell_at_pointer(position, dimensions, terminal_dimensions)
+            })
+    else {
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    };
+
+    let button = if steps.is_positive() {
+        MOUSE_WHEEL_UP
+    } else {
+        MOUSE_WHEEL_DOWN
+    };
+    let button = mouse_button_with_modifiers(button, modifiers);
+    let report = encode_mouse_event(button, column, row, true, mouse_encoding);
+    let report_count = usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
+        .expect("bounded wheel report count should fit usize");
+    let mut reports = Vec::with_capacity(report.len().saturating_mul(report_count));
+    for _ in 0..report_count {
+        reports.extend_from_slice(&report);
+    }
+    write(reports)?;
+    Ok(KeyboardInputOutcome::Forwarded {
+        viewport_changed: false,
+    })
 }
 
 fn focus_report_bytes(focused: bool) -> &'static [u8] {
@@ -2024,31 +2262,33 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_scrollback_action, apply_terminal_resize, arm_grid_redraw, atlas_cell_dimensions,
-        begin_grid_redraw, classify_reader_exit, classify_writer_exit, combine_launch_results,
-        configured_terminal_dimensions, contrasting_cursor_color,
+        accumulate_wheel_steps, apply_scrollback_action, apply_terminal_resize, arm_grid_redraw,
+        atlas_cell_dimensions, begin_grid_redraw, classify_reader_exit, classify_writer_exit,
+        combine_launch_results, configured_terminal_dimensions, contrasting_cursor_color,
         dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
-        dispatch_keyboard_input_with, draw_cell_glyph, draw_grid_snapshot, draw_ime_preedit,
-        drawable_dimensions, focus_report_bytes, ime_cursor_area, ime_payload_from_event,
-        ime_preedit_payload_with_limits, immediate_surface_size_to_reconcile,
-        initial_window_dimensions, is_current_surface_size, layout_ime_preedit,
-        modifiers_after_focus_change, physical_size_for_terminal, record_window_focus_change,
-        replace_glyph_atlas_for_scale, replace_ime_preedit, resize_terminal_with,
-        resolve_cell_colors, reveal_ime_input_viewport, rgb_to_xrgb, rounded_i32,
-        set_grid_cell_dimensions, snapshot_grid, sync_ime_cursor_area_with, terminal_accepts_input,
+        dispatch_keyboard_input_with, dispatch_mouse_wheel_with, draw_cell_glyph,
+        draw_grid_snapshot, draw_ime_preedit, drawable_dimensions, focus_report_bytes,
+        ime_cursor_area, ime_payload_from_event, ime_preedit_payload_with_limits,
+        immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
+        layout_ime_preedit, modifiers_after_focus_change, mouse_button_with_modifiers,
+        physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
+        replace_ime_preedit, resize_terminal_with, resolve_cell_colors, reveal_ime_input_viewport,
+        rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid,
+        sync_ime_cursor_area_with, terminal_accepts_input, terminal_cell_at_pointer,
         terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
         ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
-        ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, ReaderStatus,
+        ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseWheelState, ReaderStatus,
         ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
         WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES,
         MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
         MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
-        MAX_TERMINAL_ROWS,
+        MAX_TERMINAL_ROWS, MAX_WHEEL_STEPS_PER_EVENT,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
-    use crate::grid::{CursorShape, Grid};
+    use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking};
     use crate::input::linux::{ime_commit_payload, ImeCommitPayload, ScrollbackAction};
+    use crate::input::mouse::MOUSE_WHEEL_UP;
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_reader::ReaderExit;
     use crate::terminal_writer::{TerminalWriteQueueError, WriterExit};
@@ -2057,7 +2297,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, TryLockError};
     use winit::dpi::{PhysicalPosition, PhysicalSize};
-    use winit::event::Ime;
+    use winit::event::{Ime, MouseScrollDelta, TouchPhase};
     use winit::keyboard::ModifiersState;
 
     const DEFAULT_FOREGROUND: (u8, u8, u8) = (192, 192, 192);
@@ -3422,6 +3662,501 @@ mod tests {
     }
 
     #[test]
+    fn wheel_delta_accumulates_fractional_lines_and_bounds_each_event() {
+        let mut remainder = 0.0;
+
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::LineDelta(7.0, 0.5),
+                Some(20),
+                &mut remainder,
+            ),
+            0,
+            "horizontal motion must not affect vertical wheel steps"
+        );
+        assert_eq!(remainder, 0.5);
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::LineDelta(0.0, 0.5),
+                Some(20),
+                &mut remainder,
+            ),
+            1
+        );
+        assert_eq!(remainder, 0.0);
+
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -5.0)),
+                Some(20),
+                &mut remainder,
+            ),
+            0
+        );
+        assert_eq!(remainder, -0.25);
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -15.0)),
+                Some(20),
+                &mut remainder,
+            ),
+            -1
+        );
+        assert_eq!(remainder, 0.0);
+
+        remainder = 0.75;
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 10.0)),
+                None,
+                &mut remainder,
+            ),
+            0
+        );
+        assert_eq!(remainder, 0.0);
+
+        remainder = 0.5;
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::LineDelta(0.0, f32::NAN),
+                Some(20),
+                &mut remainder,
+            ),
+            0
+        );
+        assert_eq!(remainder, 0.0);
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, f64::INFINITY)),
+                Some(20),
+                &mut remainder,
+            ),
+            0
+        );
+        assert_eq!(remainder, 0.0);
+
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::LineDelta(0.0, f32::MAX),
+                Some(20),
+                &mut remainder,
+            ),
+            i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).unwrap()
+        );
+        assert_eq!(remainder, 0.0);
+        assert_eq!(
+            accumulate_wheel_steps(
+                MouseScrollDelta::LineDelta(0.0, -f32::MAX),
+                Some(20),
+                &mut remainder,
+            ),
+            -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).unwrap()
+        );
+        assert_eq!(remainder, 0.0);
+    }
+
+    #[test]
+    fn mouse_wheel_modifiers_match_xterm_button_bits() {
+        for (modifiers, expected) in [
+            (ModifiersState::empty(), MOUSE_WHEEL_UP),
+            (ModifiersState::SHIFT, MOUSE_WHEEL_UP | 4),
+            (ModifiersState::ALT, MOUSE_WHEEL_UP | 8),
+            (ModifiersState::CONTROL, MOUSE_WHEEL_UP | 16),
+            (
+                ModifiersState::SHIFT | ModifiersState::ALT | ModifiersState::CONTROL,
+                MOUSE_WHEEL_UP | 4 | 8 | 16,
+            ),
+        ] {
+            assert_eq!(
+                mouse_button_with_modifiers(MOUSE_WHEEL_UP, modifiers),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn wheel_remainder_resets_between_gestures_routes_and_pointer_contexts() {
+        let grid = Mutex::new(grid_with_scrollback(4, 10));
+        let writes = RefCell::new(Vec::new());
+        let mut state = MouseWheelState::default();
+        let dispatch = |delta, phase, state: &mut MouseWheelState| {
+            dispatch_mouse_wheel_with(
+                &grid,
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                MouseScrollDelta::LineDelta(0.0, delta),
+                phase,
+                ModifiersState::empty(),
+                state,
+                |bytes| {
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("wheel gesture dispatch should succeed")
+        };
+
+        assert_eq!(
+            dispatch(0.5, TouchPhase::Started, &mut state),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(state.line_remainder, 0.5);
+        assert_eq!(
+            dispatch(0.0, TouchPhase::Ended, &mut state),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(state.line_remainder, 0.0);
+
+        assert_eq!(
+            dispatch(0.5, TouchPhase::Moved, &mut state),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        {
+            let mut grid = grid
+                .lock()
+                .expect("wheel grid should switch to SGR terminal reporting");
+            grid.mouse_tracking = MouseTracking::Normal;
+            grid.mouse_encoding = MouseEncoding::Sgr;
+        }
+        assert_eq!(
+            dispatch(0.5, TouchPhase::Moved, &mut state),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            },
+            "a local-scroll remainder must not become terminal input"
+        );
+        assert_eq!(state.line_remainder, 0.5);
+        assert_eq!(
+            dispatch(0.5, TouchPhase::Moved, &mut state),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+
+        assert_eq!(
+            dispatch(0.25, TouchPhase::Started, &mut state),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(state.line_remainder, 0.25);
+        assert_eq!(
+            dispatch(0.25, TouchPhase::Cancelled, &mut state),
+            KeyboardInputOutcome::Ignored {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(state.line_remainder, 0.0);
+        assert_eq!(writes.into_inner(), [b"\x1b[<64;1;1M".to_vec()]);
+
+        state.line_remainder = 0.75;
+        state.reset();
+        assert_eq!(state.line_remainder, 0.0);
+        assert_eq!(state.last_route, None);
+    }
+
+    #[test]
+    fn every_supported_mouse_tracking_mode_forwards_wheel_reports() {
+        for tracking in [
+            MouseTracking::Normal,
+            MouseTracking::ButtonEvent,
+            MouseTracking::AnyEvent,
+        ] {
+            let mut history = grid_with_scrollback(4, 10);
+            history.mouse_tracking = tracking;
+            history.mouse_encoding = MouseEncoding::Sgr;
+            let grid = Mutex::new(history);
+            let writes = RefCell::new(Vec::new());
+            let mut state = MouseWheelState::default();
+
+            assert_eq!(
+                dispatch_mouse_wheel_with(
+                    &grid,
+                    Some(PhysicalPosition::new(1.0, 1.0)),
+                    Some((10, 20)),
+                    MouseScrollDelta::LineDelta(0.0, 1.0),
+                    TouchPhase::Moved,
+                    ModifiersState::empty(),
+                    &mut state,
+                    |bytes| {
+                        writes.borrow_mut().push(bytes);
+                        Ok(())
+                    },
+                )
+                .expect("supported mouse tracking should forward wheel input"),
+                KeyboardInputOutcome::Forwarded {
+                    viewport_changed: false,
+                }
+            );
+            assert_eq!(writes.into_inner(), [b"\x1b[<64;1;1M".to_vec()]);
+        }
+    }
+
+    #[test]
+    fn pointer_positions_map_to_one_based_clamped_terminal_cells() {
+        let terminal = TerminalDimensions {
+            columns: 80,
+            rows: 24,
+        };
+
+        assert_eq!(
+            terminal_cell_at_pointer(PhysicalPosition::new(0.0, 0.0), (10, 20), terminal),
+            Some((1, 1))
+        );
+        assert_eq!(
+            terminal_cell_at_pointer(PhysicalPosition::new(9.999, 19.999), (10, 20), terminal,),
+            Some((1, 1))
+        );
+        assert_eq!(
+            terminal_cell_at_pointer(PhysicalPosition::new(10.0, 20.0), (10, 20), terminal),
+            Some((2, 2))
+        );
+        assert_eq!(
+            terminal_cell_at_pointer(
+                PhysicalPosition::new(f64::MAX, f64::MAX),
+                (10, 20),
+                terminal,
+            ),
+            Some((80, 24)),
+            "positions beyond a stale surface must clamp to the terminal edge"
+        );
+
+        for invalid in [
+            terminal_cell_at_pointer(PhysicalPosition::new(-0.1, 0.0), (10, 20), terminal),
+            terminal_cell_at_pointer(PhysicalPosition::new(0.0, -0.1), (10, 20), terminal),
+            terminal_cell_at_pointer(PhysicalPosition::new(f64::NAN, 0.0), (10, 20), terminal),
+            terminal_cell_at_pointer(
+                PhysicalPosition::new(0.0, f64::INFINITY),
+                (10, 20),
+                terminal,
+            ),
+            terminal_cell_at_pointer(PhysicalPosition::new(0.0, 0.0), (0, 20), terminal),
+            terminal_cell_at_pointer(PhysicalPosition::new(0.0, 0.0), (10, 0), terminal),
+            terminal_cell_at_pointer(
+                PhysicalPosition::new(0.0, 0.0),
+                (10, 20),
+                TerminalDimensions {
+                    columns: 0,
+                    rows: 24,
+                },
+            ),
+            terminal_cell_at_pointer(
+                PhysicalPosition::new(0.0, 0.0),
+                (10, 20),
+                TerminalDimensions {
+                    columns: 80,
+                    rows: 0,
+                },
+            ),
+        ] {
+            assert_eq!(invalid, None);
+        }
+    }
+
+    #[test]
+    fn wheel_scrolls_locally_or_reports_tracking_without_holding_the_grid_lock() {
+        let grid = Mutex::new(grid_with_scrollback(4, 10));
+        let enqueue_calls = AtomicUsize::new(0);
+        let mut wheel_state = MouseWheelState::default();
+
+        assert_eq!(
+            dispatch_mouse_wheel_with(
+                &grid,
+                None,
+                None,
+                MouseScrollDelta::LineDelta(0.0, 3.0),
+                TouchPhase::Moved,
+                ModifiersState::empty(),
+                &mut wheel_state,
+                |_| {
+                    enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+            )
+            .expect("local wheel scrolling should succeed"),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("wheel grid should remain available")
+                .scroll_offset,
+            3
+        );
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+
+        assert_eq!(
+            dispatch_mouse_wheel_with(
+                &grid,
+                None,
+                None,
+                MouseScrollDelta::LineDelta(0.0, -2.0),
+                TouchPhase::Moved,
+                ModifiersState::empty(),
+                &mut wheel_state,
+                |_| {
+                    enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+            )
+            .expect("local wheel scrolling down should succeed"),
+            KeyboardInputOutcome::Scrollback {
+                viewport_changed: true,
+            }
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("wheel grid should remain available")
+                .scroll_offset,
+            1
+        );
+
+        {
+            let mut grid = grid.lock().expect("wheel grid should enable tracking");
+            grid.mouse_tracking = MouseTracking::Normal;
+            grid.mouse_encoding = MouseEncoding::Sgr;
+        }
+        let writes = RefCell::new(Vec::new());
+        let modified = ModifiersState::SHIFT | ModifiersState::ALT | ModifiersState::CONTROL;
+        assert_eq!(
+            dispatch_mouse_wheel_with(
+                &grid,
+                Some(PhysicalPosition::new(25.0, 45.0)),
+                Some((10, 20)),
+                MouseScrollDelta::LineDelta(0.0, 2.0),
+                TouchPhase::Moved,
+                modified,
+                &mut wheel_state,
+                |bytes| {
+                    assert!(
+                        grid.try_lock().is_ok(),
+                        "mouse enqueue must run without the Grid lock"
+                    );
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("tracked SGR wheel should succeed"),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            writes.borrow().as_slice(),
+            [b"\x1b[<92;3;3M\x1b[<92;3;3M".to_vec()]
+        );
+        assert_eq!(
+            grid.lock()
+                .expect("tracked wheel grid should remain available")
+                .scroll_offset,
+            1,
+            "tracked wheel input must preserve scrollback"
+        );
+
+        grid.lock()
+            .expect("wheel grid should select legacy encoding")
+            .mouse_encoding = MouseEncoding::Default;
+        assert_eq!(
+            dispatch_mouse_wheel_with(
+                &grid,
+                Some(PhysicalPosition::new(25.0, 45.0)),
+                Some((10, 20)),
+                MouseScrollDelta::LineDelta(0.0, -1.0),
+                TouchPhase::Moved,
+                modified,
+                &mut wheel_state,
+                |bytes| {
+                    assert!(grid.try_lock().is_ok());
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("tracked legacy wheel should succeed"),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+        assert_eq!(
+            writes.into_inner(),
+            [
+                b"\x1b[<92;3;3M\x1b[<92;3;3M".to_vec(),
+                vec![0x1b, b'[', b'M', 125, 35, 35],
+            ]
+        );
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn tracked_wheel_ignores_missing_geometry_and_preserves_queue_errors() {
+        let mut history = grid_with_scrollback(4, 10);
+        history.mouse_tracking = MouseTracking::AnyEvent;
+        let grid = Mutex::new(history);
+        let enqueue_calls = AtomicUsize::new(0);
+        let mut wheel_state = MouseWheelState::default();
+
+        for (position, cell_dimensions) in [
+            (None, Some((10, 20))),
+            (Some(PhysicalPosition::new(1.0, 1.0)), None),
+            (Some(PhysicalPosition::new(-1.0, 1.0)), Some((10, 20))),
+        ] {
+            assert_eq!(
+                dispatch_mouse_wheel_with(
+                    &grid,
+                    position,
+                    cell_dimensions,
+                    MouseScrollDelta::LineDelta(0.0, 1.0),
+                    TouchPhase::Moved,
+                    ModifiersState::empty(),
+                    &mut wheel_state,
+                    |_| {
+                        enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    },
+                )
+                .expect("missing mouse geometry should be ignored"),
+                KeyboardInputOutcome::Ignored {
+                    viewport_changed: false,
+                }
+            );
+        }
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+
+        for queue_error in [
+            TerminalWriteQueueError::Full,
+            TerminalWriteQueueError::Disconnected,
+        ] {
+            let error = dispatch_mouse_wheel_with(
+                &grid,
+                Some(PhysicalPosition::new(1.0, 1.0)),
+                Some((10, 20)),
+                MouseScrollDelta::LineDelta(0.0, 1.0),
+                TouchPhase::Moved,
+                ModifiersState::empty(),
+                &mut wheel_state,
+                |_| {
+                    assert!(
+                        grid.try_lock().is_ok(),
+                        "mouse queue errors must be returned outside the Grid lock"
+                    );
+                    Err(queue_error)
+                },
+            )
+            .expect_err("mouse queue failures should be preserved");
+            assert!(matches!(
+                error,
+                KeyboardInputError::Queue(actual) if actual == queue_error
+            ));
+        }
+    }
+
+    #[test]
     fn focus_loss_clears_stale_keyboard_modifiers() {
         let active = ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SHIFT;
 
@@ -3565,7 +4300,7 @@ mod tests {
     }
 
     #[test]
-    fn poisoned_grid_prevents_keyboard_ime_and_focus_queue_writes() {
+    fn poisoned_grid_prevents_keyboard_ime_focus_and_mouse_queue_writes() {
         let grid = Arc::new(Mutex::new(Grid::new(80, 24, 0)));
         let poison_target = grid.clone();
         assert!(std::thread::spawn(move || {
@@ -3620,6 +4355,27 @@ mod tests {
         .expect_err("poisoned Grid must reject focus reporting");
         assert!(matches!(
             focus_error,
+            KeyboardInputError::Grid(GridAccessError::Poisoned)
+        ));
+        assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
+
+        let mut wheel_state = MouseWheelState::default();
+        let mouse_error = dispatch_mouse_wheel_with(
+            grid.as_ref(),
+            Some(PhysicalPosition::new(1.0, 1.0)),
+            Some((10, 20)),
+            MouseScrollDelta::LineDelta(0.0, 1.0),
+            TouchPhase::Moved,
+            ModifiersState::empty(),
+            &mut wheel_state,
+            |_| {
+                enqueue_calls.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+        )
+        .expect_err("poisoned Grid must reject mouse input");
+        assert!(matches!(
+            mouse_error,
             KeyboardInputError::Grid(GridAccessError::Poisoned)
         ));
         assert_eq!(enqueue_calls.load(Ordering::Relaxed), 0);
