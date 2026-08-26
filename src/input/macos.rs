@@ -15,36 +15,64 @@ pub fn translate_key_event(event: &NSEvent, application_cursor_keys: bool) -> Op
     let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
     let has_alt = modifiers.contains(NSEventModifierFlags::Option);
 
-    let chars_str = event.characters()?.to_string();
-    if chars_str.is_empty() {
+    let characters = event.characters().map(|characters| characters.to_string());
+    let characters_ignoring_modifiers = has_alt
+        .then(|| event.charactersIgnoringModifiers())
+        .flatten()
+        .map(|characters| characters.to_string());
+
+    encode_macos_text_input(
+        characters.as_deref(),
+        characters_ignoring_modifiers.as_deref(),
+        has_ctrl,
+        has_alt,
+    )
+}
+
+fn encode_macos_text_input(
+    characters: Option<&str>,
+    characters_ignoring_modifiers: Option<&str>,
+    has_control: bool,
+    has_option: bool,
+) -> Option<Vec<u8>> {
+    let text = if has_option {
+        characters_ignoring_modifiers
+    } else {
+        characters
+    }?;
+    if text.is_empty() {
         return None;
     }
 
-    if has_ctrl {
-        if let Some(c) = chars_str.chars().next() {
-            let byte = match c.to_ascii_lowercase() {
-                'a'..='z' => Some(c.to_ascii_lowercase() as u8 - b'a' + 1),
-                '[' => Some(0x1b),
-                '\\' => Some(0x1c),
-                ']' => Some(0x1d),
-                '^' => Some(0x1e),
-                '_' => Some(0x1f),
-                ' ' => Some(0x00),
-                _ => None,
-            };
-            if let Some(byte) = byte {
-                return Some(vec![byte]);
-            }
-        }
+    let payload = if has_control {
+        control_byte(text).map_or_else(|| text.as_bytes().to_vec(), |byte| vec![byte])
+    } else {
+        text.as_bytes().to_vec()
+    };
+
+    if !has_option {
+        return Some(payload);
     }
 
-    if has_alt {
-        let mut bytes = vec![0x1b];
-        bytes.extend_from_slice(chars_str.as_bytes());
-        return Some(bytes);
-    }
+    let mut sequence = Vec::with_capacity(payload.len() + 1);
+    sequence.push(0x1b);
+    sequence.extend_from_slice(&payload);
+    Some(sequence)
+}
 
-    Some(chars_str.into_bytes())
+fn control_byte(text: &str) -> Option<u8> {
+    let character = text.chars().next()?.to_ascii_lowercase();
+    match character {
+        'a'..='z' => Some(character as u8 - b'a' + 1),
+        '@' => Some(0x00),
+        '[' => Some(0x1b),
+        '\\' => Some(0x1c),
+        ']' => Some(0x1d),
+        '^' => Some(0x1e),
+        '_' => Some(0x1f),
+        ' ' => Some(0x00),
+        _ => None,
+    }
 }
 
 pub(crate) fn mouse_button_with_appkit_modifiers(
@@ -130,7 +158,7 @@ fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<Terminal
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_macos_terminal_key, key_modifiers_from_appkit,
+        encode_macos_terminal_key, encode_macos_text_input, key_modifiers_from_appkit,
         mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
     };
     use crate::input::keybind::KeyModifiers;
@@ -194,6 +222,70 @@ mod tests {
             encode_macos_terminal_key(48, NSEventModifierFlags::Shift, false).as_deref(),
             Some(b"\x1b[Z".as_slice())
         );
+    }
+
+    #[test]
+    fn option_text_uses_characters_ignoring_modifiers() {
+        assert_eq!(
+            encode_macos_text_input(Some("∫"), Some("b"), false, true).as_deref(),
+            Some(b"\x1bb".as_slice()),
+        );
+    }
+
+    #[test]
+    fn option_dead_key_uses_nonempty_base_character() {
+        assert_eq!(
+            encode_macos_text_input(Some(""), Some("e"), false, true).as_deref(),
+            Some(b"\x1be".as_slice()),
+        );
+    }
+
+    #[test]
+    fn shift_option_preserves_shifted_base_character() {
+        assert_eq!(
+            encode_macos_text_input(Some("ı"), Some("B"), false, true).as_deref(),
+            Some(b"\x1bB".as_slice()),
+        );
+    }
+
+    #[test]
+    fn text_without_option_preserves_unicode_and_composition() {
+        assert_eq!(
+            encode_macos_text_input(Some("é日本"), Some("e"), false, false).as_deref(),
+            Some("é日本".as_bytes()),
+        );
+    }
+
+    #[test]
+    fn control_option_encodes_base_before_prefixing_escape() {
+        assert_eq!(
+            encode_macos_text_input(Some("å"), Some("a"), true, true).as_deref(),
+            Some(b"\x1b\x01".as_slice()),
+        );
+        assert_eq!(
+            encode_macos_text_input(Some("\0"), Some("@"), true, true).as_deref(),
+            Some(b"\x1b\0".as_slice()),
+        );
+    }
+
+    #[test]
+    fn missing_or_empty_text_emits_nothing() {
+        for (characters, characters_ignoring_modifiers, has_option) in [
+            (None, None, false),
+            (Some(""), None, false),
+            (Some("∫"), None, true),
+            (Some("∫"), Some(""), true),
+        ] {
+            assert_eq!(
+                encode_macos_text_input(
+                    characters,
+                    characters_ignoring_modifiers,
+                    false,
+                    has_option,
+                ),
+                None,
+            );
+        }
     }
 
     #[test]
