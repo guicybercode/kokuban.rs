@@ -1229,6 +1229,22 @@ mod tests {
     }
 
     #[test]
+    fn toggles_focus_reporting_with_dec_private_mode_and_ris() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        assert!(!grid.focus_events);
+        parser.feed(b"\x1b[?1004h", &mut grid);
+        assert!(grid.focus_events);
+
+        parser.feed(b"\x1b[?1004l", &mut grid);
+        assert!(!grid.focus_events);
+
+        parser.feed(b"\x1b[?1004h\x1bc", &mut grid);
+        assert!(!grid.focus_events);
+    }
+
+    #[test]
     fn decckm_mode_drives_cursor_key_encoding() {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
