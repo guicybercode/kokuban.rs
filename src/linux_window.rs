@@ -7279,7 +7279,7 @@ mod tests {
 
     #[test]
     fn terminal_cursor_remains_visible_over_hidden_linux_content() {
-        let character = 'A';
+        let character = 'é';
         let key = crate::glyph_atlas::GlyphKey {
             c: character,
             bold: false,
@@ -7294,6 +7294,7 @@ mod tests {
         };
         let background = rgb_to_xrgb(10, 20, 30);
         let mut atlas = test_atlas();
+        assert!(!atlas.glyphs.contains_key(&key));
 
         let (frame, _) = render_grid(grid, &mut atlas);
 
