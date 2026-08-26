@@ -93,6 +93,21 @@ where
     }
 }
 
+fn snapshot_then_lock<'a, First, Second, Snapshot, F>(
+    first: &Mutex<First>,
+    second: &'a Mutex<Second>,
+    capture: F,
+) -> (Snapshot, std::sync::MutexGuard<'a, Second>)
+where
+    F: FnOnce(&First) -> Snapshot,
+{
+    let first_guard = first.lock().unwrap();
+    let snapshot = capture(&first_guard);
+    let second_guard = second.lock().unwrap();
+    drop(first_guard);
+    (snapshot, second_guard)
+}
+
 fn process_sixel_event<F>(
     grid: &mut Grid,
     image: &SixelImage,
@@ -337,14 +352,14 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                 let mut any_data = false;
                 let mut dead_panes = Vec::new();
 
-                // Lock atlas FIRST (canonical order: atlas → tree → image_store)
-                let (cell_w, cell_h) = {
-                    let atlas = reader_atlas.lock().unwrap();
-                    (atlas.cell_width, atlas.cell_height)
-                };
-
                 {
-                    let mut tree = reader_tree.lock().unwrap();
+                    // Lock atlas FIRST (canonical order: atlas → tree → image_store).
+                    // Keep it locked until the tree snapshot belongs to the same metric epoch.
+                    let ((cell_w, cell_h), mut tree) = snapshot_then_lock(
+                        reader_atlas.as_ref(),
+                        reader_tree.as_ref(),
+                        |atlas| (atlas.cell_width, atlas.cell_height),
+                    );
                     let pane_ids = tree.pane_ids();
 
                     for id in pane_ids {
@@ -612,7 +627,7 @@ fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
 
 #[cfg(test)]
 mod tests {
-    use super::{process_sixel_event, run_cleanup, CleanupCommand};
+    use super::{process_sixel_event, run_cleanup, snapshot_then_lock, CleanupCommand};
     use crate::graphics::PlacementMode;
     use crate::grid::Grid;
     use crate::parser::sixel::SixelImage;
@@ -635,6 +650,118 @@ mod tests {
                 .send(())
                 .expect("cleanup test should observe retirement completion");
         }
+    }
+
+    #[test]
+    fn metric_snapshot_stays_locked_until_the_tree_is_acquired() {
+        let metric_epoch = Arc::new(Mutex::new(0_u64));
+        let tree_epoch = Arc::new(Mutex::new(0_u64));
+        let tree_blocker = tree_epoch.lock().unwrap();
+        let (captured_sender, captured_receiver) = mpsc::channel();
+        let (snapshot_sender, snapshot_receiver) = mpsc::channel();
+
+        let reader_metric_epoch = metric_epoch.clone();
+        let reader_tree_epoch = tree_epoch.clone();
+        let reader = std::thread::spawn(move || {
+            let (metric_epoch, tree_epoch) = snapshot_then_lock(
+                reader_metric_epoch.as_ref(),
+                reader_tree_epoch.as_ref(),
+                |epoch| {
+                    captured_sender.send(()).unwrap();
+                    *epoch
+                },
+            );
+            snapshot_sender.send((metric_epoch, *tree_epoch)).unwrap();
+        });
+
+        captured_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("reader should capture the metric before waiting for the tree");
+        assert!(metric_epoch.try_lock().is_err());
+
+        let (zoom_started_sender, zoom_started_receiver) = mpsc::channel();
+        let (zoom_finished_sender, zoom_finished_receiver) = mpsc::channel();
+        let zoom_metric_epoch = metric_epoch.clone();
+        let zoom_tree_epoch = tree_epoch.clone();
+        let zoom = std::thread::spawn(move || {
+            zoom_started_sender.send(()).unwrap();
+            let mut metric_epoch = zoom_metric_epoch.lock().unwrap();
+            let mut tree_epoch = zoom_tree_epoch.lock().unwrap();
+            *metric_epoch = 1;
+            *tree_epoch = 1;
+            zoom_finished_sender.send(()).unwrap();
+        });
+
+        zoom_started_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("zoom should attempt to acquire the metric lock");
+        assert!(zoom_finished_receiver.try_recv().is_err());
+        drop(tree_blocker);
+
+        assert_eq!(
+            snapshot_receiver
+                .recv_timeout(Duration::from_secs(1))
+                .expect("reader should acquire the matching tree epoch"),
+            (0, 0)
+        );
+        zoom_finished_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("zoom should proceed after the reader releases both epochs");
+        reader.join().unwrap();
+        zoom.join().unwrap();
+        assert_eq!(*metric_epoch.lock().unwrap(), 1);
+        assert_eq!(*tree_epoch.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn metric_snapshot_observes_the_tree_epoch_when_zoom_wins() {
+        let metric_epoch = Arc::new(Mutex::new(0_u64));
+        let tree_epoch = Arc::new(Mutex::new(0_u64));
+        let (zoom_updated_sender, zoom_updated_receiver) = mpsc::channel();
+        let (release_zoom_sender, release_zoom_receiver) = mpsc::channel();
+        let zoom_metric_epoch = metric_epoch.clone();
+        let zoom_tree_epoch = tree_epoch.clone();
+        let zoom = std::thread::spawn(move || {
+            let mut metric_epoch = zoom_metric_epoch.lock().unwrap();
+            let mut tree_epoch = zoom_tree_epoch.lock().unwrap();
+            *metric_epoch = 1;
+            *tree_epoch = 1;
+            zoom_updated_sender.send(()).unwrap();
+            release_zoom_receiver.recv().unwrap();
+        });
+
+        zoom_updated_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("zoom should install both epochs before the reader starts");
+
+        let (reader_started_sender, reader_started_receiver) = mpsc::channel();
+        let (snapshot_sender, snapshot_receiver) = mpsc::channel();
+        let reader_metric_epoch = metric_epoch.clone();
+        let reader_tree_epoch = tree_epoch.clone();
+        let reader = std::thread::spawn(move || {
+            reader_started_sender.send(()).unwrap();
+            let (metric_epoch, tree_epoch) = snapshot_then_lock(
+                reader_metric_epoch.as_ref(),
+                reader_tree_epoch.as_ref(),
+                |epoch| *epoch,
+            );
+            snapshot_sender.send((metric_epoch, *tree_epoch)).unwrap();
+        });
+
+        reader_started_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("reader should attempt the metric snapshot");
+        assert!(metric_epoch.try_lock().is_err());
+        release_zoom_sender.send(()).unwrap();
+
+        assert_eq!(
+            snapshot_receiver
+                .recv_timeout(Duration::from_secs(1))
+                .expect("reader should observe the epochs installed by zoom"),
+            (1, 1)
+        );
+        zoom.join().unwrap();
+        reader.join().unwrap();
     }
 
     #[test]
