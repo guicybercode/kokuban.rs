@@ -27,18 +27,138 @@ use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-fn alternate_scroll_steps(delta_y: f64) -> i32 {
-    if !delta_y.is_finite() || delta_y.abs() < 0.01 {
-        return 0;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacScrollPhase {
+    Started,
+    Continued,
+    Finished,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacScrollUnits {
+    Lines,
+    Points {
+        scale_factor_bits: u32,
+        cell_height_bits: u32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MacScrollContext {
+    pane_id: PaneId,
+    route: MouseWheelRoute,
+    units: MacScrollUnits,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MacScrollSample {
+    delta_y: f64,
+    precise: bool,
+    scale_factor: f32,
+    cell_height: f32,
+    phase: MacScrollPhase,
+    pane_id: PaneId,
+    route: MouseWheelRoute,
+}
+
+#[derive(Debug, Default)]
+struct MacScrollState {
+    line_remainder: f64,
+    context: Option<MacScrollContext>,
+}
+
+impl MacScrollState {
+    fn reset(&mut self) {
+        self.line_remainder = 0.0;
+        self.context = None;
     }
 
-    let steps = (delta_y.abs() / 3.0)
-        .max(1.0)
-        .min(f64::from(MAX_WHEEL_STEPS_PER_EVENT)) as i32;
-    if delta_y.is_sign_positive() {
+    fn consume(&mut self, sample: MacScrollSample) -> i32 {
+        if !sample.delta_y.is_finite() {
+            self.reset();
+            return 0;
+        }
+
+        let (line_delta, units) = if sample.precise {
+            if !sample.scale_factor.is_finite()
+                || sample.scale_factor <= 0.0
+                || !sample.cell_height.is_finite()
+                || sample.cell_height <= 0.0
+            {
+                self.reset();
+                return 0;
+            }
+            let line_delta = sample.delta_y * f64::from(sample.scale_factor)
+                / f64::from(sample.cell_height);
+            if !line_delta.is_finite() {
+                self.reset();
+                return 0;
+            }
+            (
+                line_delta,
+                MacScrollUnits::Points {
+                    scale_factor_bits: sample.scale_factor.to_bits(),
+                    cell_height_bits: sample.cell_height.to_bits(),
+                },
+            )
+        } else {
+            (sample.delta_y, MacScrollUnits::Lines)
+        };
+
+        let context = MacScrollContext {
+            pane_id: sample.pane_id,
+            route: sample.route,
+            units,
+        };
+        if sample.phase == MacScrollPhase::Started || self.context != Some(context) {
+            self.line_remainder = 0.0;
+        }
+        self.context = Some(context);
+
+        let total = self.line_remainder + line_delta;
+        if !total.is_finite() {
+            self.reset();
+            return 0;
+        }
+        let whole_steps = total.trunc();
+        let limit = f64::from(MAX_WHEEL_STEPS_PER_EVENT);
+        let steps = if whole_steps.abs() > limit {
+            self.line_remainder = 0.0;
+            if whole_steps.is_sign_positive() {
+                i32::try_from(MAX_WHEEL_STEPS_PER_EVENT)
+                    .expect("wheel step limit should fit i32")
+            } else {
+                -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT)
+                    .expect("wheel step limit should fit i32")
+            }
+        } else {
+            self.line_remainder = total - whole_steps;
+            whole_steps as i32
+        };
+
+        if sample.phase == MacScrollPhase::Finished {
+            self.reset();
+        }
         steps
+    }
+}
+
+fn mac_scroll_phase(
+    event_phase: NSEventPhase,
+    momentum_phase: NSEventPhase,
+) -> MacScrollPhase {
+    let started = NSEventPhase::MayBegin | NSEventPhase::Began;
+    let finished = NSEventPhase::Ended | NSEventPhase::Cancelled;
+    if momentum_phase.intersects(started) {
+        MacScrollPhase::Started
+    } else if momentum_phase.intersects(finished) {
+        MacScrollPhase::Finished
+    } else if event_phase.intersects(started) {
+        MacScrollPhase::Started
+    } else if event_phase.intersects(finished) {
+        MacScrollPhase::Finished
     } else {
-        -steps
+        MacScrollPhase::Continued
     }
 }
 
@@ -68,6 +188,7 @@ struct ViewState {
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
+    mouse_wheel_state: MacScrollState,
     confirm_dialog: Option<ConfirmDialog>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
@@ -292,10 +413,20 @@ define_class!(
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
             // Block input while confirm dialog is active
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|slot| {
+                let mut slot = slot.borrow_mut();
+                if let Some(state) = slot.as_mut() {
+                    if state.confirm_dialog.is_some() {
+                        state.mouse_wheel_state.reset();
+                        return true;
+                    }
+                }
+                false
+            });
             if blocked { return; }
             let delta_y = event.scrollingDeltaY();
-            if !delta_y.is_finite() || delta_y.abs() < 0.01 { return; }
+            let precise = event.hasPreciseScrollingDeltas();
+            let phase = mac_scroll_phase(event.phase(), event.momentumPhase());
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
@@ -304,39 +435,83 @@ define_class!(
                     let cell_h = atlas.cell_height;
                     drop(atlas);
                     let mut tree = state.pane_tree.lock().unwrap();
-                    let route = tree.focused_pane().map(|pane| mouse_wheel_route(&pane.grid));
-                    match route {
-                        Some(MouseWheelRoute::Terminal(mouse_encoding)) => {
-                            let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
-                            if let Some((_id, gc, gr)) = cell_info {
-                                let button = if delta_y > 0.0 { MOUSE_WHEEL_UP } else { MOUSE_WHEEL_DOWN };
-                                let seq = encode_mouse_event(button, gc + 1, gr + 1, true, mouse_encoding);
-                                if let Some(pane) = tree.focused_pane() {
-                                    pane.pty.write_all(&seq).ok();
+                    let Some((pane_id, route)) = tree
+                        .focused_pane()
+                        .map(|pane| (pane.id, mouse_wheel_route(&pane.grid)))
+                    else {
+                        state.mouse_wheel_state.reset();
+                        return;
+                    };
+                    let terminal_cell = match route {
+                        MouseWheelRoute::Terminal(_) => {
+                            match pixel_to_cell(event, state, &tree, cell_w, cell_h) {
+                                Some((cell_pane_id, column, row)) if cell_pane_id == pane_id => {
+                                    Some((column, row))
                                 }
-                            } else if let Some(pane) = tree.focused_pane_mut() {
-                                let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
-                                if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
-                                else { pane.grid.scroll_viewport_down(lines); }
+                                _ => {
+                                    state.mouse_wheel_state.reset();
+                                    return;
+                                }
                             }
                         }
-                        Some(MouseWheelRoute::AlternateScroll { application_cursor_keys }) => {
-                            let steps = alternate_scroll_steps(delta_y);
+                        MouseWheelRoute::Scrollback | MouseWheelRoute::AlternateScroll { .. } => {
+                            None
+                        }
+                    };
+                    let steps = state.mouse_wheel_state.consume(MacScrollSample {
+                        delta_y,
+                        precise,
+                        scale_factor: state.scale_factor,
+                        cell_height: cell_h,
+                        phase,
+                        pane_id,
+                        route,
+                    });
+                    if steps == 0 {
+                        return;
+                    }
+
+                    let mut viewport_changed = false;
+                    match route {
+                        MouseWheelRoute::Terminal(mouse_encoding) => {
+                            let (column, row) = terminal_cell
+                                .expect("terminal mouse route should have a validated cell");
+                            let button = if steps.is_positive() { MOUSE_WHEEL_UP } else { MOUSE_WHEEL_DOWN };
+                            let report = encode_mouse_event(
+                                button,
+                                column + 1,
+                                row + 1,
+                                true,
+                                mouse_encoding,
+                            );
+                            let report_count = usize::try_from(steps.unsigned_abs())
+                                .expect("bounded wheel report count should fit usize");
+                            let reports = report.repeat(report_count);
+                            if let Some(pane) = tree.focused_pane() {
+                                pane.pty.write_all(&reports).ok();
+                            }
+                        }
+                        MouseWheelRoute::AlternateScroll { application_cursor_keys } => {
                             let seq = encode_alternate_scroll_steps(steps, application_cursor_keys);
                             if let Some(pane) = tree.focused_pane() {
                                 pane.pty.write_all(&seq).ok();
                             }
                         }
-                        Some(MouseWheelRoute::Scrollback) | None => {
+                        MouseWheelRoute::Scrollback => {
                             if let Some(pane) = tree.focused_pane_mut() {
-                                let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
-                                if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
+                                let previous_offset = pane.grid.scroll_offset;
+                                let lines = usize::try_from(steps.unsigned_abs())
+                                    .expect("bounded scrollback steps should fit usize");
+                                if steps.is_positive() { pane.grid.scroll_viewport_up(lines); }
                                 else { pane.grid.scroll_viewport_down(lines); }
+                                viewport_changed = pane.grid.scroll_offset != previous_offset;
                             }
                         }
                     }
                     drop(tree);
-                    state.dirty.store(true, Ordering::Relaxed);
+                    if viewport_changed {
+                        state.dirty.store(true, Ordering::Relaxed);
+                    }
                 }
             });
         }
@@ -1276,6 +1451,7 @@ pub(super) fn create_terminal_view(
             resize_step,
             prompt_indicator_color,
             image_store,
+            mouse_wheel_state: MacScrollState::default(),
             confirm_dialog: None,
             confirm_on_close_pane,
             confirm_on_quit,
@@ -1288,24 +1464,217 @@ pub(super) fn create_terminal_view(
 #[cfg(test)]
 mod tests {
     use super::{
-        alternate_scroll_steps, sync_pending_window_title_with, WindowTitleMailbox, WINDOW_TITLE,
+        mac_scroll_phase, sync_pending_window_title_with, MacScrollPhase, MacScrollSample,
+        MacScrollState, WindowTitleMailbox, WINDOW_TITLE,
     };
+    use crate::grid::MouseEncoding;
+    use crate::input::mouse::MouseWheelRoute;
+    use objc2_app_kit::NSEventPhase;
     use std::cell::{Cell, RefCell};
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::thread;
 
+    fn scroll_sample(delta_y: f64) -> MacScrollSample {
+        MacScrollSample {
+            delta_y,
+            precise: false,
+            scale_factor: 2.0,
+            cell_height: 20.0,
+            phase: MacScrollPhase::Continued,
+            pane_id: 1,
+            route: MouseWheelRoute::Scrollback,
+        }
+    }
+
+    fn assert_remainder(state: &MacScrollState, expected: f64) {
+        assert!(
+            (state.line_remainder - expected).abs() < f64::EPSILON,
+            "expected remainder {expected}, got {}",
+            state.line_remainder,
+        );
+    }
+
     #[test]
-    fn alternate_scroll_step_quantization_is_bounded_and_rejects_non_finite_input() {
-        assert_eq!(alternate_scroll_steps(0.009), 0);
-        assert_eq!(alternate_scroll_steps(f64::NAN), 0);
-        assert_eq!(alternate_scroll_steps(f64::INFINITY), 0);
-        assert_eq!(alternate_scroll_steps(f64::NEG_INFINITY), 0);
-        assert_eq!(alternate_scroll_steps(0.01), 1);
-        assert_eq!(alternate_scroll_steps(6.0), 2);
-        assert_eq!(alternate_scroll_steps(-6.0), -2);
-        assert_eq!(alternate_scroll_steps(1_000_000.0), 32);
-        assert_eq!(alternate_scroll_steps(-1_000_000.0), -32);
+    fn coarse_scroll_deltas_are_lines_and_are_bounded_per_event() {
+        let mut state = MacScrollState::default();
+        assert_eq!(state.consume(scroll_sample(3.0)), 3);
+        assert_eq!(state.consume(scroll_sample(-6.0)), -6);
+
+        let mut geometry_independent = scroll_sample(1.0);
+        geometry_independent.scale_factor = f32::NAN;
+        geometry_independent.cell_height = 0.0;
+        assert_eq!(state.consume(geometry_independent), 1);
+
+        assert_eq!(state.consume(scroll_sample(f64::MAX)), 32);
+        assert_remainder(&state, 0.0);
+        assert_eq!(state.consume(scroll_sample(-f64::MAX)), -32);
+        assert_remainder(&state, 0.0);
+    }
+
+    #[test]
+    fn precise_scroll_converts_points_to_physical_pixels_and_accumulates_lines() {
+        let mut state = MacScrollState::default();
+        let mut sample = scroll_sample(5.0);
+        sample.precise = true;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.5);
+        assert_eq!(state.consume(sample), 1);
+        assert_remainder(&state, 0.0);
+
+        sample.delta_y = -5.0;
+        sample.phase = MacScrollPhase::Started;
+        assert_eq!(state.consume(sample), 0);
+        sample.phase = MacScrollPhase::Continued;
+        assert_eq!(state.consume(sample), -1);
+
+        sample.delta_y = 5.0;
+        sample.phase = MacScrollPhase::Started;
+        assert_eq!(state.consume(sample), 0);
+        sample.delta_y = -5.0;
+        sample.phase = MacScrollPhase::Continued;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.0);
+
+        sample.delta_y = 0.005;
+        sample.phase = MacScrollPhase::Started;
+        assert_eq!(state.consume(sample), 0);
+        assert!(state.line_remainder > 0.0);
+    }
+
+    #[test]
+    fn gesture_and_momentum_boundaries_reset_even_when_delta_is_zero() {
+        let none = NSEventPhase::None;
+        for phase in [NSEventPhase::None, NSEventPhase::Changed, NSEventPhase::Stationary] {
+            assert_eq!(mac_scroll_phase(phase, none), MacScrollPhase::Continued);
+            assert_eq!(mac_scroll_phase(none, phase), MacScrollPhase::Continued);
+        }
+        for phase in [NSEventPhase::MayBegin, NSEventPhase::Began] {
+            assert_eq!(mac_scroll_phase(phase, none), MacScrollPhase::Started);
+            assert_eq!(mac_scroll_phase(none, phase), MacScrollPhase::Started);
+        }
+        for phase in [NSEventPhase::Ended, NSEventPhase::Cancelled] {
+            assert_eq!(mac_scroll_phase(phase, none), MacScrollPhase::Finished);
+            assert_eq!(mac_scroll_phase(none, phase), MacScrollPhase::Finished);
+        }
+        assert_eq!(
+            mac_scroll_phase(NSEventPhase::Ended, NSEventPhase::Began),
+            MacScrollPhase::Started
+        );
+        assert_eq!(
+            mac_scroll_phase(NSEventPhase::Began, NSEventPhase::Ended),
+            MacScrollPhase::Finished
+        );
+
+        let mut state = MacScrollState::default();
+        assert_eq!(state.consume(scroll_sample(0.75)), 0);
+        assert_remainder(&state, 0.75);
+        let mut boundary = scroll_sample(0.0);
+        boundary.phase = MacScrollPhase::Started;
+        assert_eq!(state.consume(boundary), 0);
+        assert_remainder(&state, 0.0);
+
+        assert_eq!(state.consume(scroll_sample(0.75)), 0);
+        boundary.delta_y = 0.25;
+        boundary.phase = MacScrollPhase::Finished;
+        assert_eq!(state.consume(boundary), 1);
+        assert_remainder(&state, 0.0);
+        assert_eq!(state.context, None);
+
+        assert_eq!(state.consume(scroll_sample(0.75)), 0);
+        boundary.delta_y = 0.0;
+        assert_eq!(state.consume(boundary), 0);
+        assert_remainder(&state, 0.0);
+        assert_eq!(state.context, None);
+    }
+
+    #[test]
+    fn invalid_scroll_samples_clear_state_and_precise_steps_are_bounded() {
+        for delta_y in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut state = MacScrollState::default();
+            assert_eq!(state.consume(scroll_sample(0.75)), 0);
+            let mut invalid = scroll_sample(delta_y);
+            invalid.precise = true;
+            assert_eq!(state.consume(invalid), 0);
+            assert_remainder(&state, 0.0);
+            assert_eq!(state.context, None);
+        }
+
+        for (scale_factor, cell_height) in [
+            (0.0, 20.0),
+            (-1.0, 20.0),
+            (f32::NAN, 20.0),
+            (f32::INFINITY, 20.0),
+            (2.0, 0.0),
+            (2.0, -1.0),
+            (2.0, f32::NAN),
+            (2.0, f32::INFINITY),
+        ] {
+            let mut state = MacScrollState::default();
+            let mut sample = scroll_sample(5.0);
+            sample.precise = true;
+            sample.scale_factor = scale_factor;
+            sample.cell_height = cell_height;
+            assert_eq!(state.consume(sample), 0);
+            assert_eq!(state.context, None);
+        }
+
+        let mut state = MacScrollState::default();
+        let mut huge = scroll_sample(1_000_000.0);
+        huge.precise = true;
+        assert_eq!(state.consume(huge), 32);
+        assert_remainder(&state, 0.0);
+        huge.delta_y = -1_000_000.0;
+        assert_eq!(state.consume(huge), -32);
+        assert_remainder(&state, 0.0);
+    }
+
+    #[test]
+    fn scroll_remainder_is_scoped_to_route_pane_and_precise_geometry() {
+        let mut state = MacScrollState::default();
+        let mut sample = scroll_sample(7.5);
+        sample.precise = true;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.75);
+
+        sample.delta_y = 2.5;
+        sample.route = MouseWheelRoute::Terminal(MouseEncoding::Sgr);
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.25);
+
+        sample.delta_y = 7.5;
+        sample.route = MouseWheelRoute::AlternateScroll {
+            application_cursor_keys: false,
+        };
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.75);
+
+        sample.delta_y = 2.5;
+        sample.route = MouseWheelRoute::AlternateScroll {
+            application_cursor_keys: true,
+        };
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.25);
+
+        sample.delta_y = 7.5;
+        sample.pane_id = 2;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.75);
+
+        sample.delta_y = 5.0;
+        sample.cell_height = 40.0;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.25);
+
+        sample.delta_y = 10.0;
+        sample.scale_factor = 1.0;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.25);
+
+        sample.delta_y = 0.75;
+        sample.precise = false;
+        assert_eq!(state.consume(sample), 0);
+        assert_remainder(&state, 0.75);
     }
 
     #[test]
