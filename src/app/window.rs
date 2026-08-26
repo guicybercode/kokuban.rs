@@ -463,15 +463,15 @@ define_class!(
                                     (
                                         pane.id,
                                         pane.grid.bracketed_paste,
-                                        pane.max_input_bytes(),
+                                        pane.max_nonfatal_input_bytes(),
                                     )
                                 })
                             };
-                            if let Some((pane_id, bracketed, max_input_bytes)) = paste_target {
+                            if let Some((pane_id, bracketed, max_paste_bytes)) = paste_target {
                                 match encode_clipboard_paste(
                                     text.as_ref(),
                                     bracketed,
-                                    max_input_bytes,
+                                    max_paste_bytes,
                                 ) {
                                     Ok(bytes) => {
                                         let byte_count = bytes.len();

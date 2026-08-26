@@ -7,20 +7,38 @@ use std::thread::{self, JoinHandle};
 use thiserror::Error;
 
 const TERMINAL_INPUT_QUEUE_CAPACITY: usize = 256;
+pub(crate) const TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM: usize = 64 * 1024;
 // Match 256 queue slots against the largest explicitly bounded atomic input
 // (the 64 KiB Linux IME commit) while bounding retained payload allocations
 // per PTY.
-const TERMINAL_INPUT_QUEUE_MAX_BYTES: usize = TERMINAL_INPUT_QUEUE_CAPACITY * 64 * 1024;
+const TERMINAL_INPUT_QUEUE_MAX_BYTES: usize =
+    TERMINAL_INPUT_QUEUE_CAPACITY * TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
+const TERMINAL_INPUT_NONFATAL_MESSAGE_HEADROOM: usize = 1;
+const TERMINAL_INPUT_NONFATAL_BYTE_HEADROOM: usize = TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
 
 #[derive(Clone, Copy)]
 struct QueueLimits {
     messages: usize,
     bytes: usize,
+    nonfatal_message_headroom: usize,
+    nonfatal_byte_headroom: usize,
+}
+
+impl QueueLimits {
+    fn max_nonfatal_messages(self) -> usize {
+        self.messages.saturating_sub(self.nonfatal_message_headroom)
+    }
+
+    fn max_nonfatal_bytes(self) -> usize {
+        self.bytes.saturating_sub(self.nonfatal_byte_headroom)
+    }
 }
 
 const TERMINAL_INPUT_QUEUE_LIMITS: QueueLimits = QueueLimits {
     messages: TERMINAL_INPUT_QUEUE_CAPACITY,
     bytes: TERMINAL_INPUT_QUEUE_MAX_BYTES,
+    nonfatal_message_headroom: TERMINAL_INPUT_NONFATAL_MESSAGE_HEADROOM,
+    nonfatal_byte_headroom: TERMINAL_INPUT_NONFATAL_BYTE_HEADROOM,
 };
 
 trait WriterIo: Send + Sync + 'static {
@@ -90,16 +108,72 @@ impl Drop for ByteReservation {
     }
 }
 
+struct MessageReservation {
+    outstanding_messages: Arc<AtomicUsize>,
+}
+
+impl MessageReservation {
+    fn try_acquire(
+        outstanding_messages: &Arc<AtomicUsize>,
+        max_messages: Option<usize>,
+    ) -> Option<Self> {
+        outstanding_messages
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                current.checked_add(1).filter(|next| {
+                    max_messages
+                        .map(|max_messages| *next <= max_messages)
+                        .unwrap_or(true)
+                })
+            })
+            .ok()?;
+        Some(Self {
+            outstanding_messages: outstanding_messages.clone(),
+        })
+    }
+}
+
+impl Drop for MessageReservation {
+    fn drop(&mut self) {
+        let previous = self.outstanding_messages.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous >= 1);
+    }
+}
+
+struct QueueReservation {
+    _message: MessageReservation,
+    _bytes: ByteReservation,
+}
+
+impl QueueReservation {
+    fn try_acquire(
+        outstanding_messages: &Arc<AtomicUsize>,
+        max_messages: Option<usize>,
+        outstanding_bytes: &Arc<AtomicUsize>,
+        reserved_bytes: usize,
+        max_bytes: usize,
+    ) -> Option<Self> {
+        let message = MessageReservation::try_acquire(outstanding_messages, max_messages)?;
+        let bytes = ByteReservation::try_acquire(outstanding_bytes, reserved_bytes, max_bytes)?;
+        Some(Self {
+            _message: message,
+            _bytes: bytes,
+        })
+    }
+}
+
 struct BudgetedInput {
     // Keep payload first so its allocation is freed before the reservation.
     bytes: Vec<u8>,
-    _reservation: ByteReservation,
+    _reservation: QueueReservation,
 }
 
 pub(crate) struct TerminalWriter {
     sender: Option<SyncSender<BudgetedInput>>,
     outstanding_bytes: Arc<AtomicUsize>,
+    outstanding_messages: Arc<AtomicUsize>,
     max_outstanding_bytes: usize,
+    max_nonfatal_outstanding_bytes: usize,
+    max_nonfatal_outstanding_messages: usize,
     shutdown: Arc<AtomicBool>,
     handle: Option<JoinHandle<WriterExit>>,
 }
@@ -119,6 +193,7 @@ impl TerminalWriter {
     {
         let (sender, receiver) = mpsc::sync_channel(limits.messages);
         let outstanding_bytes = Arc::new(AtomicUsize::new(0));
+        let outstanding_messages = Arc::new(AtomicUsize::new(0));
         let shutdown = Arc::new(AtomicBool::new(false));
         let worker_shutdown = shutdown.clone();
         let handle = thread::Builder::new()
@@ -132,22 +207,44 @@ impl TerminalWriter {
         Ok(Self {
             sender: Some(sender),
             outstanding_bytes,
+            outstanding_messages,
             max_outstanding_bytes: limits.bytes,
+            max_nonfatal_outstanding_bytes: limits.max_nonfatal_bytes(),
+            max_nonfatal_outstanding_messages: limits.max_nonfatal_messages(),
             shutdown,
             handle: Some(handle),
         })
     }
 
     pub(crate) fn enqueue(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
+        self.enqueue_with_limits(bytes, self.max_outstanding_bytes, None)
+    }
+
+    pub(crate) fn enqueue_nonfatal(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
+        self.enqueue_with_limits(
+            bytes,
+            self.max_nonfatal_outstanding_bytes,
+            Some(self.max_nonfatal_outstanding_messages),
+        )
+    }
+
+    fn enqueue_with_limits(
+        &self,
+        bytes: Vec<u8>,
+        max_bytes: usize,
+        max_messages: Option<usize>,
+    ) -> Result<(), TerminalWriteQueueError> {
         let sender = self
             .sender
             .as_ref()
             .ok_or(TerminalWriteQueueError::Disconnected)?;
         let reserved_bytes = bytes.capacity();
-        let reservation = ByteReservation::try_acquire(
+        let reservation = QueueReservation::try_acquire(
+            &self.outstanding_messages,
+            max_messages,
             &self.outstanding_bytes,
             reserved_bytes,
-            self.max_outstanding_bytes,
+            max_bytes,
         )
         .ok_or(TerminalWriteQueueError::Full)?;
         let input = BudgetedInput {
@@ -162,8 +259,8 @@ impl TerminalWriter {
     }
 
     #[cfg(target_os = "macos")]
-    pub(crate) fn max_input_bytes(&self) -> usize {
-        self.max_outstanding_bytes
+    pub(crate) fn max_nonfatal_input_bytes(&self) -> usize {
+        self.max_nonfatal_outstanding_bytes
     }
 
     pub(crate) fn request_shutdown(&mut self) {
@@ -217,7 +314,9 @@ fn run_writer<I: WriterIo>(
 mod tests {
     use super::{
         run_writer, BudgetedInput, ByteReservation, QueueLimits, TerminalWriteQueueError,
-        TerminalWriter, WriterExit, WriterIo,
+        TerminalWriter, WriterExit, WriterIo, TERMINAL_INPUT_NONFATAL_BYTE_HEADROOM,
+        TERMINAL_INPUT_NONFATAL_MESSAGE_HEADROOM, TERMINAL_INPUT_QUEUE_CAPACITY,
+        TERMINAL_INPUT_QUEUE_LIMITS, TERMINAL_INPUT_QUEUE_MAX_BYTES,
     };
     use crate::pty::CancellableWriteOutcome;
     use std::io;
@@ -227,7 +326,35 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn limits(messages: usize, bytes: usize) -> QueueLimits {
-        QueueLimits { messages, bytes }
+        limits_with_headroom(messages, bytes, 0, 0)
+    }
+
+    fn limits_with_headroom(
+        messages: usize,
+        bytes: usize,
+        nonfatal_message_headroom: usize,
+        nonfatal_byte_headroom: usize,
+    ) -> QueueLimits {
+        QueueLimits {
+            messages,
+            bytes,
+            nonfatal_message_headroom,
+            nonfatal_byte_headroom,
+        }
+    }
+
+    #[test]
+    fn production_nonfatal_limits_reserve_one_slot_and_64_kib() {
+        assert_eq!(TERMINAL_INPUT_NONFATAL_MESSAGE_HEADROOM, 1);
+        assert_eq!(TERMINAL_INPUT_NONFATAL_BYTE_HEADROOM, 64 * 1024);
+        assert_eq!(
+            TERMINAL_INPUT_QUEUE_LIMITS.max_nonfatal_messages(),
+            TERMINAL_INPUT_QUEUE_CAPACITY - 1
+        );
+        assert_eq!(
+            TERMINAL_INPUT_QUEUE_LIMITS.max_nonfatal_bytes(),
+            TERMINAL_INPUT_QUEUE_MAX_BYTES - TERMINAL_INPUT_NONFATAL_BYTE_HEADROOM
+        );
     }
 
     fn wait_for_outstanding_bytes(writer: &TerminalWriter, expected: usize) {
@@ -238,6 +365,19 @@ mod tests {
             std::thread::yield_now();
         }
         assert_eq!(writer.outstanding_bytes.load(Ordering::Acquire), expected);
+    }
+
+    fn wait_for_outstanding_messages(writer: &TerminalWriter, expected: usize) {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while writer.outstanding_messages.load(Ordering::Acquire) != expected
+            && Instant::now() < deadline
+        {
+            std::thread::yield_now();
+        }
+        assert_eq!(
+            writer.outstanding_messages.load(Ordering::Acquire),
+            expected
+        );
     }
 
     struct RecordingIo {
@@ -318,19 +458,30 @@ mod tests {
         }
     }
 
-    struct PanickingIo {
+    struct GatedPanickingIo {
         started: mpsc::SyncSender<()>,
+        about_to_panic: mpsc::SyncSender<()>,
+        panic_now: AtomicBool,
     }
 
-    impl WriterIo for PanickingIo {
+    impl WriterIo for GatedPanickingIo {
         fn write_all_cancellable(
             &self,
             _data: &[u8],
-            _shutdown: &AtomicBool,
+            shutdown: &AtomicBool,
         ) -> io::Result<CancellableWriteOutcome> {
             self.started
                 .send(())
                 .expect("panic test should wait for the write to start");
+            while !self.panic_now.load(Ordering::Acquire) {
+                if shutdown.load(Ordering::Acquire) {
+                    return Ok(CancellableWriteOutcome::Cancelled);
+                }
+                std::thread::yield_now();
+            }
+            self.about_to_panic
+                .send(())
+                .expect("panic test should wait for the committed panic");
             panic!("simulated writer panic");
         }
     }
@@ -353,6 +504,8 @@ mod tests {
                 .recv_timeout(Duration::from_secs(1))
                 .expect("queued write should complete");
         }
+        wait_for_outstanding_bytes(&writer, 0);
+        wait_for_outstanding_messages(&writer, 0);
 
         writer.request_shutdown();
         assert!(matches!(
@@ -366,17 +519,18 @@ mod tests {
     }
 
     #[test]
-    fn full_queue_returns_immediately_without_dropping_the_error() {
+    fn lossless_queue_accepts_one_in_flight_plus_all_channel_slots() {
         let (started_sender, started_receiver) = mpsc::sync_channel(0);
         let mut writer = TerminalWriter::spawn_with_io(
             Arc::new(BlockingIo {
                 started: started_sender,
             }),
-            limits(1, 64),
+            limits(3, 64),
             |_| {},
         )
         .expect("blocking writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
 
         let blocked = b"blocked".to_vec();
         let blocked_bytes = blocked.capacity();
@@ -384,17 +538,28 @@ mod tests {
         started_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("first write should block in the fake I/O");
-        let queued = b"queued".to_vec();
-        let queued_bytes = queued.capacity();
-        writer.enqueue(queued).unwrap();
+        let queued_one = b"queued-1".to_vec();
+        let queued_one_bytes = queued_one.capacity();
+        writer.enqueue(queued_one).unwrap();
+        let queued_two = b"queued-2".to_vec();
+        let queued_two_bytes = queued_two.capacity();
+        writer.enqueue(queued_two).unwrap();
+        let queued_three = b"queued-3".to_vec();
+        let queued_three_bytes = queued_three.capacity();
+        writer.enqueue(queued_three).unwrap();
         assert_eq!(
             writer.enqueue(b"overflow".to_vec()),
             Err(TerminalWriteQueueError::Full)
         );
         assert_eq!(
             outstanding_bytes.load(Ordering::Acquire),
-            blocked_bytes + queued_bytes,
+            blocked_bytes + queued_one_bytes + queued_two_bytes + queued_three_bytes,
             "a channel-full send must release its byte reservation"
+        );
+        assert_eq!(
+            outstanding_messages.load(Ordering::Acquire),
+            4,
+            "lossless input may use one in-flight write plus every channel slot"
         );
 
         writer.request_shutdown();
@@ -403,6 +568,90 @@ mod tests {
             WriterExit::Shutdown
         ));
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn nonfatal_queue_leaves_physical_capacity_for_lossless_input() {
+        let (started_sender, started_receiver) = mpsc::sync_channel(0);
+        let writer = TerminalWriter::spawn_with_io(
+            Arc::new(BlockingIo {
+                started: started_sender,
+            }),
+            limits_with_headroom(3, 64, 1, 0),
+            |_| {},
+        )
+        .expect("headroom writer should spawn");
+        let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
+
+        writer.enqueue_nonfatal(vec![1]).unwrap();
+        started_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first nonfatal write should remain in flight");
+        writer.enqueue_nonfatal(vec![2]).unwrap();
+        assert_eq!(
+            writer.enqueue_nonfatal(vec![3]),
+            Err(TerminalWriteQueueError::Full)
+        );
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 2);
+
+        writer.enqueue(vec![4]).unwrap();
+        writer.enqueue(vec![5]).unwrap();
+        assert_eq!(writer.enqueue(vec![6]), Err(TerminalWriteQueueError::Full));
+        assert_eq!(
+            outstanding_messages.load(Ordering::Acquire),
+            4,
+            "lossless input should retain access to the physical channel capacity"
+        );
+
+        assert!(matches!(
+            writer.shutdown_and_join().unwrap(),
+            WriterExit::Shutdown
+        ));
+        assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn nonfatal_byte_limit_preserves_configured_headroom_for_lossless_input() {
+        let (started_sender, started_receiver) = mpsc::sync_channel(0);
+        let writer = TerminalWriter::spawn_with_io(
+            Arc::new(BlockingIo {
+                started: started_sender,
+            }),
+            limits_with_headroom(3, 10, 0, 4),
+            |_| {},
+        )
+        .expect("byte-headroom writer should spawn");
+        let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
+
+        let nonfatal = vec![1; 6];
+        assert_eq!(nonfatal.capacity(), 6);
+        writer.enqueue_nonfatal(nonfatal).unwrap();
+        started_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("nonfatal write should retain its byte reservation");
+        assert_eq!(
+            writer.enqueue_nonfatal(vec![2]),
+            Err(TerminalWriteQueueError::Full)
+        );
+        assert_eq!(outstanding_bytes.load(Ordering::Acquire), 6);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 1);
+
+        let lossless = vec![3; 4];
+        assert_eq!(lossless.capacity(), 4);
+        writer.enqueue(lossless).unwrap();
+        assert_eq!(outstanding_bytes.load(Ordering::Acquire), 10);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 2);
+
+        assert!(matches!(
+            writer.shutdown_and_join().unwrap(),
+            WriterExit::Shutdown
+        ));
+        assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
@@ -420,6 +669,7 @@ mod tests {
         )
         .expect("byte-budget writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
 
         writer.enqueue(first).unwrap();
         started_receiver
@@ -427,6 +677,7 @@ mod tests {
             .expect("first budgeted write should remain in flight");
         writer.enqueue(second).unwrap();
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), byte_limit);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 2);
         assert_eq!(
             writer.enqueue(vec![b'c']),
             Err(TerminalWriteQueueError::Full)
@@ -438,6 +689,7 @@ mod tests {
             WriterExit::Shutdown
         ));
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
@@ -460,6 +712,7 @@ mod tests {
             Err(TerminalWriteQueueError::Full)
         );
         wait_for_outstanding_bytes(&writer, 0);
+        wait_for_outstanding_messages(&writer, 0);
 
         writer.enqueue(fitting).unwrap();
         started_receiver
@@ -491,12 +744,14 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("first write should complete");
         wait_for_outstanding_bytes(&writer, 0);
+        wait_for_outstanding_messages(&writer, 0);
 
         writer.enqueue(b"again".to_vec()).unwrap();
         completed_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("released budget should accept the next write");
         wait_for_outstanding_bytes(&writer, 0);
+        wait_for_outstanding_messages(&writer, 0);
         assert!(matches!(
             writer.shutdown_and_join().unwrap(),
             WriterExit::Shutdown
@@ -515,6 +770,7 @@ mod tests {
         )
         .expect("blocking writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
         writer.enqueue(b"blocked".to_vec()).unwrap();
         started_receiver
             .recv_timeout(Duration::from_secs(1))
@@ -526,6 +782,7 @@ mod tests {
             WriterExit::Shutdown
         ));
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
@@ -540,6 +797,8 @@ mod tests {
             |_| {},
         )
         .expect("idle writer should spawn");
+        let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
 
         writer.request_shutdown();
         assert_eq!(
@@ -550,6 +809,8 @@ mod tests {
             writer.shutdown_and_join().unwrap(),
             WriterExit::Shutdown
         ));
+        assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
@@ -569,6 +830,7 @@ mod tests {
         )
         .expect("blocking writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
         writer.enqueue(b"blocked".to_vec()).unwrap();
         started_receiver
             .recv_timeout(Duration::from_secs(1))
@@ -580,6 +842,7 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("Drop should join the cancelled worker"));
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
@@ -597,6 +860,7 @@ mod tests {
             })
             .expect("failing writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
         writer.enqueue(b"fail".to_vec()).unwrap();
 
         assert_eq!(
@@ -606,11 +870,13 @@ mod tests {
             Some(5)
         );
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
         assert_eq!(
             writer.enqueue(b"late".to_vec()),
             Err(TerminalWriteQueueError::Disconnected)
         );
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
         let WriterExit::WriteFailed(error) = writer.shutdown_and_join().unwrap() else {
             panic!("join should preserve the native write error");
         };
@@ -627,6 +893,7 @@ mod tests {
         let writer = TerminalWriter::spawn_with_io(io.clone(), limits(2, 64), |_| {})
             .expect("gated failing writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
 
         writer.enqueue(b"failing".to_vec()).unwrap();
         started_receiver
@@ -634,6 +901,7 @@ mod tests {
             .expect("failing write should start");
         writer.enqueue(b"queued".to_vec()).unwrap();
         assert!(outstanding_bytes.load(Ordering::Acquire) > 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 2);
 
         io.fail_now.store(true, Ordering::Release);
         let WriterExit::WriteFailed(error) = writer.shutdown_and_join().unwrap() else {
@@ -641,27 +909,38 @@ mod tests {
         };
         assert_eq!(error.raw_os_error(), Some(5));
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
-    fn panic_unwind_releases_in_flight_budget() {
+    fn panic_unwind_releases_in_flight_and_queued_budgets() {
         let (started_sender, started_receiver) = mpsc::sync_channel(0);
-        let writer = TerminalWriter::spawn_with_io(
-            Arc::new(PanickingIo {
-                started: started_sender,
-            }),
-            limits(1, 64),
-            |_| {},
-        )
-        .expect("panicking writer should spawn");
+        let (about_to_panic_sender, about_to_panic_receiver) = mpsc::sync_channel(0);
+        let io = Arc::new(GatedPanickingIo {
+            started: started_sender,
+            about_to_panic: about_to_panic_sender,
+            panic_now: AtomicBool::new(false),
+        });
+        let writer = TerminalWriter::spawn_with_io(io.clone(), limits(1, 64), |_| {})
+            .expect("panicking writer should spawn");
         let outstanding_bytes = writer.outstanding_bytes.clone();
+        let outstanding_messages = writer.outstanding_messages.clone();
 
         writer.enqueue(b"panic".to_vec()).unwrap();
         started_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("panicking write should start");
+        writer.enqueue(b"queued".to_vec()).unwrap();
+        assert!(outstanding_bytes.load(Ordering::Acquire) > 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 2);
+
+        io.panic_now.store(true, Ordering::Release);
+        about_to_panic_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("writer should commit to panicking before shutdown begins");
         assert!(writer.shutdown_and_join().is_err());
         assert_eq!(outstanding_bytes.load(Ordering::Acquire), 0);
+        assert_eq!(outstanding_messages.load(Ordering::Acquire), 0);
     }
 
     #[test]
