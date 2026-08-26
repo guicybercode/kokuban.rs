@@ -12,6 +12,7 @@ use crate::parser::ansi::GraphicsSupport;
 use crate::render_scene::ChromeColors;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::KittyHandlerOptions;
+use crate::window_title::WINDOW_TITLE;
 
 use objc2::{MainThreadMarker, Message};
 use objc2_app_kit::*;
@@ -61,6 +62,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     )?));
 
     let dirty = Arc::new(AtomicBool::new(true));
+    let window_title = Arc::new(window::WindowTitleMailbox::new());
     let should_close = Arc::new(AtomicBool::new(false));
 
     let default_fg = ColorConfig::parse_hex(&config.colors.foreground);
@@ -156,7 +158,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         )
     };
 
-    window.setTitle(&NSString::from_str("黒板kokuban"));
+    window.setTitle(&NSString::from_str(WINDOW_TITLE));
     window.setMinSize(NSSize::new(200.0, 150.0));
     window.setAcceptsMouseMovedEvents(true);
 
@@ -198,6 +200,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         resize_step,
         prompt_indicator_color,
         image_store.clone(),
+        window_title.clone(),
         config.confirm.on_close_pane,
         config.confirm.on_quit,
     );
@@ -213,6 +216,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let reader_should_close = should_close.clone();
     let reader_image_store = image_store.clone();
     let reader_atlas = atlas.clone();
+    let reader_window_title = window_title.clone();
 
     std::thread::Builder::new()
         .name("pty-reader".to_string())
@@ -238,6 +242,10 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                     let pane_ids = tree.pane_ids();
 
                     for id in pane_ids {
+                        let title_revision_before = tree
+                            .pane(id)
+                            .map(|pane| pane.grid.title_revision())
+                            .unwrap_or_default();
                         let read_result = match tree.pane_mut(id) {
                             Some(pane) => pane.pty.read(&mut buf),
                             None => continue,
@@ -384,6 +392,16 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                     }
                                 }
 
+                                let focused_title_changed = id == tree.focused
+                                    && tree.pane(id).is_some_and(|pane| {
+                                        pane.grid.title_revision() != title_revision_before
+                                    });
+                                if focused_title_changed {
+                                    window::publish_focused_window_title(
+                                        &tree,
+                                        reader_window_title.as_ref(),
+                                    );
+                                }
                                 any_data = true;
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -396,7 +414,14 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
 
                     // Close dead panes
                     for id in dead_panes {
+                        let previous_focus = tree.focused;
                         let should_terminate = tree.close(id);
+                        if tree.focused != previous_focus {
+                            window::publish_focused_window_title(
+                                &tree,
+                                reader_window_title.as_ref(),
+                            );
+                        }
                         if should_terminate {
                             reader_should_close.store(true, Ordering::Relaxed);
                             break;
@@ -418,16 +443,19 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     // Render timer (60fps)
     let timer_dirty = dirty.clone();
     let timer_should_close = should_close.clone();
+    // Keep the NSTimer block sendable; recover the main-thread-only window by number per update.
+    let timer_window_number = window.windowNumber();
 
     unsafe {
         let interval = 1.0 / 60.0;
         let timer_block = block2::RcBlock::new(move |_timer: std::ptr::NonNull<NSTimer>| {
-            if timer_should_close.load(Ordering::Relaxed) {
+            if timer_should_close.load(Ordering::Acquire) {
                 let mtm = MainThreadMarker::new().unwrap();
                 let app = NSApplication::sharedApplication(mtm);
                 app.terminate(None);
                 return;
             }
+            window::sync_window_title(timer_window_number);
             window::render_if_dirty(&timer_dirty);
         });
 

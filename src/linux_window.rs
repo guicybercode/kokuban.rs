@@ -1439,7 +1439,7 @@ fn changed_window_title(
     observed_title: &mut String,
 ) -> Result<bool, GridAccessError> {
     let grid = grid.lock().map_err(|_| GridAccessError::Poisoned)?;
-    let next_title = normalized_window_title(&grid.title);
+    let next_title = normalized_window_title(grid.title());
     if observed_title == next_title.as_ref() {
         return Ok(false);
     }
@@ -2397,7 +2397,7 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
 
 fn snapshot_window_title(grid: &Mutex<Grid>) -> Result<String, GridAccessError> {
     grid.lock()
-        .map(|grid| normalized_window_title(&grid.title).into_owned())
+        .map(|grid| normalized_window_title(grid.title()).into_owned())
         .map_err(|_| GridAccessError::Poisoned)
 }
 
@@ -3258,7 +3258,7 @@ mod tests {
     #[test]
     fn window_title_snapshot_reads_the_latest_grid_title() {
         let mut grid = Grid::new(2, 1, 0);
-        grid.title = "Codex — kokuban".to_string();
+        grid.set_title("Codex — kokuban");
 
         let title =
             snapshot_window_title(&Mutex::new(grid)).expect("title snapshot should succeed");
@@ -3272,11 +3272,13 @@ mod tests {
         let mut observed_title = WINDOW_TITLE.to_string();
 
         assert!(!changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
-        grid.lock().expect("Grid should lock").title = "btop\0 — 日本".to_string();
+        grid.lock()
+            .expect("Grid should lock")
+            .set_title("btop\0 — 日本");
         assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
         assert_eq!(observed_title, "btop — 日本");
         assert!(!changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
-        grid.lock().expect("Grid should lock").title = "\0\n".to_string();
+        grid.lock().expect("Grid should lock").set_title("\0\n");
         assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
         assert_eq!(observed_title, WINDOW_TITLE);
     }
@@ -3287,11 +3289,11 @@ mod tests {
         let pending = AtomicBool::new(false);
         let mut observed_title = WINDOW_TITLE.to_string();
 
-        grid.lock().expect("Grid should lock").title = "first".to_string();
+        grid.lock().expect("Grid should lock").set_title("first");
         assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
         assert!(arm_window_title_update(&pending));
 
-        grid.lock().expect("Grid should lock").title = "latest".to_string();
+        grid.lock().expect("Grid should lock").set_title("latest");
         assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
         assert!(!arm_window_title_update(&pending));
 
@@ -3300,7 +3302,7 @@ mod tests {
             snapshot_window_title(&grid).expect("latest title should be readable"),
             "latest"
         );
-        grid.lock().expect("Grid should lock").title = "after".to_string();
+        grid.lock().expect("Grid should lock").set_title("after");
         assert!(changed_window_title(&grid, &mut observed_title).expect("Grid should be readable"));
         assert!(arm_window_title_update(&pending));
     }

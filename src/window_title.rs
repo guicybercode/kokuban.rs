@@ -48,7 +48,9 @@ pub(crate) fn normalized_window_title(title: &str) -> Cow<'_, str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{sync_window_title_with, MAX_WINDOW_TITLE_BYTES, WINDOW_TITLE};
+    use super::{
+        normalized_window_title, sync_window_title_with, MAX_WINDOW_TITLE_BYTES, WINDOW_TITLE,
+    };
     use std::cell::RefCell;
 
     #[test]
@@ -114,6 +116,28 @@ mod tests {
         assert_eq!(
             applied.borrow().as_slice(),
             ["abc", WINDOW_TITLE, applied_title.as_str()]
+        );
+    }
+
+    #[test]
+    fn normalization_honors_the_exact_utf8_byte_limit() {
+        let exact_ascii = "x".repeat(MAX_WINDOW_TITLE_BYTES);
+        assert_eq!(normalized_window_title(&exact_ascii), exact_ascii);
+
+        let exact_multibyte = format!("{}日", "x".repeat(MAX_WINDOW_TITLE_BYTES - "日".len()));
+        assert_eq!(normalized_window_title(&exact_multibyte), exact_multibyte);
+
+        let split_multibyte = format!("{}日", "x".repeat(MAX_WINDOW_TITLE_BYTES - "日".len() + 1));
+        assert_eq!(
+            normalized_window_title(&split_multibyte),
+            "x".repeat(MAX_WINDOW_TITLE_BYTES - "日".len() + 1)
+        );
+
+        let first_suffix = format!("{exact_ascii}first");
+        let second_suffix = format!("{exact_ascii}second");
+        assert_eq!(
+            normalized_window_title(&first_suffix),
+            normalized_window_title(&second_suffix)
         );
     }
 }

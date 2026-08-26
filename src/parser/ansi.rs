@@ -193,10 +193,7 @@ impl Parser {
                 self.state = State::Ground;
             }
             b'c' => {
-                let cols = grid.cols();
-                let rows = grid.rows();
-                let scrollback_max = grid.scrollback_max();
-                *grid = Grid::new(cols, rows, scrollback_max);
+                grid.reset_terminal_state();
                 self.state = State::Ground;
             }
             0x20..=0x2f => {
@@ -558,7 +555,7 @@ impl Parser {
             let ps = &data_str[..sep_pos];
             let pt = &data_str[sep_pos + 1..];
             match ps {
-                "0" | "2" => { grid.title = pt.to_string(); }
+                "0" | "2" => grid.set_title(pt),
                 "7" => {
                     if let Some(path) = pt.strip_prefix("file://") {
                         if let Some(slash_pos) = path.find('/') {
@@ -1163,7 +1160,7 @@ mod tests {
 
         parser.feed("\x1b]2;Kokuban 日本\x07".as_bytes(), &mut grid);
 
-        assert_eq!(grid.title, "Kokuban 日本");
+        assert_eq!(grid.title(), "Kokuban 日本");
         assert_eq!(grid.buffer.cell(0, 0).c, ' ');
         assert_eq!(grid.cursor_col, 0);
     }
@@ -1176,9 +1173,39 @@ mod tests {
         parser.feed("\x1b]0;黒".as_bytes(), &mut grid);
         parser.feed("板\x1b\\".as_bytes(), &mut grid);
 
-        assert_eq!(grid.title, "黒板");
+        assert_eq!(grid.title(), "黒板");
         assert_eq!(grid.buffer.cell(0, 0).c, ' ');
         assert_eq!(grid.cursor_col, 0);
+    }
+
+    #[test]
+    fn advances_window_title_revision_only_when_the_title_changes() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        assert_eq!(grid.title_revision(), 0);
+
+        parser.feed(b"\x1b]2;first\x07", &mut grid);
+        assert_eq!(grid.title(), "first");
+        assert_eq!(grid.title_revision(), 1);
+
+        parser.feed(b"\x1b]0;first\x1b\\", &mut grid);
+        assert_eq!(grid.title_revision(), 1);
+
+        parser.feed("\x1b]2;日本\x07".as_bytes(), &mut grid);
+        assert_eq!(grid.title(), "日本");
+        assert_eq!(grid.title_revision(), 2);
+
+        parser.feed(b"\x1bc\x1b]2;after reset\x07", &mut grid);
+        assert_eq!(grid.title(), "after reset");
+        assert_eq!(grid.title_revision(), 4);
+
+        parser.feed(b"\x1bc", &mut grid);
+        assert!(grid.title().is_empty());
+        assert_eq!(grid.title_revision(), 5);
+
+        parser.feed(b"\x1bc", &mut grid);
+        assert_eq!(grid.title_revision(), 5);
     }
 
     #[test]
@@ -1584,10 +1611,12 @@ mod tests {
         parser.feed(b"\x1b]", &mut grid);
         parser.feed(exact, &mut grid);
         parser.feed(b"\x07", &mut grid);
-        assert_eq!(grid.title, "123456");
+        assert_eq!(grid.title(), "123456");
+        assert_eq!(grid.title_revision(), 1);
 
         parser.feed(b"\x1b]2;1234567\x07", &mut grid);
-        assert_eq!(grid.title, "123456");
+        assert_eq!(grid.title(), "123456");
+        assert_eq!(grid.title_revision(), 1);
         assert_eq!(parser.parser.osc_data.capacity(), 0);
         assert!(parser.parser.active_control_string.is_none());
         assert!(!parser.parser.control_string_overflowed);
@@ -1596,11 +1625,13 @@ mod tests {
         parser.feed(b"\x1b", &mut grid);
         assert!(parser.parser.control_string_overflowed);
         parser.feed(b"\\z", &mut grid);
-        assert_eq!(grid.title, "123456");
+        assert_eq!(grid.title(), "123456");
+        assert_eq!(grid.title_revision(), 1);
         assert_eq!(grid.buffer.cell(0, 0).c, 'z');
 
         feed_st_string(&mut parser, &mut grid, b"\x1b]", b"2;next");
-        assert_eq!(grid.title, "next");
+        assert_eq!(grid.title(), "next");
+        assert_eq!(grid.title_revision(), 2);
     }
 
     #[test]
@@ -1770,7 +1801,8 @@ mod tests {
         parser.feed(kitty, &mut grid);
         parser.feed(b"\x1b\\", &mut grid);
 
-        assert!(grid.title.is_empty());
+        assert!(grid.title().is_empty());
+        assert_eq!(grid.title_revision(), 0);
         let commands = drain_kitty_commands(&mut grid);
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].image_id, Some(7));
