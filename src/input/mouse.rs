@@ -1,7 +1,47 @@
-use crate::grid::MouseEncoding;
+use crate::grid::{Grid, MouseEncoding, MouseTracking};
+use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 
 pub(crate) const MOUSE_WHEEL_UP: u8 = 64;
 pub(crate) const MOUSE_WHEEL_DOWN: u8 = 65;
+pub(crate) const MAX_WHEEL_STEPS_PER_EVENT: u32 = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MouseWheelRoute {
+    Scrollback,
+    AlternateScroll { application_cursor_keys: bool },
+    Terminal(MouseEncoding),
+}
+
+pub(crate) fn mouse_wheel_route(grid: &Grid) -> MouseWheelRoute {
+    if grid.mouse_tracking != MouseTracking::None {
+        MouseWheelRoute::Terminal(grid.mouse_encoding)
+    } else if grid.alternate_scroll && grid.using_alt_screen {
+        MouseWheelRoute::AlternateScroll {
+            application_cursor_keys: grid.application_cursor_keys,
+        }
+    } else {
+        MouseWheelRoute::Scrollback
+    }
+}
+
+pub(crate) fn encode_alternate_scroll_steps(
+    steps: i32,
+    application_cursor_keys: bool,
+) -> Vec<u8> {
+    let key = if steps.is_positive() {
+        TerminalKey::Up
+    } else if steps.is_negative() {
+        TerminalKey::Down
+    } else {
+        return Vec::new();
+    };
+    let sequence = encode_terminal_key(key, application_cursor_keys)
+        .expect("cursor keys should always have a terminal encoding");
+    sequence.repeat(
+        usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
+            .expect("bounded wheel steps should fit usize"),
+    )
+}
 
 const LEGACY_VALUE_OFFSET: u8 = 32;
 const LEGACY_VALUE_MAX: u8 = u8::MAX - LEGACY_VALUE_OFFSET;
@@ -47,8 +87,69 @@ fn encode_legacy_coordinate(coordinate: usize) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_mouse_event, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
-    use crate::grid::MouseEncoding;
+    use super::{
+        encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
+        MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
+    };
+    use crate::grid::{Grid, MouseEncoding, MouseTracking};
+
+    #[test]
+    fn alternate_scroll_encodes_bounded_cursor_key_repetitions() {
+        assert!(encode_alternate_scroll_steps(0, false).is_empty());
+        assert_eq!(
+            encode_alternate_scroll_steps(2, false),
+            b"\x1b[A\x1b[A"
+        );
+        assert_eq!(
+            encode_alternate_scroll_steps(-2, false),
+            b"\x1b[B\x1b[B"
+        );
+        assert_eq!(
+            encode_alternate_scroll_steps(2, true),
+            b"\x1bOA\x1bOA"
+        );
+        assert_eq!(
+            encode_alternate_scroll_steps(i32::MAX, false),
+            b"\x1b[A".repeat(usize::try_from(MAX_WHEEL_STEPS_PER_EVENT).unwrap())
+        );
+    }
+
+    #[test]
+    fn wheel_route_prefers_mouse_tracking_then_active_alternate_scroll() {
+        let mut grid = Grid::new(8, 4, 16);
+        assert_eq!(mouse_wheel_route(&grid), MouseWheelRoute::Scrollback);
+
+        grid.alternate_scroll = true;
+        assert_eq!(mouse_wheel_route(&grid), MouseWheelRoute::Scrollback);
+
+        grid.enter_alt_screen();
+        assert_eq!(
+            mouse_wheel_route(&grid),
+            MouseWheelRoute::AlternateScroll {
+                application_cursor_keys: false,
+            }
+        );
+
+        grid.application_cursor_keys = true;
+        assert_eq!(
+            mouse_wheel_route(&grid),
+            MouseWheelRoute::AlternateScroll {
+                application_cursor_keys: true,
+            }
+        );
+
+        grid.mouse_tracking = MouseTracking::Normal;
+        grid.mouse_encoding = MouseEncoding::Sgr;
+        assert_eq!(
+            mouse_wheel_route(&grid),
+            MouseWheelRoute::Terminal(MouseEncoding::Sgr)
+        );
+
+        grid.mouse_tracking = MouseTracking::None;
+        grid.leave_alt_screen();
+        assert!(grid.alternate_scroll);
+        assert_eq!(mouse_wheel_route(&grid), MouseWheelRoute::Scrollback);
+    }
 
     #[test]
     fn sgr_encodes_press_release_and_unbounded_coordinates() {

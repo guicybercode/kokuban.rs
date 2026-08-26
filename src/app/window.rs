@@ -4,7 +4,10 @@ use crate::selection::GridPoint;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::translate_key_event;
-use crate::input::mouse::{encode_mouse_event, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
+use crate::input::mouse::{
+    encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
+    MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
+};
 use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
@@ -23,6 +26,21 @@ use objc2_quartz_core::*;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
+fn alternate_scroll_steps(delta_y: f64) -> i32 {
+    if !delta_y.is_finite() || delta_y.abs() < 0.01 {
+        return 0;
+    }
+
+    let steps = (delta_y.abs() / 3.0)
+        .max(1.0)
+        .min(f64::from(MAX_WHEEL_STEPS_PER_EVENT)) as i32;
+    if delta_y.is_sign_positive() {
+        steps
+    } else {
+        -steps
+    }
+}
 
 struct ViewState {
     pane_tree: Arc<Mutex<PaneTree>>,
@@ -277,7 +295,7 @@ define_class!(
             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let delta_y = event.scrollingDeltaY();
-            if delta_y.abs() < 0.01 { return; }
+            if !delta_y.is_finite() || delta_y.abs() < 0.01 { return; }
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
@@ -286,24 +304,36 @@ define_class!(
                     let cell_h = atlas.cell_height;
                     drop(atlas);
                     let mut tree = state.pane_tree.lock().unwrap();
-                    let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
-                    let tracking = tree.focused_pane().map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
-                    if let (Some(mt), Some((_id, gc, gr))) = (tracking, cell_info) {
-                        if mt.0 != MouseTracking::None {
-                            let button = if delta_y > 0.0 { MOUSE_WHEEL_UP } else { MOUSE_WHEEL_DOWN };
-                            let seq = encode_mouse_event(button, gc + 1, gr + 1, true, mt.1);
+                    let route = tree.focused_pane().map(|pane| mouse_wheel_route(&pane.grid));
+                    match route {
+                        Some(MouseWheelRoute::Terminal(mouse_encoding)) => {
+                            let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
+                            if let Some((_id, gc, gr)) = cell_info {
+                                let button = if delta_y > 0.0 { MOUSE_WHEEL_UP } else { MOUSE_WHEEL_DOWN };
+                                let seq = encode_mouse_event(button, gc + 1, gr + 1, true, mouse_encoding);
+                                if let Some(pane) = tree.focused_pane() {
+                                    pane.pty.write_all(&seq).ok();
+                                }
+                            } else if let Some(pane) = tree.focused_pane_mut() {
+                                let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
+                                if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
+                                else { pane.grid.scroll_viewport_down(lines); }
+                            }
+                        }
+                        Some(MouseWheelRoute::AlternateScroll { application_cursor_keys }) => {
+                            let steps = alternate_scroll_steps(delta_y);
+                            let seq = encode_alternate_scroll_steps(steps, application_cursor_keys);
                             if let Some(pane) = tree.focused_pane() {
                                 pane.pty.write_all(&seq).ok();
                             }
-                        } else if let Some(pane) = tree.focused_pane_mut() {
-                            let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
-                            if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
-                            else { pane.grid.scroll_viewport_down(lines); }
                         }
-                    } else if let Some(pane) = tree.focused_pane_mut() {
-                        let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
-                        if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
-                        else { pane.grid.scroll_viewport_down(lines); }
+                        Some(MouseWheelRoute::Scrollback) | None => {
+                            if let Some(pane) = tree.focused_pane_mut() {
+                                let lines = (delta_y.abs() / 3.0).max(1.0) as usize;
+                                if delta_y > 0.0 { pane.grid.scroll_viewport_up(lines); }
+                                else { pane.grid.scroll_viewport_down(lines); }
+                            }
+                        }
                     }
                     drop(tree);
                     state.dirty.store(true, Ordering::Relaxed);
@@ -1257,11 +1287,26 @@ pub(super) fn create_terminal_view(
 
 #[cfg(test)]
 mod tests {
-    use super::{sync_pending_window_title_with, WindowTitleMailbox, WINDOW_TITLE};
+    use super::{
+        alternate_scroll_steps, sync_pending_window_title_with, WindowTitleMailbox, WINDOW_TITLE,
+    };
     use std::cell::{Cell, RefCell};
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::thread;
+
+    #[test]
+    fn alternate_scroll_step_quantization_is_bounded_and_rejects_non_finite_input() {
+        assert_eq!(alternate_scroll_steps(0.009), 0);
+        assert_eq!(alternate_scroll_steps(f64::NAN), 0);
+        assert_eq!(alternate_scroll_steps(f64::INFINITY), 0);
+        assert_eq!(alternate_scroll_steps(f64::NEG_INFINITY), 0);
+        assert_eq!(alternate_scroll_steps(0.01), 1);
+        assert_eq!(alternate_scroll_steps(6.0), 2);
+        assert_eq!(alternate_scroll_steps(-6.0), -2);
+        assert_eq!(alternate_scroll_steps(1_000_000.0), 32);
+        assert_eq!(alternate_scroll_steps(-1_000_000.0), -32);
+    }
 
     #[test]
     fn window_title_sync_skips_work_without_a_pending_update() {

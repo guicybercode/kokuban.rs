@@ -1,12 +1,15 @@
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags, Color};
-use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking};
+use crate::grid::{CursorShape, Grid, MouseTracking};
 use crate::input::linux::{
     encode_key_press, ime_commit_payload, key_press_from_winit, scrollback_action_from_winit,
     ImeCommitPayload, ScrollbackAction,
 };
-use crate::input::mouse::{encode_mouse_event, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};
+use crate::input::mouse::{
+    encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
+    MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
+};
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, fill_rect};
 use crate::terminal_colors::TerminalColors;
@@ -45,7 +48,6 @@ const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 const MAX_IME_PREEDIT_BYTES: usize = 4 * 1024;
 const MAX_IME_PREEDIT_RENDER_CELLS: usize = 1024;
 const IME_PREEDIT_REPLACEMENT: char = '\u{fffd}';
-const MAX_WHEEL_STEPS_PER_EVENT: u32 = 32;
 const MOUSE_SHIFT_MODIFIER: u8 = 4;
 const MOUSE_META_MODIFIER: u8 = 8;
 const MOUSE_CONTROL_MODIFIER: u8 = 16;
@@ -96,12 +98,6 @@ enum GridAccessError {
 struct TerminalDimensions {
     columns: u16,
     rows: u16,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MouseWheelRoute {
-    Scrollback,
-    Terminal(MouseEncoding),
 }
 
 #[derive(Debug, Default)]
@@ -1905,14 +1901,6 @@ fn apply_wheel_scrollback(grid: &mut Grid, steps: i32) -> bool {
     grid.scroll_offset != previous_offset
 }
 
-fn mouse_wheel_route(grid: &Grid) -> MouseWheelRoute {
-    if grid.mouse_tracking == MouseTracking::None {
-        MouseWheelRoute::Scrollback
-    } else {
-        MouseWheelRoute::Terminal(grid.mouse_encoding)
-    }
-}
-
 fn mouse_button_with_modifiers(button: u8, modifiers: ModifiersState) -> u8 {
     let mut encoded = button;
     if modifiers.shift_key() {
@@ -2138,7 +2126,7 @@ fn dispatch_mouse_wheel_with<W>(
 where
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
-    let (steps, mouse_encoding, terminal_dimensions) = {
+    let (steps, route, terminal_dimensions) = {
         let mut grid = grid
             .lock()
             .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
@@ -2160,17 +2148,36 @@ where
             });
         }
 
-        let MouseWheelRoute::Terminal(mouse_encoding) = route else {
-            let viewport_changed = apply_wheel_scrollback(&mut grid, steps);
-            return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
+        let terminal_dimensions = match route {
+            MouseWheelRoute::Scrollback => {
+                let viewport_changed = apply_wheel_scrollback(&mut grid, steps);
+                return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
+            }
+            MouseWheelRoute::AlternateScroll { .. } => None,
+            MouseWheelRoute::Terminal(_) => Some(terminal_dimensions_from_locked_grid(&grid)?),
         };
 
-        (
-            steps,
-            mouse_encoding,
-            terminal_dimensions_from_locked_grid(&grid)?,
-        )
+        (steps, route, terminal_dimensions)
     };
+
+    if let MouseWheelRoute::AlternateScroll {
+        application_cursor_keys,
+    } = route
+    {
+        write(encode_alternate_scroll_steps(
+            steps,
+            application_cursor_keys,
+        ))?;
+        return Ok(KeyboardInputOutcome::Forwarded {
+            viewport_changed: false,
+        });
+    }
+
+    let MouseWheelRoute::Terminal(mouse_encoding) = route else {
+        unreachable!("scrollback wheel input returns while the Grid lock is held");
+    };
+    let terminal_dimensions =
+        terminal_dimensions.expect("terminal mouse reporting should snapshot Grid dimensions");
 
     let Some((column, row)) =
         pointer_position
@@ -3108,18 +3115,19 @@ mod tests {
         terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
         ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
         ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseMotionDispatchOutcome,
-        MouseMotionState, MouseWheelRoute, MouseWheelState, PointerRouteState, ReaderStatus,
-        ResolvedCellColors, SurfaceSizeError, TerminalDimensions, TerminalResizeError,
-        WriterStatus, CURSOR_THICKNESS, IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES,
-        MAX_IME_PREEDIT_RENDER_CELLS, MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH,
-        MAX_REQUESTED_PHYSICAL_HEIGHT, MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS,
-        MAX_TERMINAL_ROWS, MAX_WHEEL_STEPS_PER_EVENT, WINDOW_TITLE,
+        MouseMotionState, MouseWheelState, PointerRouteState, ReaderStatus, ResolvedCellColors,
+        SurfaceSizeError, TerminalDimensions, TerminalResizeError, WriterStatus, CURSOR_THICKNESS,
+        IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES, MAX_IME_PREEDIT_RENDER_CELLS,
+        MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,
+        MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS, WINDOW_TITLE,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color};
     use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking};
     use crate::input::linux::{ime_commit_payload, ImeCommitPayload, ScrollbackAction};
-    use crate::input::mouse::MOUSE_WHEEL_UP;
+    use crate::input::mouse::{
+        MouseWheelRoute, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
+    };
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_reader::ReaderExit;
     use crate::terminal_writer::{TerminalWriteQueueError, WriterExit};
@@ -6351,6 +6359,8 @@ mod tests {
             MouseTracking::AnyEvent,
         ] {
             let mut history = grid_with_scrollback(4, 10);
+            history.alternate_scroll = true;
+            history.enter_alt_screen();
             history.mouse_tracking = tracking;
             history.mouse_encoding = MouseEncoding::Sgr;
             let grid = Mutex::new(history);
@@ -6377,6 +6387,94 @@ mod tests {
                 }
             );
             assert_eq!(writes.into_inner(), [b"\x1b[<64;1;1M".to_vec()]);
+        }
+    }
+
+    #[test]
+    fn alternate_scroll_forwards_unmodified_cursor_keys_without_pointer_geometry() {
+        let mut history = grid_with_scrollback(4, 10);
+        history.alternate_scroll = true;
+        history.enter_alt_screen();
+        let grid = Mutex::new(history);
+        let writes = RefCell::new(Vec::new());
+        let mut state = MouseWheelState::default();
+        let modified = ModifiersState::SHIFT | ModifiersState::ALT | ModifiersState::CONTROL;
+
+        assert_eq!(
+            dispatch_mouse_wheel_with(
+                &grid,
+                None,
+                None,
+                MouseScrollDelta::LineDelta(0.0, 2.0),
+                TouchPhase::Moved,
+                modified,
+                &mut state,
+                |bytes| {
+                    assert!(
+                        grid.try_lock().is_ok(),
+                        "alternate scroll must enqueue outside the Grid lock"
+                    );
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("alternate scroll should forward normal cursor keys"),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+
+        grid.lock()
+            .expect("alternate scroll grid should enable application cursor keys")
+            .application_cursor_keys = true;
+        assert_eq!(
+            dispatch_mouse_wheel_with(
+                &grid,
+                None,
+                None,
+                MouseScrollDelta::LineDelta(0.0, -2.0),
+                TouchPhase::Moved,
+                modified,
+                &mut state,
+                |bytes| {
+                    assert!(grid.try_lock().is_ok());
+                    writes.borrow_mut().push(bytes);
+                    Ok(())
+                },
+            )
+            .expect("alternate scroll should honor application cursor key mode"),
+            KeyboardInputOutcome::Forwarded {
+                viewport_changed: false,
+            }
+        );
+
+        assert_eq!(
+            writes.into_inner(),
+            [b"\x1b[A\x1b[A".to_vec(), b"\x1bOB\x1bOB".to_vec()]
+        );
+
+        for queue_error in [
+            TerminalWriteQueueError::Full,
+            TerminalWriteQueueError::Disconnected,
+        ] {
+            let error = dispatch_mouse_wheel_with(
+                &grid,
+                None,
+                None,
+                MouseScrollDelta::LineDelta(0.0, 1.0),
+                TouchPhase::Moved,
+                ModifiersState::empty(),
+                &mut state,
+                |_| {
+                    assert!(grid.try_lock().is_ok());
+                    Err(queue_error)
+                },
+            )
+            .expect_err("alternate scroll queue failures should be preserved");
+            assert!(matches!(
+                error,
+                KeyboardInputError::Queue(actual) if actual == queue_error
+            ));
         }
     }
 

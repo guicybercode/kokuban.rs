@@ -118,6 +118,7 @@ pub struct Grid {
     pub bracketed_paste: bool,
     pub mouse_tracking: MouseTracking,
     pub mouse_encoding: MouseEncoding,
+    pub alternate_scroll: bool,
     pub focus_events: bool,
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
@@ -179,6 +180,7 @@ impl Grid {
             bracketed_paste: false,
             mouse_tracking: MouseTracking::None,
             mouse_encoding: MouseEncoding::Default,
+            alternate_scroll: false,
             focus_events: false,
             cursor_style: CursorStyle::default(),
             insert_mode: false,
@@ -230,7 +232,10 @@ impl Grid {
     }
 
     pub(crate) fn reset_terminal_state(&mut self) {
+        // Xterm keeps its resource-backed alternate-scroll mode across RIS.
+        let alternate_scroll = self.alternate_scroll;
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
+        reset.alternate_scroll = alternate_scroll;
         // RIS clears the title, but consumers still need a monotonic change signal.
         reset.title_revision = self
             .title_revision

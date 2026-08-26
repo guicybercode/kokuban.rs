@@ -773,6 +773,7 @@ impl Parser {
                             1003 => { grid.mouse_tracking = if set { MouseTracking::AnyEvent } else { MouseTracking::None }; }
                             1004 => { grid.focus_events = set; }
                             1006 => { grid.mouse_encoding = if set { MouseEncoding::Sgr } else { MouseEncoding::Default }; }
+                            1007 => { grid.alternate_scroll = set; }
                             2004 => { grid.bracketed_paste = set; }
                             _ => { log::trace!("Ignoring DEC private mode {param}"); }
                         }
@@ -1485,6 +1486,33 @@ mod tests {
         parser.feed(b"\x1b[?1003;1006h\x1bc", &mut grid);
         assert_eq!(grid.mouse_tracking, MouseTracking::None);
         assert_eq!(grid.mouse_encoding, MouseEncoding::Default);
+    }
+
+    #[test]
+    fn toggles_alternate_scroll_independently_and_preserves_it_across_ris() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+
+        assert!(!grid.alternate_scroll);
+        assert!(!grid.using_alt_screen);
+
+        parser.feed(b"\x1b[?1007;1049h", &mut grid);
+        assert!(grid.alternate_scroll);
+        assert!(grid.using_alt_screen);
+
+        parser.feed(b"\x1b[?1049l", &mut grid);
+        assert!(grid.alternate_scroll);
+        assert!(!grid.using_alt_screen);
+
+        parser.feed(b"\x1b[?1007l", &mut grid);
+        assert!(!grid.alternate_scroll);
+
+        parser.feed(b"\x1b[?1007;1047h\x1bc", &mut grid);
+        assert!(grid.alternate_scroll);
+        assert!(!grid.using_alt_screen);
+
+        parser.feed(b"\x1b[?1007l\x1bc", &mut grid);
+        assert!(!grid.alternate_scroll);
     }
 
     #[test]
