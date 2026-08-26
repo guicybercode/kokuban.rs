@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::parser::kitty_graphics::KittyCommand;
 use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES};
-use crate::graphics::ImagePlacement;
+use crate::graphics::{ImageId, ImagePlacement};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
 
@@ -147,6 +147,8 @@ pub struct Grid {
     pending_sixel_bytes: usize,
     // Active image placements for this grid
     pub image_placements: Vec<ImagePlacement>,
+    // Primary-screen placements hidden while the alternate screen is active.
+    saved_primary_image_placements: Option<Vec<ImagePlacement>>,
     // Cell pixel dimensions (set by renderer for accurate CSI t responses)
     pub cell_pixel_width: u16,
     pub cell_pixel_height: u16,
@@ -203,6 +205,7 @@ impl Grid {
             pending_sixel_count: 0,
             pending_sixel_bytes: 0,
             image_placements: Vec::new(),
+            saved_primary_image_placements: None,
             cell_pixel_width: 8,
             cell_pixel_height: 16,
         }
@@ -222,6 +225,24 @@ impl Grid {
     }
     pub fn scrollback_len(&self) -> usize { self.scrollback.len() }
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
+
+    /// Iterate every placement reference for cache retention, including a hidden primary screen.
+    pub(crate) fn all_image_placements(&self) -> impl Iterator<Item = &ImagePlacement> {
+        self.image_placements.iter().chain(
+            self.saved_primary_image_placements
+                .iter()
+                .flat_map(|placements| placements.iter()),
+        )
+    }
+
+    /// Remove stale Kitty references from a primary screen hidden by the alternate screen.
+    pub(crate) fn remove_hidden_primary_kitty_placements(&mut self, image_id: ImageId) {
+        if let Some(placements) = self.saved_primary_image_placements.as_mut() {
+            placements.retain(|placement| {
+                placement.image_id != image_id || placement.placement_id == 0
+            });
+        }
+    }
 
     pub(crate) fn title(&self) -> &str { &self.title }
     pub(crate) fn title_revision(&self) -> u64 { self.title_revision }
@@ -614,6 +635,7 @@ impl Grid {
 
     pub fn enter_alt_screen(&mut self) {
         if self.using_alt_screen { return; }
+        debug_assert!(self.saved_primary_image_placements.is_none());
         self.using_alt_screen = true;
         self.scroll_offset = 0;
         self.alt_cursor = (
@@ -625,6 +647,7 @@ impl Grid {
         let rows = self.rows();
         let primary = std::mem::replace(&mut self.buffer, Buffer::new(cols, rows));
         self.alt_buffer = Some(primary);
+        self.saved_primary_image_placements = Some(std::mem::take(&mut self.image_placements));
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.wrap_pending = false;
@@ -644,8 +667,10 @@ impl Grid {
         self.wrap_pending = self.alt_wrap_pending;
         self.scroll_top = 0;
         self.scroll_bottom = self.rows().saturating_sub(1);
-        // Clear all image placements when leaving alt screen
-        self.image_placements.clear();
+        self.image_placements = self
+            .saved_primary_image_placements
+            .take()
+            .unwrap_or_default();
         self.mark_all_dirty();
     }
 
@@ -753,6 +778,7 @@ impl Grid {
                     self.buffer.clear_row(row, template);
                     self.dirty[row] = true;
                 }
+                self.image_placements.clear();
             }
             3 => {
                 if self.using_alt_screen {
@@ -892,7 +918,8 @@ mod tests {
         marks::PromptMarkKind,
         Grid, TerminalEvent,
     };
-    use crate::parser::sixel::SixelImage;
+    use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+    use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
 
     fn sixel_image(byte_len: usize) -> SixelImage {
         SixelImage {
@@ -900,6 +927,31 @@ mod tests {
             height: (byte_len / 4) as u32,
             pixels: vec![0; byte_len],
         }
+    }
+
+    fn image_placement(image_id: u64) -> ImagePlacement {
+        ImagePlacement {
+            image_id,
+            placement_id: image_id as u32,
+            client_placement_id: Some(image_id as u32),
+            mode: PlacementMode::Inline {
+                row: 0,
+                col: 0,
+                cols: 1,
+                rows: 1,
+                x_offset: 0,
+                y_offset: 0,
+                render_size: InlineRenderSize::CellAnchored,
+            },
+            z_index: image_id as i32,
+        }
+    }
+
+    fn image_ids<'a>(placements: impl IntoIterator<Item = &'a ImagePlacement>) -> Vec<u64> {
+        placements
+            .into_iter()
+            .map(|placement| placement.image_id)
+            .collect()
     }
 
     fn assert_wide_row_valid(grid: &Grid, row: usize) {
@@ -1109,6 +1161,171 @@ mod tests {
 
         assert_eq!(grid.buffer.cell(0, 1).c, 'b');
         assert_eq!(grid.buffer.cell(1, 0).c, 'c');
+    }
+
+    #[test]
+    fn alt_screen_hides_and_restores_primary_image_placements() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements = vec![image_placement(11), image_placement(12)];
+
+        grid.enter_alt_screen();
+
+        assert!(grid.image_placements.is_empty());
+
+        grid.leave_alt_screen();
+
+        assert_eq!(image_ids(&grid.image_placements), [11, 12]);
+    }
+
+    #[test]
+    fn retransmission_cleanup_removes_hidden_kitty_but_preserves_sixel() {
+        let mut grid = Grid::new(2, 2, 0);
+        let mut sixel = image_placement(11);
+        sixel.placement_id = 0;
+        sixel.client_placement_id = None;
+        grid.image_placements = vec![image_placement(11), sixel];
+        grid.enter_alt_screen();
+        let mut active_replacement = image_placement(11);
+        active_replacement.placement_id = 22;
+        grid.image_placements.push(active_replacement);
+
+        grid.remove_hidden_primary_kitty_placements(11);
+
+        assert_eq!(grid.image_placements[0].placement_id, 22);
+        assert_eq!(
+            grid.all_image_placements()
+                .map(|placement| placement.placement_id)
+                .collect::<Vec<_>>(),
+            [22, 0]
+        );
+
+        grid.leave_alt_screen();
+        assert_eq!(grid.image_placements.len(), 1);
+        assert_eq!(grid.image_placements[0].image_id, 11);
+        assert_eq!(grid.image_placements[0].placement_id, 0);
+    }
+
+    #[test]
+    fn csi_1049_round_trip_restores_primary_image_placements() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements.push(image_placement(11));
+
+        parser.feed(b"\x1b[?1049h", &mut grid);
+        assert!(grid.using_alt_screen);
+        assert!(grid.image_placements.is_empty());
+        grid.image_placements.push(image_placement(21));
+
+        parser.feed(b"\x1b[?1049l", &mut grid);
+
+        assert!(!grid.using_alt_screen);
+        assert_eq!(image_ids(&grid.image_placements), [11]);
+    }
+
+    #[test]
+    fn leaving_alt_screen_discards_alternate_image_placements() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements.push(image_placement(11));
+        grid.enter_alt_screen();
+        grid.image_placements.push(image_placement(21));
+
+        grid.leave_alt_screen();
+
+        assert_eq!(image_ids(&grid.image_placements), [11]);
+        grid.enter_alt_screen();
+        assert!(grid.image_placements.is_empty());
+    }
+
+    #[test]
+    fn erase_display_all_clears_primary_image_placements() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements.push(image_placement(11));
+
+        grid.erase_in_display(2);
+
+        assert!(grid.image_placements.is_empty());
+        assert!(grid.all_image_placements().next().is_none());
+    }
+
+    #[test]
+    fn erase_display_all_on_alt_screen_preserves_primary_image_placements() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements.push(image_placement(11));
+        grid.enter_alt_screen();
+        grid.image_placements.push(image_placement(21));
+
+        grid.erase_in_display(2);
+
+        assert!(grid.image_placements.is_empty());
+        assert_eq!(image_ids(grid.all_image_placements()), [11]);
+
+        grid.leave_alt_screen();
+        assert_eq!(image_ids(&grid.image_placements), [11]);
+    }
+
+    #[test]
+    fn partial_and_scrollback_erases_preserve_active_image_placements() {
+        for mode in [0, 1, 3] {
+            let mut grid = Grid::new(2, 2, 0);
+            grid.image_placements.push(image_placement(11));
+
+            grid.erase_in_display(mode);
+
+            assert_eq!(image_ids(&grid.image_placements), [11], "ED mode {mode}");
+        }
+    }
+
+    #[test]
+    fn alt_screen_image_lifecycle_ignores_repeated_transitions() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements.push(image_placement(11));
+        grid.enter_alt_screen();
+        grid.image_placements.push(image_placement(21));
+
+        grid.enter_alt_screen();
+
+        assert_eq!(image_ids(&grid.image_placements), [21]);
+        let mut all_ids = image_ids(grid.all_image_placements());
+        all_ids.sort_unstable();
+        assert_eq!(all_ids, [11, 21]);
+
+        grid.leave_alt_screen();
+        assert_eq!(image_ids(&grid.image_placements), [11]);
+
+        grid.leave_alt_screen();
+        assert_eq!(image_ids(&grid.image_placements), [11]);
+    }
+
+    #[test]
+    fn resize_preserves_screen_specific_image_placements() {
+        let mut grid = Grid::new(4, 3, 0);
+        grid.image_placements.push(image_placement(11));
+        grid.enter_alt_screen();
+        grid.image_placements.push(image_placement(21));
+
+        grid.resize(2, 2);
+
+        assert_eq!(image_ids(&grid.image_placements), [21]);
+        let mut all_ids = image_ids(grid.all_image_placements());
+        all_ids.sort_unstable();
+        assert_eq!(all_ids, [11, 21]);
+
+        grid.leave_alt_screen();
+        assert_eq!(image_ids(&grid.image_placements), [11]);
+    }
+
+    #[test]
+    fn reset_discards_active_and_hidden_image_placements() {
+        let mut grid = Grid::new(2, 2, 0);
+        grid.image_placements.push(image_placement(11));
+        grid.enter_alt_screen();
+        grid.image_placements.push(image_placement(21));
+
+        grid.reset_terminal_state();
+
+        assert!(!grid.using_alt_screen);
+        assert!(grid.image_placements.is_empty());
+        assert!(grid.all_image_placements().next().is_none());
     }
 
     #[test]

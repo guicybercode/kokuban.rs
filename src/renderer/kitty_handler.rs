@@ -304,6 +304,7 @@ pub(crate) struct KittyProcessOutcome {
     pub(crate) response: Option<Vec<u8>>,
     pub(crate) advance: Option<CursorAdvance>,
     pub(crate) hard_delete_candidates: HashSet<ImageId>,
+    pub(crate) retransmitted_image_id: Option<ImageId>,
 }
 
 impl KittyProcessOutcome {
@@ -312,6 +313,7 @@ impl KittyProcessOutcome {
             response,
             advance,
             hard_delete_candidates: HashSet::new(),
+            retransmitted_image_id: None,
         }
     }
 }
@@ -380,12 +382,14 @@ impl KittyHandler {
                 let should_prune = outcome.stored.is_some();
                 let mut response = outcome.response;
                 let mut advance = None;
+                let mut retransmitted_image_id = None;
                 if should_prune {
                     self.prune_image_registries(store, placements);
                 }
                 if let Some(stored) = outcome.stored {
                     if let Some(replaced_image_id) = stored.replaced_image_id {
                         remove_retransmitted_placements(placements, replaced_image_id);
+                        retransmitted_image_id = Some(replaced_image_id);
                     }
                     if let Some(place_cmd) = stored.place_after {
                         match self.create_placement(
@@ -412,7 +416,9 @@ impl KittyHandler {
                         }
                     }
                 }
-                KittyProcessOutcome::new(response, advance)
+                let mut outcome = KittyProcessOutcome::new(response, advance);
+                outcome.retransmitted_image_id = retransmitted_image_id;
+                outcome
             }
             KittyAction::Place => {
                 let image_number = cmd.image_number.filter(|number| *number != 0);
@@ -480,6 +486,7 @@ impl KittyHandler {
                     response: None,
                     advance: None,
                     hard_delete_candidates,
+                    retransmitted_image_id: None,
                 }
             }
             KittyAction::Frame | KittyAction::Animate | KittyAction::Compose => {
@@ -1982,6 +1989,8 @@ mod tests {
         resolve_kitty_placement_layout, retain_unreferenced_image_ids, ImageId,
         ImagePlacement, InlineRenderSize, PlacementMode,
     };
+    #[cfg(target_os = "macos")]
+    use crate::grid::Grid;
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
         KittyTransmission,
@@ -2356,6 +2365,117 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn kitty_retransmission_in_alt_cleans_both_screens_but_preserves_sixel() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else {
+            eprintln!("skipping Metal integration test: no device is available");
+            return;
+        };
+        let mut store = ImageStore::new(device, 1);
+        let mut handler = KittyHandler::new(file_options(64, true));
+        let mut grid = Grid::new(80, 24, 0);
+
+        let initial = KittyCommand {
+            action: KittyAction::TransmitAndPlace,
+            image_id: Some(7),
+            width: Some(1),
+            height: Some(1),
+            columns: Some(1),
+            rows: Some(1),
+            payload: vec![255, 0, 0, 255],
+            ..KittyCommand::default()
+        };
+        let outcome = process_graphics_outcome(
+            &mut handler,
+            initial,
+            &mut store,
+            &mut grid.image_placements,
+        );
+        assert_eq!(outcome.retransmitted_image_id, None);
+        let stored_image_id = handler.client_images.get(7).unwrap();
+        grid.image_placements
+            .push(inline_image(stored_image_id, 0, 0, 0, 1, 1));
+
+        grid.enter_alt_screen();
+        let place_on_alt = KittyCommand {
+            action: KittyAction::Place,
+            image_id: Some(7),
+            columns: Some(1),
+            rows: Some(1),
+            ..KittyCommand::default()
+        };
+        process_graphics_outcome(
+            &mut handler,
+            place_on_alt,
+            &mut store,
+            &mut grid.image_placements,
+        );
+        grid.image_placements
+            .push(inline_image(stored_image_id, 0, 0, 0, 1, 1));
+
+        let failed = KittyCommand {
+            image_id: Some(7),
+            payload: vec![0, 255, 0, 255],
+            ..KittyCommand::default()
+        };
+        let failed_outcome = process_graphics_outcome(
+            &mut handler,
+            failed,
+            &mut store,
+            &mut grid.image_placements,
+        );
+        assert_eq!(failed_outcome.retransmitted_image_id, None);
+        assert_eq!(grid.all_image_placements().count(), 4);
+
+        let replacement = KittyCommand {
+            action: KittyAction::TransmitAndPlace,
+            image_id: Some(7),
+            width: Some(1),
+            height: Some(1),
+            columns: Some(1),
+            rows: Some(1),
+            payload: vec![0, 0, 255, 255],
+            ..KittyCommand::default()
+        };
+        let replacement_outcome = process_graphics_outcome(
+            &mut handler,
+            replacement,
+            &mut store,
+            &mut grid.image_placements,
+        );
+        assert_eq!(
+            replacement_outcome.retransmitted_image_id,
+            Some(stored_image_id)
+        );
+        grid.remove_hidden_primary_kitty_placements(stored_image_id);
+
+        assert_eq!(
+            grid.image_placements
+                .iter()
+                .filter(|placement| placement.placement_id != 0)
+                .count(),
+            1
+        );
+        assert_eq!(
+            grid.all_image_placements()
+                .filter(|placement| placement.placement_id == 0)
+                .count(),
+            2
+        );
+        assert_eq!(
+            grid.all_image_placements()
+                .filter(|placement| placement.placement_id != 0)
+                .count(),
+            1
+        );
+
+        grid.leave_alt_screen();
+        assert_eq!(grid.image_placements.len(), 1);
+        assert_eq!(grid.image_placements[0].placement_id, 0);
+        assert_eq!(grid.image_placements[0].image_id, stored_image_id);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn explicit_image_ids_are_isolated_between_handlers_sharing_a_store() {
         let Some(device) = MTLCreateSystemDefaultDevice() else {
             eprintln!("skipping Metal integration test: no device is available");
@@ -2482,16 +2602,17 @@ mod tests {
             payload: vec![255, 0, 0, 255],
             ..KittyCommand::default()
         };
+        let failed_outcome = process_graphics_outcome(
+            &mut first,
+            failed_retransmission,
+            &mut store,
+            &mut first_placements,
+        );
         assert_eq!(
-            process_graphics(
-                &mut first,
-                failed_retransmission,
-                &mut store,
-                &mut first_placements,
-            )
-            .0,
+            failed_outcome.response,
             Some(b"\x1b_Gi=7;EINVAL:missing dimensions\x1b\\".to_vec())
         );
+        assert_eq!(failed_outcome.retransmitted_image_id, None);
         assert_eq!(first_placements.len(), 1);
         assert_eq!(
             store.get(first_stored_id).map(|image| (image.width, image.height)),
@@ -2512,15 +2633,19 @@ mod tests {
             payload: vec![255, 0, 0, 255, 0, 0, 255, 255],
             ..KittyCommand::default()
         };
+        let successful_outcome = process_graphics_outcome(
+            &mut first,
+            successful_retransmission,
+            &mut store,
+            &mut first_placements,
+        );
         assert_eq!(
-            process_graphics(
-                &mut first,
-                successful_retransmission,
-                &mut store,
-                &mut first_placements,
-            )
-            .0,
+            successful_outcome.response,
             Some(b"\x1b_Gi=7;OK\x1b\\".to_vec())
+        );
+        assert_eq!(
+            successful_outcome.retransmitted_image_id,
+            Some(first_stored_id)
         );
         assert_eq!(first_placements.len(), 1);
         assert_eq!(second_placements.len(), 1);

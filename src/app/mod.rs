@@ -433,6 +433,14 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                                             &mut pane.grid.image_placements,
                                                         )
                                                     };
+                                                    if let Some(image_id) =
+                                                        outcome.retransmitted_image_id
+                                                    {
+                                                        pane.grid
+                                                            .remove_hidden_primary_kitty_placements(
+                                                                image_id,
+                                                            );
+                                                    }
                                                     if let Some(response) = outcome.response {
                                                         pane.queue_input(response);
                                                     }

@@ -99,7 +99,7 @@ impl PaneTree {
             candidates,
             self.panes
                 .values()
-                .flat_map(|pane| pane.grid.image_placements.iter()),
+                .flat_map(|pane| pane.grid.all_image_placements()),
         );
     }
 
@@ -285,6 +285,66 @@ impl PaneTree {
 #[cfg(test)]
 mod tests {
     use super::{GraphicsSupport, KittyHandlerOptions, PaneTree, PixelRect, SplitDirection};
+    use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+    use std::collections::HashSet;
+
+    fn image_placement(image_id: u64) -> ImagePlacement {
+        ImagePlacement {
+            image_id,
+            placement_id: image_id as u32,
+            client_placement_id: Some(image_id as u32),
+            mode: PlacementMode::Inline {
+                row: 0,
+                col: 0,
+                cols: 1,
+                rows: 1,
+                x_offset: 0,
+                y_offset: 0,
+                render_size: InlineRenderSize::CellAnchored,
+            },
+            z_index: 0,
+        }
+    }
+
+    #[test]
+    fn image_cache_retention_includes_hidden_primary_screen() {
+        let mut tree = PaneTree::new(
+            80,
+            24,
+            1_000,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+        )
+        .expect("pane tree should spawn its initial shell");
+        let focused = tree.focused;
+        let grid = &mut tree
+            .focused_pane_mut()
+            .expect("focused pane should exist")
+            .grid;
+        grid.image_placements.push(image_placement(11));
+        grid.enter_alt_screen();
+        grid.image_placements.push(image_placement(21));
+
+        let mut candidates = HashSet::from([11, 21, 99]);
+        tree.retain_unreferenced_image_ids(&mut candidates);
+        assert_eq!(candidates, HashSet::from([99]));
+
+        tree.focused_pane_mut()
+            .expect("focused pane should exist")
+            .grid
+            .leave_alt_screen();
+        let mut candidates = HashSet::from([11, 21, 99]);
+        tree.retain_unreferenced_image_ids(&mut candidates);
+        assert_eq!(candidates, HashSet::from([21, 99]));
+
+        tree.close(focused)
+            .closed_pane
+            .expect("focused pane should detach for cleanup")
+            .retire();
+    }
 
     #[test]
     fn close_detaches_valid_panes_and_preserves_stale_ids() {
