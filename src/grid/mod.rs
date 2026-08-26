@@ -721,10 +721,10 @@ impl Grid {
     }
 
     pub fn erase_in_display(&mut self, mode: u16) {
-        self.cancel_pending_wrap();
         let template = self.template_cell();
         match mode {
             0 => {
+                self.cancel_pending_wrap();
                 self.erase_in_line(0);
                 for row in self.cursor_row + 1..self.rows() {
                     self.buffer.clear_row(row, template);
@@ -732,16 +732,31 @@ impl Grid {
                 }
             }
             1 => {
+                self.cancel_pending_wrap();
                 self.erase_in_line(1);
                 for row in 0..self.cursor_row {
                     self.buffer.clear_row(row, template);
                     self.dirty[row] = true;
                 }
             }
-            2 | 3 => {
+            2 => {
+                self.cancel_pending_wrap();
                 for row in 0..self.rows() {
                     self.buffer.clear_row(row, template);
                     self.dirty[row] = true;
+                }
+            }
+            3 => {
+                if self.using_alt_screen {
+                    return;
+                }
+                let viewport_changed = self.scroll_offset != 0;
+                self.scrollback.clear();
+                self.scroll_offset = 0;
+                self.marks.erase_saved_lines(self.total_lines_pushed);
+                self.total_lines_pushed = 0;
+                if viewport_changed {
+                    self.mark_all_dirty();
                 }
             }
             _ => {}
@@ -864,7 +879,11 @@ impl Grid {
 
 #[cfg(test)]
 mod tests {
-    use super::{cell::CellFlags, Grid};
+    use super::{
+        cell::{CellFlags, Color, UnderlineStyle},
+        marks::PromptMarkKind,
+        Grid,
+    };
     use crate::parser::sixel::SixelImage;
 
     fn sixel_image(byte_len: usize) -> SixelImage {
@@ -895,6 +914,131 @@ mod tests {
                     .contains(CellFlags::WIDE));
             }
         }
+    }
+
+    fn row_text(grid: &Grid, row: usize) -> String {
+        (0..grid.cols())
+            .map(|column| grid.buffer.cell(row, column).c)
+            .collect()
+    }
+
+    #[test]
+    fn erase_saved_lines_preserves_screen_and_rebases_current_marks() {
+        let mut grid = Grid::new(4, 3, 10);
+        grid.marks
+            .push(PromptMarkKind::PromptStart, grid.current_absolute_row());
+        for c in ['o', 'l', 'd'] {
+            grid.put_char(c);
+        }
+        grid.carriage_return();
+        grid.newline();
+
+        grid.marks
+            .push(PromptMarkKind::PromptStart, grid.current_absolute_row());
+        for c in ['m', 'i', 'd'] {
+            grid.put_char(c);
+        }
+        grid.carriage_return();
+        grid.newline();
+
+        grid.marks
+            .push(PromptMarkKind::PromptStart, grid.current_absolute_row());
+        for c in ['b', 'o', 't'] {
+            grid.put_char(c);
+        }
+        grid.carriage_return();
+        grid.newline();
+
+        grid.marks
+            .push(PromptMarkKind::CommandStart, grid.current_absolute_row());
+        for c in ['n', 'e', 'w'] {
+            grid.put_char(c);
+        }
+        grid.fg = Color::Indexed(7);
+        grid.bg = Color::Rgb(1, 2, 3);
+        grid.flags = CellFlags::BOLD | CellFlags::ITALIC;
+        grid.underline_style = UnderlineStyle::Curly;
+        grid.underline_color = Color::Indexed(4);
+
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.total_lines_pushed, 1);
+        grid.scroll_viewport_up(1);
+        assert_eq!(grid.visible_cell(0, 0).c, 'o');
+        grid.clear_dirty();
+        let cursor = (grid.cursor_row, grid.cursor_col);
+        let attributes = (
+            grid.fg,
+            grid.bg,
+            grid.flags,
+            grid.underline_style,
+            grid.underline_color,
+        );
+
+        grid.erase_in_display(3);
+
+        assert_eq!(grid.scrollback_len(), 0);
+        assert_eq!(grid.scroll_offset, 0);
+        assert_eq!(grid.total_lines_pushed, 0);
+        assert_eq!(grid.current_absolute_row(), grid.cursor_row);
+        assert_eq!((grid.cursor_row, grid.cursor_col), cursor);
+        assert_eq!(row_text(&grid, 0), "mid ");
+        assert_eq!(row_text(&grid, 1), "bot ");
+        assert_eq!(row_text(&grid, 2), "new ");
+        assert_eq!(
+            (
+                grid.fg,
+                grid.bg,
+                grid.flags,
+                grid.underline_style,
+                grid.underline_color,
+            ),
+            attributes
+        );
+        assert!(grid.dirty.iter().all(|dirty| *dirty));
+        assert_eq!(grid.marks.visible_prompt_rows(0, 0, grid.rows()), [0, 1]);
+        assert_eq!(grid.marks.prev_prompt(2), Some(1));
+        assert_eq!(grid.marks.next_prompt(0), Some(1));
+    }
+
+    #[test]
+    fn erase_saved_lines_at_bottom_does_not_dirty_unchanged_screen() {
+        let mut grid = Grid::new(3, 2, 10);
+        grid.put_char('a');
+        grid.scroll_up(1);
+        grid.put_char('b');
+        grid.clear_dirty();
+        let screen = [row_text(&grid, 0), row_text(&grid, 1)];
+
+        grid.erase_in_display(3);
+
+        assert_eq!(grid.scrollback_len(), 0);
+        assert_eq!([row_text(&grid, 0), row_text(&grid, 1)], screen);
+        assert!(!grid.is_any_dirty());
+    }
+
+    #[test]
+    fn erase_display_all_preserves_saved_lines() {
+        let mut grid = Grid::new(3, 2, 10);
+        for c in ['o', 'l', 'd'] {
+            grid.put_char(c);
+        }
+        grid.carriage_return();
+        grid.newline();
+        for c in ['n', 'e', 'w'] {
+            grid.put_char(c);
+        }
+        grid.scroll_up(1);
+        grid.scroll_viewport_up(1);
+        let total_lines_pushed = grid.total_lines_pushed;
+
+        grid.erase_in_display(2);
+
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.scrollback_cell(0, 0), 'o');
+        assert_eq!(grid.scroll_offset, 1);
+        assert_eq!(grid.total_lines_pushed, total_lines_pushed);
+        assert_eq!(row_text(&grid, 0), "   ");
+        assert_eq!(row_text(&grid, 1), "   ");
     }
 
     #[test]
