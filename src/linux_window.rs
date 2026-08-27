@@ -1,6 +1,6 @@
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
-use crate::grid::cell::{Cell, CellFlags, Color};
+use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
 use crate::grid::{CursorShape, Grid, MouseTracking};
 use crate::input::linux::{
     encode_key_press, ime_commit_payload, key_press_from_winit, scrollback_action_from_winit,
@@ -2747,6 +2747,121 @@ fn resolve_cell_colors(colors: TerminalColors, cell: &Cell) -> ResolvedCellColor
     }
 }
 
+fn resolve_cell_underline_color(
+    colors: TerminalColors,
+    cell: &Cell,
+    resolved_foreground: u32,
+) -> u32 {
+    match cell.underline_color {
+        Color::Default => resolved_foreground,
+        color => {
+            let color = colors.resolve_foreground(color, false);
+            rgb_to_xrgb(color.0, color.1, color.2)
+        }
+    }
+}
+
+fn underline_anchor_y(
+    cell_origin_y: i32,
+    cell_height: u32,
+    ascent: f32,
+    style: UnderlineStyle,
+) -> Option<i32> {
+    if style == UnderlineStyle::None || cell_height == 0 {
+        return None;
+    }
+
+    let cell_height = i32::try_from(cell_height).ok()?;
+    let last_row = cell_origin_y.checked_add(cell_height.checked_sub(1)?)?;
+    let desired = rounded_f64_i32(f64::from(cell_origin_y) + f64::from(ascent))?
+        .checked_add(2)?;
+    let (leading_inset, trailing_inset) = match style {
+        UnderlineStyle::Double => (0, 2),
+        UnderlineStyle::Curly => (1, 1),
+        UnderlineStyle::None
+        | UnderlineStyle::Single
+        | UnderlineStyle::Dotted
+        | UnderlineStyle::Dashed => (0, 0),
+    };
+    let preferred_min = cell_origin_y.checked_add(leading_inset)?;
+    let preferred_max = last_row.checked_sub(trailing_inset)?;
+
+    if preferred_min <= preferred_max {
+        Some(desired.clamp(preferred_min, preferred_max))
+    } else {
+        Some(desired.clamp(cell_origin_y, last_row))
+    }
+}
+
+fn draw_cell_underline(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    origin: (i32, i32),
+    width: u32,
+    cell_height: u32,
+    ascent: f32,
+    style: UnderlineStyle,
+    color: u32,
+) {
+    let Some(anchor_y) = underline_anchor_y(origin.1, cell_height, ascent, style) else {
+        return;
+    };
+    let Some(last_y) = i32::try_from(cell_height)
+        .ok()
+        .and_then(|height| height.checked_sub(1))
+        .and_then(|height| origin.1.checked_add(height))
+    else {
+        return;
+    };
+
+    let draw_segment = |frame: &mut [u32], x_offset: u32, y: i32, segment_width: u32| {
+        let Some(x_offset) = i32::try_from(x_offset).ok() else {
+            return;
+        };
+        let Some(x) = origin.0.checked_add(x_offset) else {
+            return;
+        };
+        fill_rect(
+            frame,
+            frame_size,
+            (x, y),
+            (segment_width, 1),
+            color,
+            u8::MAX,
+        );
+    };
+
+    match style {
+        UnderlineStyle::None => {}
+        UnderlineStyle::Single => draw_segment(frame, 0, anchor_y, width),
+        UnderlineStyle::Double => {
+            draw_segment(frame, 0, anchor_y, width);
+            if let Some(second_y) = anchor_y.checked_add(2).filter(|y| *y <= last_y) {
+                draw_segment(frame, 0, second_y, width);
+            }
+        }
+        UnderlineStyle::Curly => {
+            const OFFSETS: [i32; 6] = [0, 1, 1, 0, -1, -1];
+            for x_offset in 0..width {
+                let offset = OFFSETS[x_offset as usize % OFFSETS.len()];
+                if let Some(y) = anchor_y.checked_add(offset) {
+                    draw_segment(frame, x_offset, y.clamp(origin.1, last_y), 1);
+                }
+            }
+        }
+        UnderlineStyle::Dotted => {
+            for x_offset in (0..width).step_by(3) {
+                draw_segment(frame, x_offset, anchor_y, 1);
+            }
+        }
+        UnderlineStyle::Dashed => {
+            for x_offset in (0..width).step_by(6) {
+                draw_segment(frame, x_offset, anchor_y, (width - x_offset).min(4));
+            }
+        }
+    }
+}
+
 fn draw_grid_snapshot(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -2789,28 +2904,41 @@ fn draw_grid_snapshot(
                 continue;
             }
 
-            if cell.c == ' ' || cell.c == '\0' {
-                continue;
+            if cell.c != ' ' && cell.c != '\0' {
+                let glyph = atlas.get_or_insert(GlyphKey {
+                    c: cell.c,
+                    bold: cell.flags.contains(CellFlags::BOLD),
+                    italic: cell.flags.contains(CellFlags::ITALIC),
+                });
+                let source = GlyphSource {
+                    pixels: &atlas.pixels,
+                    size: (atlas.width, atlas.height),
+                    ascent: atlas.ascent,
+                };
+                draw_cell_glyph(
+                    frame,
+                    frame_size,
+                    source,
+                    glyph,
+                    origin,
+                    resolved.foreground,
+                );
             }
 
-            let glyph = atlas.get_or_insert(GlyphKey {
-                c: cell.c,
-                bold: cell.flags.contains(CellFlags::BOLD),
-                italic: cell.flags.contains(CellFlags::ITALIC),
-            });
-            let source = GlyphSource {
-                pixels: &atlas.pixels,
-                size: (atlas.width, atlas.height),
-                ascent: atlas.ascent,
-            };
-            draw_cell_glyph(
-                frame,
-                frame_size,
-                source,
-                glyph,
-                origin,
-                resolved.foreground,
-            );
+            if cell.underline_style != UnderlineStyle::None {
+                let underline_color =
+                    resolve_cell_underline_color(colors, cell, resolved.foreground);
+                draw_cell_underline(
+                    frame,
+                    frame_size,
+                    origin,
+                    background_width,
+                    cell_size.1,
+                    atlas.ascent,
+                    cell.underline_style,
+                    underline_color,
+                );
+            }
         }
     }
 
@@ -3105,17 +3233,20 @@ mod tests {
         contrasting_cursor_color, dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
         dispatch_keyboard_input_with, dispatch_mouse_button_and_motion_with,
         dispatch_mouse_button_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
-        draw_cell_glyph, draw_grid_snapshot, draw_ime_preedit, drawable_dimensions,
+        draw_cell_glyph, draw_cell_underline, draw_grid_snapshot, draw_ime_preedit,
+        drawable_dimensions,
         focus_report_bytes, ime_cursor_area, ime_payload_from_event, ime_preedit_background_at,
         ime_preedit_glyph_colors, ime_preedit_payload_with_limits,
         immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
         layout_ime_preedit, layout_ime_preedit_for_snapshot, layout_ime_preedit_with_mode,
         modifiers_after_focus_change, mouse_button_code_from_winit, mouse_button_with_modifiers,
         physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
-        replace_ime_preedit, resize_terminal_with, resolve_cell_colors, reveal_ime_input_viewport,
-        rgb_to_xrgb, rounded_i32, set_grid_cell_dimensions, snapshot_grid, snapshot_window_title,
+        replace_ime_preedit, resize_terminal_with, resolve_cell_colors,
+        resolve_cell_underline_color, reveal_ime_input_viewport, rgb_to_xrgb, rounded_i32,
+        set_grid_cell_dimensions, snapshot_grid, snapshot_window_title,
         sync_ime_cursor_area_with, terminal_accepts_input, terminal_cell_at_pointer,
-        terminal_color_query_value, terminal_dimensions_for_surface, GridAccessError,
+        terminal_color_query_value, terminal_dimensions_for_surface, underline_anchor_y,
+        GridAccessError,
         ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
         ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseMotionDispatchOutcome,
         MouseMotionState, MouseWheelState, PointerRouteState, ReaderStatus, ResolvedCellColors,
@@ -7218,6 +7349,207 @@ mod tests {
             .expect("printed cell should be present")
             .flags
             .contains(CellFlags::FAINT));
+    }
+
+    #[test]
+    fn linux_underline_rasterizes_every_style_inside_its_cell() {
+        let frame_size = (20, 12);
+        let background = rgb_to_xrgb(1, 2, 3);
+        let underline = rgb_to_xrgb(200, 100, 50);
+        let origin = (2, 1);
+        let width = 12;
+        let height = 10;
+        let ascent = 6.0;
+
+        for (style, expected_pixels) in [
+            (UnderlineStyle::Single, 12),
+            (UnderlineStyle::Double, 24),
+            (UnderlineStyle::Curly, 12),
+            (UnderlineStyle::Dotted, 4),
+            (UnderlineStyle::Dashed, 8),
+        ] {
+            let mut frame = vec![background; (frame_size.0 * frame_size.1) as usize];
+
+            draw_cell_underline(
+                &mut frame,
+                frame_size,
+                origin,
+                width,
+                height,
+                ascent,
+                style,
+                underline,
+            );
+
+            let changed = frame
+                .iter()
+                .enumerate()
+                .filter(|&(_, pixel)| *pixel != background)
+                .collect::<Vec<_>>();
+            assert_eq!(changed.len(), expected_pixels, "{style:?}");
+            assert!(changed.iter().all(|&(index, &pixel)| {
+                let x = index % frame_size.0 as usize;
+                let y = index / frame_size.0 as usize;
+                pixel == underline && (2..14).contains(&x) && (1..11).contains(&y)
+            }));
+        }
+
+        let mut frame = vec![background; (frame_size.0 * frame_size.1) as usize];
+        draw_cell_underline(
+            &mut frame,
+            frame_size,
+            origin,
+            width,
+            height,
+            ascent,
+            UnderlineStyle::None,
+            underline,
+        );
+        assert!(frame.iter().all(|&pixel| pixel == background));
+    }
+
+    #[test]
+    fn linux_underlines_blank_and_wide_cells_with_explicit_colors() {
+        let mut grid = Grid::new(3, 1, 0);
+        grid.cursor_visible = false;
+        *grid.buffer.cell_mut(0, 0) = Cell {
+            flags: CellFlags::UNDERLINE,
+            underline_style: UnderlineStyle::Single,
+            underline_color: Color::Rgb(220, 30, 40),
+            ..Cell::default()
+        };
+        *grid.buffer.cell_mut(0, 1) = Cell {
+            flags: CellFlags::UNDERLINE | CellFlags::WIDE,
+            underline_style: UnderlineStyle::Double,
+            underline_color: Color::Rgb(20, 210, 80),
+            ..Cell::default()
+        };
+        *grid.buffer.cell_mut(0, 2) = Cell {
+            c: '\0',
+            flags: CellFlags::WIDE_CONT,
+            ..Cell::default()
+        };
+        let mut atlas = test_atlas();
+        let ascent = atlas.ascent;
+
+        let (frame, cell_dimensions) = render_grid(grid, &mut atlas);
+
+        let cell_width = usize::from(cell_dimensions.0);
+        let frame_width = cell_width * 3;
+        let single_y = usize::try_from(
+            underline_anchor_y(
+                0,
+                u32::from(cell_dimensions.1),
+                ascent,
+                UnderlineStyle::Single,
+            )
+            .expect("single underline should fit its cell"),
+        )
+        .unwrap();
+        let double_y = usize::try_from(
+            underline_anchor_y(
+                0,
+                u32::from(cell_dimensions.1),
+                ascent,
+                UnderlineStyle::Double,
+            )
+            .expect("double underline should fit its cell"),
+        )
+        .unwrap();
+        let single = rgb_to_xrgb(220, 30, 40);
+        let double = rgb_to_xrgb(20, 210, 80);
+
+        assert!(frame[single_y * frame_width..single_y * frame_width + cell_width]
+            .iter()
+            .all(|&pixel| pixel == single));
+        for row in [double_y, double_y + 2] {
+            let start = row * frame_width + cell_width;
+            assert!(frame[start..start + cell_width * 2]
+                .iter()
+                .all(|&pixel| pixel == double));
+        }
+    }
+
+    #[test]
+    fn linux_default_underline_tracks_resolved_faint_reverse_foreground() {
+        let default_underline = Cell {
+            fg: Color::Rgb(0, 0, 0),
+            bg: Color::Rgb(255, 255, 255),
+            flags: CellFlags::BOLD | CellFlags::FAINT | CellFlags::REVERSE,
+            underline_style: UnderlineStyle::Single,
+            ..Cell::default()
+        };
+        let resolved = resolve_cell_colors(test_colors(), &default_underline);
+        assert_eq!(
+            resolve_cell_underline_color(
+                test_colors(),
+                &default_underline,
+                resolved.foreground,
+            ),
+            resolved.foreground
+        );
+
+        let explicit_underline = Cell {
+            underline_color: Color::Indexed(1),
+            ..default_underline
+        };
+        assert_eq!(
+            resolve_cell_underline_color(
+                test_colors(),
+                &explicit_underline,
+                resolved.foreground,
+            ),
+            rgb_to_xrgb(205, 49, 49),
+            "explicit underline color is resolved independently from bold/faint/reverse"
+        );
+    }
+
+    #[test]
+    fn linux_underline_anchor_clamps_extreme_metrics_to_the_cell() {
+        for style in [
+            UnderlineStyle::Single,
+            UnderlineStyle::Double,
+            UnderlineStyle::Curly,
+            UnderlineStyle::Dotted,
+            UnderlineStyle::Dashed,
+        ] {
+            for ascent in [-100.0, 100.0] {
+                let y = underline_anchor_y(7, 5, ascent, style)
+                    .expect("finite metrics should produce an underline anchor");
+                assert!((7..=11).contains(&y), "{style:?} at ascent {ascent}");
+            }
+        }
+        assert_eq!(
+            underline_anchor_y(0, 10, 5.0, UnderlineStyle::None),
+            None
+        );
+        assert_eq!(
+            underline_anchor_y(0, 0, 5.0, UnderlineStyle::Single),
+            None
+        );
+        assert_eq!(
+            underline_anchor_y(0, 10, f32::NAN, UnderlineStyle::Single),
+            None
+        );
+
+        let background = rgb_to_xrgb(1, 2, 3);
+        let underline = rgb_to_xrgb(4, 5, 6);
+        for style in [UnderlineStyle::Double, UnderlineStyle::Curly] {
+            let mut frame = vec![background; 12];
+            draw_cell_underline(
+                &mut frame,
+                (4, 3),
+                (0, 1),
+                4,
+                1,
+                100.0,
+                style,
+                underline,
+            );
+            assert!(frame[..4].iter().all(|&pixel| pixel == background));
+            assert!(frame[4..8].iter().all(|&pixel| pixel == underline));
+            assert!(frame[8..].iter().all(|&pixel| pixel == background));
+        }
     }
 
     #[test]
