@@ -182,6 +182,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let dirty = Arc::new(AtomicBool::new(true));
     let window_title = Arc::new(window::WindowTitleMailbox::new());
     let should_close = Arc::new(AtomicBool::new(false));
+    let window_is_key = Arc::new(AtomicBool::new(false));
     let (pane_cleanup, pane_cleanup_handle) = PaneCleanup::spawn();
 
     let default_fg = ColorConfig::parse_hex(&config.colors.foreground);
@@ -302,6 +303,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         atlas.clone(),
         dirty.clone(),
         should_close.clone(),
+        window_is_key.clone(),
         default_fg,
         default_bg,
         scale_factor,
@@ -340,6 +342,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let reader_image_store = image_store.clone();
     let reader_atlas = atlas.clone();
     let reader_window_title = window_title.clone();
+    let reader_window_is_key = window_is_key.clone();
     let reader_pane_cleanup = pane_cleanup.clone();
 
     let reader_handle = std::thread::Builder::new()
@@ -525,23 +528,35 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                     }
 
                     let mut retired_panes = Vec::new();
+                    let previous_focus = tree.focused_pane().map(|pane| pane.id);
                     // Close dead panes
                     for id in dead_panes {
-                        let previous_focus = tree.focused;
                         let outcome = tree.close(id);
                         if let Some(pane) = outcome.closed_pane {
                             retired_panes.push(pane);
-                        }
-                        if tree.focused != previous_focus {
-                            window::publish_focused_window_title(
-                                &tree,
-                                reader_window_title.as_ref(),
-                            );
                         }
                         if outcome.should_terminate {
                             reader_should_close.store(true, Ordering::Relaxed);
                             break;
                         }
+                    }
+
+                    if tree.focused_pane().map(|pane| pane.id) != previous_focus {
+                        let detached_previous = previous_focus.and_then(|previous_focus| {
+                            retired_panes
+                                .iter()
+                                .find(|pane| pane.id == previous_focus)
+                        });
+                        window::dispatch_pane_focus_transition_locked(
+                            &tree,
+                            reader_window_is_key.as_ref(),
+                            previous_focus,
+                            detached_previous,
+                        );
+                        window::publish_focused_window_title(
+                            &tree,
+                            reader_window_title.as_ref(),
+                        );
                     }
 
                     drop(tree);

@@ -11,6 +11,7 @@ use crate::input::mouse::{
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
 };
 use crate::layout::{PaneId, PixelRect, SplitDirection};
+use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
@@ -315,6 +316,7 @@ struct ViewState {
     image_store: Arc<Mutex<ImageStore>>,
     mouse_wheel_state: MacScrollState,
     last_window_focus: Option<bool>,
+    window_is_key: Arc<AtomicBool>,
     confirm_dialog: Option<ConfirmDialog>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
@@ -404,9 +406,11 @@ fn pending_window_focus_report(
         .then(|| focus_report_bytes(focused).to_vec())
 }
 
-fn dispatch_current_focus_report_with<State, Dispatch>(
+fn dispatch_window_focus_transition_with<State, Dispatch>(
     source: &Mutex<State>,
-    bytes: Vec<u8>,
+    last_window_focus: &mut Option<bool>,
+    window_is_key: &AtomicBool,
+    focused: bool,
     dispatch: Dispatch,
 ) -> bool
 where
@@ -415,30 +419,94 @@ where
     let source = source
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    window_is_key.store(focused, Ordering::Release);
+    let Some(bytes) = pending_window_focus_report(last_window_focus, focused) else {
+        return false;
+    };
     dispatch(&source, bytes)
 }
 
-fn dispatch_window_focus_transition(focused: bool) {
-    let report = VIEW_STATE.with(|view_state| {
-        let mut view_state = view_state.borrow_mut();
-        let state = view_state.as_mut()?;
-        let bytes = pending_window_focus_report(&mut state.last_window_focus, focused)?;
-        Some((Arc::clone(&state.pane_tree), bytes))
+fn dispatch_pane_focus_transition_with<T, Enabled, Dispatch>(
+    window_is_key: bool,
+    previous_focus: Option<PaneId>,
+    current_focus: Option<PaneId>,
+    previous_pane: Option<&T>,
+    current_pane: Option<&T>,
+    focus_events_enabled: Enabled,
+    mut dispatch: Dispatch,
+) -> bool
+where
+    Enabled: Fn(&T) -> bool,
+    Dispatch: FnMut(&T, Vec<u8>),
+{
+    if !window_is_key || previous_focus == current_focus {
+        return false;
+    }
+
+    let mut dispatched = false;
+    if let Some(previous_pane) = previous_pane.filter(|pane| focus_events_enabled(pane)) {
+        dispatch(previous_pane, FOCUS_OUT_REPORT.to_vec());
+        dispatched = true;
+    }
+    if let Some(current_pane) = current_pane.filter(|pane| focus_events_enabled(pane)) {
+        dispatch(current_pane, FOCUS_IN_REPORT.to_vec());
+        dispatched = true;
+    }
+    dispatched
+}
+
+/// The caller must hold the mutex that owns `tree` for the full call. This
+/// serializes pane selection, per-pane mode checks, and nonblocking enqueues.
+pub(super) fn dispatch_pane_focus_transition_locked(
+    tree: &PaneTree,
+    window_is_key: &AtomicBool,
+    previous_focus: Option<PaneId>,
+    detached_previous: Option<&Pane>,
+) -> bool {
+    let current_focus = tree.focused_pane().map(|pane| pane.id);
+    let previous_pane = previous_focus.and_then(|previous_focus| {
+        detached_previous
+            .filter(|pane| pane.id == previous_focus)
+            .or_else(|| tree.pane(previous_focus))
     });
+    let current_pane = current_focus.and_then(|current_focus| tree.pane(current_focus));
 
-    let Some((pane_tree, bytes)) = report else {
-        return;
-    };
-    dispatch_current_focus_report_with(pane_tree.as_ref(), bytes, |tree, bytes| {
-        let Some(pane) = tree.focused_pane() else {
-            return false;
+    dispatch_pane_focus_transition_with(
+        window_is_key.load(Ordering::Acquire),
+        previous_focus,
+        current_focus,
+        previous_pane,
+        current_pane,
+        |pane| pane.grid.focus_events,
+        |pane, bytes| pane.queue_input(bytes),
+    )
+}
+
+fn dispatch_window_focus_transition(focused: bool) {
+    VIEW_STATE.with(|view_state| {
+        let mut view_state = view_state.borrow_mut();
+        let Some(state) = view_state.as_mut() else {
+            return;
         };
-        if !pane.grid.focus_events {
-            return false;
-        }
+        let pane_tree = Arc::clone(&state.pane_tree);
+        let window_is_key = Arc::clone(&state.window_is_key);
+        dispatch_window_focus_transition_with(
+            pane_tree.as_ref(),
+            &mut state.last_window_focus,
+            window_is_key.as_ref(),
+            focused,
+            |tree, bytes| {
+                let Some(pane) = tree.focused_pane() else {
+                    return false;
+                };
+                if !pane.grid.focus_events {
+                    return false;
+                }
 
-        pane.queue_input(bytes);
-        true
+                pane.queue_input(bytes);
+                true
+            },
+        );
     });
 }
 
@@ -753,7 +821,14 @@ define_class!(
                     let cell_info = pixel_to_cell(event, state, &tree, cell_w, cell_h);
                     if let Some((pane_id, gc, gr)) = cell_info {
                         if tree.focused != pane_id {
+                            let previous_focus = tree.focused_pane().map(|pane| pane.id);
                             tree.focused = pane_id;
+                            dispatch_pane_focus_transition_locked(
+                                &tree,
+                                state.window_is_key.as_ref(),
+                                previous_focus,
+                                None,
+                            );
                             publish_focused_window_title(&tree, state.window_title.as_ref());
                         }
                         let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
@@ -1040,7 +1115,7 @@ fn handle_pane_action(action: PaneAction) {
         drop(atlas);
 
         let mut tree = state.pane_tree.lock().unwrap();
-        let previous_focus = tree.focused;
+        let previous_focus = tree.focused_pane().map(|pane| pane.id);
         let mut closed_pane = None;
 
         match action {
@@ -1091,6 +1166,12 @@ fn handle_pane_action(action: PaneAction) {
                 let outcome = tree.close(id);
                 closed_pane = outcome.closed_pane;
                 if outcome.should_terminate {
+                    dispatch_pane_focus_transition_locked(
+                        &tree,
+                        state.window_is_key.as_ref(),
+                        previous_focus,
+                        closed_pane.as_ref(),
+                    );
                     drop(tree);
                     if let Some(pane) = closed_pane {
                         state.pane_cleanup.retire(pane);
@@ -1218,7 +1299,13 @@ fn handle_pane_action(action: PaneAction) {
             }
         }
 
-        if tree.focused != previous_focus {
+        if tree.focused_pane().map(|pane| pane.id) != previous_focus {
+            dispatch_pane_focus_transition_locked(
+                &tree,
+                state.window_is_key.as_ref(),
+                previous_focus,
+                closed_pane.as_ref(),
+            );
             publish_focused_window_title(&tree, state.window_title.as_ref());
         }
         drop(tree);
@@ -1268,11 +1355,17 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
             drop(atlas);
 
             let mut tree = state.pane_tree.lock().unwrap();
-            let previous_focus = tree.focused;
+            let previous_focus = tree.focused_pane().map(|pane| pane.id);
             let outcome = tree.close(pane_id);
             let should_terminate = outcome.should_terminate;
             let closed_pane = outcome.closed_pane;
             if should_terminate {
+                dispatch_pane_focus_transition_locked(
+                    &tree,
+                    state.window_is_key.as_ref(),
+                    previous_focus,
+                    closed_pane.as_ref(),
+                );
                 drop(tree);
                 if let Some(pane) = closed_pane {
                     state.pane_cleanup.retire(pane);
@@ -1288,7 +1381,13 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
                 height: size.height as f32,
             };
             tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            if tree.focused != previous_focus {
+            if tree.focused_pane().map(|pane| pane.id) != previous_focus {
+                dispatch_pane_focus_transition_locked(
+                    &tree,
+                    state.window_is_key.as_ref(),
+                    previous_focus,
+                    closed_pane.as_ref(),
+                );
                 publish_focused_window_title(&tree, state.window_title.as_ref());
             }
             drop(tree);
@@ -1711,6 +1810,7 @@ pub(super) fn create_terminal_view(
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
     should_close: Arc<AtomicBool>,
+    window_is_key: Arc<AtomicBool>,
     default_fg: (u8, u8, u8),
     default_bg: (u8, u8, u8),
     scale_factor: f32,
@@ -1799,6 +1899,7 @@ pub(super) fn create_terminal_view(
             image_store,
             mouse_wheel_state: MacScrollState::default(),
             last_window_focus: None,
+            window_is_key,
             confirm_dialog: None,
             confirm_on_close_pane,
             confirm_on_quit,
@@ -1812,9 +1913,9 @@ pub(super) fn create_terminal_view(
 mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
-        dispatch_current_focus_report_with, focus_report_bytes,
+        dispatch_pane_focus_transition_with, dispatch_window_focus_transition_with,
+        focus_report_bytes,
         mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
-        pending_window_focus_report,
         sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
         MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
         WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START, WINDOW_TITLE,
@@ -1825,14 +1926,84 @@ mod tests {
         encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers,
     };
     use crate::input::mouse::MouseWheelRoute;
+    use crate::layout::PaneId;
     use objc2::AnyThread;
     use objc2_app_kit::{NSEventModifierFlags, NSEventPhase};
     use objc2_foundation::NSString;
     use std::cell::{Cell, RefCell};
     use std::ptr::NonNull;
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[derive(Clone, Copy)]
+    struct FocusTarget {
+        id: PaneId,
+        enabled: bool,
+    }
+
+    #[derive(Clone, Copy)]
+    enum FocusStep {
+        Window(bool),
+        Pane(PaneId),
+    }
+
+    fn run_focus_steps(initially_key: bool, steps: &[FocusStep]) -> Vec<(PaneId, Vec<u8>)> {
+        let tree = Mutex::new(FocusTarget {
+            id: 1,
+            enabled: true,
+        });
+        let window_is_key = AtomicBool::new(initially_key);
+        let mut last_window_focus = Some(initially_key);
+        let writes = RefCell::new(Vec::new());
+
+        for step in steps {
+            match *step {
+                FocusStep::Window(focused) => {
+                    dispatch_window_focus_transition_with(
+                        &tree,
+                        &mut last_window_focus,
+                        &window_is_key,
+                        focused,
+                        |pane, bytes| {
+                            assert!(
+                                tree.try_lock().is_err(),
+                                "window state and enqueue must share the tree lock"
+                            );
+                            if !pane.enabled {
+                                return false;
+                            }
+                            writes.borrow_mut().push((pane.id, bytes));
+                            true
+                        },
+                    );
+                }
+                FocusStep::Pane(next_id) => {
+                    let mut current = tree.lock().unwrap();
+                    let previous = *current;
+                    current.id = next_id;
+                    let next = *current;
+                    dispatch_pane_focus_transition_with(
+                        window_is_key.load(Ordering::Acquire),
+                        Some(previous.id),
+                        Some(next.id),
+                        Some(&previous),
+                        Some(&next),
+                        |pane| pane.enabled,
+                        |pane, bytes| {
+                            assert!(
+                                tree.try_lock().is_err(),
+                                "pane state and enqueue must share the tree lock"
+                            );
+                            writes.borrow_mut().push((pane.id, bytes));
+                        },
+                    );
+                }
+            }
+        }
+
+        writes.into_inner()
+    }
 
     fn scroll_sample(delta_y: f64) -> MacScrollSample {
         MacScrollSample {
@@ -1864,34 +2035,41 @@ mod tests {
     #[test]
     fn disabled_macos_focus_reporting_still_updates_deduplication_state() {
         let enabled = Mutex::new(false);
+        let window_is_key = AtomicBool::new(false);
         let writes = RefCell::new(Vec::new());
         let mut last_window_focus = None;
         let dispatch = |last_window_focus: &mut Option<bool>, focused| {
-            let Some(bytes) = pending_window_focus_report(last_window_focus, focused) else {
-                return false;
-            };
-            dispatch_current_focus_report_with(&enabled, bytes, |enabled, bytes| {
-                if !enabled {
-                    return false;
-                }
-                writes.borrow_mut().push(bytes);
-                true
-            })
+            dispatch_window_focus_transition_with(
+                &enabled,
+                last_window_focus,
+                &window_is_key,
+                focused,
+                |enabled, bytes| {
+                    if !enabled {
+                        return false;
+                    }
+                    writes.borrow_mut().push(bytes);
+                    true
+                },
+            )
         };
 
         assert!(!dispatch(&mut last_window_focus, true));
         assert_eq!(last_window_focus, Some(true));
+        assert!(window_is_key.load(Ordering::Acquire));
         assert!(writes.borrow().is_empty());
 
         *enabled.lock().unwrap() = true;
         assert!(!dispatch(&mut last_window_focus, true));
         assert!(dispatch(&mut last_window_focus, false));
+        assert!(!window_is_key.load(Ordering::Acquire));
         assert_eq!(writes.into_inner(), [b"\x1b[O".to_vec()]);
     }
 
     #[test]
     fn macos_focus_reporting_deduplicates_and_preserves_transition_order() {
         let enabled = Mutex::new(true);
+        let window_is_key = AtomicBool::new(false);
         let writes = RefCell::new(Vec::new());
         let mut last_window_focus = None;
 
@@ -1902,16 +2080,19 @@ mod tests {
             (false, false),
             (true, true),
         ] {
-            let dispatched = pending_window_focus_report(&mut last_window_focus, focused)
-                .is_some_and(|bytes| {
-                    dispatch_current_focus_report_with(&enabled, bytes, |enabled, bytes| {
-                        if !enabled {
-                            return false;
-                        }
-                        writes.borrow_mut().push(bytes);
-                        true
-                    })
-                });
+            let dispatched = dispatch_window_focus_transition_with(
+                &enabled,
+                &mut last_window_focus,
+                &window_is_key,
+                focused,
+                |enabled, bytes| {
+                    if !enabled {
+                        return false;
+                    }
+                    writes.borrow_mut().push(bytes);
+                    true
+                },
+            );
             assert_eq!(dispatched, expected_dispatch);
         }
 
@@ -1924,21 +2105,23 @@ mod tests {
     #[test]
     fn macos_focus_report_targets_the_current_pane_after_recording_the_transition() {
         let current_pane = Mutex::new((1_u8, true));
+        let window_is_key = AtomicBool::new(false);
         let writes = RefCell::new(Vec::new());
         let mut last_window_focus = None;
-        let bytes = pending_window_focus_report(&mut last_window_focus, true)
-            .expect("first focus transition should create a report");
 
         *current_pane.lock().unwrap() = (2, true);
 
-        assert!(dispatch_current_focus_report_with(
+        assert!(dispatch_window_focus_transition_with(
             &current_pane,
-            bytes,
+            &mut last_window_focus,
+            &window_is_key,
+            true,
             |&(pane_id, enabled), bytes| {
                 assert!(
                     current_pane.try_lock().is_err(),
                     "pane selection and enqueue must share one tree lock"
                 );
+                assert!(window_is_key.load(Ordering::Acquire));
                 if !enabled {
                     return false;
                 }
@@ -1947,6 +2130,227 @@ mod tests {
             },
         ));
         assert_eq!(writes.into_inner(), [(2, b"\x1b[I".to_vec())]);
+    }
+
+    #[test]
+    fn internal_focus_reports_old_then_new_for_all_mode_gate_combinations() {
+        for (old_enabled, new_enabled) in [
+            (false, false),
+            (false, true),
+            (true, false),
+            (true, true),
+        ] {
+            let old = FocusTarget {
+                id: 1,
+                enabled: old_enabled,
+            };
+            let new = FocusTarget {
+                id: 2,
+                enabled: new_enabled,
+            };
+            let writes = RefCell::new(Vec::new());
+
+            let dispatched = dispatch_pane_focus_transition_with(
+                true,
+                Some(old.id),
+                Some(new.id),
+                Some(&old),
+                Some(&new),
+                |pane| pane.enabled,
+                |pane, bytes| writes.borrow_mut().push((pane.id, bytes)),
+            );
+
+            let mut expected = Vec::new();
+            if old_enabled {
+                expected.push((old.id, focus_report_bytes(false).to_vec()));
+            }
+            if new_enabled {
+                expected.push((new.id, focus_report_bytes(true).to_vec()));
+            }
+            assert_eq!(dispatched, !expected.is_empty());
+            assert_eq!(writes.into_inner(), expected);
+        }
+    }
+
+    #[test]
+    fn internal_focus_reports_ignore_non_key_and_unchanged_focus() {
+        let old = FocusTarget {
+            id: 1,
+            enabled: true,
+        };
+        let new = FocusTarget {
+            id: 2,
+            enabled: true,
+        };
+        let writes = RefCell::new(Vec::new());
+
+        for (window_is_key, previous, current) in [
+            (false, Some(old.id), Some(new.id)),
+            (true, Some(old.id), Some(old.id)),
+            (false, None, Some(new.id)),
+            (true, None, None),
+        ] {
+            assert!(!dispatch_pane_focus_transition_with(
+                window_is_key,
+                previous,
+                current,
+                Some(&old),
+                Some(&new),
+                |pane| pane.enabled,
+                |pane, bytes| writes.borrow_mut().push((pane.id, bytes)),
+            ));
+        }
+        assert!(writes.into_inner().is_empty());
+    }
+
+    #[test]
+    fn detached_old_pane_reports_before_new_and_last_pane_reports_out_only() {
+        let detached_old = FocusTarget {
+            id: 7,
+            enabled: true,
+        };
+        let current = FocusTarget {
+            id: 9,
+            enabled: true,
+        };
+        let writes = RefCell::new(Vec::new());
+
+        assert!(dispatch_pane_focus_transition_with(
+            true,
+            Some(detached_old.id),
+            Some(current.id),
+            Some(&detached_old),
+            Some(&current),
+            |pane| pane.enabled,
+            |pane, bytes| writes.borrow_mut().push((pane.id, bytes)),
+        ));
+        assert_eq!(
+            writes.replace(Vec::new()),
+            [
+                (detached_old.id, focus_report_bytes(false).to_vec()),
+                (current.id, focus_report_bytes(true).to_vec()),
+            ]
+        );
+
+        assert!(dispatch_pane_focus_transition_with(
+            true,
+            Some(detached_old.id),
+            None,
+            Some(&detached_old),
+            None,
+            |pane| pane.enabled,
+            |pane, bytes| writes.borrow_mut().push((pane.id, bytes)),
+        ));
+        assert_eq!(
+            writes.into_inner(),
+            [(detached_old.id, focus_report_bytes(false).to_vec())]
+        );
+    }
+
+    #[test]
+    fn mouse_focus_reports_precede_the_click_payload() {
+        let old = FocusTarget {
+            id: 1,
+            enabled: true,
+        };
+        let clicked = FocusTarget {
+            id: 2,
+            enabled: true,
+        };
+        let writes = RefCell::new(Vec::new());
+
+        dispatch_pane_focus_transition_with(
+            true,
+            Some(old.id),
+            Some(clicked.id),
+            Some(&old),
+            Some(&clicked),
+            |pane| pane.enabled,
+            |pane, bytes| writes.borrow_mut().push((pane.id, bytes)),
+        );
+        writes
+            .borrow_mut()
+            .push((clicked.id, b"mouse-press".to_vec()));
+
+        assert_eq!(
+            writes.into_inner(),
+            [
+                (old.id, focus_report_bytes(false).to_vec()),
+                (clicked.id, focus_report_bytes(true).to_vec()),
+                (clicked.id, b"mouse-press".to_vec()),
+            ]
+        );
+    }
+
+    #[test]
+    fn dead_pane_batch_reports_only_the_initial_and_final_focus() {
+        let initial = FocusTarget {
+            id: 1,
+            enabled: true,
+        };
+        let final_pane = FocusTarget {
+            id: 3,
+            enabled: true,
+        };
+        let writes = RefCell::new(Vec::new());
+
+        dispatch_pane_focus_transition_with(
+            true,
+            Some(initial.id),
+            Some(final_pane.id),
+            Some(&initial),
+            Some(&final_pane),
+            |pane| pane.enabled,
+            |pane, bytes| writes.borrow_mut().push((pane.id, bytes)),
+        );
+
+        assert_eq!(
+            writes.into_inner(),
+            [
+                (initial.id, focus_report_bytes(false).to_vec()),
+                (final_pane.id, focus_report_bytes(true).to_vec()),
+            ]
+        );
+    }
+
+    #[test]
+    fn macos_window_and_pane_focus_races_have_one_serialized_order() {
+        assert_eq!(
+            run_focus_steps(
+                true,
+                &[FocusStep::Pane(2), FocusStep::Window(false)],
+            ),
+            [
+                (1, focus_report_bytes(false).to_vec()),
+                (2, focus_report_bytes(true).to_vec()),
+                (2, focus_report_bytes(false).to_vec()),
+            ]
+        );
+        assert_eq!(
+            run_focus_steps(
+                true,
+                &[FocusStep::Window(false), FocusStep::Pane(2)],
+            ),
+            [(1, focus_report_bytes(false).to_vec())]
+        );
+        assert_eq!(
+            run_focus_steps(
+                false,
+                &[FocusStep::Pane(2), FocusStep::Window(true)],
+            ),
+            [(2, focus_report_bytes(true).to_vec())]
+        );
+        assert_eq!(
+            run_focus_steps(
+                false,
+                &[FocusStep::Window(true), FocusStep::Pane(2)],
+            ),
+            [
+                (1, focus_report_bytes(true).to_vec()),
+                (1, focus_report_bytes(false).to_vec()),
+                (2, focus_report_bytes(true).to_vec()),
+            ]
+        );
     }
 
     #[test]
