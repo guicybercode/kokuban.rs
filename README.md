@@ -46,8 +46,8 @@ sudo apt install libfontconfig1-dev libfreetype6-dev libxkbcommon-x11-0
 
 ```bash
 # Clone the repository
-git clone https://github.com/guicybercode/kokuban.git
-cd kokuban
+git clone https://github.com/guicybercode/kokuban.rs.git
+cd kokuban.rs
 
 # Build release binary
 cargo build --release
