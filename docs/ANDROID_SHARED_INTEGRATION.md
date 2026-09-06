@@ -20,8 +20,8 @@ respostas obsoletas e saturação da fila, além de resize somente em pixels.
 O APK integrado `b158779` passou lifecycle, sete cenários de controles e
 clipboard, aplicações SSH e seis cenários de mídia em debug/release,
 incluindo as camadas negativas. As [evidências e medições](android-evidence/b158779/README.md)
-registram perfis, hashes e limites. O teste estrito de resize remoto precisa
-ser repetido após descartar uma leitura debug vazia; composição intermediária
+registram perfis, hashes e limites. O teste estrito de resize remoto passou
+em debug e release `c41bc56` após descartar uma leitura debug vazia; composição intermediária
 com IME real continua em validação. Periféricos USB físicos não foram testados.
 
 A auditoria abaixo fica preservada como referência do contrato original.

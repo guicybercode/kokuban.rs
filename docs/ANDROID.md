@@ -155,7 +155,7 @@ cenários ainda não executados.
 | AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
 | Instalação/shell/lifecycle CI x86_64 | Passou novamente em `b158779`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/b158779/lifecycle.json). |
 | IME real | Gboard produziu `café` por toque no teclado/seletor de acento, Backspace e Enter, com cinco commits e sem preedit. A transação Hangul de composição obrigatória continua em validação; `adb input text` não prova composição. |
-| SSH/ferramentas | Cliente: 9 testes unitários e 2 testes CLI/servidor no host passaram. Android `b158779` passou trust, chave pública, Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1, desconexão e retorno ao shell local. O resize release registrou 25x46→4x104; o debug foi descartado por leitura vazia e aguarda nova execução do teste corrigido. [Resultados e perfis](android-evidence/b158779/release-ssh.json). |
+| SSH/ferramentas | Cliente: 9 testes unitários e 2 testes CLI/servidor no host passaram. Android passou trust, chave pública, Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1, desconexão e retorno ao shell local. O teste corrigido de resize passou em debug e release `c41bc56`: 25x46→4x104. [Resultados e perfis](android-evidence/c41bc56/README.md). |
 | Foto/animação/vídeo | Seis cenários passaram em debug e release `b158779`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, camadas Kitty negativas e MP4 H.264 silencioso com pixels de frames decodificados distintos. [Resultados](android-evidence/b158779/release-media.json), [camada atrás do fundo](android-evidence/b158779/background-layer.png), [fundo padrão revelando imagem](android-evidence/b158779/background-layer-reveal.png), [vídeo](android-evidence/b158779/video.png). |
 | Consumo release x86_64 | `b158779`, 15 s ociosos após 3 s de espera: PSS do app 25.586→29.712 KiB; app+shell 26.517→30.643 KiB; CPU média 0,2% de um núcleo, zero novos quadros. [Amostras](android-evidence/b158779/release-idle.json). APK x86_64 2.732.519 bytes; [proveniência](android-evidence/b158779/x86-release-provenance.json). |
 | Vídeo release x86_64 | `b158779`, amostra de 8 s, MP4 320×180@12, SSH e IME visível: PSS do app 55.875→53.352 KiB; CPU média app 54,66%, árvore 55,54% de um núcleo. Chamadas de apresentação 18,01 Hz, desenho/apresentação média 42,94 ms; não é medida de FPS de vídeo efetivamente exibido. [Dados](android-evidence/b158779/video-measurements.json). |
@@ -198,8 +198,10 @@ A pendência de entrada é a transação de composição intermediária com IME 
 Controles, seleção/clipboard, caminhos de teclado/mouse, lifecycle, aplicações
 e mídia passaram no APK integrado `b158779`. A nova medição release inclui a
 redução de redesenhos `48099f6` e a janela de coleta corrigida `dbc5e47`.
-O teste de resize remoto ainda exige nova aprovação: `5b1fa95` elimina o falso
-positivo de arquivo vazio usando publicação atômica e dimensões válidas.
+O teste de resize remoto corrigido `5b1fa95` passou em debug e release
+`c41bc56`, com publicação atômica e dimensões válidas. A composição Hangul
+revelou glifos CFF2 vazios no fallback; a correção de fonte exige um novo APK
+e nova validação visual.
 Não considerar este documento uma declaração de entrega final.
 
 Referências primárias: [winit Android](https://docs.rs/winit/latest/winit/platform/android/),
