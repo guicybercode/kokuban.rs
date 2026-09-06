@@ -30,9 +30,9 @@ class ImeEvidenceTests(unittest.TestCase):
         root = ET.fromstring('''<displays><display><windows>
           <window><hierarchy><node package="app" text="e" bounds="[0,0][500,500]" /></hierarchy></window>
           <window><hierarchy><node package="keyboard" text="e" bounds="[10,600][70,660]" /></hierarchy></window>
-          <window><hierarchy><node package="keyboard" text="é" bounds="[60,500][120,560]" /></hierarchy></window>
+          <window><hierarchy><node package="keyboard" content-desc="E, acute" bounds="[60,500][120,560]" /></hierarchy></window>
         </windows></display></displays>''')
-        self.assertEqual(center(find_node(root, ["é"], "keyboard")), (90, 530))
+        self.assertEqual(center(find_node(root, ["é", "e, acute"], "keyboard")), (90, 530))
 
     def test_empty_preedit_does_not_prove_composition(self):
         log = "\n".join([

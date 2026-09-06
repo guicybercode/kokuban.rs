@@ -165,7 +165,7 @@ def main():
         time.sleep(0.8)
         device.screenshot(args.output / "accent-popup.png")
         popup = dump("accent-popup")
-        accent_x, accent_y = center(find_node(popup, ["é", "e acute", "e with acute"], ime_package))
+        accent_x, accent_y = center(find_node(popup, ["é", "e, acute", "e acute", "e with acute"], ime_package))
         device.shell("input", "motionevent", "MOVE", str(accent_x), str(accent_y))
         device.shell("input", "motionevent", "UP", str(accent_x), str(accent_y))
         held_pointer = None
