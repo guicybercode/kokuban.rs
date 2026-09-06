@@ -284,6 +284,29 @@ impl Grid {
         *self = reset;
     }
 
+    /// DECSTR resets the modes used by subsequent output without erasing the
+    /// screen/history or moving the current cursor (xterm soft-reset behavior).
+    pub(crate) fn soft_reset(&mut self) {
+        self.cancel_pending_wrap();
+        self.saved_cursor_row = 0;
+        self.saved_cursor_col = 0;
+        self.saved_wrap_pending = false;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows() - 1;
+        self.fg = Color::Default;
+        self.bg = Color::Default;
+        self.flags = CellFlags::empty();
+        self.underline_style = UnderlineStyle::None;
+        self.underline_color = Color::Default;
+        self.cursor_visible = true;
+        self.cursor_style = CursorStyle::default();
+        self.application_cursor_keys = false;
+        self.auto_wrap = true;
+        self.insert_mode = false;
+        self.charset = CharSet::Ascii;
+        self.mark_all_dirty();
+    }
+
     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
         self.scrollback_cell_data(row, col).c
     }

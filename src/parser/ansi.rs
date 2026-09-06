@@ -656,6 +656,8 @@ impl Parser {
         let has_space = matches!(namespace, [b' ']);
 
         match final_byte {
+            b'p' if namespace == [b'!'] => grid.soft_reset(),
+
             // DECSCUSR — cursor shape (CSI Ps SP q)
             b'q' if has_space => {
                 let ps = params.first().copied().unwrap_or(0);
@@ -1143,6 +1145,39 @@ mod tests {
             parser.feed(&[*byte], &mut grid);
         }
         assert_eq!(responses(&mut grid), before);
+    }
+
+    #[test]
+    fn soft_reset_restores_output_modes_without_erasing_or_moving_cursor() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"history\r\nline\r\nline\r\nline\r\nprimary", &mut grid);
+        parser.feed(b"\x1b[?1049hKEEP\x1b[2;4r\x1b[3;7H\x1b7", &mut grid);
+        parser.feed(b"\x1b[31;44;1;4m\x1b[58;5;2m\x1b[?25l\x1b[?1h\x1b[?7l\x1b[4h\x1b(0\x1b[6 q", &mut grid);
+        let before = screen_text(&grid);
+        let history_len = grid.scrollback_len();
+        let revision = grid.selection_revision();
+        for byte in b"\x1b[!p" {
+            parser.feed(&[*byte], &mut grid);
+        }
+        assert_eq!(screen_text(&grid), before);
+        assert_eq!(grid.scrollback_len(), history_len);
+        assert_eq!(grid.selection_revision(), revision);
+        assert!(grid.using_alt_screen);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 6));
+        assert_eq!((grid.scroll_top, grid.scroll_bottom), (0, 3));
+        assert!(grid.cursor_visible && grid.auto_wrap);
+        assert!(!grid.application_cursor_keys && !grid.insert_mode);
+        assert_eq!(grid.cursor_style.shape, CursorShape::Block);
+        assert!(grid.cursor_style.blinking);
+        assert_eq!(grid.fg, Color::Default);
+        assert_eq!(grid.bg, Color::Default);
+        assert!(grid.flags.is_empty());
+        assert_eq!(grid.underline_style, UnderlineStyle::None);
+        assert_eq!(grid.underline_color, Color::Default);
+        parser.feed(b"q\x1b8X", &mut grid);
+        assert_eq!(grid.buffer.cell(2, 6).c, 'q');
+        assert_eq!(grid.buffer.cell(0, 0).c, 'X');
     }
 
     fn drain_kitty_commands(grid: &mut Grid) -> Vec<KittyCommand> {
@@ -1823,7 +1858,7 @@ mod tests {
 
     #[test]
     fn malformed_intermediate_parameters_are_ignored_across_read_boundaries() {
-        const STREAM: &[u8] = b"A\x1b[!31mB\x1b[ 1qC\x1b[!pD";
+        const STREAM: &[u8] = b"A\x1b[!31mB\x1b[ 1qC\x1b[!31pD";
 
         for split in 0..=STREAM.len() {
             let mut parser = Utf8Parser::new();
