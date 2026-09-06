@@ -125,6 +125,7 @@ Arrange a scenario in the release application, then run:
 
 ```sh
 python3 scripts/android/measure.py --scenario release-idle --seconds 20 \
+  --settle-seconds 3 \
   --apk target/release/apk/kokuban.apk \
   --output target/android-evidence/release-idle
 ```
@@ -133,6 +134,9 @@ Use `--probe-echo` in an otherwise idle shell for a separate controlled-input
 scenario. It injects short `echo` commands while sampling CPU and requires at
 least one application input-to-output timing sample. It does not substitute adb
 round-trip time for input latency.
+The collector records the last observed frame before sampling and excludes it
+and earlier frames, because logcat's wall-clock boundary may include earlier
+events from the same second. Idle CI scenarios settle for three seconds first.
 
 ## SSH and release device validation
 

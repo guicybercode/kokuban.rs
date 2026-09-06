@@ -43,11 +43,11 @@ def pss_kib(memory):
     return int(match.group(1)) if match else None
 
 
-def frame_metrics(output):
+def frame_metrics(output, after_frame=0):
     pattern = re.compile(r"frame=(\d+) monotonic_us=(\d+) render_us=(\d+) input_to_output_present_us=(\d+|null)")
     frames = [{"frame": int(number), "monotonic_us": int(timestamp), "render_us": int(render),
                "input_to_output_present_us": None if latency == "null" else int(latency)}
-              for number, timestamp, render, latency in pattern.findall(output)]
+              for number, timestamp, render, latency in pattern.findall(output) if int(number) > after_frame]
     intervals = [second["monotonic_us"] - first["monotonic_us"] for first, second in zip(frames, frames[1:])
                  if second["monotonic_us"] > first["monotonic_us"]]
     latencies = [frame["input_to_output_present_us"] for frame in frames if frame["input_to_output_present_us"] is not None]
@@ -66,20 +66,31 @@ def main():
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--apk", type=Path)
     parser.add_argument("--probe-echo", action="store_true", help="Type short echo commands into an otherwise idle shell during sampling")
+    parser.add_argument("--settle-seconds", type=float, default=0, help="Wait before starting a measurement, for example after launching the app")
     parser.add_argument("--output", type=Path, default=Path("target/android-evidence/measurements"))
     args = parser.parse_args()
     if not 2 <= args.seconds <= 300:
         parser.error("--seconds must be between 2 and 300")
+    if not 0 <= args.settle_seconds <= 60:
+        parser.error("--settle-seconds must be between 0 and 60")
     args.output.mkdir(parents=True, exist_ok=True)
     device = Device(args.serial)
+    if args.settle_seconds:
+        time.sleep(args.settle_seconds)
     pid = device.pid(args.package)
     processes = device.process_tree(pid)
     if not any(process["pid"] == pid for process in processes):
         raise RuntimeError("Could not enumerate the application process tree")
     result = {"utc": datetime.now(timezone.utc).isoformat(), "scenario": args.scenario,
               "device": device.details(), "pid": pid, "sample_seconds": args.seconds,
-              "process_tree_before": processes}
+              "process_tree_before": processes, "settle_seconds": args.settle_seconds}
     log_start = device.shell("date", "+%m-%d %H:%M:%S.000")
+    # logcat -T is rounded to a device wall-clock second here. Exclude frames
+    # already observed at the boundary so startup/input from that same second
+    # cannot be mistaken for activity during the new scenario.
+    preceding = frame_metrics(device.adb("logcat", "-d", "--pid", pid, check=False))
+    after_frame = max((frame["frame"] for frame in preceding["frames"]), default=0)
+    result["frame_boundary_exclusive"] = after_frame
     for stage in ("before", "after"):
         memory = device.shell("dumpsys", "meminfo", pid)
         (args.output / f"meminfo-{stage}.txt").write_text(memory + "\n")
@@ -131,7 +142,7 @@ def main():
     result["input_latency_note"] = "Requires correlated input and presentation tracing; adb round trip is not input latency."
     frame_log = device.adb("logcat", "-d", "--pid", pid, "-T", log_start, check=False)
     (args.output / "frame-logcat.txt").write_text(frame_log + "\n")
-    result["application_frame_metrics"] = frame_metrics(frame_log)
+    result["application_frame_metrics"] = frame_metrics(frame_log, after_frame=after_frame)
     result["application_frame_metric_note"] = "Opt-in application input-to-next-output-presentation correlation; unrelated output can satisfy it. Presentation calls are not hardware scanout."
     frames = device.shell("dumpsys", "gfxinfo", args.package, "framestats", check=False)
     (args.output / "gfxinfo.txt").write_text(frames + "\n")

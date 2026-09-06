@@ -58,6 +58,16 @@ I Kokuban: frame=3 monotonic_us=1300000 render_us=1000 input_to_output_present_u
         self.assertEqual(result["mean_render_ms"], 3.0)
         self.assertIsNone(frame_metrics("")["presentation_call_rate_hz"])
 
+    def test_excludes_previously_observed_frames_even_with_same_logcat_second(self):
+        output = """09-06 01:02:03.100 I Kokuban: frame=40 monotonic_us=100 render_us=90000 input_to_output_present_us=95000
+09-06 01:02:03.900 I Kokuban: frame=41 monotonic_us=800100 render_us=2000 input_to_output_present_us=null
+"""
+        result = frame_metrics(output, after_frame=40)
+        self.assertEqual([frame["frame"] for frame in result["frames"]], [41])
+        self.assertEqual(result["mean_render_ms"], 2.0)
+        self.assertEqual(result["input_to_output_present_ms_samples"], [])
+        self.assertEqual(frame_metrics(output, after_frame=41)["frames"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
