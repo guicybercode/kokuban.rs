@@ -44,6 +44,13 @@ impl ClientImageRegistry {
         self.by_client_id.get(&client_id).copied()
     }
 
+    #[cfg(target_os = "linux")]
+    pub(crate) fn image_client_ids(&self) -> impl Iterator<Item = (ImageId, KittyImageId)> + '_ {
+        self.by_client_id
+            .iter()
+            .map(|(&client_id, &image_id)| (image_id, client_id))
+    }
+
     pub(crate) fn resolve_live(
         &self,
         client_id: KittyImageId,

@@ -8193,4 +8193,21 @@ mod graphics_tests {
 
         assert!(frame.iter().all(|pixel| *pixel == 0xff0000));
     }
+
+    #[test]
+    fn equal_z_index_uses_client_image_id_independently_of_transmission_order() {
+        for (first, second) in [(20, 10), (10, 20)] {
+            let pixel = |id| if id == 20 { "/wAA/w==" } else { "AP8A/w==" };
+            let commands = format!(
+                "\x1b_Ga=T,f=32,s=1,v=1,i={first},c=2,r=1,C=1,z=0;{}\x1b\\\x1b_Ga=T,f=32,s=1,v=1,i={second},c=2,r=1,C=1,z=0;{}\x1b\\",
+                pixel(first), pixel(second),
+            );
+            let (frame, _) = render_images(Grid::new(2, 1, 0), commands.as_bytes());
+
+            assert!(
+                frame.iter().all(|pixel| *pixel == 0xff0000),
+                "client image 20 must cover image 10 in either transmission order"
+            );
+        }
+    }
 }

@@ -5,6 +5,7 @@ use crate::graphics::{
 use crate::grid::{Grid, TerminalEvent};
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const MAX_PLACEMENTS: usize = 4096;
@@ -12,6 +13,154 @@ const MAX_PLACEMENTS: usize = 4096;
 pub(crate) struct SoftwareGraphics {
     store: ImageStore,
     kitty: KittyHandler,
+}
+
+pub(crate) struct ImageSnapshot {
+    pub(crate) pixels: Arc<[u8]>,
+    pub(crate) size: (u32, u32),
+    pub(crate) rectangle: (f32, f32, f32, f32),
+    pub(crate) z_index: i32,
+    image_id: u64,
+}
+
+impl SoftwareGraphics {
+    pub(crate) fn new(config: &ImagesConfig) -> Self {
+        Self {
+            store: ImageStore::new(config.max_memory_mb),
+            kitty: KittyHandler::new(KittyHandlerOptions::from_megabytes(
+                config.kitty.max_image_size_mb,
+                config.kitty.allow_file_transfer,
+            )),
+        }
+    }
+
+    /// Called under the grid lock, before decoding any bytes after the image.
+    pub(crate) fn process(&mut self, event: TerminalEvent, grid: &mut Grid) -> Option<Vec<u8>> {
+        let cell_width = f32::from(grid.cell_pixel_width.max(1));
+        let cell_height = f32::from(grid.cell_pixel_height.max(1));
+        let response = match event {
+            TerminalEvent::Response(response) => Some(response),
+            TerminalEvent::KittyGraphics {
+                command,
+                cursor_row,
+                cursor_col,
+            } => {
+                let outcome = self.kitty.process(
+                    command,
+                    &mut self.store,
+                    cursor_row,
+                    cursor_col,
+                    cell_width,
+                    cell_height,
+                    grid.cols(),
+                    grid.rows(),
+                    &mut grid.image_placements,
+                );
+                if let Some(image_id) = outcome.retransmitted_image_id {
+                    grid.remove_hidden_primary_kitty_placements(image_id);
+                }
+                if let Some(advance) = outcome.advance {
+                    grid.advance_image_cursor(advance.cols, advance.rows);
+                }
+                let mut candidates = outcome.hard_delete_candidates;
+                retain_unreferenced_image_ids(&mut candidates, grid.all_image_placements());
+                for image_id in candidates {
+                    self.store.remove(image_id);
+                }
+                outcome.response
+            }
+            TerminalEvent::SixelGraphics {
+                image,
+                cursor_row,
+                cursor_col,
+            } => {
+                let columns = image
+                    .width
+                    .div_ceil(u32::from(grid.cell_pixel_width.max(1)));
+                let rows = image
+                    .height
+                    .div_ceil(u32::from(grid.cell_pixel_height.max(1)));
+                if let Some(image_id) = self.store.store(
+                    &image.pixels,
+                    image.width,
+                    image.height,
+                    ImageFormat::Rgba,
+                    None,
+                ) {
+                    grid.image_placements.push(ImagePlacement {
+                        image_id,
+                        placement_id: 0,
+                        client_placement_id: None,
+                        mode: PlacementMode::Inline {
+                            row: cursor_row as _,
+                            col: cursor_col,
+                            cols: columns,
+                            rows,
+                            x_offset: 0,
+                            y_offset: 0,
+                            render_size: InlineRenderSize::NativePixels {
+                                width: image.width,
+                                height: image.height,
+                            },
+                        },
+                        z_index: 0,
+                    });
+                }
+                for _ in 0..rows {
+                    grid.newline();
+                }
+                None
+            }
+        };
+        // Tiny repeated placements must not grow metadata without bound.
+        grid.image_placements
+            .retain(|placement| self.store.get(placement.image_id).is_some());
+        let excess = grid.image_placements.len().saturating_sub(MAX_PLACEMENTS);
+        grid.image_placements.drain(..excess);
+        response
+    }
+
+    /// Shares immutable pixels; rendering never holds the PTY/grid/cache locks.
+    pub(crate) fn snapshot(&self, grid: &Grid, cell_size: (u16, u16)) -> Vec<ImageSnapshot> {
+        // Translate once per snapshot; scanning the client registry for each placement
+        // would make rendering quadratic. Sixel images have no client ID and retain
+        // their cache allocation order for equal-z overlaps.
+        let client_ids: HashMap<_, _> = self.kitty.image_client_ids().collect();
+        let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
+        let viewport_width = grid.cols() as f32 * cell_width;
+        let viewport_height = grid.rows() as f32 * cell_height;
+        let mut images: Vec<_> = grid
+            .image_placements
+            .iter()
+            .filter_map(|placement| {
+                let stored = self.store.get(placement.image_id)?;
+                let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
+                let y = y + grid.scroll_offset as f32 * cell_height;
+                if x >= viewport_width
+                    || y >= viewport_height
+                    || x + width <= 0.0
+                    || y + height <= 0.0
+                {
+                    return None;
+                }
+                Some(ImageSnapshot {
+                    pixels: stored.pixels.clone(),
+                    size: (stored.width, stored.height),
+                    rectangle: (x, y, width, height),
+                    z_index: placement.z_index,
+                    image_id: placement.image_id,
+                })
+            })
+            .collect();
+        images.sort_by_key(|image| {
+            let order_id = client_ids
+                .get(&image.image_id)
+                .map(|id| u64::from(*id))
+                .unwrap_or(image.image_id);
+            (image.z_index, order_id)
+        });
+        images
+    }
 }
 
 #[cfg(test)]
@@ -57,11 +206,22 @@ mod tests {
     }
 
     fn upload(control: &str, pixels: &[u8]) -> Vec<u8> {
-        format!(
-            "\x1b_G{control};{}\x1b\\",
-            base64::engine::general_purpose::STANDARD.encode(pixels)
-        )
-        .into_bytes()
+        let encoded = base64::engine::general_purpose::STANDARD.encode(pixels);
+        let mut command = Vec::new();
+        let chunks = encoded.as_bytes().chunks(4096);
+        let chunk_count = chunks.len();
+        for (index, chunk) in chunks.enumerate() {
+            let more = u8::from(index + 1 < chunk_count);
+            let header = if index == 0 {
+                format!("\x1b_G{control},m={more};")
+            } else {
+                format!("\x1b_Gm={more};")
+            };
+            command.extend_from_slice(header.as_bytes());
+            command.extend_from_slice(chunk);
+            command.extend_from_slice(b"\x1b\\");
+        }
+        command
     }
 
     #[test]
@@ -334,142 +494,26 @@ mod tests {
         assert_eq!(graphics.store.image_count(), 1);
         assert_eq!((grid.cursor_row, grid.cursor_col), (0, 0));
     }
-}
 
-pub(crate) struct ImageSnapshot {
-    pub(crate) pixels: Arc<[u8]>,
-    pub(crate) size: (u32, u32),
-    pub(crate) rectangle: (f32, f32, f32, f32),
-    pub(crate) z_index: i32,
-    image_id: u64,
-}
-
-impl SoftwareGraphics {
-    pub(crate) fn new(config: &ImagesConfig) -> Self {
-        Self {
-            store: ImageStore::new(config.max_memory_mb),
-            kitty: KittyHandler::new(KittyHandlerOptions::from_megabytes(
-                config.kitty.max_image_size_mb,
-                config.kitty.allow_file_transfer,
-            )),
+    #[test]
+    fn retransmitting_a_lower_client_id_does_not_raise_it_above_a_higher_id() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        for (id, pixel) in [
+            (20, [255, 0, 0, 255]),
+            (10, [0, 255, 0, 255]),
+            (10, [0, 0, 255, 255]),
+        ] {
+            feed(
+                &mut decoder,
+                &mut graphics,
+                &mut grid,
+                &upload(&format!("a=T,f=32,s=1,v=1,i={id},C=1"), &pixel),
+            );
         }
-    }
+        let images = graphics.snapshot(&grid, (4, 8));
 
-    /// Called under the grid lock, before decoding any bytes after the image.
-    pub(crate) fn process(&mut self, event: TerminalEvent, grid: &mut Grid) -> Option<Vec<u8>> {
-        let cell_width = f32::from(grid.cell_pixel_width.max(1));
-        let cell_height = f32::from(grid.cell_pixel_height.max(1));
-        let response = match event {
-            TerminalEvent::Response(response) => Some(response),
-            TerminalEvent::KittyGraphics {
-                command,
-                cursor_row,
-                cursor_col,
-            } => {
-                let outcome = self.kitty.process(
-                    command,
-                    &mut self.store,
-                    cursor_row,
-                    cursor_col,
-                    cell_width,
-                    cell_height,
-                    grid.cols(),
-                    grid.rows(),
-                    &mut grid.image_placements,
-                );
-                if let Some(image_id) = outcome.retransmitted_image_id {
-                    grid.remove_hidden_primary_kitty_placements(image_id);
-                }
-                if let Some(advance) = outcome.advance {
-                    grid.advance_image_cursor(advance.cols, advance.rows);
-                }
-                let mut candidates = outcome.hard_delete_candidates;
-                retain_unreferenced_image_ids(&mut candidates, grid.all_image_placements());
-                for image_id in candidates {
-                    self.store.remove(image_id);
-                }
-                outcome.response
-            }
-            TerminalEvent::SixelGraphics {
-                image,
-                cursor_row,
-                cursor_col,
-            } => {
-                let columns = image
-                    .width
-                    .div_ceil(u32::from(grid.cell_pixel_width.max(1)));
-                let rows = image
-                    .height
-                    .div_ceil(u32::from(grid.cell_pixel_height.max(1)));
-                if let Some(image_id) = self.store.store(
-                    &image.pixels,
-                    image.width,
-                    image.height,
-                    ImageFormat::Rgba,
-                    None,
-                ) {
-                    grid.image_placements.push(ImagePlacement {
-                        image_id,
-                        placement_id: 0,
-                        client_placement_id: None,
-                        mode: PlacementMode::Inline {
-                            row: cursor_row as _,
-                            col: cursor_col,
-                            cols: columns,
-                            rows,
-                            x_offset: 0,
-                            y_offset: 0,
-                            render_size: InlineRenderSize::NativePixels {
-                                width: image.width,
-                                height: image.height,
-                            },
-                        },
-                        z_index: 0,
-                    });
-                }
-                for _ in 0..rows {
-                    grid.newline();
-                }
-                None
-            }
-        };
-        // Tiny repeated placements must not grow metadata without bound.
-        grid.image_placements
-            .retain(|placement| self.store.get(placement.image_id).is_some());
-        let excess = grid.image_placements.len().saturating_sub(MAX_PLACEMENTS);
-        grid.image_placements.drain(..excess);
-        response
-    }
-
-    /// Shares immutable pixels; rendering never holds the PTY/grid/cache locks.
-    pub(crate) fn snapshot(&self, grid: &Grid, cell_size: (u16, u16)) -> Vec<ImageSnapshot> {
-        let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
-        let viewport_width = grid.cols() as f32 * cell_width;
-        let viewport_height = grid.rows() as f32 * cell_height;
-        let mut images: Vec<_> = grid
-            .image_placements
-            .iter()
-            .filter_map(|placement| {
-                let stored = self.store.get(placement.image_id)?;
-                let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
-                let y = y + grid.scroll_offset as f32 * cell_height;
-                if x >= viewport_width
-                    || y >= viewport_height
-                    || x + width <= 0.0
-                    || y + height <= 0.0
-                {
-                    return None;
-                }
-                Some(ImageSnapshot {
-                    pixels: stored.pixels.clone(),
-                    size: (stored.width, stored.height),
-                    rectangle: (x, y, width, height),
-                    z_index: placement.z_index,
-                    image_id: placement.image_id,
-                })
-            })
-            .collect();
-        images.sort_by_key(|image| (image.z_index, image.image_id));
-        images
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].pixels.as_ref(), &[0, 0, 255, 255]);
+        assert_eq!(images[1].pixels.as_ref(), &[255, 0, 0, 255]);
     }
 }
