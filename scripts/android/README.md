@@ -99,7 +99,7 @@ device tests have passed; their status remains in the full run.
 
 ```sh
 gh workflow run android-input.yml --ref codex/android-native \
-  -f source_run=34006719596 -f suite=all
+  -f source_run=34026733947 -f suite=all
 ```
 
 [GitHub requires the dispatch workflow on the default branch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
@@ -191,6 +191,10 @@ interactive tests run after an upgrade to the non-debuggable release APK. Both
 APKs must share `--test-signing`. At cleanup, the terminal deletes test keys,
 then the harness restores the debug APK to independently verify their removal.
 `launch.py` reinstalls release for subsequent measurements without clearing data.
+It starts a continuous logcat capture before launching and accepts the native
+first-frame message only from the newly started app PID, after its capture
+readiness marker. Each attempt retains its log and result under
+`target/android-evidence/launch/`, with a screenshot on failure.
 Private credentials remain under ignored `target/android-private`, never in the
 uploaded evidence directory, and are deleted after the fixture exits.
 

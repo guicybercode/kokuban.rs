@@ -7,7 +7,7 @@ on:
         description: Android run with a published x86_64 debug APK (may still be running)
         required: true
         type: string
-        default: '34006719596'
+        default: '34026733947'
       suite:
         description: Input scenarios to execute against that APK
         required: true
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      SOURCE_RUN: ${{ inputs.source_run || '34006719596' }}
+      SOURCE_RUN: ${{ inputs.source_run || '34026733947' }}
       INPUT_SUITE: ${{ inputs.suite || 'all' }}
     steps:
       - name: Check out current validation scripts
@@ -108,6 +108,7 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/android -p 'test_ime_smoke.py'
           python3 -m unittest discover -s scripts/android -p 'test_controls_smoke.py'
+          python3 -m unittest discover -s scripts/android -p 'test_launch.py'
 
       - name: Start isolated Android 35 emulator
         id: emulator
