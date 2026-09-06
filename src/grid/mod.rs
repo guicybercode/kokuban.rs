@@ -138,6 +138,9 @@ pub struct Grid {
     // Prompt marks
     pub marks: MarkIndex,
     pub total_lines_pushed: usize,
+    // Coordinate changes that cannot be tracked by primary-screen scrollback.
+    selection_revision: u64,
+    screen_revision: u64,
     // Ordered protocol events to process before parsing subsequent PTY bytes.
     pending_terminal_events: Vec<TerminalEvent>,
     // Colors for query responses
@@ -199,6 +202,8 @@ impl Grid {
             cwd: String::new(),
             marks: MarkIndex::default(),
             total_lines_pushed: 0,
+            selection_revision: 0,
+            screen_revision: 0,
             pending_terminal_events: Vec::new(),
             default_fg_hex: String::new(),
             default_bg_hex: String::new(),
@@ -225,6 +230,8 @@ impl Grid {
     }
     pub fn scrollback_len(&self) -> usize { self.scrollback.len() }
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
+    pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
+    pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
 
     /// Iterate every placement reference for cache retention, including a hidden primary screen.
     pub(crate) fn all_image_placements(&self) -> impl Iterator<Item = &ImagePlacement> {
@@ -262,6 +269,8 @@ impl Grid {
         let alternate_scroll = self.alternate_scroll;
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
         reset.alternate_scroll = alternate_scroll;
+        reset.selection_revision = self.selection_revision.wrapping_add(1);
+        reset.screen_revision = self.screen_revision.wrapping_add(1);
         // RIS clears the title, but consumers still need a monotonic change signal.
         reset.title_revision = self
             .title_revision
@@ -587,6 +596,8 @@ impl Grid {
                 }
             }
             self.total_lines_pushed += count;
+        } else if count != 0 {
+            self.selection_revision = self.selection_revision.wrapping_add(1);
         }
         self.scroll_image_placements(count, true, save_scrollback);
         let template = self.template_cell();
@@ -598,6 +609,9 @@ impl Grid {
 
     pub fn scroll_down(&mut self, count: usize) {
         let count = count.min(self.scroll_bottom - self.scroll_top + 1);
+        if count != 0 {
+            self.selection_revision = self.selection_revision.wrapping_add(1);
+        }
         self.scroll_image_placements(count, false, false);
         let template = self.template_cell();
         self.buffer.scroll_down(self.scroll_top, self.scroll_bottom, count, template);
@@ -682,6 +696,8 @@ impl Grid {
 
     pub fn enter_alt_screen(&mut self) {
         if self.using_alt_screen { return; }
+        self.selection_revision = self.selection_revision.wrapping_add(1);
+        self.screen_revision = self.screen_revision.wrapping_add(1);
         debug_assert!(self.saved_primary_image_placements.is_none());
         self.using_alt_screen = true;
         self.scroll_offset = 0;
@@ -705,6 +721,8 @@ impl Grid {
 
     pub fn leave_alt_screen(&mut self) {
         if !self.using_alt_screen { return; }
+        self.selection_revision = self.selection_revision.wrapping_add(1);
+        self.screen_revision = self.screen_revision.wrapping_add(1);
         if let Some(primary) = self.alt_buffer.take() {
             self.buffer = primary;
         }
@@ -821,6 +839,7 @@ impl Grid {
             }
             2 => {
                 self.cancel_pending_wrap();
+                self.selection_revision = self.selection_revision.wrapping_add(1);
                 for row in 0..self.rows() {
                     self.buffer.clear_row(row, template);
                     self.dirty[row] = true;
@@ -837,6 +856,7 @@ impl Grid {
                     return;
                 }
                 let viewport_changed = self.scroll_offset != 0;
+                self.selection_revision = self.selection_revision.wrapping_add(1);
                 self.scrollback.clear();
                 let cell_width = f32::from(self.cell_pixel_width);
                 let cell_height = f32::from(self.cell_pixel_height);
@@ -936,6 +956,9 @@ impl Grid {
             cols > 0 && rows > 0,
             "terminal grid dimensions must be non-zero"
         );
+        if (cols, rows) != (self.cols(), self.rows()) {
+            self.selection_revision = self.selection_revision.wrapping_add(1);
+        }
         let old_max_col = self.cols() - 1;
         let cursor_col = self
             .screen_cursor_col()
@@ -978,6 +1001,46 @@ mod tests {
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
+
+    #[test]
+    fn selection_and_paste_revisions_distinguish_repaint_from_screen_changes() {
+        let mut grid = Grid::new(8, 4, 2);
+        let selection = grid.selection_revision();
+        let screen = grid.screen_revision();
+        grid.erase_in_display(2);
+        assert_ne!(grid.selection_revision(), selection);
+        assert_eq!(grid.screen_revision(), screen);
+        grid.resize(9, 4);
+        assert_eq!(grid.screen_revision(), screen);
+        let selection = grid.selection_revision();
+        grid.scroll_up(3);
+        assert_eq!(grid.selection_revision(), selection, "primary scrollback uses row rebasing");
+        grid.enter_alt_screen();
+        grid.leave_alt_screen();
+        assert_ne!(grid.screen_revision(), screen, "a complete screen round-trip invalidates pending paste");
+        let screen = grid.screen_revision();
+        grid.reset_terminal_state();
+        assert_ne!(grid.screen_revision(), screen);
+    }
+
+    #[test]
+    fn selection_revision_survives_history_reset_and_partial_scroll() {
+        let mut grid = Grid::new(8, 4, 2);
+        grid.scroll_up(3);
+        let before = grid.selection_revision();
+        grid.erase_in_display(3);
+        assert_ne!(grid.selection_revision(), before);
+        assert_eq!(grid.total_lines_pushed, 0);
+        let before = grid.selection_revision();
+        grid.scroll_top = 1;
+        grid.scroll_up(1);
+        assert_ne!(grid.selection_revision(), before);
+        let before = grid.selection_revision();
+        grid.scroll_down(0);
+        assert_eq!(grid.selection_revision(), before);
+        grid.scroll_down(1);
+        assert_ne!(grid.selection_revision(), before);
+    }
 
     fn sixel_image(byte_len: usize) -> SixelImage {
         SixelImage {
