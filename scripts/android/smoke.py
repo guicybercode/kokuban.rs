@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--serial")
     parser.add_argument("--package", default="com.kokuban.terminal")
+    parser.add_argument("--trace-frames", action="store_true")
     parser.add_argument("--output", type=Path, default=Path("target/android-evidence/smoke"))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -42,6 +43,9 @@ def main():
     if not component.startswith(package + "/"):
         raise RuntimeError(f"No launcher activity found for {package}: {component}")
     private = device.shell("run-as", package, "pwd")
+    if args.trace_frames:
+        device.shell("run-as", package, "mkdir", "-p", "files/config/kokuban")
+        device.shell("run-as", package, "touch", "files/config/kokuban/trace-frames")
     marker = f"{private}/files/kokuban-smoke-result.txt"
     device.shell("run-as", package, "rm", "-f", marker)
     old_auto = device.shell("settings", "get", "system", "accelerometer_rotation")

@@ -27,6 +27,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_DEV_OPT_LEVEL: '1'
       ANDROID_NDK_VERSION: 27.1.12297006
     steps:
       - name: Check out repository
@@ -68,6 +69,9 @@ jobs:
         if: matrix.target == 'x86_64-linux-android'
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openssh-server neovim tmux fzf git ffmpeg
+          sudo mkdir -p /run/sshd
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64'
           export ANDROID_AVD_HOME="$RUNNER_TEMP/kokuban-avd"
           mkdir -p "$ANDROID_AVD_HOME"
@@ -82,11 +86,15 @@ jobs:
 
       - name: Install, run shell and verify lifecycle
         if: matrix.target == 'x86_64-linux-android'
-        run: python3 scripts/android/smoke.py --apk target/debug/apk/kokuban.apk --serial emulator-5554
+        run: python3 scripts/android/smoke.py --apk target/debug/apk/kokuban.apk --serial emulator-5554 --trace-frames
+
+      - name: Verify SSH trust and interactive development applications
+        if: matrix.target == 'x86_64-linux-android'
+        run: python3 scripts/android/ssh_smoke.py --serial emulator-5554
 
       - name: Record idle memory and CPU
         if: matrix.target == 'x86_64-linux-android'
-        run: python3 scripts/android/measure.py --scenario ci-debug-idle --apk target/debug/apk/kokuban.apk --serial emulator-5554
+        run: python3 scripts/android/measure.py --scenario ci-debug-opt1-idle --apk target/debug/apk/kokuban.apk --serial emulator-5554
 
       - name: Upload APK and device evidence
         if: always()
@@ -94,7 +102,7 @@ jobs:
         with:
           name: android-${{ matrix.target }}-${{ matrix.profile }}
           path: |
-            target/${{ matrix.profile }}/apk/*.apk
+            target/${{ matrix.profile }}/apk/kokuban.apk
             target/android-evidence/
           if-no-files-found: warn
           retention-days: 14

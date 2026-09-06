@@ -41,6 +41,21 @@ def pss_kib(memory):
     return int(match.group(1)) if match else None
 
 
+def frame_metrics(output):
+    pattern = re.compile(r"frame=(\d+) monotonic_us=(\d+) render_us=(\d+) input_to_output_present_us=(\d+|null)")
+    frames = [{"frame": int(number), "monotonic_us": int(timestamp), "render_us": int(render),
+               "input_to_output_present_us": None if latency == "null" else int(latency)}
+              for number, timestamp, render, latency in pattern.findall(output)]
+    intervals = [second["monotonic_us"] - first["monotonic_us"] for first, second in zip(frames, frames[1:])
+                 if second["monotonic_us"] > first["monotonic_us"]]
+    latencies = [frame["input_to_output_present_us"] for frame in frames if frame["input_to_output_present_us"] is not None]
+    return {"frames": frames, "present_intervals_us": intervals,
+            "presentation_call_rate_hz": 1_000_000 / statistics.mean(intervals) if intervals else None,
+            "max_present_gap_ms": max(intervals) / 1000 if intervals else None,
+            "mean_render_ms": statistics.mean(frame["render_us"] for frame in frames) / 1000 if frames else None,
+            "input_to_output_present_ms_samples": [value / 1000 for value in latencies]}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial")
@@ -61,6 +76,7 @@ def main():
     result = {"utc": datetime.now(timezone.utc).isoformat(), "scenario": args.scenario,
               "device": device.details(), "pid": pid, "sample_seconds": args.seconds,
               "process_tree_before": processes}
+    log_start = device.shell("date", "+%m-%d %H:%M:%S.000")
     for stage in ("before", "after"):
         memory = device.shell("dumpsys", "meminfo", pid)
         (args.output / f"meminfo-{stage}.txt").write_text(memory + "\n")
@@ -92,6 +108,10 @@ def main():
     result["cpu_percent_mean_process_tree_one_core"] = sum(statistics.mean(values) for values in by_process.values()) if complete_tree else None
     result["input_latency_ms"] = None
     result["input_latency_note"] = "Requires correlated input and presentation tracing; adb round trip is not input latency."
+    frame_log = device.adb("logcat", "-d", "--pid", pid, "-T", log_start, check=False)
+    (args.output / "frame-logcat.txt").write_text(frame_log + "\n")
+    result["application_frame_metrics"] = frame_metrics(frame_log)
+    result["application_frame_metric_note"] = "Opt-in application input-to-next-output-presentation correlation; unrelated output can satisfy it. Presentation calls are not hardware scanout."
     frames = device.shell("dumpsys", "gfxinfo", args.package, "framestats", check=False)
     (args.output / "gfxinfo.txt").write_text(frames + "\n")
     result["frame_timing_note"] = "Raw gfxinfo only; NativeActivity softbuffer may not emit Android View frame stats."
