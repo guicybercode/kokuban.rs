@@ -99,13 +99,13 @@ device tests have passed; their status remains in the full run.
 
 ```sh
 gh workflow run android-input.yml --ref codex/android-native \
-  -f source_run=34003726906 -f suite=ime
+  -f source_run=34006719596 -f suite=all
 ```
 
 [GitHub requires the dispatch workflow on the default branch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
 Before this port is merged, pushes to the listed input-script paths on
 `codex/android-native` trigger
-the fast IME scenario using the explicitly pinned run in the workflow. Update
+the fast input scenarios using the explicitly pinned run in the workflow. Update
 that pin when selecting a newer APK or when its retained artifact expires.
 
 Use an installed IME such as the emulator's default Gboard. Record its package

@@ -7,12 +7,12 @@ on:
         description: Android run with a published x86_64 debug APK (may still be running)
         required: true
         type: string
-        default: '34003726906'
+        default: '34006719596'
       suite:
         description: Input scenarios to execute against that APK
         required: true
         type: choice
-        default: ime
+        default: all
         options: [ime, controls, all]
   # Dispatch requires this workflow to exist on the default branch first.
   # Push paths inspect the new commit rather than the PR's cumulative diff,
@@ -43,8 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      SOURCE_RUN: ${{ inputs.source_run || '34003726906' }}
-      INPUT_SUITE: ${{ inputs.suite || 'ime' }}
+      SOURCE_RUN: ${{ inputs.source_run || '34006719596' }}
+      INPUT_SUITE: ${{ inputs.suite || 'all' }}
     steps:
       - name: Check out current validation scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
