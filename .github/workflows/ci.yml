@@ -47,6 +47,7 @@ jobs:
             libfreetype6-dev \
             libxkbcommon-x11-0 \
             pkg-config \
+            x11-apps \
             xauth \
             xvfb
 
@@ -143,3 +144,10 @@ jobs:
                 xvfb-run --auto-servernum timeout 10s "$kokuban_binary"
             )
           done
+
+      - name: Verify presented Linux images and frame replacement
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout 90s python3 scripts/linux-graphics-smoke.py "$PWD/target/debug/kokuban"
