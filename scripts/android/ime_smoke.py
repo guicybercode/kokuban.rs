@@ -147,7 +147,10 @@ def main():
         device.type_text(command)
         device.shell("input", "keyevent", "KEYCODE_ENTER")
         eventually(lambda: device.shell("run-as", package, "cat", marker, check=False), "READY", 45)
-        tap("open-keyboard", ["Show or hide keyboard"], package)
+        # NativeActivity/IME policies can show the keyboard on first focus.
+        # This control toggles state, so only tap when it is currently hidden.
+        if not ime_visible():
+            tap("open-keyboard", ["Show or hide keyboard"], package)
         eventually(ime_visible, True, 30)
         device.screenshot(args.output / "keyboard-open.png")
 
