@@ -4,6 +4,9 @@
 #![cfg(target_os = "android")]
 #![allow(dead_code)]
 
+// Keep the Android input correction isolated from the desktop dependency.
+extern crate winit_android as winit;
+
 mod android_controls;
 mod android_images;
 mod android_ime;
