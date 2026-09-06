@@ -4,6 +4,16 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Vídeo com mpv verificado em 2026-09-05
+
+O código `c02228d`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005117373): **582 testes Linux e 484 macOS**, verificações anteriores e reprodução real com mpv 0.37.0. O clipe FFV1 320×180 de seis segundos apresentou todos os 72 quadros identificáveis, sem capturas inválidas; Space pausou e retomou, o último quadro permaneceu estável e os processos encerraram normalmente.
+
+- `e4f961a`: dimensões físicas no PTY, incluindo mudanças somente em pixels, com teste de ioctl real.
+- `6300ade`: deixa de desenhar imagens totalmente encobertas, preservando dados/placements e composição transparente.
+- `e4a455b`: mpv/ffmpeg reais, verificação dos pixels, pausa e medições separadas de terminal/player.
+
+O [relatório de vídeo](LINUX_VIDEO.md) preserva JSON e screenshots. A medição foi em debug e não comprova baixo consumo release, áudio, vídeo por SSH, Wayland, resize durante reprodução ou uso prolongado. Medições Linux release estão sendo preparadas.
+
 ## Clipboard, seleção e aplicações SSH verificados em 2026-09-05
 
 O código `f4c7330`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005044694): **566 testes Linux e 480 macOS**, check, Clippy, imagens/animação e testes de janela real. A sessão SSH com chave do servidor fixada rejeitou a chave incorreta e validou autenticação, teclado, resize remoto, Ctrl+C, edição Unicode no Neovim 0.9.5, seleção no fzf 0.44.1, divisão/comando no tmux 3.4 e desconexão normal.
@@ -13,7 +23,7 @@ O código `f4c7330`, integrado e publicado na `main`, passou no [CI Linux/macOS]
 - `26d776d`: teste XTest de UTF-8, cópia com destaque visual e retenção do clipboard, colagem e seleção local com Shift durante mouse SGR.
 - `fca890e`, `1c3e13b` e `f4c7330`: sessão OpenSSH real e fixtures de autenticação/teclado estáveis. Detalhes e versões em [validação de aplicações Linux](LINUX_APPS.md).
 
-A evidência é Linux/X11; Wayland, IME completo, soft-wrap/grafemas compostos, OSC 52 e outros aplicativos continuam pendentes. A reprodução com mpv e medições de mídia estão em desenvolvimento separado. As seções abaixo preservam os resultados das entregas anteriores.
+A evidência é Linux/X11; Wayland, IME completo, soft-wrap/grafemas compostos, OSC 52 e outros aplicativos continuam pendentes. A reprodução com mpv tem evidência própria na seção acima. As seções abaixo preservam os resultados das entregas anteriores.
 
 ## Animação nativa verificada em 2026-09-05
 
