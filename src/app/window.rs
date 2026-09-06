@@ -1628,6 +1628,32 @@ fn bracketed_paste_len(payload_len: usize) -> Option<usize> {
         .checked_add(BRACKETED_PASTE_END.len())
 }
 
+/// Consume the current request before reading the grid. Later producer updates
+/// belong to the next frame and must never be cleared by this one.
+struct FrameRedraw<'a> {
+    dirty: &'a AtomicBool,
+    retry: bool,
+}
+
+impl<'a> FrameRedraw<'a> {
+    fn begin(dirty: &'a AtomicBool) -> Self {
+        dirty.swap(false, Ordering::Relaxed);
+        Self { dirty, retry: true }
+    }
+
+    fn finish(mut self, still_animating: bool) {
+        self.retry = still_animating;
+    }
+}
+
+impl Drop for FrameRedraw<'_> {
+    fn drop(&mut self) {
+        if self.retry {
+            self.dirty.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 fn render_frame() {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -1636,6 +1662,9 @@ fn render_frame() {
             None => return,
         };
 
+        // Forced AppKit draws also consume pending updates and retry if the
+        // drawable is temporarily unavailable.
+        let redraw = FrameRedraw::begin(state.dirty.as_ref());
         let size = state.metal_layer.drawableSize();
         let drawable = match state.metal_layer.nextDrawable() {
             Some(d) => d,
@@ -1732,11 +1761,7 @@ fn render_frame() {
 
         // Keep rendering during fade-in animation
         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
-        if still_animating {
-            state.dirty.store(true, Ordering::Relaxed);
-        } else {
-            state.dirty.store(false, Ordering::Relaxed);
-        }
+        redraw.finish(still_animating);
     });
 }
 
@@ -1914,7 +1939,7 @@ mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
         dispatch_pane_focus_transition_with, dispatch_window_focus_transition_with,
-        focus_report_bytes,
+        focus_report_bytes, FrameRedraw,
         mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
         sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
         MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
@@ -1933,8 +1958,60 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
+
+    #[test]
+    fn frame_completion_preserves_output_arriving_after_grid_snapshot() {
+        let dirty = Arc::new(AtomicBool::new(true));
+        let grid_released = Arc::new(Barrier::new(2));
+        let output_arrived = Arc::new(Barrier::new(2));
+        let reader = {
+            let dirty = Arc::clone(&dirty);
+            let grid_released = Arc::clone(&grid_released);
+            let output_arrived = Arc::clone(&output_arrived);
+            thread::spawn(move || {
+                grid_released.wait();
+                dirty.store(true, Ordering::Relaxed);
+                output_arrived.wait();
+            })
+        };
+
+        let frame = FrameRedraw::begin(&dirty);
+        assert!(!dirty.load(Ordering::Relaxed));
+        grid_released.wait();
+        output_arrived.wait();
+        frame.finish(false);
+        reader.join().unwrap();
+
+        assert!(dirty.load(Ordering::Relaxed));
+        FrameRedraw::begin(&dirty).finish(false);
+        assert!(!dirty.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn missing_drawable_retries_even_when_appkit_forces_a_clean_frame() {
+        for initially_dirty in [false, true] {
+            let dirty = AtomicBool::new(initially_dirty);
+            let frame = FrameRedraw::begin(&dirty);
+            assert!(!dirty.load(Ordering::Relaxed));
+            // An early return before finish corresponds to nextDrawable = None.
+            drop(frame);
+            assert!(dirty.load(Ordering::Relaxed));
+            FrameRedraw::begin(&dirty).finish(false);
+            assert!(!dirty.load(Ordering::Relaxed));
+        }
+    }
+
+    #[test]
+    fn dialog_fade_requests_frames_until_the_final_frame() {
+        let dirty = AtomicBool::new(true);
+        for still_animating in [true, true, false] {
+            assert!(dirty.load(Ordering::Relaxed));
+            FrameRedraw::begin(&dirty).finish(still_animating);
+            assert_eq!(dirty.load(Ordering::Relaxed), still_animating);
+        }
+    }
 
     #[derive(Clone, Copy)]
     struct FocusTarget {
