@@ -31,6 +31,15 @@ fn white_pixel_uv(atlas_width: u32, atlas_height: u32) -> (f32, f32) {
     (0.5 / atlas_width as f32, 0.5 / atlas_height as f32)
 }
 
+fn status_cwd_suffix(cwd: &str, max_chars: usize) -> &str {
+    if max_chars == 0 {
+        return "";
+    }
+    let start = cwd.char_indices().rev().nth(max_chars - 1)
+        .map_or(0, |(index, _)| index);
+    &cwd[start..]
+}
+
 fn cell_content_is_visible(flags: CellFlags) -> bool {
     !flags.contains(CellFlags::HIDDEN)
 }
@@ -501,8 +510,8 @@ impl MetalRenderer {
             }
             // Truncate cwd if too long
             let max_cwd_chars = ((rect.width - cursor_x + rect.x - cell_w * 4.0) / cell_w) as usize;
-            let cwd_display = if pane.cwd.len() > max_cwd_chars && max_cwd_chars > 3 {
-                &pane.cwd[pane.cwd.len() - max_cwd_chars..]
+            let cwd_display = if max_cwd_chars > 3 {
+                status_cwd_suffix(pane.cwd, max_cwd_chars)
             } else {
                 pane.cwd
             };
@@ -1056,12 +1065,26 @@ impl MetalRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{cell_content_is_visible, glyph_uv_bounds, white_pixel_uv, MetalRenderer};
+    use super::{
+        cell_content_is_visible, glyph_uv_bounds, status_cwd_suffix, white_pixel_uv, MetalRenderer,
+    };
     use crate::glyph_atlas::GlyphEntry;
     use crate::grid::cell::CellFlags;
 
     fn assert_close(actual: f32, expected: f32) {
         assert!((actual - expected).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn status_cwd_truncation_keeps_utf8_boundaries_during_resize() {
+        for cwd in ["/tmp/café", "/日本語/端末", "/tmp/🦊/café", "short", ""] {
+            let characters: Vec<char> = cwd.chars().collect();
+            for limit in 0..=characters.len() + 2 {
+                let expected: String = characters.iter()
+                    .skip(characters.len().saturating_sub(limit)).collect();
+                assert_eq!(status_cwd_suffix(cwd, limit), expected);
+            }
+        }
     }
 
     #[test]
