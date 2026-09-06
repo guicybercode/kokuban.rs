@@ -1,6 +1,8 @@
 # 黒板 Kokuban
 
-A native GPU terminal emulator built from scratch in Rust.
+A native terminal emulator written in Rust for Linux and macOS.
+
+[Download v0.1](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.1) · [Run Kokuban](#installation) · [MIT license](LICENSE) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md)
 
 ![Kokuban terminal window](docs/screenshots/hero.png)
 
@@ -22,43 +24,105 @@ An Ubuntu/Xvfb release run measured a 7.98 MiB executable and 11.93 MiB idle RSS
 
 ## Platform Support
 
-- **macOS**: Metal GPU renderer (11.0+)
+- **macOS**: Metal GPU renderer; release archives for Apple Silicon and Intel
 - **Linux**: Software rasterizer with X11/Wayland via winit
 
 Android APK builds and emulator validation are being developed on the separate `codex/android-native` branch; Android is not yet integrated into `main`. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md), [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md) and [second-session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and evidence.
 
 ## Installation
 
-### Prerequisites
+### Run a downloaded release
 
-**Linux** requires:
-- libfontconfig
-- libfreetype6
-- libxkbcommon-x11-0
-- X11 or Wayland display server
+The [v0.1 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.1) is an early desktop release. Download the archive for your computer and its matching `.sha256` file. Rust is not required to run the binary.
 
-On Debian/Ubuntu:
-```bash
-sudo apt install libfontconfig1-dev libfreetype6-dev libxkbcommon-x11-0
+| Computer | Archive |
+| --- | --- |
+| Linux x86_64, built on Ubuntu 24.04 | `kokuban-v0.1-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `kokuban-v0.1-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `kokuban-v0.1-x86_64-apple-darwin.tar.gz` |
+
+The Linux binary requires compatible glibc and system libraries; Ubuntu 24.04 is the tested distribution. Build from source for another architecture or an older distribution. macOS binaries target macOS 11 at build time. Release builds and automated Rust tests run on macOS 15 CI runners; graphical compatibility with older systems is not established. Archives contain standalone executables, not signed or notarized `.app` bundles. If macOS blocks a download, review it through Privacy & Security or build from source; do not disable system-wide protections.
+
+**Linux (Ubuntu 24.04):** install the runtime libraries and a monospace font:
+
+```sh
+sudo apt update
+sudo apt install --yes libfontconfig1 libfreetype6 fonts-dejavu-core \
+  libx11-6 libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0
 ```
 
-**macOS** has no additional dependencies beyond Xcode Command Line Tools.
+In the directory containing the downloaded archive and checksum:
 
-### Building from Source
+```sh
+sha256sum --check kokuban-v0.1-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar -xzf kokuban-v0.1-x86_64-unknown-linux-gnu.tar.gz
+cd kokuban-v0.1-x86_64-unknown-linux-gnu
+./kokuban
+```
 
-```bash
-# Clone the repository
-git clone https://github.com/guicybercode/kokuban.rs.git
+**macOS (Apple Silicon):** in the download directory:
+
+```sh
+shasum -a 256 --check kokuban-v0.1-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf kokuban-v0.1-aarch64-apple-darwin.tar.gz
+cd kokuban-v0.1-aarch64-apple-darwin
+./kokuban
+```
+
+On Intel Macs, replace `aarch64-apple-darwin` with `x86_64-apple-darwin` in those commands. Verify that the checksum reports `OK` before extraction. The archives include the project license and third-party license notices/source required for distribution.
+
+Run Kokuban from a graphical desktop session. A new terminal window should open with your login shell. Type `pwd` or `echo hello` to try it, and `exit` to end the shell session. SSH, editors and media players are external programs: for example, type `ssh user@host` inside Kokuban to connect using your installed SSH client.
+
+### Build and run from source
+
+Install Git and Rust through [rustup](https://rustup.rs/). The verified toolchain is **Rust 1.94.1**.
+
+On Linux, install the runtime dependencies above plus the build tools:
+
+```sh
+sudo apt install --yes build-essential pkg-config libfontconfig1-dev libfreetype6-dev
+```
+
+On macOS, install Xcode Command Line Tools if needed:
+
+```sh
+xcode-select --install
+```
+
+Then build the release source and launch it:
+
+```sh
+git clone --branch v0.1 --depth 1 https://github.com/guicybercode/kokuban.rs.git
 cd kokuban.rs
-
-# Build release binary
-cargo build --release
-
-# Run
+rustup toolchain install 1.94.1 --profile minimal
+rustup run 1.94.1 cargo build --release --locked
 ./target/release/kokuban
 ```
 
-The binary will be created at `target/release/kokuban`.
+To work on the development version, clone `main` instead; see [CONTRIBUTING.md](CONTRIBUTING.md). The executable is `target/release/kokuban`. You can select a different shell with an absolute executable path:
+
+```sh
+KOKUBAN_SHELL=/bin/bash ./target/release/kokuban
+```
+
+Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It reads `kokuban.toml` from the directory where you launch it. For Linux, a minimal file can select the installed font:
+
+```toml
+[font]
+family = "DejaVu Sans Mono"
+size = 14.0
+
+[images.kitty]
+allow_file_transfer = false
+```
+
+### Troubleshooting startup
+
+- **No Linux display:** start it inside an X11 or Wayland desktop session. A headless SSH session without a display cannot open the window. X11 has automated runtime coverage; Wayland remains less validated.
+- **Missing Linux library:** install the runtime packages above. Libraries opened dynamically may not appear in `ldd` output.
+- **Missing font:** install `fonts-dejavu-core` on Linux and use the font configuration above. macOS includes Menlo.
+- **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
+- **Configuration seems ignored:** launch from the directory containing `kokuban.toml`. v0.1 does not search `~/.config` or accept a `--config` option. Invalid configuration falls back to defaults and logs a warning.
 
 ### Trying images
 
@@ -92,7 +156,7 @@ These are example limits; defaults remain 256 MiB for the cache and 50 MiB per K
 
 ## Configuration
 
-Kokuban reads its configuration from `kokuban.toml` in the current working directory or `~/.config/kokuban/kokuban.toml`. A default configuration will be used if no file is found.
+Kokuban reads only `kokuban.toml` in the current working directory. It does not search `~/.config` or `XDG_CONFIG_HOME` in v0.1. Missing, unreadable or invalid configuration falls back to defaults; parse/read errors are logged. Review local configuration before launching from an unfamiliar directory.
 
 Example configuration:
 
@@ -138,7 +202,7 @@ zoom_out = "cmd+-"
 zoom_reset = "cmd+0"
 ```
 
-See `kokuban.toml` in the repository root for the complete default configuration.
+See `kokuban.toml` in the repository root for an example configuration; omitted settings use the defaults defined in `src/config.rs`.
 
 ## Keybinds
 
@@ -151,6 +215,8 @@ Linux supports these clipboard and selection actions:
 | Copy selection | `Ctrl+Shift+C` |
 | Paste clipboard | `Ctrl+Shift+V` or `Shift+Insert` |
 | Select all retained text | `Ctrl+Shift+A` |
+| Scroll history | `Shift+PageUp` / `Shift+PageDown` |
+| Oldest/newest retained view | `Shift+Home` / `Shift+End` |
 
 Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
 
@@ -177,12 +243,18 @@ These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux 
 | Previous prompt     | `Cmd+↑`             |
 | Next prompt         | `Cmd+↓`             |
 
-All keybinds are customizable via the configuration file.
+The pane, resize, zoom and prompt-navigation bindings in the macOS table are configurable. Linux clipboard and scrollback shortcuts use their fixed input routes. On macOS, `Cmd+C` copies a selection or sends Ctrl+C when there is none; `Cmd+V` pastes.
 
 ## Development Status
 
-Kokuban is in active development (v0.1.0). Compatibility with development applications and Android usability still require implementation and runtime validation. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
+Kokuban v0.1 (Cargo version 0.1.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation and short mpv playback. Complete Unicode graphemes, soft-wrap reconstruction, OSC 52, broad Wayland coverage, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
 
 ## Project Name
 
 黒板 (*kokuban*) is the Japanese word for "blackboard" or "chalkboard"—a blank surface for writing and drawing.
+
+## Contributing, security and license
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and checks. Send vulnerabilities through the private channel in [SECURITY.md](SECURITY.md); ordinary bugs can use [GitHub issues](https://github.com/guicybercode/kokuban.rs/issues).
+
+Kokuban's original code and documentation are licensed under [MIT](LICENSE). Dependencies and third-party assets retain their own licenses; release archives include their notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).

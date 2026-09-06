@@ -47,7 +47,7 @@ xvfb-run -a -s '-screen 0 800x600x24' timeout 90s \
 
 Versões verificadas do mpv criam novas imagens anônimas para cada quadro. O snapshot deixa de desenhar uma imagem totalmente coberta por outra imagem opaca posterior, respeitando camadas, transparência e cobertura dos pixels. A busca considera até 64 retângulos por imagem. As imagens continuam no cache e os placements continuam válidos: apagar ou tornar transparente o quadro superior pode revelar o anterior.
 
-O limite de cache permanece configurável em `images.cache.max_memory_mb`, com padrão de 256 MiB e limite adicional de imagens/placements. A otimização reduz desenho redundante, não elimina a retenção de todos os quadros anteriores antes da evicção. Snapshots podem manter buffers vivos temporariamente além do limite do cache. O teste de 100 quadros anônimos verifica um único desenho por snapshot, com os 100 dados ainda retidos e revelação após exclusão.
+O limite de cache permanece configurável em `images.max_memory_mb`, com padrão de 256 MiB e limite adicional de imagens/placements. A otimização reduz desenho redundante, não elimina a retenção de todos os quadros anteriores antes da evicção. Snapshots podem manter buffers vivos temporariamente além do limite do cache. O teste de 100 quadros anônimos verifica um único desenho por snapshot, com os 100 dados ainda retidos e revelação após exclusão.
 
 O Linux agora informa tamanho físico da área desenhável no `TIOCSWINSZ`, inclusive mudanças de pixels que preservam a quantidade de células. A chamada aditiva `Pty::resize_with_pixels` preserva a API anterior e mantém o grid inalterado se o ioctl falhar. O teste de PTY real lê os quatro campos de `TIOCGWINSZ`.
 
