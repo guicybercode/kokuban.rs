@@ -94,6 +94,10 @@ jobs:
         if: matrix.target == 'x86_64-linux-android'
         run: python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
 
+      - name: Verify controls clipboard scroll and injected keyboard and mouse input
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        run: python3 scripts/android/controls_smoke.py --serial emulator-5554 --output target/android-evidence/controls
+
       - name: Verify SSH trust and interactive development applications
         if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
         run: |

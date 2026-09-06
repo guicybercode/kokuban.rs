@@ -73,6 +73,7 @@ content; review evidence before attaching it to a public issue or PR.
 
 ```sh
 python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
+python3 scripts/android/controls_smoke.py --serial emulator-5554
 ```
 
 The automated scenario uses the installed Latin/English IME's actual keys and
@@ -80,6 +81,10 @@ accent popup to enter `café`, exercises deletion and Enter, and verifies the
 PTY's UTF-8 output. It also requires composing and committed IME callbacks,
 checks native accessibility target sizes, and hides/reopens the keyboard. XML,
 screenshots and callback counts are retained for diagnosing keyboard differences.
+The controls scenario checks exact PTY bytes for toolbar keys, injected keyboard
+keys and modifiers, clipboard paste and SGR mouse press/release. It verifies
+selection and scroll against presented geometry. These injections do not prove
+compatibility with a physical USB/Bluetooth keyboard or mouse.
 
 Use an installed IME such as the emulator's default Gboard. Record its package
 and version with `adb shell settings get secure default_input_method` and
