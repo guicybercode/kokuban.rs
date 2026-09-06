@@ -1116,6 +1116,35 @@ mod tests {
         Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
     }
 
+    #[test]
+    fn hard_reset_preserves_renderer_metrics_and_configured_color_responses() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        grid.cell_pixel_width = 11;
+        grid.cell_pixel_height = 23;
+        grid.default_fg_hex = "aabbcc".into();
+        grid.default_bg_hex = "123456".into();
+        let queries = b"\x1b[16t\x1b[14t\x1b]10;?\x1b\\\x1b]11;?\x1b\\";
+        let responses = |grid: &mut Grid| -> Vec<Vec<u8>> {
+            grid.drain_terminal_events().into_iter().map(|event| {
+                let TerminalEvent::Response(bytes) = event else { panic!("expected response") };
+                bytes
+            }).collect()
+        };
+
+        parser.feed(queries, &mut grid);
+        let before = responses(&mut grid);
+        assert_eq!(before.len(), 4);
+        assert_eq!(before[0], b"\x1b[6;23;11t");
+        parser.feed(b"old\x1b[31m\x1bc", &mut grid);
+        assert_eq!(grid.buffer.cell(0, 0).c, ' ');
+        assert_eq!(grid.fg, Color::Default);
+        for byte in queries {
+            parser.feed(&[*byte], &mut grid);
+        }
+        assert_eq!(responses(&mut grid), before);
+    }
+
     fn drain_kitty_commands(grid: &mut Grid) -> Vec<KittyCommand> {
         grid.drain_terminal_events()
             .into_iter()

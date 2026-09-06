@@ -269,6 +269,12 @@ impl Grid {
         let alternate_scroll = self.alternate_scroll;
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
         reset.alternate_scroll = alternate_scroll;
+        // Renderer metrics and configured colors describe the terminal, not
+        // application state. Keep query responses accurate after `reset`.
+        reset.cell_pixel_width = self.cell_pixel_width;
+        reset.cell_pixel_height = self.cell_pixel_height;
+        reset.default_fg_hex = std::mem::take(&mut self.default_fg_hex);
+        reset.default_bg_hex = std::mem::take(&mut self.default_bg_hex);
         reset.selection_revision = self.selection_revision.wrapping_add(1);
         reset.screen_revision = self.screen_revision.wrapping_add(1);
         // RIS clears the title, but consumers still need a monotonic change signal.
