@@ -250,7 +250,9 @@ def key(*keys: str) -> None:
 
 
 def type_text(text: str) -> None:
-    run(["xdotool", "type", "--clearmodifiers", "--delay", "15", "--", text])
+    result = run(["xdotool", "type", "--clearmodifiers", "--delay", "15", "--", text])
+    if result.stderr:
+        print("XTest typing: " + result.stderr.decode(errors="replace"), file=sys.stderr)
 
 
 def screenshot(window: str, destination: Path) -> None:
@@ -324,6 +326,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
     with (directory / "terminal.log").open("wb") as log:
         terminal = subprocess.Popen([str(binary)], cwd=directory, env=environment, stdout=log, stderr=log)
         processes = (daemon, terminal)
+        window = None
         try:
             window = wait_for("Linux window", lambda: find_window(terminal), processes)
             run(["xdotool", "windowfocus", "--sync", window])
@@ -403,6 +406,16 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
             terminal.wait(timeout=STEP_TIMEOUT)
             if terminal.returncode != 0 or (directory / "ssh-exit").read_text() != "0":
                 raise AssertionError("SSH or the Linux terminal did not disconnect cleanly")
+        except BaseException:
+            inserted = directory / "nvim-inserted"
+            if inserted.exists():
+                print(f"Observed Neovim text: {inserted.read_bytes()!r}", file=sys.stderr)
+            if window:
+                try:
+                    screenshot(window, directory / "failure.png")
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    print(f"Could not capture failed application: {error}", file=sys.stderr)
+            raise
         finally:
             try:
                 run(["tmux", "-S", str(directory / "tmux.sock"), "kill-server"], check=False)
@@ -473,7 +486,7 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
                 for name in ("terminal.log", "sshd.log", "host-key-rejection.log", "versions.json",
                              "remote-ready.json", "remote-resize.json", "input.json", "interrupted.json",
                              "tmux-panes.json", "session-result.json", "editor.txt", "fzf-result", "tmux-result",
-                             "neovim.png", "fzf.png", "tmux.png"):
+                             "neovim.png", "fzf.png", "tmux.png", "failure.png", "nvim-ready", "nvim-inserted"):
                     if (directory / name).is_file():
                         shutil.copyfile(directory / name, artifacts / name)
 
