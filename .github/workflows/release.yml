@@ -1,0 +1,201 @@
+name: Release packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Version label for the selected ref (for example v0.1; tag may be created after review)
+        required: true
+        type: string
+
+# Packages are reviewed and published with gh release by the maintainer.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - name: macOS Apple Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - name: macOS Intel
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+      RELEASE_MODE: ${{ github.event_name == 'workflow_dispatch' && '--candidate' || '--verify-tag' }}
+      RELEASE_TARGET: ${{ matrix.target }}
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+
+    steps:
+      - name: Check out the selected source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.94.1 for the native target
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal --target "$RELEASE_TARGET"
+          rustup default 1.94.1
+          rustc --version --verbose
+          rustc --version --verbose | python3 -c '
+          import os, sys
+          fields = dict(line.strip().split(": ", 1) for line in sys.stdin if ": " in line)
+          if fields.get("host") != os.environ["RELEASE_TARGET"]:
+              raise SystemExit("release tests must run natively on the requested target")
+          '
+
+      - name: Validate the version label and source commit
+        shell: bash
+        run: bash scripts/package-release.sh "$RELEASE_MODE" --check-tag "$RELEASE_TAG"
+
+      - name: Set macOS deployment target
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo 'MACOSX_DEPLOYMENT_TARGET=11.0' >> "$GITHUB_ENV"
+
+      - name: Install Linux font and graphical smoke dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-dejavu-core \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libx11-6 \
+            libx11-xcb1 \
+            libxcursor1 \
+            libxi6 \
+            libxkbcommon-x11-0 \
+            pkg-config \
+            x11-apps \
+            xauth \
+            xdotool \
+            xvfb
+
+      - name: Test all targets on the native platform
+        shell: bash
+        run: cargo test --locked --all-targets --target "$RELEASE_TARGET"
+
+      - name: Verify platform dependency isolation
+        shell: bash
+        run: |
+          cargo tree --locked --target "$RELEASE_TARGET" > "$RUNNER_TEMP/release-dependencies.txt"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+
+          tree = (Path(os.environ["RUNNER_TEMP"]) / "release-dependencies.txt").read_text()
+          if os.environ["RUNNER_OS"] == "macOS":
+              forbidden = r"(arboard|winit|softbuffer|freetype-sys|yeslogic-fontconfig-sys) v"
+          else:
+              forbidden = r"(objc2|block2|core-foundation|core-graphics|core-text|drm) v"
+              for name in ("font-kit", "freetype-sys", "yeslogic-fontconfig-sys", "pathfinder_geometry"):
+                  if name + " v" not in tree:
+                      raise SystemExit(f"required Linux dependency is absent: {name}")
+          if re.search(forbidden, tree):
+              raise SystemExit("dependencies from another platform are present in the release")
+          PY
+
+      - name: Build the release binary
+        shell: bash
+        run: cargo build --locked --release --target "$RELEASE_TARGET"
+
+      - name: Validate Linux release rendering under Xvfb
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          release_binary="$PWD/target/$RELEASE_TARGET/release/kokuban"
+          smoke_directory="$(mktemp -d)"
+          trap 'rmdir "$smoke_directory"' EXIT
+          for scale_factor in 1 2; do
+            (
+              cd "$smoke_directory"
+              env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u XDG_RUNTIME_DIR \
+                KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 WINIT_X11_SCALE_FACTOR="$scale_factor" \
+                xvfb-run --auto-servernum timeout 10s "$release_binary"
+            )
+          done
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 90s python3 scripts/linux-graphics-smoke.py "$release_binary"
+
+      - name: Collect third-party license texts for this target
+        shell: bash
+        run: |
+          python3 scripts/third-party-notices.py --target "$RELEASE_TARGET" \
+            --output "$RUNNER_TEMP/THIRD_PARTY_LICENSES.txt" \
+            --sources-dir "$RUNNER_TEMP/THIRD_PARTY_SOURCES"
+
+      - name: Package the binary, policies and license notices
+        shell: bash
+        run: |
+          bash scripts/package-release.sh "$RELEASE_MODE" "$RELEASE_TAG" "$RELEASE_TARGET" \
+            --notices "$RUNNER_TEMP/THIRD_PARTY_LICENSES.txt" \
+            --sources-dir "$RUNNER_TEMP/THIRD_PARTY_SOURCES" --output-dir dist
+
+      - name: Verify archive checksum and extracted executable
+        shell: bash
+        run: |
+          package_name="kokuban-$RELEASE_TAG-$RELEASE_TARGET"
+          (
+            cd dist
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              sha256sum --check "$package_name.tar.gz.sha256"
+            else
+              shasum -a 256 --check "$package_name.tar.gz.sha256"
+            fi
+          )
+          extracted_directory="$RUNNER_TEMP/release-extracted"
+          mkdir -p "$extracted_directory"
+          tar -xzf "dist/$package_name.tar.gz" -C "$extracted_directory"
+          extracted_binary="$extracted_directory/$package_name/kokuban"
+          file "$extracted_binary"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            expected_arch=x86_64
+            if [[ "$RELEASE_TARGET" == "aarch64-apple-darwin" ]]; then
+              expected_arch=arm64
+            fi
+            actual_arch="$(lipo -archs "$extracted_binary")"
+            test "$actual_arch" = "$expected_arch"
+            otool -L "$extracted_binary"
+          else
+            (
+              cd "$extracted_directory/$package_name"
+              env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET -u XDG_RUNTIME_DIR \
+                KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 WINIT_X11_SCALE_FACTOR=1 \
+                xvfb-run --auto-servernum timeout 10s "$extracted_binary"
+            )
+          fi
+
+      - name: Upload the archive and SHA256 checksum for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: kokuban-${{ env.RELEASE_TAG }}-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
