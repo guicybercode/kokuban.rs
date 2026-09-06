@@ -1,0 +1,742 @@
+{
+  "status": "passed",
+  "build_profile": "release",
+  "phases": {
+    "startup_settle": {
+      "wall_seconds": 1.0003305669999918,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 12216,
+      "rss_end_kib": 12216,
+      "rss_observed_max_kib": 12216,
+      "hwm_process_lifetime_kib": 12216,
+      "samples": [
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 259.322619174
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 259.573109643
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 259.823537907
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 260.073973994
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 260.322949741
+        }
+      ]
+    },
+    "idle": {
+      "wall_seconds": 5.000417203999973,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 12216,
+      "rss_end_kib": 12216,
+      "rss_observed_max_kib": 12216,
+      "hwm_process_lifetime_kib": 12216,
+      "samples": [
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 260.32313699
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 260.57356367
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 260.824001671
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 261.074458777
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 261.324914112
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 261.575364987
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 261.825800683
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 262.076269321
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 262.326708795
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 262.577183364
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 262.827623569
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 263.078080676
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 263.328518306
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 263.578970333
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 263.829403344
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 264.079824644
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 264.330281644
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 264.580755081
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 264.831223789
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 265.081650789
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 265.323554194
+        }
+      ]
+    },
+    "output": {
+      "wall_seconds": 0.1517394319999994,
+      "cpu_seconds": 0.23,
+      "cpu_percent_one_core": 151.57562999181445,
+      "rss_start_kib": 12216,
+      "rss_end_kib": 28392,
+      "rss_observed_max_kib": 28392,
+      "hwm_process_lifetime_kib": 28392,
+      "samples": [
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 3,
+          "cpu_seconds": 0.03,
+          "rss_kib": 12216,
+          "hwm_kib": 12216,
+          "threads": 4,
+          "monotonic_seconds": 265.326787115
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 11,
+          "cpu_seconds": 0.11,
+          "rss_kib": 27904,
+          "hwm_kib": 27904,
+          "threads": 4,
+          "monotonic_seconds": 265.377344132
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 21,
+          "cpu_seconds": 0.21,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 265.427827143
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 265.478258267
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 265.478526547
+        }
+      ]
+    },
+    "output_settle": {
+      "wall_seconds": 1.0004624219999982,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 28392,
+      "rss_end_kib": 28392,
+      "rss_observed_max_kib": 28392,
+      "hwm_process_lifetime_kib": 28392,
+      "samples": [
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 265.478765171
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 265.729226616
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 265.979672812
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 266.230137893
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 266.479227593
+        }
+      ]
+    },
+    "post_output_idle": {
+      "wall_seconds": 5.000452736,
+      "cpu_seconds": 0.010000000000000009,
+      "cpu_percent_one_core": 0.19998189219961082,
+      "rss_start_kib": 28392,
+      "rss_end_kib": 28392,
+      "rss_observed_max_kib": 28392,
+      "hwm_process_lifetime_kib": 28392,
+      "samples": [
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 266.479401437
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 26,
+          "cpu_seconds": 0.26,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 266.729822576
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 266.980239865
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 267.230621639
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 267.481075438
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 267.731488711
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 267.981914878
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 268.232339403
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 268.482758818
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 268.733213719
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 268.983654314
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 269.234119353
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 269.484498654
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 269.734925803
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 269.985352029
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 270.235765333
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 270.486193695
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 270.736649387
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 270.987118074
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 271.237532499
+        },
+        {
+          "pid": 6926,
+          "start_ticks": 25915,
+          "cpu_ticks": 27,
+          "cpu_seconds": 0.27,
+          "rss_kib": 28392,
+          "hwm_kib": 28392,
+          "threads": 4,
+          "monotonic_seconds": 271.479854173
+        }
+      ]
+    }
+  },
+  "sampling_interval_seconds": 0.25,
+  "output_sampling_interval_seconds": 0.05,
+  "limits": [
+    "Single run on an Xvfb software display; shared CI hardware is not an isolated benchmark host.",
+    "CPU covers only Kokuban utime+stime, not child CPU, Xvfb, mpv or the observer; 100% means one core.",
+    "Short phases are limited by kernel CPU tick resolution; RSS is an asynchronous kernel estimate; HWM is process lifetime.",
+    "Finite ASCII PTY output plus final marker/DSR proves a terminal round trip; it does not prove every line was presented or measure FPS.",
+    "Output can retain the configured 10000-line scrollback; post-output idle measures settling, not a required return to startup RSS.",
+    "No CPU, RSS or throughput pass thresholds; functional completion and bounded duration are required."
+  ],
+  "versions": {
+    "rustc": [
+      "rustc 1.94.1 (e408947bf 2026-03-25)"
+    ],
+    "python": [
+      "Python 3.12.3"
+    ],
+    "xdotool": [
+      "xdotool version 3.20160805.1"
+    ]
+  },
+  "command": [
+    "/home/runner/work/kokuban.rs/kokuban.rs/target/release/kokuban"
+  ],
+  "configuration_toml": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 10000\n[images]\nenabled = true\n[images.kitty]\nallow_file_transfer = false\n",
+  "build_command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked"
+  ],
+  "profile_note": "Repository release profile; debug information disabled, no added strip or LTO settings.",
+  "binary": {
+    "path": "/home/runner/work/kokuban.rs/kokuban.rs/target/release/kokuban",
+    "bytes": 8363048,
+    "sha256": "75b882740774b53beffbf79067e06b96bf63461efa98d8cba4e4f24772b1db19",
+    "dynamic_dependencies_ldd": "\tlinux-vdso.so.1 (0x00007f06393c9000)\n\tlibfontconfig.so.1 => /lib/x86_64-linux-gnu/libfontconfig.so.1 (0x00007f0639364000)\n\tlibfreetype.so.6 => /lib/x86_64-linux-gnu/libfreetype.so.6 (0x00007f0639298000)\n\tlibgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f063926a000)\n\tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f0638b17000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0638800000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f06393cb000)\n\tlibexpat.so.1 => /lib/x86_64-linux-gnu/libexpat.so.1 (0x00007f063923c000)\n\tlibz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007f0639220000)\n\tlibbz2.so.1.0 => /lib/x86_64-linux-gnu/libbz2.so.1.0 (0x00007f063920c000)\n\tlibpng16.so.16 => /lib/x86_64-linux-gnu/libpng16.so.16 (0x00007f0638adf000)\n\tlibbrotlidec.so.1 => /lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007f06391fe000)\n\tlibbrotlicommon.so.1 => /lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007f0638abc000)\n",
+    "readelf_header_dynamic": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              DYN (Position-Independent Executable file)\n  Machine:                           Advanced Micro Devices X86-64\n  Version:                           0x1\n  Entry point address:               0x18d980\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          8360808 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         12\n  Size of section headers:           64 (bytes)\n  Number of section headers:         35\n  Section header string table index: 33\n\nDynamic section at offset 0x5ed950 contains 32 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libfontconfig.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libfreetype.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000007 (RELA)               0x2130\n 0x0000000000000008 (RELASZ)             323400 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000006ffffff9 (RELACOUNT)          13302\n 0x0000000000000017 (JMPREL)             0x51078\n 0x0000000000000002 (PLTRELSZ)           48 (bytes)\n 0x0000000000000003 (PLTGOT)             0x5f43d0\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000006 (SYMTAB)             0x340\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000005 (STRTAB)             0x16fc\n 0x000000000000000a (STRSZ)              2607 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x16e0\n 0x0000000000000019 (INIT_ARRAY)         0x5bc4e0\n 0x000000000000001b (INIT_ARRAYSZ)       24 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x5bc4d8\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000000000000c (INIT)               0x5bb42c\n 0x000000000000000d (FINI)               0x5bb448\n 0x000000006ffffff0 (VERSYM)             0x13c0\n 0x000000006ffffffe (VERNEED)            0x1520\n 0x000000006fffffff (VERNEEDNUM)         4\n 0x0000000000000000 (NULL)               0x0\n"
+  },
+  "hardware": {
+    "kernel": "6.17.0-1022-azure",
+    "architecture": "x86_64",
+    "cpu_models": [
+      "AMD EPYC 7763 64-Core Processor"
+    ],
+    "logical_cpus": 4,
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "mem_total": "MemTotal:       16373452 kB"
+  },
+  "workflow_environment": {
+    "GITHUB_SHA": "29ac690e52138c1e69ad600ae597d6b80d3fce40",
+    "GITHUB_RUN_ID": "34005940902",
+    "RUNNER_OS": "Linux",
+    "RUNNER_ARCH": "X64",
+    "ImageOS": "ubuntu24",
+    "ImageVersion": "20260831.293.1",
+    "CARGO_PROFILE_RELEASE_DEBUG": "0",
+    "CARGO_INCREMENTAL": "0"
+  },
+  "ticks_per_second": 100,
+  "ready": {
+    "reply_hex": "1b5b313b323452",
+    "marker": "kokuban resource idle> ",
+    "winsize_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ]
+  },
+  "identity": {
+    "pid": 6926,
+    "start_ticks": 25915,
+    "cpu_ticks": 3,
+    "cpu_seconds": 0.03,
+    "rss_kib": 12216,
+    "hwm_kib": 12216,
+    "threads": 4,
+    "monotonic_seconds": 259.322453466
+  },
+  "window_pixels": [
+    720,
+    408
+  ],
+  "output": {
+    "bytes": 2621440,
+    "lines": 32768,
+    "sha256": "f8ed82accb71d2871678550b5e115ec6ef3a9788c7554fcc797d5073fbf2956a",
+    "write_seconds": 0.12524993400000994,
+    "roundtrip_seconds": 0.0007883479999577503,
+    "write_and_terminal_roundtrip_seconds": 0.1260382819999677,
+    "bytes_per_second_including_terminal_roundtrip": 20798760.1735215,
+    "marker": "RESOURCE_OUTPUT_DONE_32768",
+    "reply_hex": "1b5b313b323752",
+    "winsize_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ]
+  },
+  "clean_exit": {
+    "kokuban": 0,
+    "controlled_pty_app": 0
+  },
+  "total_seconds": 12.444901045999984
+}

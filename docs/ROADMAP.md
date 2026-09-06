@@ -10,6 +10,12 @@ A branch `codex/android-native`, PR [#8](https://github.com/guicybercode/kokuban
 
 IME real e controles/clipboard ainda não têm aprovação do teste de dispositivo. O merge normal `3775e6a` incorporou `main` em `385a91c`; as adaptações e a regressão do APK integrado continuam em andamento. Esta evidência da branch não declara suporte Android concluído ou já integrado na `main`.
 
+## Primeira medição Linux release em 2026-09-05
+
+O código `29ac690`, publicado na `main`, passou no [workflow de medição](https://github.com/guicybercode/kokuban.rs/actions/runs/34005940902) e no [CI completo](https://github.com/guicybercode/kokuban.rs/actions/runs/34005916270), com **582 testes Linux e 484 macOS**. O executável release sem strip adicional ficou em 7,98 MiB; o repouso usou 11,93 MiB de RSS. A saída de 2,5 MiB foi processada com resposta final em 0,126 s, retendo 27,73 MiB após preencher o histórico. O vídeo 320×180 apresentou os 72 quadros e usou 8,75% de um núcleo do terminal, com RSS máximo amostrado de 28,70 MiB.
+
+Os [dados, hardware, dependências e limites da medição](LINUX_PERFORMANCE.md) estão preservados. O ioctl real passou na comparação com a janela estabilizada: 80×24 células e 720×408 pixels. Isso fornece uma referência de consumo Linux/X11 em cenário curto; não comprova desempenho prolongado, Wayland, áudio, autodimensionamento do mpv ou todos os dispositivos. A integração Android continua na frente paralela, com [ajustes compartilhados documentados](ANDROID_SHARED_INTEGRATION.md). Grafemas compostos e reconstrução de soft-wrap ainda precisam de implementação; o armazenamento atual de um escalar por célula não preserva todas as sequências Unicode.
+
 ## Vídeo com mpv verificado em 2026-09-05
 
 O código `c02228d`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005117373): **582 testes Linux e 484 macOS**, verificações anteriores e reprodução real com mpv 0.37.0. O clipe FFV1 320×180 de seis segundos apresentou todos os 72 quadros identificáveis, sem capturas inválidas; Space pausou e retomou, o último quadro permaneceu estável e os processos encerraram normalmente.
@@ -18,7 +24,7 @@ O código `c02228d`, integrado e publicado na `main`, passou no [CI Linux/macOS]
 - `6300ade`: deixa de desenhar imagens totalmente encobertas, preservando dados/placements e composição transparente.
 - `e4a455b`: mpv/ffmpeg reais, verificação dos pixels, pausa e medições separadas de terminal/player.
 
-O [relatório de vídeo](LINUX_VIDEO.md) preserva JSON e screenshots. A medição foi em debug e não comprova baixo consumo release, áudio, vídeo por SSH, Wayland, resize durante reprodução ou uso prolongado. Medições Linux release estão sendo preparadas.
+O [relatório de vídeo](LINUX_VIDEO.md) preserva JSON e screenshots. Essa primeira medição foi em debug e não comprova áudio, vídeo por SSH, Wayland, resize durante reprodução ou uso prolongado. A medição release posterior está registrada acima.
 
 ## Clipboard, seleção e aplicações SSH verificados em 2026-09-05
 
