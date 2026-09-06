@@ -2,6 +2,13 @@
 name = "kokuban"
 version = "0.1.0"
 edition = "2021"
+description = "A native Rust terminal emulator for Linux and macOS"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/guicybercode/kokuban.rs"
+homepage = "https://github.com/guicybercode/kokuban.rs#readme"
+keywords = ["terminal", "terminal-emulator", "linux", "macos", "graphics"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 nix = { version = "0.29", features = ["term", "fs", "process", "signal", "poll"] }
