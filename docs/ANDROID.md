@@ -2,8 +2,9 @@
 
 Desenvolvimento em `codex/android-native`, worktree `../kokuban-android`.
 Base inicial `origin/main` em `62bce8e`; os componentes compartilhados de imagens
-foram integrados por merges normais em `14972d3` e `4ea2588` (base Linux
-`ec72e05`, incluindo animação nativa). Nenhuma alteração da worktree
+foram integrados por merges normais em `14972d3` e `4ea2588`; `3775e6a`
+incorporou a base Linux `385a91c`, com seleção/clipboard, dimensões físicas
+do PTY e descarte de desenhos de imagens opacas que cobrem outras imagens. Nenhuma alteração da worktree
 Linux foi descartada. Esta entrega ainda está em validação: APK gerado não
 significa Android pronto.
 
@@ -107,7 +108,9 @@ O cliente valida `known_hosts`, rejeita mudanças de chave, pede confirmação
 explícita do fingerprint para um novo host e suporta chave pública, senha e
 keyboard-interactive. O modo `--batch` rejeita hosts desconhecidos. PTY remoto,
 SIGWINCH, saída e restauração do terminal estão implementados; o comportamento
-Android ainda depende do smoke. Consulte [CLI e limitações de formatos de chave](../android/ssh-client/README.md).
+foi verificado em Android para chave pública, trust e sessão interativa
+no cenário abaixo. Senha e keyboard-interactive têm validação de host,
+mas ainda não foram exercidos pelo teclado virtual Android. Consulte [CLI e limitações de formatos de chave](../android/ssh-client/README.md).
 Git, Neovim, tmux, fzf e Rust executam no host SSH; não são binários locais do APK.
 
 O cliente usa russh/Tokio, com ring e rotinas C/assembly transitivas. O atlas é
@@ -122,7 +125,7 @@ cenários ainda não executados.
 | Evidência | Resultado observado |
 | --- | --- |
 | Isolamento Git | Worktree irmã, branch própria, commits/push normais sem trailer de coautoria. |
-| PTY/runtime no macOS | 51 testes PTY e 6 runtime passaram, incluindo Ctrl-C, SIGWINCH, cwd/env privados e persistência de arquivos. |
+| PTY/runtime no macOS | 52 testes PTY passaram após `3775e6a`, incluindo ioctl real de pixels; 6 testes runtime também passaram. Cobrem Ctrl-C, SIGWINCH, cwd/env privados e persistência de arquivos. |
 | Atlas | 7 testes determinísticos passaram (A8, baseline, estilos, cache e limites). |
 | Regressão compartilhada | 447 testes do binário macOS passaram após integrar imagens em `14972d3`, Rust 1.94.1. |
 | Entrada Rust | 5 testes de IME e 6 do encoder compartilhado passaram em harness; os testes foram integrados ao binário para o CI. |
@@ -170,11 +173,12 @@ O cenário de eco provocou 120 apresentações em 15 segundos e será usado para
 avaliar quadros redundantes. A amostra de vídeo inclui cliente SSH e coleta de screenshots; seu escopo e
 perfil estão registrados separadamente.
 
-Ainda é necessário concluir e demonstrar todos os cenários de
-`SECOND_SESSION_PROMPT.md`: IME real e teclados externos, seleção/clipboard,
-SSH com verificação de host, editor/multiplexer/seletor/Git/build remoto,
-fotos, atualização animada e vídeo, memória/CPU/latência/quadros em release,
-suspensão e rotação repetidas. Não considerar este documento uma declaração de
+As pendências de execução são composição com IME real e controles,
+seleção/clipboard e caminhos de teclado/mouse. A matriz completa de lifecycle,
+SSH, aplicações e mídia deve passar novamente no APK integrado; os resultados
+de `b9ba8b8` identificam uma versão anterior. A redução de redesenhos de
+`48099f6` também precisa de nova medição release com a janela de coleta
+corrigida em `dbc5e47`. Não considerar este documento uma declaração de
 entrega final.
 
 Referências primárias: [winit Android](https://docs.rs/winit/latest/winit/platform/android/),

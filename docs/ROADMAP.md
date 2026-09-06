@@ -4,6 +4,12 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Android na branch de integração
+
+A branch `codex/android-native`, PR [#8](https://github.com/guicybercode/kokuban.rs/pull/8), contém o APK NativeActivity, PTY/shell Android, fontes fontdue, entrada/toque, clipboard e cliente SSH Rust. Em `b9ba8b8`, o emulador Android 15/API 35 x86_64 executou SSH com verificação da identidade do host, Neovim, tmux, fzf, Git e build/run Rust, em debug e release. Foto, Sixel, animação Kitty após o emissor encerrar e vídeo H.264 silencioso por SSH tiveram verificação de pixels. [Resultados, APK e medições](ANDROID.md) identificam exatamente as versões testadas.
+
+IME real e controles/clipboard ainda não têm aprovação do teste de dispositivo. O merge normal `3775e6a` incorporou `main` em `385a91c`; as adaptações e a regressão do APK integrado continuam em andamento. Esta evidência da branch não declara suporte Android concluído ou já integrado na `main`.
+
 ## Vídeo com mpv verificado em 2026-09-05
 
 O código `c02228d`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005117373): **582 testes Linux e 484 macOS**, verificações anteriores e reprodução real com mpv 0.37.0. O clipe FFV1 320×180 de seis segundos apresentou todos os 72 quadros identificáveis, sem capturas inválidas; Space pausou e retomou, o último quadro permaneceu estável e os processos encerraram normalmente.
@@ -36,7 +42,7 @@ O código `ab40737`, integrado e publicado na `main`, passou no [CI Linux/macOS]
 
 O teste visual usa uma sequência sintética compatível com o formato do icat; não executou o binário icat nem mediu desempenho. A reprodução nativa foi comprovada no Linux/X11. Vídeo geral, áudio, experiência Wayland, SSH e aplicações reais, clipboard/seleção Linux e consumo de recursos continuam exigindo trabalho e evidência. Metal retorna `ENOTSUP` para animação.
 
-A segunda sessão está ativa na worktree `../kokuban-android`, branch `codex/android-native`; nela já há commits de aplicação, gráficos, entrada e SSH Android. Esses commits ainda não foram integrados nesta `main` nem validados aqui em dispositivo. A sessão Android deve incorporar o novo módulo e o agendamento descritos no contrato antes de comprovar animação no aplicativo.
+A segunda sessão está ativa na worktree `../kokuban-android`, branch `codex/android-native`; nela já há commits de aplicação, gráficos, entrada e SSH Android. Esses commits ainda não foram integrados nesta `main` nem validados aqui em dispositivo. A integração e a evidência Android posteriores estão registradas na seção da branch acima.
 
 ## Primeira validação de imagens em 2026-09-05
 
