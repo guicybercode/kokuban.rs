@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Capture raw Android memory/CPU/frame evidence and APK sizes for a named scenario.
 
-Run after arranging the scenario in the terminal. Does not inject input. CPU is
+Run after arranging the scenario in the terminal. Only --probe-echo injects input. CPU is
 process CPU (100% = one core) as reported by Android top, not host emulator CPU.
 Frame stats may be unavailable for NativeActivity; missing data stays missing.
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
 import statistics
+import time
 import zipfile
 
 from device import Device
@@ -63,6 +65,7 @@ def main():
     parser.add_argument("--scenario", required=True)
     parser.add_argument("--seconds", type=int, default=15)
     parser.add_argument("--apk", type=Path)
+    parser.add_argument("--probe-echo", action="store_true", help="Type short echo commands into an otherwise idle shell during sampling")
     parser.add_argument("--output", type=Path, default=Path("target/android-evidence/measurements"))
     args = parser.parse_args()
     if not 2 <= args.seconds <= 300:
@@ -92,7 +95,25 @@ def main():
         result[f"pss_{stage}_process_tree_kib"] = sum(tree_pss.values()) if all(value is not None for value in tree_pss.values()) else None
         if stage == "before":
             selected_pids = ",".join(process["pid"] for process in processes)
-            top = device.shell("top", "-b", "-d", "1", "-n", str(args.seconds + 1), "-p", selected_pids, timeout=args.seconds + 30)
+            def collect_cpu():
+                return device.shell("top", "-b", "-d", "1", "-n", str(args.seconds + 1), "-p", selected_pids, timeout=args.seconds + 30)
+            if args.probe_echo:
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    pending = executor.submit(collect_cpu)
+                    deadline = time.monotonic() + args.seconds - 1
+                    injected = []
+                    time.sleep(1)
+                    while time.monotonic() < deadline and not pending.done():
+                        command = f"echo E{len(injected)}"
+                        device.type_text(command)
+                        device.shell("input", "keyevent", "KEYCODE_ENTER")
+                        injected.append(command)
+                        time.sleep(1)
+                    top = pending.result()
+                result["echo_probe_commands_injected"] = injected
+                result["echo_probe_note"] = "Short adb key bursts in an otherwise idle shell; application traces correlate input with next PTY output. Individual commands are not independently correlated to scanout."
+            else:
+                top = collect_cpu()
             (args.output / "top.txt").write_text(top + "\n")
     if device.pid(args.package) != pid:
         raise RuntimeError("Application restarted during sampling; results are invalid")
@@ -126,6 +147,8 @@ def main():
     print(json.dumps(result, indent=2))
     if not samples or result["pss_before_kib"] is None or result["pss_after_kib"] is None:
         raise RuntimeError("Required main-process CPU/PSS measurements are missing; inspect the retained raw data")
+    if args.probe_echo and not result["application_frame_metrics"]["input_to_output_present_ms_samples"]:
+        raise RuntimeError("Echo probe has no application input-to-output samples; verify trace-frames was enabled before launch")
 
 
 if __name__ == "__main__":

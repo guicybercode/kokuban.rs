@@ -48,7 +48,7 @@ and allow an in-place upgrade without losing the test application's storage.
 
 ```sh
 python3 scripts/android/smoke.py --serial emulator-5554 \
-  --apk target/debug/apk/kokuban.apk
+  --apk target/debug/apk/kokuban.apk --trace-frames
 ```
 
 This installs the APK, types a shell command, and verifies its private output
@@ -100,6 +100,12 @@ the application's Android bridge supplies the missing composition behavior.
 
 ## Measurements
 
+The smoke script's `--trace-frames` creates the opt-in flag before application
+launch. That private flag survives a same-key release upgrade. Timing traces
+correlate application input with the next PTY-output presentation; unrelated
+output can satisfy the correlation. Neither these traces nor `gfxinfo` prove
+hardware input-to-scanout latency.
+
 Arrange a scenario in the release application, then run:
 
 ```sh
@@ -107,6 +113,40 @@ python3 scripts/android/measure.py --scenario release-idle --seconds 20 \
   --apk target/release/apk/kokuban.apk \
   --output target/android-evidence/release-idle
 ```
+
+Use `--probe-echo` in an otherwise idle shell for a separate controlled-input
+scenario. It injects short `echo` commands while sampling CPU and requires at
+least one application input-to-output timing sample. It does not substitute adb
+round-trip time for input latency.
+
+## SSH and release device validation
+
+On an isolated Linux runner with passwordless sudo, OpenSSH server, Neovim,
+tmux, fzf, Git and Rust 1.94.1:
+
+```sh
+python3 scripts/android/ssh_smoke.py --serial emulator-5554
+scripts/android/build.sh release x86_64-linux-android --test-signing
+python3 scripts/android/ssh_smoke.py --serial emulator-5554 \
+  --upgrade-apk target/release/apk/kokuban.apk \
+  --output target/android-evidence/release-ssh
+python3 scripts/android/launch.py --serial emulator-5554 \
+  --apk target/release/apk/kokuban.apk
+```
+
+The fixture creates an ephemeral sshd with directly verified host-key pins and
+temporary client keys. Unknown and changed hosts must fail before executing a
+command. Real PTY sessions edit a Rust project in Neovim, use two tmux panes,
+select an item with fzf, inspect Git changes, compile/run the edited project,
+propagate Android rotation to the remote PTY, and return to the local shell.
+
+With `--upgrade-apk`, trust checks and fixture provisioning run in debug first;
+interactive tests run after an upgrade to the non-debuggable release APK. Both
+APKs must share `--test-signing`. At cleanup, the terminal deletes test keys,
+then the harness restores the debug APK to independently verify their removal.
+`launch.py` reinstalls release for subsequent measurements without clearing data.
+Private credentials remain under ignored `target/android-private`, never in the
+uploaded evidence directory, and are deleted after the fixture exits.
 
 Repeat in distinct output directories for a photo, animation, video, active text
 output and an interactive development application. Keep the device, orientation,

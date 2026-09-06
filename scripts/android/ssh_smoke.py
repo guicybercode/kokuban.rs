@@ -9,7 +9,6 @@ only screenshots, public host fingerprints and result summaries are evidence.
 import argparse
 import getpass
 import json
-import os
 from pathlib import Path
 import shlex
 import shutil
@@ -34,18 +33,24 @@ def main():
     parser.add_argument("--host", default="10.0.2.2", help="Runner host as seen by the Android emulator")
     parser.add_argument("--port", type=int, default=2222)
     parser.add_argument("--output", type=Path, default=Path("target/android-evidence/ssh"))
+    parser.add_argument("--upgrade-apk", type=Path, help="After debug trust checks, upgrade to this release APK for interactive tests")
+    parser.add_argument("--debug-apk", type=Path, default=Path("target/debug/apk/kokuban.apk"), help="Restore this debuggable APK after release tests to verify credential cleanup")
     args = parser.parse_args()
     if sys.platform != "linux":
         parser.error("This ephemeral sshd fixture runs on an isolated Linux runner")
     if not 1024 <= args.port <= 65535:
         parser.error("Use an unprivileged test port from 1024 to 65535")
+    if args.upgrade_apk and (not args.upgrade_apk.is_file() or not args.debug_apk.is_file()):
+        parser.error("Both upgrade and debug APKs must exist and share the test signing key")
     args.output.mkdir(parents=True, exist_ok=True)
     private_root = Path("target/android-private").resolve()
     private_root.mkdir(parents=True, exist_ok=True)
     device = Device(args.serial)
     device.pid(args.package)
     user = getpass.getuser()
-    results = {"device": device.details(), "checks": [], "status": "incomplete"}
+    results = {"device": device.details(), "checks": [], "status": "incomplete",
+               "batch_profile": "debug-opt1", "interactive_profile": "release" if args.upgrade_apk else "debug-opt1"}
+    upgraded = False
     old_auto = device.shell("settings", "get", "system", "accelerometer_rotation")
     old_rotation = device.shell("settings", "get", "system", "user_rotation")
 
@@ -138,6 +143,18 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             if private_read(f"{app_test}/success.status") != "0" or private_read(f"{app_test}/success.log") != "SSH_ANDROID_OK":
                 raise AssertionError("Pinned key-authenticated SSH command failed")
             results["checks"].extend(["unknown host rejected in batch", "changed host rejected before command execution", "verified host and client key execute a remote command"])
+            results["batch_diagnostics"] = {scenario: private_read(f"{app_test}/{scenario}.log")[:2000]
+                                            for scenario in ("unknown", "changed", "success")}
+            if args.upgrade_apk:
+                device.adb("install", "-r", str(args.upgrade_apk.resolve()), timeout=120)
+                upgraded = True
+                component = device.shell("cmd", "package", "resolve-activity", "--brief", args.package).splitlines()[-1]
+                device.shell("am", "start", "-W", "-n", component)
+                release_pid = device.pid(args.package)
+                eventually(lambda: "first frame presented" in device.adb("logcat", "-d", "--pid", release_pid), True, timeout=30)
+                if device.shell("sh", "-c", f"run-as {shlex.quote(args.package)} pwd >/dev/null 2>&1; echo $?") == "0":
+                    raise AssertionError("Release APK unexpectedly permits run-as")
+                results["release_pid"] = release_pid
             enter(f'{ssh} --known-hosts "$HOME/.kokuban-ssh-ci/known_hosts" {connection}')
             time.sleep(2)
             ready = server_root / "interactive-ready"
@@ -204,9 +221,14 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             results["checks"].append("edited Rust project compiles and runs remotely; Git sees the edit")
             enter("exit")
             time.sleep(1)
-            enter('printf LOCAL_BACK > "$HOME/.kokuban-ssh-ci/back"')
-            eventually(lambda: private_read(f"{app_test}/back"), "LOCAL_BACK")
+            local_back = server_root / "local-back"
+            # The --batch option belongs to the packaged client, so this also
+            # proves we left the remote OpenSSH shell and returned to Android.
+            enter(f'{ssh} --known-hosts "$HOME/.kokuban-ssh-ci/known_hosts" {connection} "printf LOCAL_BACK > {local_back}"')
+            eventually(lambda: local_back.read_text() if local_back.exists() else "", "LOCAL_BACK")
             results["checks"].append("SSH disconnect returns to a usable Android shell")
+            enter('rm -rf "$HOME/.kokuban-ssh-ci"')
+            time.sleep(1)
             results["versions"] = {name: subprocess.check_output(command, text=True).splitlines()[0] for name, command in {
                 "git": ["git", "--version"], "neovim": ["nvim", "--version"],
                 "tmux": ["tmux", "-V"], "fzf": ["fzf", "--version"],
@@ -225,9 +247,16 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                 cleanup(lambda: device.shell("am", "force-stop", args.package, check=False))
             for name, value in (("accelerometer_rotation", old_auto), ("user_rotation", old_rotation)):
                 cleanup(lambda name=name, value=value: device.shell("settings", "delete" if value == "null" else "put", "system", name, *([] if value == "null" else [value]), check=False))
-            results["batch_diagnostics"] = {}
-            for scenario in ("unknown", "changed", "success"):
-                cleanup(lambda scenario=scenario: results["batch_diagnostics"].update({scenario: private_read(f"{app_test}/{scenario}.log")[:2000]}))
+            if "batch_diagnostics" not in results:
+                results["batch_diagnostics"] = {}
+                for scenario in ("unknown", "changed", "success"):
+                    cleanup(lambda scenario=scenario: results["batch_diagnostics"].update({scenario: private_read(f"{app_test}/{scenario}.log")[:2000]}))
+            if upgraded:
+                cleanup(lambda: device.adb("install", "-r", str(args.debug_apk.resolve()), timeout=120))
+            absent = device.shell("run-as", args.package, "sh", "-c", f"test ! -e {shlex.quote(app_test)} && echo CLEAN", check=False) == "CLEAN"
+            results["terminal_removed_private_credentials"] = absent
+            if results["status"] == "passed" and not absent:
+                cleanup_errors.append("Terminal command did not remove private test credentials")
             cleanup(lambda: device.shell("run-as", args.package, "rm", "-rf", app_test, check=False))
             cleanup(lambda: subprocess.run(["tmux", "-L", "kokuban_ci", "kill-server"], capture_output=True))
             if process.poll() is None:
@@ -238,6 +267,8 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             server_log.close()
             results["cleanup_errors"] = cleanup_errors
             (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+            if cleanup_errors:
+                raise RuntimeError("Test cleanup failed: " + "; ".join(cleanup_errors))
     print(json.dumps(results, indent=2))
 
 
