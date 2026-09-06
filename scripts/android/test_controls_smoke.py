@@ -7,10 +7,19 @@ import time
 import unittest
 import xml.etree.ElementTree as ET
 
-from controls_smoke import latest_geometry, screen_origin, shell_fixture
+from controls_smoke import input_capabilities, latest_geometry, screen_origin, shell_fixture
 
 
 class ControlsEvidenceTests(unittest.TestCase):
+    def test_unknown_help_is_not_misclassified_as_missing_mouse_support(self):
+        with self.assertRaises(ValueError):
+            input_capabilities("Unknown command: --help")
+        self.assertEqual(input_capabilities("Usage: input <command>\nThe sources are:\n    mouse\n"
+                                            "    keyboard\n    keycombination -t duration"),
+                         {"mouse": True, "combinations": True})
+        self.assertEqual(input_capabilities("Usage: input <command>\nThe sources are:\n    keyboard\n"),
+                         {"mouse": False, "combinations": False})
+
     def test_coordinates_follow_last_presented_geometry_and_screen_origin(self):
         first = ("metric geometry left=0 top=20 right=400 bottom=900 "
                  "cell_width=10 cell_height=20 columns=40 rows=44 scroll_offset=0")

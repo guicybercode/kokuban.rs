@@ -98,6 +98,15 @@ def screen_origin(root, package, geometry):
     return min(rect[0] for rect in bounds) - geometry.left, min(rect[1] for rect in bounds) - geometry.bottom
 
 
+def input_capabilities(help_text):
+    if "Usage: input" not in help_text or "The sources are:" not in help_text:
+        raise ValueError("Android input did not return its capability list; external input cannot be classified")
+    return {
+        "mouse": bool(re.search(r"^\s+mouse\s*$", help_text, re.MULTILINE)),
+        "combinations": "keycombination" in help_text,
+    }
+
+
 def shell_fixture(directory, captures):
     """Create controlled data only; test results can only come from PTY reads."""
     lines = ["#!/system/bin/sh", "set -eu", f"cd {shlex.quote(directory)}",
@@ -148,10 +157,12 @@ def main():
         ("system", "accelerometer_rotation"), ("system", "user_rotation"),
         ("secure", "show_ime_with_hard_keyboard")
     ]}
-    input_help = device.shell("input", "--help", check=False)
+    # Android 35 rejects `input --help`; no arguments invokes its usage handler.
+    input_help = device.shell("input", check=False)
     (args.output / "android-input-help.txt").write_text(input_help + "\n")
-    has_mouse = bool(re.search(r"\bmouse\b", input_help))
-    has_combinations = "keycombination" in input_help
+    capabilities = input_capabilities(input_help)
+    has_mouse = capabilities["mouse"]
+    has_combinations = capabilities["combinations"]
     captures = [("toolbar", b"".join(value for _, value in TOOLBAR_KEYS)),
                 ("keyboard", b"".join(value for _, value in EXTERNAL_KEYS)),
                 ("escape_ime", b"\x1b"), ("clipboard", COPY_TEXT.encode())]
@@ -175,7 +186,7 @@ def main():
     def dump(label):
         nonlocal capture_index
         capture_index += 1
-        device.shell("uiautomator", "dump", "--compressed", remote_xml, timeout=30)
+        device.shell("uiautomator", "dump", "--compressed", "--windows", remote_xml, timeout=30)
         xml = device.shell("cat", remote_xml)
         (args.output / f"{capture_index:02d}-{label}.xml").write_text(xml + "\n")
         return ET.fromstring(xml)
@@ -285,6 +296,13 @@ def main():
         device.shell("input", "swipe", *map(str, (*start, *end)), "600")
         device.screenshot(args.output / "selection-drag.png")
         tap("Copy selection")
+        # Android's clipboard preview overlays the lower-left toolbar. Tapping
+        # Sel there can open SystemUI's clipboard editor. Dismiss the preview by
+        # touching outside it while Sel is still active (so no keyboard opens).
+        dump("copy-system-preview")
+        device.screenshot(args.output / "copy-system-preview.png")
+        dismiss = layout.cell_center(layout.columns // 2, layout.rows // 2, origin)
+        device.shell("input", "tap", *map(str, dismiss))
         tap("Select terminal text")
         tap("Paste clipboard")
         verify("clipboard")
