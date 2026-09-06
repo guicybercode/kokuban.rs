@@ -1,0 +1,20 @@
+{
+  "source_run": 34006719596,
+  "source_head_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+  "target": "x86_64-linux-android",
+  "profile": "release",
+  "apk_bytes": 2732519,
+  "apk_sha256": "56cb440aeddfa3f500449ad38da3128de67fbfaf6cc8c32caf9347eead308f6b",
+  "native_libraries": [
+    {
+      "path": "lib/x86_64/libkokuban.so",
+      "bytes": 2881816,
+      "zip_bytes": 1121726
+    },
+    {
+      "path": "lib/x86_64/libkokuban_ssh.so",
+      "bytes": 3826096,
+      "zip_bytes": 1591160
+    }
+  ]
+}

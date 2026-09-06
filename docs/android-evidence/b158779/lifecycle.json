@@ -1,0 +1,27 @@
+{
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "apk": "target/debug/apk/kokuban.apk",
+  "checks": [
+    "PTY executes a command entered through key events",
+    "same process and PTY survive home/resume",
+    "process survives actual screen rotation 1",
+    "process survives actual screen rotation 0",
+    "process survives actual screen rotation 1",
+    "process survives actual screen rotation 0",
+    "PTY executes commands after repeated rotation"
+  ],
+  "ime_composition": "not tested by this script",
+  "status": "passed",
+  "source_run": 34006719596,
+  "source_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596",
+  "source_head_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+  "source_artifact": 9981442894,
+  "apk_provenance": "debug-apk-provenance.json"
+}

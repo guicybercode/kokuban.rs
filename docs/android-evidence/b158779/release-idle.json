@@ -1,0 +1,139 @@
+{
+  "utc": "2026-09-06T02:52:06.332932+00:00",
+  "scenario": "ci-release-idle",
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "pid": "12672",
+  "sample_seconds": 15,
+  "process_tree_before": [
+    {
+      "pid": "12672",
+      "parent_pid": "360",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "12691",
+      "parent_pid": "12672",
+      "name": "-sh"
+    }
+  ],
+  "settle_seconds": 3.0,
+  "frame_boundary_exclusive": 4,
+  "pss_before_kib": 25586,
+  "pss_before_by_pid_kib": {
+    "12672": 25586,
+    "12691": 931
+  },
+  "pss_before_process_tree_kib": 26517,
+  "pss_after_kib": 29712,
+  "pss_after_by_pid_kib": {
+    "12672": 29712,
+    "12691": 931
+  },
+  "pss_after_process_tree_kib": 30643,
+  "cpu_percent_samples": [
+    0.0,
+    0.0,
+    2.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "cpu_percent_mean_one_core": 0.2,
+  "cpu_percent_max_one_core": 2.0,
+  "cpu_percent_samples_by_pid": {
+    "12672": [
+      0.0,
+      0.0,
+      2.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "12691": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "process_tree_after": [
+    {
+      "pid": "12672",
+      "parent_pid": "360",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "12691",
+      "parent_pid": "12672",
+      "name": "-sh"
+    }
+  ],
+  "process_tree_changed": false,
+  "cpu_percent_mean_process_tree_one_core": 0.2,
+  "input_latency_ms": null,
+  "input_latency_note": "Requires correlated input and presentation tracing; adb round trip is not input latency.",
+  "application_frame_metrics": {
+    "frames": [],
+    "present_intervals_us": [],
+    "presentation_call_rate_hz": null,
+    "max_present_gap_ms": null,
+    "mean_render_ms": null,
+    "input_to_output_present_ms_samples": []
+  },
+  "application_frame_metric_note": "Opt-in application input-to-next-output-presentation correlation; unrelated output can satisfy it. Presentation calls are not hardware scanout.",
+  "frame_timing_note": "Raw gfxinfo only; NativeActivity softbuffer may not emit Android View frame stats.",
+  "apk_bytes": 2732519,
+  "native_libraries": [
+    {
+      "path": "lib/x86_64/libkokuban.so",
+      "bytes": 2881816,
+      "compressed_bytes": 1121726
+    },
+    {
+      "path": "lib/x86_64/libkokuban_ssh.so",
+      "bytes": 3826096,
+      "compressed_bytes": 1591160
+    }
+  ],
+  "source_run": 34006719596,
+  "source_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596",
+  "source_head_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+  "source_artifact": 9981442894,
+  "apk_provenance": "x86-release-provenance.json"
+}
