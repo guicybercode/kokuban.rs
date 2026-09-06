@@ -3,7 +3,7 @@ use crate::layout::{PaneId, PixelRect};
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
-use crate::selection::SelectionState;
+use crate::selection::{sync_selection, SelectionContext, SelectionState};
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
 use std::io;
@@ -18,6 +18,7 @@ pub struct Pane {
     pub decoder: TerminalDecoder,
     pub grid: Grid,
     pub selection: SelectionState,
+    selection_context: SelectionContext,
     pub rect: PixelRect,
     pub kitty_handler: KittyHandler,
 }
@@ -57,6 +58,7 @@ impl Pane {
             decoder: TerminalDecoder::new(graphics_support),
             grid,
             selection: SelectionState::default(),
+            selection_context: SelectionContext::default(),
             rect: PixelRect::ZERO,
             kitty_handler: KittyHandler::new(kitty_options),
         })
@@ -64,6 +66,10 @@ impl Pane {
 
     pub fn queue_input(&self, bytes: Vec<u8>) {
         let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::FailPane);
+    }
+
+    pub fn sync_selection(&mut self) {
+        sync_selection(&mut self.selection, &mut self.selection_context, &self.grid);
     }
 
     pub fn queue_motion_input(&self, bytes: Vec<u8>) {

@@ -16,7 +16,7 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
-use crate::selection::GridPoint;
+use crate::selection::{point_from_viewport, GridPoint};
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
@@ -584,6 +584,7 @@ define_class!(
                     if let Some(state) = state.as_mut() {
                         let mut tree = state.pane_tree.lock().unwrap();
                         if let Some(pane) = tree.focused_pane_mut() {
+                            pane.sync_selection();
                             if pane.selection.is_active() {
                                 let text = pane.selection.get_text(&pane.grid);
                                 pane.selection.clear();
@@ -842,6 +843,7 @@ define_class!(
                                 let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
                                 if let Some((_id, point)) = grid_pt {
                                     if let Some(pane) = tree.pane_mut(pane_id) {
+                                        pane.sync_selection();
                                         pane.selection.start(point);
                                     }
                                 }
@@ -883,6 +885,7 @@ define_class!(
                             let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
                             if let Some((_id, point)) = grid_pt {
                                 if let Some(pane) = tree.focused_pane_mut() {
+                                    pane.sync_selection();
                                     pane.selection.update(point);
                                 }
                             }
@@ -1487,30 +1490,9 @@ fn pixel_to_grid_point(
     cell_w: f32,
     cell_h: f32,
 ) -> Option<(PaneId, GridPoint)> {
-    let loc = event.locationInWindow();
-    let scale = state.scale_factor;
-
-    let size = state.metal_layer.drawableSize();
-    let view_h = size.height as f32 / scale;
-
-    let px = loc.x as f32 * scale;
-    let py = (view_h - loc.y as f32) * scale;
-
-    let pane_id = tree.pane_at(px, py).unwrap_or(tree.focused);
+    let (pane_id, col, vis_row) = pixel_to_cell(event, state, tree, cell_w, cell_h)?;
     let pane = tree.pane(pane_id)?;
-    let rect = pane.rect;
-
-    let local_x = px - rect.x;
-    let local_y = py - rect.y;
-
-    let col = (local_x / cell_w) as usize;
-    let vis_row = (local_y / cell_h) as usize;
-
-    let sb_len = pane.grid.scrollback_len();
-    let scroll_offset = pane.grid.scroll_offset;
-    let abs_row = sb_len as i64 - scroll_offset as i64 + vis_row as i64;
-
-    Some((pane_id, GridPoint { row: abs_row, col }))
+    Some((pane_id, point_from_viewport(&pane.grid, vis_row, col)))
 }
 
 fn copy_to_clipboard(text: &str) {
@@ -1674,7 +1656,7 @@ fn render_frame() {
 
         // Lock atlas FIRST (canonical order: atlas → tree → image_store)
         let mut atlas = state.atlas.lock().unwrap();
-        let tree = state.pane_tree.lock().unwrap();
+        let mut tree = state.pane_tree.lock().unwrap();
 
         let viewport = PixelRect {
             x: 0.0,
@@ -1683,6 +1665,12 @@ fn render_frame() {
             height: size.height as f32,
         };
         let (layouts, dividers) = tree.layout_info(viewport);
+
+        for (id, _) in &layouts {
+            if let Some(pane) = tree.pane_mut(*id) {
+                pane.sync_selection();
+            }
+        }
 
         let focused_id = tree.focused;
         let mut pane_render_data: Vec<PaneRenderData> = Vec::new();

@@ -29,6 +29,32 @@ pub struct SelectionState {
     end: Option<GridPoint>,
 }
 
+#[derive(Default)]
+pub(crate) struct SelectionContext {
+    revision: u64,
+    dropped_rows: usize,
+}
+
+/// Reconcile retained-history coordinates before selecting, copying or drawing.
+/// Full repaints and screen changes invalidate a selection; ordinary scrollback
+/// eviction only moves the selected rows that remain in history.
+pub(crate) fn sync_selection(
+    selection: &mut SelectionState,
+    context: &mut SelectionContext,
+    grid: &Grid,
+) {
+    let dropped_rows = grid
+        .total_lines_pushed
+        .saturating_sub(grid.scrollback_len());
+    if context.revision != grid.selection_revision() || dropped_rows < context.dropped_rows {
+        selection.clear();
+    } else {
+        selection.rebase_after_eviction(dropped_rows - context.dropped_rows);
+    }
+    context.revision = grid.selection_revision();
+    context.dropped_rows = dropped_rows;
+}
+
 impl SelectionState {
     pub fn start(&mut self, point: GridPoint) {
         self.anchor = Some(point);
@@ -257,7 +283,10 @@ fn check_text_budget(
 
 #[cfg(test)]
 mod tests {
-    use super::{point_from_viewport, GridPoint, SelectionState, SelectionTextError};
+    use super::{
+        point_from_viewport, sync_selection, GridPoint, SelectionContext, SelectionState,
+        SelectionTextError,
+    };
     use crate::grid::{cell::CellFlags, Grid};
 
     fn selected(start: GridPoint, end: GridPoint) -> SelectionState {
@@ -540,5 +569,149 @@ mod tests {
         let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 1 });
         assert!(selection.contains(0, 0, usize::MAX, 0));
         assert!(!selection.contains(usize::MAX, 0, 0, usize::MAX));
+    }
+
+    #[test]
+    fn selection_sync_rebases_evicted_history_once_and_clears_when_fully_lost() {
+        let mut grid = Grid::new(4, 2, 1);
+        write_row(&mut grid, 0, "old");
+        write_row(&mut grid, 1, "keep");
+        let mut selection = SelectionState::default();
+        let mut context = SelectionContext::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 1, col: 0 });
+        selection.update(GridPoint { row: 1, col: 3 });
+        for expected_row in [1, 0] {
+            grid.scroll_up(1);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert_eq!(selection.get_text(&grid), "keep");
+            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
+        }
+        assert_eq!(context.dropped_rows, 1);
+        grid.scroll_up(1);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn selection_sync_invalidates_coordinates_on_grid_revision_changes() {
+        let changes: [fn(&mut Grid); 6] = [
+            |grid| grid.erase_in_display(2),
+            |grid| grid.erase_in_display(3),
+            |grid| grid.resize(5, 3),
+            |grid| grid.enter_alt_screen(),
+            |grid| grid.reset_terminal_state(),
+            |grid| {
+                grid.scroll_top = 1;
+                grid.scroll_up(1);
+            },
+        ];
+        for change in changes {
+            let mut grid = Grid::new(4, 3, 10);
+            let mut selection = SelectionState::default();
+            let mut context = SelectionContext::default();
+            sync_selection(&mut selection, &mut context, &grid);
+            selection.start(GridPoint { row: 0, col: 0 });
+            change(&mut grid);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert!(!selection.is_active());
+            assert_eq!(context.revision, grid.selection_revision());
+        }
+        let mut grid = Grid::new(4, 3, 10);
+        grid.enter_alt_screen();
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        grid.leave_alt_screen();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn repaint_invalidates_selection_without_changing_the_paste_target_screen() {
+        let mut grid = Grid::new(4, 3, 10);
+        grid.enter_alt_screen();
+        grid.bracketed_paste = true;
+        let paste_screen = grid.screen_revision();
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        grid.erase_in_display(2);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+        assert_eq!(grid.screen_revision(), paste_screen);
+        assert!(grid.bracketed_paste);
+        grid.scroll_top = 1;
+        grid.scroll_up(1);
+        grid.resize(5, 3);
+        assert_eq!(grid.screen_revision(), paste_screen);
+        grid.leave_alt_screen();
+        assert_ne!(grid.screen_revision(), paste_screen);
+    }
+
+    #[test]
+    fn unchanged_geometry_and_viewport_scrolling_preserve_selection() {
+        let mut grid = Grid::new(4, 2, 10);
+        write_row(&mut grid, 0, "keep");
+        grid.scroll_up(1);
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        selection.update(GridPoint { row: 0, col: 3 });
+        let revision = grid.selection_revision();
+        grid.resize(4, 2);
+        grid.scroll_viewport_up(1);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "keep");
+        assert_eq!(grid.selection_revision(), revision);
+        grid.scroll_to_bottom();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "keep");
+    }
+
+    #[test]
+    fn clear_before_copy_or_drag_cannot_select_replacement_text() {
+        let mut grid = Grid::new(4, 2, 10);
+        write_row(&mut grid, 0, "old");
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        selection.update(GridPoint { row: 0, col: 2 });
+        assert_eq!(selection.get_text(&grid), "old");
+
+        grid.erase_in_display(2);
+        write_row(&mut grid, 0, "new");
+        // Copy and drag can arrive before the next render callback.
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "");
+        selection.update(GridPoint { row: 0, col: 2 });
+        assert!(!selection.is_active());
+
+        selection.start(GridPoint { row: 0, col: 0 });
+        selection.update(GridPoint { row: 0, col: 2 });
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "new");
+    }
+
+    #[test]
+    fn screen_round_trip_between_frames_invalidates_old_selection() {
+        let mut grid = Grid::new(4, 2, 10);
+        write_row(&mut grid, 0, "old");
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        selection.update(GridPoint { row: 0, col: 2 });
+
+        grid.enter_alt_screen();
+        grid.leave_alt_screen();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
     }
 }
