@@ -10,6 +10,7 @@ import argparse
 import getpass
 import json
 from pathlib import Path
+import re
 import shlex
 import shutil
 import socket
@@ -25,6 +26,20 @@ from smoke import eventually
 
 def run(*args, **kwargs):
     return subprocess.run([str(arg) for arg in args], check=True, **kwargs)
+
+
+def parse_pty_size(raw):
+    match = re.fullmatch(r"([1-9][0-9]*)[ \t]+([1-9][0-9]*)", raw.strip())
+    return tuple(map(int, match.groups())) if match else None
+
+
+def validate_pty_resize(before, after):
+    original, resized = parse_pty_size(before), parse_pty_size(after)
+    if original is None or resized is None:
+        raise AssertionError(f"Invalid remote PTY dimensions: before={before!r}, after={after!r}")
+    if original == resized:
+        raise AssertionError("Remote PTY dimensions did not change after Android rotation")
+    return {"before": " ".join(map(str, original)), "after": " ".join(map(str, resized))}
 
 
 def main():
@@ -180,16 +195,14 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             checkpoint("interactive SSH shell accepted a command")
             device.screenshot(args.output / "01-ssh-shell.png")
             before, after = server_root / "size-before", server_root / "size-after"
-            enter(f"stty size > {before}")
-            eventually(lambda: before.exists(), True)
+            enter(f"stty size > {before}.tmp && mv {before}.tmp {before}")
+            eventually(lambda: before.exists() and parse_pty_size(before.read_text()) is not None, True)
             device.shell("settings", "put", "system", "accelerometer_rotation", "0")
             device.shell("settings", "put", "system", "user_rotation", "1")
             time.sleep(2)
-            enter(f"stty size > {after}")
-            eventually(lambda: after.exists(), True)
-            if before.read_text() == after.read_text():
-                raise AssertionError("Remote PTY dimensions did not change after Android rotation")
-            results["remote_pty_sizes"] = {"before": before.read_text().strip(), "after": after.read_text().strip()}
+            enter(f"stty size > {after}.tmp && mv {after}.tmp {after}")
+            eventually(lambda: after.exists() and parse_pty_size(after.read_text()) is not None, True)
+            results["remote_pty_sizes"] = validate_pty_resize(before.read_text(), after.read_text())
             results["checks"].append("interactive SSH propagates Android PTY resize")
             checkpoint("remote PTY resize passed")
             device.shell("settings", "put", "system", "user_rotation", "0")
