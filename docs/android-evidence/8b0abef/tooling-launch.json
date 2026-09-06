@@ -1,0 +1,9 @@
+{
+  "apk": "target/prebuilt-android/debug/apk/kokuban.apk",
+  "component": "com.kokuban.terminal/.KokubanActivity",
+  "status": "passed",
+  "activity_start": "Starting: Intent { cmp=com.kokuban.terminal/.KokubanActivity }\nStatus: ok\nLaunchState: COLD\nActivity: com.kokuban.terminal/.KokubanActivity\nTotalTime: 2863\nWaitTime: 2865\nComplete",
+  "pid": "2596",
+  "validation_run": 34046672450,
+  "validation_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34046672450"
+}

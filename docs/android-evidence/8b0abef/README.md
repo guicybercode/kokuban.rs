@@ -75,3 +75,17 @@ efetivamente exibido. O eco não mede dedo/teclado físico até a tela. As
 execuções são curtas e em emulador; não estabelecem desempenho prolongado ou
 bateria em telefones físicos. Os dados anteriores permanecem como histórico,
 sem atribuir diferenças entre runners a uma única alteração de código.
+
+## Verificação posterior da captura de logs
+
+O tooling `8c64494` passou 32 testes e verificou a captura contínua do primeiro
+frame do processo atual no [fast 34046672450](https://github.com/guicybercode/kokuban.rs/actions/runs/34046672450),
+usando este mesmo APK. [Resultado do launch](tooling-launch.json) e
+[proveniência](tooling-provenance.json) registram o escopo.
+
+A etapa IME dessa execução falhou antes da composição: um
+[diálogo ANR do Pixel Launcher](tooling-launcher-anr.png) cobriu o terminal e
+impediu localizar seus nós de acessibilidade. O [JSON original](tooling-ime-blocked.json)
+preserva a falha; a causa raiz do ANR não foi determinada. Esse fast não é
+contado como nova aprovação do IME. As matrizes completas `667acfd` e
+`8b0abef` passaram com a fonte corrigida; os resultados acima são da segunda.
