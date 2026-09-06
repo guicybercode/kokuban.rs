@@ -8,6 +8,8 @@ mod input;
 mod layout;
 #[cfg(target_os = "linux")]
 mod linux_window;
+#[cfg(target_os = "linux")]
+mod linux_clipboard;
 #[cfg(target_os = "macos")]
 mod pane;
 mod parser;
