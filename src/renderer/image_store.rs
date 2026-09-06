@@ -4,9 +4,13 @@ use objc2_metal::*;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::graphics::{next_available_image_id, ImageId};
-use super::image_decode::{prepare_image, rgba_byte_len};
+use super::image_animation::AnimationError;
 pub use super::image_decode::ImageFormat;
+use super::image_decode::{prepare_image, rgba_byte_len};
+use crate::graphics::{next_available_image_id, ImageId};
+use crate::parser::kitty_graphics::{
+    KittyAnimationControl, KittyFrameComposition, KittyFrameUpload,
+};
 
 type MetalTexture = Retained<ProtocolObject<dyn MTLTexture>>;
 
@@ -202,6 +206,51 @@ impl ImageStore {
         self.images.get(&id)
     }
 
+    // Native animation is currently implemented by the CPU renderer shared by
+    // Linux and Android. Metal must reject it without changing static textures
+    // or retaining an unused second copy of image data in CPU memory.
+    #[allow(clippy::too_many_arguments)]
+    pub fn store_animation_frame(
+        &mut self,
+        _id: ImageId,
+        _data: &[u8],
+        _width: u32,
+        _height: u32,
+        _format: ImageFormat,
+        _params: &KittyFrameUpload,
+        _now: Instant,
+    ) -> Result<u32, AnimationError> {
+        Err(AnimationError::Unsupported)
+    }
+
+    pub fn control_animation(
+        &mut self,
+        _id: ImageId,
+        _params: &KittyAnimationControl,
+        _now: Instant,
+    ) -> Result<(), AnimationError> {
+        Err(AnimationError::Unsupported)
+    }
+
+    pub fn compose_animation_frame(
+        &mut self,
+        _id: ImageId,
+        _params: &KittyFrameComposition,
+        _now: Instant,
+    ) -> Result<(), AnimationError> {
+        Err(AnimationError::Unsupported)
+    }
+
+    pub fn delete_animation_frame(
+        &mut self,
+        _id: ImageId,
+        _frame: u32,
+        _delete_last_image: bool,
+        _now: Instant,
+    ) -> Result<(), AnimationError> {
+        Err(AnimationError::Unsupported)
+    }
+
     pub(crate) fn image_count(&self) -> usize {
         self.images.len()
     }
@@ -226,6 +275,7 @@ impl ImageStore {
 
 #[cfg(test)]
 mod tests {
+    use super::{AnimationError, KittyAnimationControl, KittyFrameComposition, KittyFrameUpload};
     use super::{ImageFormat, ImageStore};
     use objc2_metal::MTLCreateSystemDefaultDevice;
     use std::time::{Duration, Instant};
@@ -235,6 +285,52 @@ mod tests {
         let mut store = ImageStore::new(device, 1);
         store.max_bytes = max_bytes;
         Some(store)
+    }
+
+    #[test]
+    fn metal_animation_commands_are_unsupported_and_preserve_static_image() {
+        let Some(mut store) = image_store_with_byte_limit(8) else {
+            eprintln!("Skipping Metal animation isolation test: no Metal device available");
+            return;
+        };
+        let now = Instant::now();
+        assert_eq!(
+            store.store(&[1, 2, 3, 255], 1, 1, ImageFormat::Rgba, Some(7)),
+            Some(7)
+        );
+        let texture = store.get(7).unwrap().texture.clone();
+        let created_at = store.get(7).unwrap().created_at;
+        let next_id = store.next_id;
+        assert_eq!(
+            store.store_animation_frame(
+                7,
+                &[4, 5, 6, 255],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload::default(),
+                now
+            ),
+            Err(AnimationError::Unsupported)
+        );
+        assert_eq!(
+            store.control_animation(7, &KittyAnimationControl::default(), now),
+            Err(AnimationError::Unsupported)
+        );
+        assert_eq!(
+            store.compose_animation_frame(7, &KittyFrameComposition::default(), now),
+            Err(AnimationError::Unsupported)
+        );
+        assert_eq!(
+            store.delete_animation_frame(7, 1, true, now),
+            Err(AnimationError::Unsupported)
+        );
+        assert_eq!(store.image_count(), 1);
+        assert_eq!(store.total_bytes, 4);
+        assert_eq!(store.next_id, next_id);
+        let image = store.get(7).unwrap();
+        assert_eq!(image.created_at, created_at);
+        assert!(std::ptr::eq(&*image.texture, &*texture));
     }
 
     fn set_creation_order(store: &mut ImageStore, image_ids: &[u64]) {

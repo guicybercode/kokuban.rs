@@ -3,6 +3,7 @@ pub mod braille;
 #[cfg(target_os = "macos")]
 pub mod brush;
 pub(crate) mod image_decode;
+pub(crate) mod image_animation;
 #[cfg(target_os = "macos")]
 pub mod image_store;
 #[cfg(any(target_os = "linux", test))]
