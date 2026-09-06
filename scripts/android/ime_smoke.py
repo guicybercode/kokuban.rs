@@ -76,6 +76,11 @@ def callback_counts(log):
     }
 
 
+def choice_active(node):
+    # Gboard layout cards expose selected; the system picker exposes checked.
+    return node.get("selected") == "true" or node.get("checked") == "true"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serial")
@@ -135,9 +140,22 @@ def main():
         (args.output / f"{capture_index:02d}-{label}.xml").write_text(xml + "\n")
         return ET.fromstring(xml)
 
+    def locate(label, alternatives, owner=ime_package):
+        deadline = time.monotonic() + 20
+        while True:
+            root = dump(label)
+            try:
+                return root, find_node(root, alternatives, owner)
+            except LookupError:
+                if time.monotonic() >= deadline:
+                    raise
+                # Page transitions can briefly expose only SystemUI. Poll the
+                # accessibility tree; never repeat the action that opened it.
+                time.sleep(0.2)
+
     def tap(label, alternatives, owner=ime_package):
-        root = dump(label)
-        x, y = center(find_node(root, alternatives, owner))
+        root, node = locate(label, alternatives, owner)
+        x, y = center(node)
         device.shell("input", "tap", str(x), str(y))
         return root
 
@@ -200,7 +218,12 @@ def main():
             device.type_text("Korean")
             korean = language_node(dump("gboard-korean-search"), ["Korean", "한국어"], ime_package)
         device.shell("input", "tap", *map(str, center(korean)))
-        tap("gboard-korean-layout", ["2-set", "Dubeolsik", "두벌식"])
+        _, layout = locate("gboard-korean-layout", ["2-set", "Dubeolsik", "두벌식"])
+        if not choice_active(layout):
+            device.shell("input", "tap", *map(str, center(layout)))
+            _, layout = locate("gboard-korean-selected", ["2-set", "Dubeolsik", "두벌식"])
+            if not choice_active(layout):
+                raise AssertionError("Gboard did not select its Korean 2-set layout")
         tap("gboard-save-korean", ["Done"])
         korean_added = True
         device.screenshot(args.output / "gboard-configured-languages.png")

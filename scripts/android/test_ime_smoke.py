@@ -1,7 +1,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-from ime_smoke import callback_counts, center, find_node, language_node, node_bounds
+from ime_smoke import callback_counts, center, choice_active, find_node, language_node, node_bounds
 
 
 class ImeEvidenceTests(unittest.TestCase):
@@ -55,6 +55,11 @@ class ImeEvidenceTests(unittest.TestCase):
         self.assertEqual(center(language_node(root, ["English"], "keyboard")), (150, 30))
         with self.assertRaises(LookupError):
             language_node(root, ["Japanese"], "keyboard")
+
+    def test_selected_gboard_layout_and_checked_system_choice_are_already_active(self):
+        self.assertTrue(choice_active(ET.fromstring('<node selected="true" checked="false"/>')))
+        self.assertTrue(choice_active(ET.fromstring('<node selected="false" checked="true"/>')))
+        self.assertFalse(choice_active(ET.fromstring('<node selected="false" checked="false"/>')))
 
 
 if __name__ == "__main__":
