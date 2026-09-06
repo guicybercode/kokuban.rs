@@ -15,8 +15,10 @@ on:
         default: ime
         options: [ime, controls, all]
   # Dispatch requires this workflow to exist on the default branch first.
-  # These PR paths allow script iteration before the Android port is merged.
-  pull_request:
+  # Push paths inspect the new commit rather than the PR's cumulative diff,
+  # so unrelated documentation pushes do not repeat an identical input test.
+  push:
+    branches: [codex/android-native]
     paths:
       - .github/workflows/android-input.yml
       - scripts/android/ime_smoke.py

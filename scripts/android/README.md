@@ -98,7 +98,8 @@ gh workflow run android-input.yml --ref codex/android-native \
 ```
 
 [GitHub requires the dispatch workflow on the default branch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
-Before this port is merged, changes to the listed input-script PR paths trigger
+Before this port is merged, pushes to the listed input-script paths on
+`codex/android-native` trigger
 the fast IME scenario using the explicitly pinned run in the workflow. Update
 that pin when selecting a newer APK or when its retained artifact expires.
 
