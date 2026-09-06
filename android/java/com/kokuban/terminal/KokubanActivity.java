@@ -150,6 +150,7 @@ public final class KokubanActivity extends NativeActivity {
 
     private static final class EditorView extends View {
         final ControlNodes controls = new ControlNodes(this);
+        private TerminalConnection connection;
         EditorView(Context context) {
             super(context);
             setFocusable(true);
@@ -162,6 +163,21 @@ public final class KokubanActivity extends NativeActivity {
 
         @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() { return controls; }
 
+        @Override public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+            // Android IMEs may consume hardware Escape to dismiss the keyboard.
+            // Terminal applications need that key even while the IME is visible.
+            // Consume both edges here so the same event cannot reach Rust twice.
+            if (keyCode == KeyEvent.KEYCODE_ESCAPE
+                    && (event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN
+                        && (connection == null || !connection.sendKeyEvent(event))) {
+                    nativeKey(keyCode, 0, event.getMetaState());
+                }
+                return true;
+            }
+            return super.onKeyPreIme(keyCode, event);
+        }
+
         @Override public InputConnection onCreateInputConnection(EditorInfo info) {
             // Only the active editor transaction is buffered here. NO_SUGGESTIONS
             // suppresses real LatinIME composition; MULTI_LINE can enable its legacy
@@ -172,7 +188,8 @@ public final class KokubanActivity extends NativeActivity {
                 | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING | EditorInfo.IME_ACTION_NONE;
             info.initialSelStart = 0;
             info.initialSelEnd = 0;
-            return new TerminalConnection(this);
+            connection = new TerminalConnection(this);
+            return connection;
         }
 
         @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
