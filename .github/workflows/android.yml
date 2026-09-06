@@ -1,0 +1,95 @@
+name: Android
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            profile: release
+          - target: x86_64-linux-android
+            profile: debug
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      ANDROID_NDK_VERSION: 27.1.12297006
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned Rust and Android build tools
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal --component clippy --target '${{ matrix.target }}'
+          rustup run 1.94.1 cargo install cargo-apk --version 0.10.0 --locked
+          echo "RUSTC=$(rustup which --toolchain 1.94.1 rustc)" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$(rustup which --toolchain 1.94.1 rustdoc)" >> "$GITHUB_ENV"
+          dirname "$(rustup which --toolchain 1.94.1 rustc)" >> "$GITHUB_PATH"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          sdkmanager "ndk;$ANDROID_NDK_VERSION" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Check validation tooling
+        run: |
+          bash -n scripts/android/build.sh
+          python3 -m unittest discover -s scripts/android -p 'test_*.py'
+
+      - name: Build APK
+        run: scripts/android/build.sh '${{ matrix.profile }}' '${{ matrix.target }}' --test-signing
+
+      - name: Lint Android library
+        run: rustup run 1.94.1 cargo apk -- clippy --locked --lib --target '${{ matrix.target }}'
+
+      - name: Verify Android dependency isolation
+        shell: bash
+        run: |
+          android_tree="$(rustup run 1.94.1 cargo tree --locked --target '${{ matrix.target }}')"
+          if grep -E '(font-kit|freetype-sys|yeslogic-fontconfig-sys|objc2|block2|core-foundation|core-graphics|core-text|drm) v' <<<"$android_tree"; then
+            echo 'Desktop font/window dependencies leaked into the Android build'
+            exit 1
+          fi
+
+      - name: Start Android 35 emulator
+        if: matrix.target == 'x86_64-linux-android'
+        shell: bash
+        run: |
+          sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
+          echo no | avdmanager create avd --name kokuban-ci --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          sudo chmod 666 /dev/kvm
+          mkdir -p target/android-evidence
+          "$ANDROID_HOME/emulator/emulator" -avd kokuban-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > target/android-evidence/emulator.log 2>&1 &
+          echo "$!" > target/android-evidence/emulator.pid
+
+      - name: Install, run shell and verify lifecycle
+        if: matrix.target == 'x86_64-linux-android'
+        run: python3 scripts/android/smoke.py --apk target/debug/apk/kokuban.apk --serial emulator-5554
+
+      - name: Record idle memory and CPU
+        if: matrix.target == 'x86_64-linux-android'
+        run: python3 scripts/android/measure.py --scenario ci-debug-idle --apk target/debug/apk/kokuban.apk --serial emulator-5554
+
+      - name: Upload APK and device evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-${{ matrix.target }}-${{ matrix.profile }}
+          path: |
+            target/${{ matrix.profile }}/apk/*.apk
+            target/android-evidence/
+          if-no-files-found: warn
+          retention-days: 14
