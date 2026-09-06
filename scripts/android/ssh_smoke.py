@@ -51,6 +51,17 @@ def main():
     user = getpass.getuser()
     results = {"device": device.details(), "checks": [], "status": "incomplete",
                "batch_profile": "debug-opt1", "interactive_profile": "release" if args.upgrade_apk else "debug-opt1"}
+    started = time.monotonic()
+
+    def checkpoint(stage):
+        progress = {"stage": stage, "elapsed_seconds": round(time.monotonic() - started, 3)}
+        results.setdefault("checkpoints", []).append(progress)
+        pending = args.output / "results.json.tmp"
+        pending.write_text(json.dumps(results, indent=2) + "\n")
+        pending.replace(args.output / "results.json")
+        print(f"SSH {results['interactive_profile']}: {stage} ({progress['elapsed_seconds']:.1f}s)", flush=True)
+
+    checkpoint("preparing isolated SSH fixture")
     upgraded = False
     old_auto = device.shell("settings", "get", "system", "accelerometer_rotation")
     old_rotation = device.shell("settings", "get", "system", "user_rotation")
@@ -136,6 +147,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                     if time.monotonic() >= deadline:
                         raise RuntimeError("Ephemeral sshd did not listen")
                     time.sleep(0.2)
+            checkpoint("ephemeral SSH server listening")
             enter('. "$HOME/.kokuban-ssh-ci/checks.sh"')
             eventually(lambda: private_read(f"{app_test}/checks.done"), "DONE", timeout=60)
             for scenario, expected in (("unknown", "unknown host key"), ("changed", "HOST KEY CHANGED")):
@@ -148,6 +160,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             results["checks"].extend(["unknown host rejected in batch", "changed host rejected before command execution", "verified host and client key execute a remote command"])
             results["batch_diagnostics"] = {scenario: private_read(f"{app_test}/{scenario}.log")[:2000]
                                             for scenario in ("unknown", "changed", "success")}
+            checkpoint("host trust rejection and pinned key authentication passed")
             if args.upgrade_apk:
                 device.adb("install", "-r", str(args.upgrade_apk.resolve()), timeout=120)
                 upgraded = True
@@ -158,11 +171,13 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                 if device.shell("sh", "-c", f"run-as {shlex.quote(args.package)} pwd >/dev/null 2>&1; echo $?") == "0":
                     raise AssertionError("Release APK unexpectedly permits run-as")
                 results["release_pid"] = release_pid
+                checkpoint("non-debuggable release upgrade presented a frame")
             enter(f'{ssh} --known-hosts "$HOME/.kokuban-ssh-ci/known_hosts" {connection}')
             time.sleep(2)
             ready = server_root / "interactive-ready"
             enter(f"printf READY > {ready}")
             eventually(lambda: ready.read_text() if ready.exists() else "", "READY")
+            checkpoint("interactive SSH shell accepted a command")
             device.screenshot(args.output / "01-ssh-shell.png")
             before, after = server_root / "size-before", server_root / "size-after"
             enter(f"stty size > {before}")
@@ -176,6 +191,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                 raise AssertionError("Remote PTY dimensions did not change after Android rotation")
             results["remote_pty_sizes"] = {"before": before.read_text().strip(), "after": after.read_text().strip()}
             results["checks"].append("interactive SSH propagates Android PTY resize")
+            checkpoint("remote PTY resize passed")
             device.shell("settings", "put", "system", "user_rotation", "0")
             time.sleep(1)
             enter(f"cd {project}; git init -q; git add .; git -c user.name=KokubanTest -c user.email=test@example.invalid commit -qm initial")
@@ -191,6 +207,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             enter(":wq")
             eventually(lambda: (project / "src/main.rs").read_text().startswith("//edited-on-android\n"), True)
             results["checks"].append("Neovim edits and saves Rust source through Android SSH")
+            checkpoint("Neovim saved the source edit")
             enter("git --no-pager diff")
             time.sleep(1)
             device.screenshot(args.output / "03-git-diff.png")
@@ -206,6 +223,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             device.screenshot(args.output / "04-tmux-panes.png")
             enter("tmux kill-server")
             results["checks"].append("tmux creates two interactive panes and returns to SSH shell")
+            checkpoint("tmux pane scenario passed")
             time.sleep(1)
             chosen = server_root / "chosen"
             enter(f"fzf --no-sort < {server_root / 'choices.txt'} > {chosen}")
@@ -215,6 +233,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             device.shell("input", "keyevent", "KEYCODE_ENTER")
             eventually(lambda: chosen.read_text().strip() if chosen.exists() else "", "beta")
             results["checks"].append("fzf filters and selects beta interactively")
+            checkpoint("fzf selected the expected item")
             build_result = server_root / "build-result"
             rustup = shlex.quote(shutil.which("rustup") or "rustup")
             compiler = subprocess.check_output([shutil.which("rustup") or "rustup", "which", "--toolchain", "1.94.1", "rustc"], text=True).strip()
@@ -224,7 +243,9 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             time.sleep(1)
             device.screenshot(args.output / "06-rust-project.png")
             results["checks"].append("edited Rust project compiles and runs remotely; Git sees the edit")
+            checkpoint("remote Rust build and Git edit passed; starting media")
             results["media"] = run_media_scenarios(device, enter, server_root, args.output / "media", args.serial, args.package)
+            checkpoint("media pixel scenarios passed")
             app_pid = device.pid(args.package)
             clients = [process for process in device.process_tree(app_pid) if process["name"] == "libkokuban_ssh.so"]
             if len(clients) != 1:
@@ -235,6 +256,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             if device.pid(args.package) != app_pid:
                 raise AssertionError("Application process changed while disconnecting SSH")
             results["ssh_exit_observed"] = True
+            checkpoint("packaged SSH process exited; checking local shell")
             # Returning to the local shell must not depend on a new network
             # connection. Only a command entered through the PTY writes this
             # marker; release verification waits until the debug restore below.
