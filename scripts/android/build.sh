@@ -45,7 +45,7 @@ fi
 
 # cargo-apk 0.10.0 does not forward --locked on its build subcommand.
 # Validate/fetch the lock first, build offline, and reject any lockfile drift.
-rustup run 1.94.1 cargo fetch --locked --target "$target"
+rustup run 1.94.1 cargo fetch --locked
 lock_hash="$(python3 -c 'import hashlib; print(hashlib.sha256(open("Cargo.lock", "rb").read()).hexdigest())')"
 build_args=(build --lib --target "$target")
 if [[ "$profile" == release ]]; then build_args+=(--release); fi
