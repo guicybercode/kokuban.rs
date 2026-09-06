@@ -81,15 +81,64 @@ impl TerminalReader {
         )
     }
 
+    /// Start a reader with ordered graphics handling under the grid lock.
+    /// The callback returns an optional PTY reply, written after releasing the lock.
+    pub(crate) fn spawn_with_graphics<G, U, X>(
+        pty: Arc<Pty>,
+        grid: Arc<Mutex<Grid>>,
+        graphics_support: GraphicsSupport,
+        on_graphics: G,
+        on_update: U,
+        on_exit: X,
+    ) -> io::Result<Self>
+    where
+        G: FnMut(TerminalEvent, &mut Grid) -> Result<Option<Vec<u8>>, ReaderExit> + Send + 'static,
+        U: FnMut() + Send + 'static,
+        X: FnOnce(&ReaderExit) + Send + 'static,
+    {
+        Self::spawn_with_graphics_io(
+            pty,
+            grid,
+            graphics_support,
+            on_graphics,
+            on_update,
+            on_exit,
+        )
+    }
+
     fn spawn_with_io<I, U, X>(
         io: Arc<I>,
         grid: Arc<Mutex<Grid>>,
         graphics_support: GraphicsSupport,
+        on_update: U,
+        on_exit: X,
+    ) -> io::Result<Self>
+    where
+        I: ReaderIo,
+        U: FnMut() + Send + 'static,
+        X: FnOnce(&ReaderExit) + Send + 'static,
+    {
+        Self::spawn_with_graphics_io(
+            io,
+            grid,
+            graphics_support,
+            |_, _| Err(ReaderExit::UnexpectedProtocolEvent),
+            on_update,
+            on_exit,
+        )
+    }
+
+    fn spawn_with_graphics_io<I, G, U, X>(
+        io: Arc<I>,
+        grid: Arc<Mutex<Grid>>,
+        graphics_support: GraphicsSupport,
+        mut on_graphics: G,
         mut on_update: U,
         on_exit: X,
     ) -> io::Result<Self>
     where
         I: ReaderIo,
+        G: FnMut(TerminalEvent, &mut Grid) -> Result<Option<Vec<u8>>, ReaderExit> + Send + 'static,
         U: FnMut() + Send + 'static,
         X: FnOnce(&ReaderExit) + Send + 'static,
     {
@@ -104,6 +153,7 @@ impl TerminalReader {
                     grid.as_ref(),
                     worker_shutdown.as_ref(),
                     &mut decoder,
+                    &mut on_graphics,
                     &mut on_update,
                 );
                 on_exit(&exit);
@@ -135,15 +185,17 @@ impl Drop for TerminalReader {
     }
 }
 
-fn run_reader<I, U>(
+fn run_reader<I, G, U>(
     io: &I,
     grid: &Mutex<Grid>,
     shutdown: &AtomicBool,
     decoder: &mut TerminalDecoder,
+    on_graphics: &mut G,
     on_update: &mut U,
 ) -> ReaderExit
 where
     I: ReaderIo,
+    G: FnMut(TerminalEvent, &mut Grid) -> Result<Option<Vec<u8>>, ReaderExit>,
     U: FnMut(),
 {
     let mut buffer = [0u8; READ_BUFFER_SIZE];
@@ -159,7 +211,8 @@ where
             Err(error) => return ReaderExit::WaitFailed(error),
         }
 
-        let (changed, exit) = read_ready_batch(io, grid, shutdown, decoder, &mut buffer);
+        let (changed, exit) =
+            read_ready_batch(io, grid, shutdown, decoder, on_graphics, &mut buffer);
         if changed {
             on_update();
         }
@@ -169,15 +222,17 @@ where
     }
 }
 
-fn read_ready_batch<I>(
+fn read_ready_batch<I, G>(
     io: &I,
     grid: &Mutex<Grid>,
     shutdown: &AtomicBool,
     decoder: &mut TerminalDecoder,
+    on_graphics: &mut G,
     buffer: &mut [u8; READ_BUFFER_SIZE],
 ) -> (bool, Option<ReaderExit>)
 where
     I: ReaderIo,
+    G: FnMut(TerminalEvent, &mut Grid) -> Result<Option<Vec<u8>>, ReaderExit>,
 {
     let mut changed = false;
 
@@ -190,7 +245,9 @@ where
             Ok(0) => return (changed, Some(ReaderExit::Eof)),
             Ok(read) => {
                 changed = true;
-                if let Err(exit) = process_bytes(io, grid, shutdown, decoder, &buffer[..read]) {
+                if let Err(exit) =
+                    process_bytes(io, grid, shutdown, decoder, on_graphics, &buffer[..read])
+                {
                     return (changed, Some(exit));
                 }
             }
@@ -202,15 +259,17 @@ where
     (changed, None)
 }
 
-fn process_bytes<I>(
+fn process_bytes<I, G>(
     io: &I,
     grid: &Mutex<Grid>,
     shutdown: &AtomicBool,
     decoder: &mut TerminalDecoder,
+    on_graphics: &mut G,
     input: &[u8],
 ) -> Result<(), ReaderExit>
 where
     I: ReaderIo,
+    G: FnMut(TerminalEvent, &mut Grid) -> Result<Option<Vec<u8>>, ReaderExit>,
 {
     let mut offset = 0;
     while offset < input.len() {
@@ -218,31 +277,33 @@ where
             return Err(ReaderExit::Shutdown);
         }
 
-        let step = {
+        let (consumed, responses) = {
             let mut grid = grid.lock().map_err(|_| ReaderExit::GridPoisoned)?;
-            decoder.feed_until_event(&input[offset..], &mut grid)
+            let step = decoder.feed_until_event(&input[offset..], &mut grid);
+            let remaining = input.len() - offset;
+            if step.consumed == 0 || step.consumed > remaining {
+                return Err(ReaderExit::DecoderStalled);
+            }
+
+            let mut responses = Vec::new();
+            for event in step.events {
+                let response = match event {
+                    TerminalEvent::Response(response) => Some(response),
+                    graphics_event => on_graphics(graphics_event, &mut grid)?,
+                };
+                if let Some(response) = response {
+                    responses.push(response);
+                }
+            }
+            (step.consumed, responses)
         };
+        offset += consumed;
 
-        let remaining = input.len() - offset;
-        if step.consumed == 0 || step.consumed > remaining {
-            return Err(ReaderExit::DecoderStalled);
-        }
-        offset += step.consumed;
-
-        for event in step.events {
-            match event {
-                TerminalEvent::Response(response) => {
-                    match io.write_all_cancellable(&response, shutdown) {
-                        Ok(CancellableWriteOutcome::Completed) => {}
-                        Ok(CancellableWriteOutcome::Cancelled) => {
-                            return Err(ReaderExit::Shutdown);
-                        }
-                        Err(error) => return Err(ReaderExit::ResponseWriteFailed(error)),
-                    }
-                }
-                TerminalEvent::KittyGraphics { .. } | TerminalEvent::SixelGraphics { .. } => {
-                    return Err(ReaderExit::UnexpectedProtocolEvent);
-                }
+        for response in responses {
+            match io.write_all_cancellable(&response, shutdown) {
+                Ok(CancellableWriteOutcome::Completed) => {}
+                Ok(CancellableWriteOutcome::Cancelled) => return Err(ReaderExit::Shutdown),
+                Err(error) => return Err(ReaderExit::ResponseWriteFailed(error)),
             }
         }
     }
@@ -253,10 +314,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        run_reader, ReaderExit, ReaderIo, TerminalReader, MAX_READS_PER_BATCH, POLL_INTERVAL,
+        run_reader as run_reader_with_graphics, ReaderExit, ReaderIo, TerminalReader,
+        MAX_READS_PER_BATCH, POLL_INTERVAL,
     };
     use crate::grid::cell::Color;
-    use crate::grid::Grid;
+    use crate::grid::{Grid, TerminalEvent};
     use crate::parser::ansi::GraphicsSupport;
     use crate::pty::CancellableWriteOutcome;
     use crate::terminal_decoder::TerminalDecoder;
@@ -448,6 +510,23 @@ mod tests {
         Arc::new(Mutex::new(Grid::new(80, 8, 32)))
     }
 
+    fn run_reader<I: ReaderIo, U: FnMut()>(
+        io: &I,
+        grid: &Mutex<Grid>,
+        shutdown: &AtomicBool,
+        decoder: &mut TerminalDecoder,
+        on_update: &mut U,
+    ) -> ReaderExit {
+        run_reader_with_graphics(
+            io,
+            grid,
+            shutdown,
+            decoder,
+            &mut |_, _| Err(ReaderExit::UnexpectedProtocolEvent),
+            on_update,
+        )
+    }
+
     #[test]
     fn preserves_utf8_and_ansi_state_across_reads() {
         let fake = FakeIo::new(
@@ -497,6 +576,181 @@ mod tests {
         assert!(matches!(exit, ReaderExit::Eof));
         assert_eq!(fake.writes(), [b"\x1b[1;2R".to_vec()]);
         assert_eq!(grid.lock().unwrap().buffer.cell(0, 1).c, 'B');
+    }
+
+    #[test]
+    fn graphics_callbacks_advance_before_later_events_and_write_replies_without_grid_lock() {
+        const KITTY_REPLY: &[u8] = b"\x1b_Gi=7;OK\x1b\\";
+        let grid = grid();
+        let checked_grid = grid.clone();
+        let callback_grid = grid.clone();
+        let fake = FakeIo::new(
+            vec![WaitAction::Ready],
+            vec![
+                ReadAction::Data(
+                    b"\x1b[2;3H\x1bPq~\x1b\\\x1b_Ga=p,i=7\x1b\\\x1b[6nX".to_vec(),
+                ),
+                ReadAction::Eof,
+            ],
+        )
+        .with_write_check(Arc::new(move |response| {
+            assert!(response == KITTY_REPLY || response == b"\x1b[4;5R");
+            let grid = checked_grid
+                .try_lock()
+                .expect("graphics and cursor replies must release the grid lock");
+            assert_eq!((grid.cursor_row, grid.cursor_col), (3, 4));
+            assert_eq!(grid.buffer.cell(3, 4).c, ' ');
+        }));
+        let mut decoder = TerminalDecoder::new(GraphicsSupport {
+            kitty: true,
+            sixel: true,
+        });
+        let mut events = Vec::new();
+        let mut updates = 0;
+
+        let exit = run_reader_with_graphics(
+            &fake,
+            &grid,
+            &AtomicBool::new(false),
+            &mut decoder,
+            &mut |event, grid| {
+                assert!(matches!(
+                    callback_grid.try_lock(),
+                    Err(std::sync::TryLockError::WouldBlock)
+                ));
+                match event {
+                    TerminalEvent::SixelGraphics {
+                        image,
+                        cursor_row,
+                        cursor_col,
+                    } => {
+                        assert_eq!((image.width, image.height), (1, 6));
+                        assert_eq!((cursor_row, cursor_col), (1, 2));
+                        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 2));
+                        grid.newline();
+                        events.push("sixel");
+                        Ok(None)
+                    }
+                    TerminalEvent::KittyGraphics {
+                        command,
+                        cursor_row,
+                        cursor_col,
+                    } => {
+                        assert_eq!(command.image_id, Some(7));
+                        assert_eq!((cursor_row, cursor_col), (2, 2));
+                        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 2));
+                        grid.set_cursor_pos(3, 4);
+                        events.push("kitty");
+                        Ok(Some(KITTY_REPLY.to_vec()))
+                    }
+                    TerminalEvent::Response(_) => panic!("responses bypass the graphics callback"),
+                }
+            },
+            &mut || updates += 1,
+        );
+
+        assert!(matches!(exit, ReaderExit::Eof));
+        assert_eq!(events, ["sixel", "kitty"]);
+        assert_eq!(updates, 1);
+        assert_eq!(fake.writes(), [KITTY_REPLY.to_vec(), b"\x1b[4;5R".to_vec()]);
+        assert_eq!(grid.lock().unwrap().buffer.cell(3, 4).c, 'X');
+    }
+
+    #[test]
+    fn disabled_graphics_skip_callbacks_and_keep_text_and_capability_responses() {
+        let fake = FakeIo::new(
+            vec![WaitAction::Ready],
+            vec![
+                ReadAction::Data(b"\x1bPq~\x1b\\\x1b_Ga=p,i=7\x1b\\X\x1b[c".to_vec()),
+                ReadAction::Eof,
+            ],
+        );
+        let grid = grid();
+        let exit = run_reader_with_graphics(
+            &fake,
+            &grid,
+            &AtomicBool::new(false),
+            &mut text_decoder(),
+            &mut |_, _| panic!("disabled graphics must not reach the callback"),
+            &mut || {},
+        );
+
+        assert!(matches!(exit, ReaderExit::Eof));
+        assert_eq!(fake.writes(), [b"\x1b[?62;22c".to_vec()]);
+        assert_eq!(grid.lock().unwrap().buffer.cell(0, 0).c, 'X');
+    }
+
+    #[test]
+    fn graphics_callback_error_stops_before_trailing_text_and_releases_grid() {
+        let fake = FakeIo::new(
+            vec![WaitAction::Ready],
+            vec![ReadAction::Data(b"\x1bPq~\x1b\\X".to_vec())],
+        );
+        let grid = grid();
+        let mut decoder = TerminalDecoder::new(GraphicsSupport {
+            kitty: false,
+            sixel: true,
+        });
+        let mut updates = 0;
+
+        let exit = run_reader_with_graphics(
+            &fake,
+            &grid,
+            &AtomicBool::new(false),
+            &mut decoder,
+            &mut |_, _| Err(ReaderExit::GridPoisoned),
+            &mut || updates += 1,
+        );
+
+        assert!(matches!(exit, ReaderExit::GridPoisoned));
+        assert_eq!(updates, 1);
+        assert!(fake.writes().is_empty());
+        assert_eq!(grid.try_lock().unwrap().buffer.cell(0, 0).c, ' ');
+    }
+
+    #[test]
+    fn graphics_reply_cancellation_or_failure_stops_before_trailing_text() {
+        for cancelled in [true, false] {
+            let fake = FakeIo::new(
+                vec![WaitAction::Ready],
+                vec![ReadAction::Data(b"\x1b_Ga=p,i=7\x1b\\X".to_vec())],
+            );
+            let fake = if cancelled {
+                fake.with_cancelled_response_write()
+            } else {
+                fake.with_write_error(libc::EPIPE)
+            };
+            let grid = grid();
+            let shutdown = AtomicBool::new(false);
+            let mut decoder = TerminalDecoder::new(GraphicsSupport {
+                kitty: true,
+                sixel: false,
+            });
+
+            let exit = run_reader_with_graphics(
+                &fake,
+                &grid,
+                &shutdown,
+                &mut decoder,
+                &mut |_, grid| {
+                    grid.newline();
+                    Ok(Some(b"\x1b_Gi=7;OK\x1b\\".to_vec()))
+                },
+                &mut || {},
+            );
+
+            if cancelled {
+                assert!(matches!(exit, ReaderExit::Shutdown));
+                assert!(shutdown.load(Ordering::Acquire));
+            } else {
+                assert!(matches!(exit, ReaderExit::ResponseWriteFailed(error)
+                    if error.raw_os_error() == Some(libc::EPIPE)));
+            }
+            assert!(fake.writes().is_empty());
+            let grid = grid.try_lock().unwrap();
+            assert_eq!(grid.cursor_row, 1);
+            assert_eq!(grid.buffer.cell(1, 0).c, ' ');
+        }
     }
 
     #[test]
