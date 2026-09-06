@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::image_animation::{
-    Animation, AnimationError, AnimationUpdate, MAX_FRAMES_PER_IMAGE, MAX_RETAINED_FRAMES,
+    pixels_are_opaque, Animation, AnimationError, AnimationUpdate, MAX_FRAMES_PER_IMAGE,
+    MAX_RETAINED_FRAMES,
 };
 use super::image_decode::prepare_image;
 pub use super::image_decode::ImageFormat;
@@ -18,6 +19,8 @@ pub struct StoredImage {
     pub pixels: Arc<[u8]>,
     pub width: u32,
     pub height: u32,
+    /// All pixels of the currently displayed canvas have alpha 255.
+    pub opaque: bool,
 }
 
 /// CPU images shared with the software renderer without copying pixel buffers.
@@ -58,9 +61,11 @@ impl ImageStore {
         if requested_id == Some(0) || self.max_images == 0 {
             return None;
         }
+        let known_opaque = matches!(format, ImageFormat::Rgb);
         let (pixels, width, height) = prepare_image(data, width, height, format, self.max_bytes)?;
         let byte_size = pixels.len();
         let retained_budget = self.max_bytes.checked_sub(byte_size)?;
+        let opaque = known_opaque || pixels_are_opaque(&pixels);
         let pixels = Arc::from(pixels);
         let id = requested_id.unwrap_or_else(|| self.next_id());
         if id >= self.next_id {
@@ -83,6 +88,7 @@ impl ImageStore {
                 pixels,
                 width,
                 height,
+                opaque,
             },
         );
         self.insertion_order.push_back(id);
@@ -173,10 +179,9 @@ impl ImageStore {
         }
         let animation = self.animations.get_mut(&id).expect("root exists");
         animation.commit_upload(index, frame, now);
-        self.images
-            .get_mut(&id)
-            .expect("root is not evicted")
-            .pixels = Arc::clone(animation.active_pixels());
+        let image = self.images.get_mut(&id).expect("root is not evicted");
+        image.pixels = Arc::clone(animation.active_pixels());
+        image.opaque = animation.active_opaque();
         self.total_bytes += extra_bytes;
         self.retained_frames += extra_frames;
         debug_assert!(self.total_bytes <= self.max_bytes);
@@ -197,10 +202,12 @@ impl ImageStore {
         if let Some(animation) = self.animations.get_mut(&id) {
             animation.control(params, now)?;
             image.pixels = Arc::clone(animation.active_pixels());
+            image.opaque = animation.active_opaque();
         } else {
             let mut animation = Animation::new(Arc::clone(&image.pixels), now);
             animation.control(params, now)?;
             image.pixels = Arc::clone(animation.active_pixels());
+            image.opaque = animation.active_opaque();
             self.animations.insert(id, animation);
         }
         Ok(())
@@ -221,12 +228,14 @@ impl ImageStore {
                 animation.prepare_composition(params, image.width, image.height)?;
             animation.commit_composition(index, pixels, now);
             image.pixels = Arc::clone(animation.active_pixels());
+            image.opaque = animation.active_opaque();
         } else {
             let mut animation = Animation::new(Arc::clone(&image.pixels), now);
             let (index, pixels) =
                 animation.prepare_composition(params, image.width, image.height)?;
             animation.commit_composition(index, pixels, now);
             image.pixels = Arc::clone(animation.active_pixels());
+            image.opaque = animation.active_opaque();
             self.animations.insert(id, animation);
         }
         Ok(())
@@ -259,6 +268,7 @@ impl ImageStore {
             .expect("multiple frames require animation");
         animation.delete_frame(frame, now);
         image.pixels = Arc::clone(animation.active_pixels());
+        image.opaque = animation.active_opaque();
         self.total_bytes -= image.pixels.len();
         self.retained_frames -= 1;
         Ok(())
@@ -290,6 +300,7 @@ impl ImageStore {
                 .expect("animations belong to retained images");
             if !Arc::ptr_eq(&image.pixels, animation.active_pixels()) {
                 image.pixels = Arc::clone(animation.active_pixels());
+                image.opaque = animation.active_opaque();
                 update.changed = true;
             }
         }
@@ -384,6 +395,218 @@ mod tests {
             &KittyFrameUpload::default(),
             now,
         )
+    }
+
+    #[test]
+    fn opacity_tracks_decoded_pixels_and_the_frame_selected_by_the_clock() {
+        let now = Instant::now();
+        let mut store = limited_store(16);
+        store
+            .store(&[10, 20, 30], 1, 1, ImageFormat::Rgb, Some(1))
+            .unwrap();
+        assert!(
+            store.get(1).unwrap().opaque,
+            "RGB conversion creates an opaque canvas"
+        );
+        store
+            .store_animation_frame(
+                1,
+                &[90, 80, 70, 128],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload {
+                    gap_ms: Some(10),
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        assert!(
+            store.get(1).unwrap().opaque,
+            "appending a frame does not change stopped playback"
+        );
+        store
+            .control_animation(
+                1,
+                &KittyAnimationControl {
+                    state: Some(KittyAnimationState::Running),
+                    gap_ms: Some(10),
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        let visible = HashSet::from([1]);
+        assert!(
+            store
+                .advance_animations(now + Duration::from_millis(10), &visible)
+                .changed
+        );
+        assert!(!store.get(1).unwrap().opaque);
+        assert_eq!(store.get(1).unwrap().pixels[3], 128);
+        assert!(
+            store
+                .advance_animations(now + Duration::from_millis(20), &visible)
+                .changed
+        );
+        assert!(store.get(1).unwrap().opaque);
+        assert_eq!(store.get(1).unwrap().pixels[3], 255);
+    }
+
+    #[test]
+    fn opacity_is_recomputed_after_frame_edits_composition_deletion_and_replacement() {
+        let now = Instant::now();
+        let mut store = limited_store(12);
+        insert_pixel(&mut store, 1);
+        store
+            .store_animation_frame(
+                1,
+                &[10, 20, 30, 0],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload::default(),
+                now,
+            )
+            .unwrap();
+        store
+            .control_animation(
+                1,
+                &KittyAnimationControl {
+                    current_frame: NonZeroU32::new(2),
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        assert!(!store.get(1).unwrap().opaque);
+        store
+            .compose_animation_frame(
+                1,
+                &KittyFrameComposition {
+                    source_frame: 1,
+                    destination_frame: 2,
+                    blend: KittyBlendMode::Overwrite,
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        assert!(store.get(1).unwrap().opaque);
+        store
+            .store_animation_frame(
+                1,
+                &[10, 20, 30, 0],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload {
+                    edit_frame: NonZeroU32::new(2),
+                    blend: KittyBlendMode::Overwrite,
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        assert!(!store.get(1).unwrap().opaque);
+        store.delete_animation_frame(1, 1, false, now).unwrap();
+        assert!(
+            !store.get(1).unwrap().opaque,
+            "root promotion retains the promoted frame's transparency"
+        );
+        assert!(store
+            .store_animation_frame(
+                1,
+                &[255; 4],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload {
+                    base_frame: NonZeroU32::new(9),
+                    ..Default::default()
+                },
+                now
+            )
+            .is_err());
+        assert!(
+            !store.get(1).unwrap().opaque,
+            "rejected uploads cannot change opacity metadata"
+        );
+        store
+            .store(&[10, 20, 30], 1, 1, ImageFormat::Rgb, Some(1))
+            .unwrap();
+        assert!(store.get(1).unwrap().opaque);
+    }
+
+    #[test]
+    fn delta_opacity_accounts_for_background_pixels_and_alpha_composition() {
+        let now = Instant::now();
+        let mut store = limited_store(24);
+        store
+            .store(
+                &[10, 20, 30, 255, 40, 50, 60, 255],
+                2,
+                1,
+                ImageFormat::Rgba,
+                Some(1),
+            )
+            .unwrap();
+        store
+            .store_animation_frame(
+                1,
+                &[255; 4],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload::default(),
+                now,
+            )
+            .unwrap();
+        store
+            .control_animation(
+                1,
+                &KittyAnimationControl {
+                    current_frame: NonZeroU32::new(2),
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        assert!(
+            !store.get(1).unwrap().opaque,
+            "unfilled delta canvas pixels are transparent"
+        );
+        store
+            .store_animation_frame(
+                1,
+                &[90, 80, 70, 128],
+                1,
+                1,
+                ImageFormat::Rgba,
+                &KittyFrameUpload {
+                    base_frame: NonZeroU32::new(1),
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        store
+            .control_animation(
+                1,
+                &KittyAnimationControl {
+                    current_frame: NonZeroU32::new(3),
+                    ..Default::default()
+                },
+                now,
+            )
+            .unwrap();
+        assert!(
+            store.get(1).unwrap().opaque,
+            "alpha compositing over an opaque base remains opaque"
+        );
+        assert_eq!(store.get(1).unwrap().pixels[3], 255);
+        assert_eq!(store.get(1).unwrap().pixels[7], 255);
     }
 
     #[test]
