@@ -30,6 +30,8 @@ import time
 from typing import Any, Callable, Optional
 import zlib
 
+from linux_clear_fixture import observe_clear, remote_clear
+
 
 EDITOR_TEXT = "kokuban ssh café"
 HOST_ALIAS = "kokuban-ci-host"
@@ -116,6 +118,8 @@ def remote_driver(directory: Path) -> None:
         record(directory, "interrupted.json", True)
     else:
         raise AssertionError("Ctrl-C did not interrupt the remote foreground program")
+
+    remote_clear(directory)
 
     # VimEnter and TextChangedI are application observations, not timer guesses.
     init = directory / "nvim-init.vim"
@@ -344,6 +348,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
     (directory / "kokuban.toml").write_text(
         '[font]\nfamily = "DejaVu Sans Mono"\nsize = 14.0\n'
         '[window]\ncolumns = 80\nrows = 24\n'
+        '[colors]\nbackground = "#1a1a2e"\n'
     )
     environment = os.environ.copy()
     for name in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XDG_RUNTIME_DIR", "KOKUBAN_EXIT_AFTER_FIRST_FRAME"):
@@ -385,6 +390,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
             )
             key("ctrl+c")
             wait_for("remote Ctrl-C", lambda: read_json(directory / "interrupted.json"), processes)
+            observe_clear(directory, window, processes, run, wait_for, read_json, type_text, key)
 
             wait_for("Neovim UI", lambda: (directory / "nvim-ready").exists(), processes)
             type_text("i" + EDITOR_TEXT)
@@ -455,7 +461,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
 def check(binary: Path, artifacts: Optional[Path]) -> None:
     if sys.platform != "linux" or os.geteuid() == 0:
         raise SystemExit("run this fixture as an ordinary Linux user under Xvfb")
-    required = ("ssh", "ssh-keygen", "sshd", "xdotool", "xmodmap", "xwd", "nvim", "fzf", "tmux")
+    required = ("ssh", "ssh-keygen", "sshd", "xdotool", "xmodmap", "xwd", "nvim", "fzf", "tmux", "clear", "infocmp")
     missing = [name for name in required if shutil.which(name) is None]
     if missing:
         raise SystemExit("missing test programs: " + ", ".join(missing))
@@ -496,7 +502,7 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
                     exercise_window(directory, port, binary, daemon)
             print(
                 "PASS Linux SSH: wrong host key rejected; pinned-key authentication; "
-                "window input; remote PTY resize; Ctrl-C; Neovim Unicode save; "
+                "window input; remote PTY resize; Ctrl-C; real clear removes visible history/images; Neovim Unicode save; "
                 "fzf beta; tmux split; clean disconnect",
                 flush=True,
             )
@@ -513,7 +519,10 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
                 for name in ("terminal.log", "sshd.log", "host-key-rejection.log", "versions.json",
                              "remote-ready.json", "remote-resize.json", "input.json", "interrupted.json",
                              "tmux-panes.json", "session-result.json", "editor.txt", "fzf-result", "tmux-result",
-                             "neovim.png", "fzf.png", "tmux.png", "failure.png", "nvim-ready", "nvim-inserted"):
+                             "neovim.png", "fzf.png", "tmux.png", "failure.png", "nvim-ready", "nvim-inserted",
+                             "clear-metadata.json", "clear-terminfo.txt", "clear.bin", "clear-result.json",
+                             "clear-input.json", "clear-before.png", "clear-history-before.png",
+                             "clear-after.png", "clear-history-after.png", "clear-history-failure.png"):
                     if (directory / name).is_file():
                         shutil.copyfile(directory / name, artifacts / name)
 
