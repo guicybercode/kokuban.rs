@@ -639,7 +639,7 @@ impl Parser {
         let namespace = self.intermediates.as_slice();
         match namespace {
             [] => {}
-            [b'?'] if matches!(final_byte, b'h' | b'l') => {}
+            [b'?'] if matches!(final_byte, b'h' | b'l' | b'n') => {}
             [b'?', b'$'] if final_byte == b'p' => {}
             [b'>'] if matches!(final_byte, b'c' | b'q') => {}
             [b' '] if final_byte == b'q' => {}
@@ -757,10 +757,13 @@ impl Parser {
             // Device status report
             b'n' => {
                 let ps = params.first().copied().unwrap_or(0);
-                if ps == 6 {
+                if ps == 5 && !has_question {
+                    grid.queue_response(b"\x1b[0n".to_vec());
+                } else if ps == 6 {
                     // Cursor position report
                     let cursor_col = grid.screen_cursor_col().unwrap_or(grid.cols() - 1);
-                    let resp = format!("\x1b[{};{}R", grid.cursor_row + 1, cursor_col + 1);
+                    let private = if has_question { "?" } else { "" };
+                    let resp = format!("\x1b[{private}{};{}R", grid.cursor_row + 1, cursor_col + 1);
                     grid.queue_response(resp.into_bytes());
                 }
             }
@@ -1140,6 +1143,23 @@ mod tests {
 
     fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
         Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
+    }
+
+    #[test]
+    fn responds_to_standard_status_and_private_cursor_probes() {
+        let stream = b"\x1b[3;5H\x1b[5n\x1b[?6n\x1b[6n\x1b[?5n";
+        for split in 0..=stream.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            parser.feed(&stream[..split], &mut grid);
+            parser.feed(&stream[split..], &mut grid);
+            let responses: Vec<_> = grid.drain_terminal_events().into_iter().map(|event| {
+                let TerminalEvent::Response(bytes) = event else { panic!("expected response") };
+                bytes
+            }).collect();
+            assert_eq!(responses, [b"\x1b[0n".to_vec(), b"\x1b[?3;5R".to_vec(), b"\x1b[3;5R".to_vec()]);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (2, 4));
+        }
     }
 
     #[test]
@@ -1909,7 +1929,7 @@ mod tests {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
 
-        parser.feed(b"\x1b[?31mA\x1b[>4hB\x1b[?6nC", &mut grid);
+        parser.feed(b"\x1b[?31mA\x1b[>4hB\x1b[?5nC", &mut grid);
 
         assert_eq!(row_prefix(&grid, 4), "ABC ");
         assert_eq!(grid.fg, Color::Default);
