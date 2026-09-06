@@ -1,0 +1,64 @@
+{
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "status": "passed",
+  "checks": [
+    {
+      "name": "toolbar",
+      "expected_hex": "1b091b5b441b5b421b5b411b5b431b5b313b35441b5b441b5b357e1b5b367e1b5b481b5b461b5b327e1b5b337e",
+      "actual_hex": "1b091b5b441b5b421b5b411b5b431b5b313b35441b5b441b5b357e1b5b367e1b5b481b5b461b5b327e1b5b337e",
+      "status": "passed"
+    },
+    {
+      "name": "keyboard",
+      "expected_hex": "1b5b481b5b461b5b357e1b5b367e1b5b327e1b5b337e7f091b1b5b441b5b421b5b411b5b431b4f501b4f511b4f521b4f531b5b31357e1b5b31377e1b5b31387e1b5b31397e1b5b32307e1b5b32317e1b5b32337e1b5b32347e0d",
+      "actual_hex": "1b5b481b5b461b5b357e1b5b367e1b5b327e1b5b337e7f091b1b5b441b5b421b5b411b5b431b4f501b4f511b4f521b4f531b5b31357e1b5b31377e1b5b31387e1b5b31397e1b5b32307e1b5b32317e1b5b32337e1b5b32347e0d",
+      "status": "passed"
+    },
+    {
+      "name": "escape_ime",
+      "expected_hex": "1b",
+      "actual_hex": "1b",
+      "status": "passed"
+    },
+    {
+      "name": "clipboard",
+      "expected_hex": "4b4f4b5542414e2d434f50592d3432",
+      "actual_hex": "4b4f4b5542414e2d434f50592d3432",
+      "status": "passed"
+    },
+    {
+      "name": "touch scroll",
+      "status": "passed",
+      "evidence": "presented scroll offset increased, then returned to zero; IME stayed hidden"
+    },
+    {
+      "name": "mouse",
+      "expected_hex": "1b5b3c303b333b334d1b5b3c303b333b336d",
+      "actual_hex": "1b5b3c303b333b334d1b5b3c303b333b336d",
+      "status": "passed"
+    },
+    {
+      "name": "modifiers",
+      "expected_hex": "011b5b5a1b781b5b313b3641",
+      "actual_hex": "011b5b5a1b781b5b313b3641",
+      "status": "passed"
+    }
+  ],
+  "input_source": "Android input shell injection",
+  "physical_usb": "not exercised",
+  "mouse": "Android SOURCE_MOUSE press/release produced exact SGR PTY events; no USB device used",
+  "external_modifiers": "Android key combinations produced Ctrl, Shift and Alt sequences; no USB device used",
+  "scroll_offset_after_drag": 22,
+  "source_run": 34006719596,
+  "source_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596",
+  "source_head_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+  "artifact_id": 9981336493,
+  "apk_provenance": "debug-apk-provenance.json"
+}

@@ -1,0 +1,176 @@
+name: Android input checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Android run with a published x86_64 debug APK (may still be running)
+        required: true
+        type: string
+        default: '34026733947'
+      suite:
+        description: Input scenarios to execute against that APK
+        required: true
+        type: choice
+        default: all
+        options: [ime, controls, all]
+  # Dispatch requires this workflow to exist on the default branch first.
+  # Push paths inspect the new commit rather than the PR's cumulative diff,
+  # so unrelated documentation pushes do not repeat an identical input test.
+  push:
+    branches: [codex/android-native]
+    paths:
+      - .github/workflows/android-input.yml
+      - scripts/android/ime_smoke.py
+      - scripts/android/test_ime_smoke.py
+      - scripts/android/controls_smoke.py
+      - scripts/android/test_controls_smoke.py
+      - scripts/android/device.py
+      - scripts/android/launch.py
+      - scripts/android/smoke.py
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: android-input-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  input:
+    name: Current input scripts against a recorded prebuilt APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_RUN: ${{ inputs.source_run || '34026733947' }}
+      INPUT_SUITE: ${{ inputs.suite || 'all' }}
+    steps:
+      - name: Check out current validation scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download and identify the prebuilt APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[1-9][0-9]*$ ]] || { echo 'source_run must be a positive numeric workflow run ID'; exit 1; }
+          case "$INPUT_SUITE" in ime|controls|all) ;; *) echo 'Invalid input suite'; exit 1 ;; esac
+          mkdir -p target/android-evidence
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > target/android-evidence/apk-source-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts" > target/android-evidence/apk-source-artifacts.json
+          source_artifact="$(python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          artifacts = json.loads(Path('target/android-evidence/apk-source-artifacts.json').read_text())['artifacts']
+          available = [item for item in artifacts if not item['expired']]
+          early = [item for item in available if re.fullmatch(r'android-x86_64-debug-apk-[0-9]+', item['name'])]
+          if early:
+              print(max(early, key=lambda item: item['created_at'])['name'])
+          elif any(item['name'] == 'android-x86_64-linux-android-debug' for item in available):
+              print('android-x86_64-linux-android-debug')
+          else:
+              raise SystemExit('No published debug APK found in source_run; wait for its APK upload or select a completed run')
+          PY
+          )"
+          export APK_SOURCE_ARTIFACT="$source_artifact"
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "$source_artifact" --dir target/prebuilt-android
+          test -f target/prebuilt-android/debug/apk/kokuban.apk
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          evidence = Path('target/android-evidence')
+          source = json.loads((evidence / 'apk-source-run.json').read_text())
+          apk = Path('target/prebuilt-android/debug/apk/kokuban.apk')
+          result = {
+              'apk_source_run': int(os.environ['SOURCE_RUN']),
+              'apk_source_commit': source['head_sha'],
+              'apk_source_url': source['html_url'],
+              'apk_source_artifact': os.environ['APK_SOURCE_ARTIFACT'],
+              'source_run_status_at_download': source['status'],
+              'source_run_conclusion_at_download': source['conclusion'],
+              'apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'apk_bytes': apk.stat().st_size,
+              'scripts_checkout_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'suite': os.environ['INPUT_SUITE'],
+              'scope': 'Current Python input scripts against the recorded prebuilt APK; not a build or validation of the current application sources.',
+          }
+          build_provenance = Path('target/prebuilt-android/android-evidence/apk-provenance.json')
+          if build_provenance.exists():
+              result['prebuilt_build_provenance'] = json.loads(build_provenance.read_text())
+              if result['prebuilt_build_provenance']['apk_sha256'] != result['apk_sha256']:
+                  raise SystemExit('Downloaded APK does not match its published build provenance')
+          (evidence / 'provenance.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result, indent=2))
+          PY
+
+      - name: Check the input validation scripts
+        run: |
+          python3 -m unittest discover -s scripts/android -p 'test_ime_smoke.py'
+          python3 -m unittest discover -s scripts/android -p 'test_controls_smoke.py'
+          python3 -m unittest discover -s scripts/android -p 'test_launch.py'
+
+      - name: Start isolated Android 35 emulator
+        id: emulator
+        shell: bash
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/kokuban-input-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name kokuban-input --path "$ANDROID_AVD_HOME/kokuban-input.avd" --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx kokuban-input
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd kokuban-input -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > target/android-evidence/emulator.log 2>&1 &
+          PYTHONPATH=scripts/android python3 - <<'PY'
+          from device import Device
+          device = Device('emulator-5554')
+          device.wait_boot()
+          device.shell('input', 'keyevent', 'KEYCODE_WAKEUP')
+          device.shell('input', 'keyevent', 'KEYCODE_MENU')
+          PY
+          python3 scripts/android/launch.py --serial emulator-5554 --apk target/prebuilt-android/debug/apk/kokuban.apk
+
+      - name: Capture host and device state after emulator launch failure
+        if: ${{ !cancelled() && steps.emulator.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/launch/host-diagnostics
+
+      - name: Verify real IME composition
+        id: ime
+        if: env.INPUT_SUITE == 'ime' || env.INPUT_SUITE == 'all'
+        run: python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
+
+      - name: Capture host and device state after ime failure
+        if: ${{ !cancelled() && steps.ime.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/ime/host-diagnostics
+
+      - name: Publish IME evidence immediately
+        if: ${{ !cancelled() && steps.emulator.outcome == 'success' && (env.INPUT_SUITE == 'ime' || env.INPUT_SUITE == 'all') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-input-ime-${{ github.run_attempt }}
+          path: |
+            target/android-evidence/ime/
+            target/android-evidence/provenance.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verify controls and injected keyboard and mouse input
+        id: controls
+        if: ${{ !cancelled() && steps.emulator.outcome == 'success' && (env.INPUT_SUITE == 'controls' || env.INPUT_SUITE == 'all') }}
+        run: python3 scripts/android/controls_smoke.py --serial emulator-5554
+
+      - name: Capture host and device state after controls failure
+        if: ${{ !cancelled() && steps.controls.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/controls/host-diagnostics
+
+      - name: Publish input results and device diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-input-diagnostics-${{ github.run_attempt }}
+          path: target/android-evidence/
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,25 @@
+{
+  "source_head_commit": "8b0abef2b8b06989877a375400eca0235d2bb902",
+  "runs": [
+    34026733983,
+    34026731745
+  ],
+  "linux_tests_passed": 622,
+  "macos_tests_passed": 524,
+  "failed": 0,
+  "ignored": 0,
+  "scope": "Counts per platform; duplicate push/PR runs are not added together.",
+  "gates": [
+    "all-target check",
+    "all-target tests",
+    "Clippy",
+    "dependency isolation",
+    "Linux missing-display handling",
+    "Linux Xvfb first frame at scales 1 and 2",
+    "Kitty/Sixel enabled and disabled",
+    "native animation",
+    "clipboard and selection",
+    "mpv pause and resume",
+    "SSH development applications"
+  ]
+}

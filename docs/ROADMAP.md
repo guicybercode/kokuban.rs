@@ -4,6 +4,14 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Android na branch de integração
+
+A branch `codex/android-native`, PR [#8](https://github.com/guicybercode/kokuban.rs/pull/8), entregou o APK NativeActivity com PTY/shell Android, fontes Rust, IME/toque, clipboard e cliente SSH. A matriz completa de `8b0abef` passou no [emulador Android 15/API 35 x86_64](https://github.com/guicybercode/kokuban.rs/actions/runs/34026733947): lifecycle, composição real Gboard com bytes exatos, sete cenários de controles, SSH/resize e aplicações, foto, Sixel, animação nativa, camadas Kitty e vídeo H.264 silencioso. O fallback CFF2 desenha por glifo e teve confirmação visual. O CI de regressão passou 622 testes Linux e 524 macOS.
+
+APK ARM64 release: 2.609.645 bytes (2,49 MiB), compilado/verificado. No release x86_64, o repouso usou PSS do app de 26.181→30.313 KiB e 0,2% de um núcleo, sem novos quadros; a mediana do cenário de eco foi 40,38 ms. A primeira composição CJK em debug opt1 registrou 39,88→83,09 MiB de PSS. [APK, dados brutos, perfis e limites](ANDROID.md) distinguem essas amostras. Fontes sem shaping complexo/emoji colorido, vídeo sem áudio, ferramentas no host SSH e ausência de teste em telefone/periférico USB físico permanecem limitações documentadas.
+
+Os merges normais `3775e6a` e `5638fab` preservam a base Linux até `46e74fb`. A implementação e a evidência estão prontas para revisão pelo PR; sua publicação na branch não significa que o PR já foi integrado na `main`.
+
 ## Primeira medição Linux release em 2026-09-05
 
 O código `29ac690`, publicado na `main`, passou no [workflow de medição](https://github.com/guicybercode/kokuban.rs/actions/runs/34005940902) e no [CI completo](https://github.com/guicybercode/kokuban.rs/actions/runs/34005916270), com **582 testes Linux e 484 macOS**. O executável release sem strip adicional ficou em 7,98 MiB; o repouso usou 11,93 MiB de RSS. A saída de 2,5 MiB foi processada com resposta final em 0,126 s, retendo 27,73 MiB após preencher o histórico. O vídeo 320×180 apresentou os 72 quadros e usou 8,75% de um núcleo do terminal, com RSS máximo amostrado de 28,70 MiB.
@@ -42,7 +50,7 @@ O código `ab40737`, integrado e publicado na `main`, passou no [CI Linux/macOS]
 
 O teste visual usa uma sequência sintética compatível com o formato do icat; não executou o binário icat nem mediu desempenho. A reprodução nativa foi comprovada no Linux/X11. Vídeo geral, áudio, experiência Wayland, SSH e aplicações reais, clipboard/seleção Linux e consumo de recursos continuam exigindo trabalho e evidência. Metal retorna `ENOTSUP` para animação.
 
-A segunda sessão está ativa na worktree `../kokuban-android`, branch `codex/android-native`; nela já há commits de aplicação, gráficos, entrada e SSH Android. Esses commits ainda não foram integrados nesta `main` nem validados aqui em dispositivo. A sessão Android deve incorporar o novo módulo e o agendamento descritos no contrato antes de comprovar animação no aplicativo.
+A segunda sessão está ativa na worktree `../kokuban-android`, branch `codex/android-native`; nela já há commits de aplicação, gráficos, entrada e SSH Android. Esses commits ainda não foram integrados nesta `main` nem validados aqui em dispositivo. A integração e a evidência Android posteriores estão registradas na seção da branch acima.
 
 ## Primeira validação de imagens em 2026-09-05
 

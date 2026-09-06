@@ -44,7 +44,7 @@ impl ClientImageRegistry {
         self.by_client_id.get(&client_id).copied()
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     pub(crate) fn image_client_ids(&self) -> impl Iterator<Item = (ImageId, KittyImageId)> + '_ {
         self.by_client_id
             .iter()

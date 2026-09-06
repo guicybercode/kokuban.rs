@@ -10,12 +10,12 @@ An Ubuntu/Xvfb release run measured a 7.98 MiB executable and 11.93 MiB idle RSS
 
 ## Features
 
-- **Native rendering**: Metal GPU renderer on macOS; software rasterizer with winit + softbuffer on Linux
+- **Native rendering**: Metal GPU renderer on macOS; software rasterizer with winit + softbuffer on Linux and Android
 - **Built-in parser**: VT/ANSI escape sequence parser with support for complex SGR modes (faint, conceal, styled underlines)
-- **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux also supports native Kitty animation with a bounded CPU cache
+- **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS, Linux and Android; Linux and Android also support native Kitty animation with a bounded CPU cache
 - **Pane management (macOS)**: Split windows vertically or horizontally, navigate with vim-style keybinds
 - **Zoom (macOS)**: Dynamic font size adjustment per session
-- **Selection and clipboard**: Mouse-driven selection on macOS and Linux; Linux copy/paste shortcuts with an asynchronous system clipboard
+- **Selection and clipboard**: Mouse-driven selection on macOS and Linux; Linux copy/paste shortcuts with an asynchronous system clipboard; Android touch selection, copy/paste and accessible controls
 - **Status bar (macOS)**: Shows shell, working directory, and pane index
 - **Prompt marks (macOS)**: Visual indicators for command boundaries with navigation shortcuts
 - **Configuration**: TOML-based config file with font, color, and keybind customization
@@ -24,8 +24,9 @@ An Ubuntu/Xvfb release run measured a 7.98 MiB executable and 11.93 MiB idle RSS
 
 - **macOS**: Metal GPU renderer (11.0+)
 - **Linux**: Software rasterizer with X11/Wayland via winit
+- **Android**: NativeActivity APK, ARM64 release build and Android 15 x86_64 emulator validation, real IME and packaged SSH. See [build, APK and evidence](docs/ANDROID.md).
 
-Android APK builds and emulator validation are being developed on the separate `codex/android-native` branch; Android is not yet integrated into `main`. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md), [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md) and [second-session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and evidence.
+Windows is not supported. The crate will fail to compile on unsupported platforms. The [delivery roadmap](docs/ROADMAP.md) records validated scenarios and remaining platform limitations.
 
 ## Installation
 
@@ -181,7 +182,7 @@ All keybinds are customizable via the configuration file.
 
 ## Development Status
 
-Kokuban is in active development (v0.1.0). Compatibility with development applications and Android usability still require implementation and runtime validation. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
+Kokuban is in active development (v0.1.0). Validated development applications, media scenarios and Android input are recorded in the [roadmap](docs/ROADMAP.md). [Android](docs/ANDROID.md) and [Linux](docs/LINUX_PERFORMANCE.md) reports preserve measured resource use and limits. The application logic is Rust, with native APIs, an Android Java bridge and documented FFI dependencies; emulator results do not establish battery use or performance on every device.
 
 ## Project Name
 

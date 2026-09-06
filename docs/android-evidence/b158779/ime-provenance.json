@@ -1,0 +1,43 @@
+{
+  "apk_source_run": 34006719596,
+  "apk_source_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+  "apk_source_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596",
+  "apk_source_artifact": "android-x86_64-debug-apk-1",
+  "source_run_status_at_download": "completed",
+  "source_run_conclusion_at_download": "failure",
+  "apk_sha256": "ca2c8782bfaae8ec6cfd63f08801c2032bdd2d4f9148fc56bb3b83fecc023d19",
+  "apk_bytes": 5734887,
+  "scripts_checkout_commit": "1bdb18d0c5240ead587987199e749fb58fa83d81",
+  "suite": "all",
+  "scope": "Current Python input scripts against the recorded prebuilt APK; not a build or validation of the current application sources.",
+  "prebuilt_build_provenance": {
+    "source_run": 34006719596,
+    "source_attempt": 1,
+    "source_head_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+    "checkout_commit": "aca1a99d037a5d645e9c77f05b0172cb0a1e6e92",
+    "target": "x86_64-linux-android",
+    "profile": "debug-opt1",
+    "apk_sha256": "ca2c8782bfaae8ec6cfd63f08801c2032bdd2d4f9148fc56bb3b83fecc023d19",
+    "apk_bytes": 5734887,
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "completed_gates": [
+      "APK build and signing verification",
+      "16 KiB ELF alignment",
+      "Android clippy",
+      "Android dependency isolation"
+    ],
+    "device_validation": "Not completed when this early artifact was published; inspect the full run for device results.",
+    "native_libraries": [
+      {
+        "path": "lib/x86_64/libkokuban.so",
+        "bytes": 3647904,
+        "zip_bytes": 3647904
+      },
+      {
+        "path": "lib/x86_64/libkokuban_ssh.so",
+        "bytes": 6148544,
+        "zip_bytes": 2055213
+      }
+    ]
+  }
+}

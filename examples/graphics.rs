@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 kitty_upload(&mut output, "a=f,f=100,i=42,z=40,q=2", &pattern(frame)?)?;
             }
             // The terminal owns playback after this process exits (three loops).
-            output.write_all(b"\x1b_Ga=a,i=42,s=3,q=2\x1b\\\x1b[12B\r\nNative animation: 30 frames, 3 loops (Linux)\r\n")?;
+            output.write_all(b"\x1b_Ga=a,i=42,s=3,q=2\x1b\\\x1b[12B\r\nNative animation: 30 frames, 3 loops\r\n")?;
         }
         Some("kitty") => {
             kitty_frame(&mut output, &pattern(0)?)?;

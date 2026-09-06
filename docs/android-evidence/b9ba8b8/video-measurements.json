@@ -1,0 +1,1519 @@
+{
+  "utc": "2026-09-06T01:46:28.118510+00:00",
+  "scenario": "ssh-mp4-320x180-12fps",
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "pid": "8080",
+  "sample_seconds": 8,
+  "process_tree_before": [
+    {
+      "pid": "8080",
+      "parent_pid": "358",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "8129",
+      "parent_pid": "8080",
+      "name": "-sh"
+    },
+    {
+      "pid": "8242",
+      "parent_pid": "8129",
+      "name": "libkokuban_ssh.so"
+    }
+  ],
+  "pss_before_kib": 49964,
+  "pss_before_by_pid_kib": {
+    "8080": 49964,
+    "8129": 939,
+    "8242": 4023
+  },
+  "pss_before_process_tree_kib": 54926,
+  "pss_after_kib": 63194,
+  "pss_after_by_pid_kib": {
+    "8080": 63194,
+    "8129": 939,
+    "8242": 4115
+  },
+  "pss_after_process_tree_kib": 68248,
+  "cpu_percent_samples": [
+    46.0,
+    51.0,
+    47.0,
+    49.0,
+    50.0,
+    48.0,
+    47.0,
+    40.0
+  ],
+  "cpu_percent_mean_one_core": 47.25,
+  "cpu_percent_max_one_core": 51.0,
+  "cpu_percent_samples_by_pid": {
+    "8080": [
+      46.0,
+      51.0,
+      47.0,
+      49.0,
+      50.0,
+      48.0,
+      47.0,
+      40.0
+    ],
+    "8129": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "8242": [
+      2.0,
+      1.0,
+      0.0,
+      2.0,
+      1.0,
+      1.0,
+      2.0,
+      1.0
+    ]
+  },
+  "process_tree_after": [
+    {
+      "pid": "8080",
+      "parent_pid": "358",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "8129",
+      "parent_pid": "8080",
+      "name": "-sh"
+    },
+    {
+      "pid": "8242",
+      "parent_pid": "8129",
+      "name": "libkokuban_ssh.so"
+    }
+  ],
+  "process_tree_changed": false,
+  "cpu_percent_mean_process_tree_one_core": 48.5,
+  "input_latency_ms": null,
+  "input_latency_note": "Requires correlated input and presentation tracing; adb round trip is not input latency.",
+  "application_frame_metrics": {
+    "frames": [
+      {
+        "frame": 4012,
+        "monotonic_us": 191425339,
+        "render_us": 38595,
+        "input_to_output_present_us": 82503
+      },
+      {
+        "frame": 4013,
+        "monotonic_us": 191481418,
+        "render_us": 21060,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4014,
+        "monotonic_us": 191513415,
+        "render_us": 31919,
+        "input_to_output_present_us": 53658
+      },
+      {
+        "frame": 4015,
+        "monotonic_us": 191551326,
+        "render_us": 35777,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4016,
+        "monotonic_us": 191577842,
+        "render_us": 26307,
+        "input_to_output_present_us": 62301
+      },
+      {
+        "frame": 4017,
+        "monotonic_us": 191651751,
+        "render_us": 37295,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4018,
+        "monotonic_us": 191681405,
+        "render_us": 29512,
+        "input_to_output_present_us": 66963
+      },
+      {
+        "frame": 4019,
+        "monotonic_us": 191769194,
+        "render_us": 36070,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4020,
+        "monotonic_us": 191809397,
+        "render_us": 39873,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4021,
+        "monotonic_us": 191911332,
+        "render_us": 73055,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4022,
+        "monotonic_us": 191971568,
+        "render_us": 57865,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4023,
+        "monotonic_us": 192049194,
+        "render_us": 77494,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4024,
+        "monotonic_us": 192072541,
+        "render_us": 23105,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4025,
+        "monotonic_us": 192145914,
+        "render_us": 50308,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4026,
+        "monotonic_us": 192177881,
+        "render_us": 31861,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4027,
+        "monotonic_us": 192215356,
+        "render_us": 37383,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4028,
+        "monotonic_us": 192291240,
+        "render_us": 40323,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4029,
+        "monotonic_us": 192359321,
+        "render_us": 27498,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4030,
+        "monotonic_us": 192404009,
+        "render_us": 44562,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4031,
+        "monotonic_us": 192474869,
+        "render_us": 58442,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4032,
+        "monotonic_us": 192534422,
+        "render_us": 35212,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4033,
+        "monotonic_us": 192556994,
+        "render_us": 22477,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4034,
+        "monotonic_us": 192618240,
+        "render_us": 32681,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4035,
+        "monotonic_us": 192644579,
+        "render_us": 26271,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4036,
+        "monotonic_us": 192704551,
+        "render_us": 36320,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4037,
+        "monotonic_us": 192766200,
+        "render_us": 19278,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4038,
+        "monotonic_us": 192801880,
+        "render_us": 35573,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4039,
+        "monotonic_us": 192865787,
+        "render_us": 33830,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4040,
+        "monotonic_us": 192900911,
+        "render_us": 34878,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4041,
+        "monotonic_us": 192939267,
+        "render_us": 23773,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4042,
+        "monotonic_us": 193015755,
+        "render_us": 18316,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4043,
+        "monotonic_us": 193131562,
+        "render_us": 52275,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4044,
+        "monotonic_us": 193178134,
+        "render_us": 46254,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4045,
+        "monotonic_us": 193225398,
+        "render_us": 47210,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4046,
+        "monotonic_us": 193282470,
+        "render_us": 30618,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4047,
+        "monotonic_us": 193351353,
+        "render_us": 21387,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4048,
+        "monotonic_us": 193388692,
+        "render_us": 37252,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4049,
+        "monotonic_us": 193446384,
+        "render_us": 26265,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4050,
+        "monotonic_us": 193514849,
+        "render_us": 17518,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4051,
+        "monotonic_us": 193597357,
+        "render_us": 18650,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4052,
+        "monotonic_us": 193634077,
+        "render_us": 36519,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4053,
+        "monotonic_us": 193698123,
+        "render_us": 24954,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4054,
+        "monotonic_us": 193765720,
+        "render_us": 19436,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4055,
+        "monotonic_us": 193792831,
+        "render_us": 27047,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4056,
+        "monotonic_us": 193862260,
+        "render_us": 27198,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4057,
+        "monotonic_us": 193907075,
+        "render_us": 44723,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4058,
+        "monotonic_us": 193955850,
+        "render_us": 41329,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4059,
+        "monotonic_us": 193984889,
+        "render_us": 28937,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4060,
+        "monotonic_us": 194038556,
+        "render_us": 41530,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4061,
+        "monotonic_us": 194069559,
+        "render_us": 30832,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4062,
+        "monotonic_us": 194129540,
+        "render_us": 35936,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4063,
+        "monotonic_us": 194191228,
+        "render_us": 27945,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4064,
+        "monotonic_us": 194216903,
+        "render_us": 25563,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4065,
+        "monotonic_us": 194286599,
+        "render_us": 25287,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4066,
+        "monotonic_us": 194369242,
+        "render_us": 39886,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4067,
+        "monotonic_us": 194444907,
+        "render_us": 75397,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4068,
+        "monotonic_us": 194493078,
+        "render_us": 47950,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4069,
+        "monotonic_us": 194554998,
+        "render_us": 55099,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4070,
+        "monotonic_us": 194618057,
+        "render_us": 36720,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4071,
+        "monotonic_us": 194652150,
+        "render_us": 33933,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4072,
+        "monotonic_us": 194710657,
+        "render_us": 41125,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4073,
+        "monotonic_us": 194755332,
+        "render_us": 44497,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4074,
+        "monotonic_us": 194787212,
+        "render_us": 31796,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4075,
+        "monotonic_us": 194851639,
+        "render_us": 19261,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4076,
+        "monotonic_us": 194875254,
+        "render_us": 23526,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4077,
+        "monotonic_us": 194940227,
+        "render_us": 27024,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4078,
+        "monotonic_us": 194977667,
+        "render_us": 37352,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4079,
+        "monotonic_us": 195036250,
+        "render_us": 17943,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4080,
+        "monotonic_us": 195056745,
+        "render_us": 20417,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4081,
+        "monotonic_us": 195121096,
+        "render_us": 34199,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4082,
+        "monotonic_us": 195184027,
+        "render_us": 19576,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4083,
+        "monotonic_us": 195264524,
+        "render_us": 19821,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4084,
+        "monotonic_us": 195300727,
+        "render_us": 36094,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4085,
+        "monotonic_us": 195364511,
+        "render_us": 33797,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4086,
+        "monotonic_us": 195398401,
+        "render_us": 33775,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4087,
+        "monotonic_us": 195445108,
+        "render_us": 29275,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4088,
+        "monotonic_us": 195485240,
+        "render_us": 40042,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4089,
+        "monotonic_us": 195535239,
+        "render_us": 36519,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4090,
+        "monotonic_us": 195604445,
+        "render_us": 20164,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4091,
+        "monotonic_us": 195713482,
+        "render_us": 43915,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4092,
+        "monotonic_us": 195799005,
+        "render_us": 50504,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4093,
+        "monotonic_us": 195856130,
+        "render_us": 56843,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4094,
+        "monotonic_us": 195892472,
+        "render_us": 36081,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4095,
+        "monotonic_us": 195947906,
+        "render_us": 30597,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4096,
+        "monotonic_us": 195973808,
+        "render_us": 25803,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4097,
+        "monotonic_us": 196032878,
+        "render_us": 36595,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4098,
+        "monotonic_us": 196069114,
+        "render_us": 36151,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4099,
+        "monotonic_us": 196115175,
+        "render_us": 36186,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4100,
+        "monotonic_us": 196144201,
+        "render_us": 28900,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4101,
+        "monotonic_us": 196195132,
+        "render_us": 28805,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4102,
+        "monotonic_us": 196223442,
+        "render_us": 27997,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4103,
+        "monotonic_us": 196280786,
+        "render_us": 24414,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4104,
+        "monotonic_us": 196312344,
+        "render_us": 31473,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4105,
+        "monotonic_us": 196358942,
+        "render_us": 29738,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4106,
+        "monotonic_us": 196384871,
+        "render_us": 25839,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4107,
+        "monotonic_us": 196447543,
+        "render_us": 25863,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4108,
+        "monotonic_us": 196514955,
+        "render_us": 18163,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4109,
+        "monotonic_us": 196536682,
+        "render_us": 21656,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4110,
+        "monotonic_us": 196603412,
+        "render_us": 21861,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4111,
+        "monotonic_us": 196635278,
+        "render_us": 31750,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4112,
+        "monotonic_us": 196696351,
+        "render_us": 29325,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4113,
+        "monotonic_us": 196731366,
+        "render_us": 34855,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4114,
+        "monotonic_us": 196782895,
+        "render_us": 35376,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4115,
+        "monotonic_us": 196814582,
+        "render_us": 31605,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4116,
+        "monotonic_us": 196869707,
+        "render_us": 37270,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4117,
+        "monotonic_us": 196934390,
+        "render_us": 20606,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4118,
+        "monotonic_us": 196961643,
+        "render_us": 27091,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4119,
+        "monotonic_us": 197028728,
+        "render_us": 29608,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4120,
+        "monotonic_us": 197051716,
+        "render_us": 22899,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4121,
+        "monotonic_us": 197125332,
+        "render_us": 22312,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4122,
+        "monotonic_us": 197183930,
+        "render_us": 18595,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4123,
+        "monotonic_us": 197199983,
+        "render_us": 15977,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4124,
+        "monotonic_us": 197275786,
+        "render_us": 25517,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4125,
+        "monotonic_us": 197299680,
+        "render_us": 23800,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4126,
+        "monotonic_us": 197371501,
+        "render_us": 21868,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4127,
+        "monotonic_us": 197391018,
+        "render_us": 19430,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4128,
+        "monotonic_us": 197449013,
+        "render_us": 34363,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4129,
+        "monotonic_us": 197489749,
+        "render_us": 40612,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4130,
+        "monotonic_us": 197540425,
+        "render_us": 45372,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4131,
+        "monotonic_us": 197572877,
+        "render_us": 32224,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4132,
+        "monotonic_us": 197621542,
+        "render_us": 41242,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4133,
+        "monotonic_us": 197655455,
+        "render_us": 33784,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4134,
+        "monotonic_us": 197707132,
+        "render_us": 44162,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4135,
+        "monotonic_us": 197738798,
+        "render_us": 31548,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4136,
+        "monotonic_us": 197781893,
+        "render_us": 34466,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4137,
+        "monotonic_us": 197812788,
+        "render_us": 30821,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4138,
+        "monotonic_us": 197869281,
+        "render_us": 35087,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4139,
+        "monotonic_us": 197893789,
+        "render_us": 24408,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4140,
+        "monotonic_us": 197954168,
+        "render_us": 20209,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4141,
+        "monotonic_us": 198017900,
+        "render_us": 21445,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4142,
+        "monotonic_us": 198041924,
+        "render_us": 23912,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4143,
+        "monotonic_us": 198107997,
+        "render_us": 26189,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4144,
+        "monotonic_us": 198132493,
+        "render_us": 24328,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4145,
+        "monotonic_us": 198197695,
+        "render_us": 22516,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4146,
+        "monotonic_us": 198222705,
+        "render_us": 24926,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4147,
+        "monotonic_us": 198283867,
+        "render_us": 36663,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4148,
+        "monotonic_us": 198299783,
+        "render_us": 15821,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4149,
+        "monotonic_us": 198375327,
+        "render_us": 34023,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4150,
+        "monotonic_us": 198433170,
+        "render_us": 18511,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4151,
+        "monotonic_us": 198458657,
+        "render_us": 25418,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4152,
+        "monotonic_us": 198520262,
+        "render_us": 23185,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4153,
+        "monotonic_us": 198538395,
+        "render_us": 18023,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4154,
+        "monotonic_us": 198611031,
+        "render_us": 23351,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4155,
+        "monotonic_us": 198650552,
+        "render_us": 39368,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4156,
+        "monotonic_us": 198696656,
+        "render_us": 25164,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4157,
+        "monotonic_us": 198765740,
+        "render_us": 19105,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4158,
+        "monotonic_us": 198799805,
+        "render_us": 33958,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4159,
+        "monotonic_us": 198852789,
+        "render_us": 18599,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4160,
+        "monotonic_us": 198878328,
+        "render_us": 25475,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4161,
+        "monotonic_us": 198943701,
+        "render_us": 26003,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4162,
+        "monotonic_us": 198977071,
+        "render_us": 33278,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4163,
+        "monotonic_us": 199030210,
+        "render_us": 30014,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4164,
+        "monotonic_us": 199070871,
+        "render_us": 40548,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4165,
+        "monotonic_us": 199110169,
+        "render_us": 30341,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4166,
+        "monotonic_us": 199143949,
+        "render_us": 33697,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4167,
+        "monotonic_us": 199194465,
+        "render_us": 28936,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4168,
+        "monotonic_us": 199217751,
+        "render_us": 23209,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4169,
+        "monotonic_us": 199279880,
+        "render_us": 31094,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4170,
+        "monotonic_us": 199315458,
+        "render_us": 35489,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4171,
+        "monotonic_us": 199361629,
+        "render_us": 31661,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4172,
+        "monotonic_us": 199394179,
+        "render_us": 32462,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4173,
+        "monotonic_us": 199446187,
+        "render_us": 29101,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4174,
+        "monotonic_us": 199513542,
+        "render_us": 18273,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4175,
+        "monotonic_us": 199550976,
+        "render_us": 37332,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4176,
+        "monotonic_us": 199611168,
+        "render_us": 29577,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4177,
+        "monotonic_us": 199632778,
+        "render_us": 21506,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4178,
+        "monotonic_us": 199699604,
+        "render_us": 19164,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4179,
+        "monotonic_us": 199764523,
+        "render_us": 17818,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4180,
+        "monotonic_us": 199790466,
+        "render_us": 25847,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4181,
+        "monotonic_us": 199851031,
+        "render_us": 21087,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4182,
+        "monotonic_us": 199880851,
+        "render_us": 29725,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4183,
+        "monotonic_us": 199946104,
+        "render_us": 28207,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4184,
+        "monotonic_us": 200015356,
+        "render_us": 18709,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4185,
+        "monotonic_us": 200055355,
+        "render_us": 39908,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4186,
+        "monotonic_us": 200115523,
+        "render_us": 18969,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4187,
+        "monotonic_us": 200182232,
+        "render_us": 17466,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4188,
+        "monotonic_us": 200263463,
+        "render_us": 18045,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4189,
+        "monotonic_us": 200299841,
+        "render_us": 36289,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4190,
+        "monotonic_us": 200352911,
+        "render_us": 20524,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4191,
+        "monotonic_us": 200431028,
+        "render_us": 18747,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4192,
+        "monotonic_us": 200470955,
+        "render_us": 39833,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4193,
+        "monotonic_us": 200522915,
+        "render_us": 25211,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4194,
+        "monotonic_us": 200551351,
+        "render_us": 28349,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4195,
+        "monotonic_us": 200612676,
+        "render_us": 31964,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4196,
+        "monotonic_us": 200633102,
+        "render_us": 20330,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4197,
+        "monotonic_us": 200695471,
+        "render_us": 23939,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4198,
+        "monotonic_us": 200766043,
+        "render_us": 19723,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4199,
+        "monotonic_us": 200792940,
+        "render_us": 26814,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4200,
+        "monotonic_us": 200856296,
+        "render_us": 19284,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4201,
+        "monotonic_us": 200874701,
+        "render_us": 18323,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4202,
+        "monotonic_us": 200939660,
+        "render_us": 24864,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4203,
+        "monotonic_us": 200973835,
+        "render_us": 34012,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4204,
+        "monotonic_us": 201031585,
+        "render_us": 33407,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4205,
+        "monotonic_us": 201069530,
+        "render_us": 37822,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4206,
+        "monotonic_us": 201119542,
+        "render_us": 39189,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4207,
+        "monotonic_us": 201143503,
+        "render_us": 23700,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4208,
+        "monotonic_us": 201196763,
+        "render_us": 29849,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4209,
+        "monotonic_us": 201227298,
+        "render_us": 30318,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 4210,
+        "monotonic_us": 201285396,
+        "render_us": 32281,
+        "input_to_output_present_us": null
+      }
+    ],
+    "present_intervals_us": [
+      56079,
+      31997,
+      37911,
+      26516,
+      73909,
+      29654,
+      87789,
+      40203,
+      101935,
+      60236,
+      77626,
+      23347,
+      73373,
+      31967,
+      37475,
+      75884,
+      68081,
+      44688,
+      70860,
+      59553,
+      22572,
+      61246,
+      26339,
+      59972,
+      61649,
+      35680,
+      63907,
+      35124,
+      38356,
+      76488,
+      115807,
+      46572,
+      47264,
+      57072,
+      68883,
+      37339,
+      57692,
+      68465,
+      82508,
+      36720,
+      64046,
+      67597,
+      27111,
+      69429,
+      44815,
+      48775,
+      29039,
+      53667,
+      31003,
+      59981,
+      61688,
+      25675,
+      69696,
+      82643,
+      75665,
+      48171,
+      61920,
+      63059,
+      34093,
+      58507,
+      44675,
+      31880,
+      64427,
+      23615,
+      64973,
+      37440,
+      58583,
+      20495,
+      64351,
+      62931,
+      80497,
+      36203,
+      63784,
+      33890,
+      46707,
+      40132,
+      49999,
+      69206,
+      109037,
+      85523,
+      57125,
+      36342,
+      55434,
+      25902,
+      59070,
+      36236,
+      46061,
+      29026,
+      50931,
+      28310,
+      57344,
+      31558,
+      46598,
+      25929,
+      62672,
+      67412,
+      21727,
+      66730,
+      31866,
+      61073,
+      35015,
+      51529,
+      31687,
+      55125,
+      64683,
+      27253,
+      67085,
+      22988,
+      73616,
+      58598,
+      16053,
+      75803,
+      23894,
+      71821,
+      19517,
+      57995,
+      40736,
+      50676,
+      32452,
+      48665,
+      33913,
+      51677,
+      31666,
+      43095,
+      30895,
+      56493,
+      24508,
+      60379,
+      63732,
+      24024,
+      66073,
+      24496,
+      65202,
+      25010,
+      61162,
+      15916,
+      75544,
+      57843,
+      25487,
+      61605,
+      18133,
+      72636,
+      39521,
+      46104,
+      69084,
+      34065,
+      52984,
+      25539,
+      65373,
+      33370,
+      53139,
+      40661,
+      39298,
+      33780,
+      50516,
+      23286,
+      62129,
+      35578,
+      46171,
+      32550,
+      52008,
+      67355,
+      37434,
+      60192,
+      21610,
+      66826,
+      64919,
+      25943,
+      60565,
+      29820,
+      65253,
+      69252,
+      39999,
+      60168,
+      66709,
+      81231,
+      36378,
+      53070,
+      78117,
+      39927,
+      51960,
+      28436,
+      61325,
+      20426,
+      62369,
+      70572,
+      26897,
+      63356,
+      18405,
+      64959,
+      34175,
+      57750,
+      37945,
+      50012,
+      23961,
+      53260,
+      30535,
+      58098
+    ],
+    "presentation_call_rate_hz": 20.08101981560553,
+    "max_present_gap_ms": 115.807,
+    "mean_render_ms": 30.867085427135677,
+    "input_to_output_present_ms_samples": [
+      82.503,
+      53.658,
+      62.301,
+      66.963
+    ]
+  },
+  "application_frame_metric_note": "Opt-in application input-to-next-output-presentation correlation; unrelated output can satisfy it. Presentation calls are not hardware scanout.",
+  "frame_timing_note": "Raw gfxinfo only; NativeActivity softbuffer may not emit Android View frame stats."
+}

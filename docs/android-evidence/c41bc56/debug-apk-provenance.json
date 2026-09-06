@@ -1,0 +1,30 @@
+{
+  "source_run": 34007583516,
+  "source_attempt": 1,
+  "source_head_commit": "c41bc56534c62cdb6ab0bacfc343acb5304b2a18",
+  "checkout_commit": "048133d5c7671506ad6eb51ba1d166013af63ddc",
+  "target": "x86_64-linux-android",
+  "profile": "debug-opt1",
+  "apk_sha256": "821d06e2ccab0d85fee442625cb9902952643d87c087fc6aef69d24749a56eaa",
+  "apk_bytes": 5734887,
+  "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "completed_gates": [
+    "APK build and signing verification",
+    "16 KiB ELF alignment",
+    "Android clippy",
+    "Android dependency isolation"
+  ],
+  "device_validation": "Not completed when this early artifact was published; inspect the full run for device results.",
+  "native_libraries": [
+    {
+      "path": "lib/x86_64/libkokuban.so",
+      "bytes": 3647904,
+      "zip_bytes": 3647904
+    },
+    {
+      "path": "lib/x86_64/libkokuban_ssh.so",
+      "bytes": 6148544,
+      "zip_bytes": 2055213
+    }
+  ]
+}

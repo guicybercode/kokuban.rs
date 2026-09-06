@@ -1,6 +1,6 @@
 # Animação Kitty compartilhada
 
-O Linux usa o cache de imagens por CPU para uploads `a=f`, controle `a=a`, composição `a=c` e exclusão de frames `a=d,d=f/F`. A identificação aceita `i` ou `I`; continuações podem repetir `a=f` ou omitir a ação. Uploads aceitam Base64 com ou sem padding, em blocos codificados de até 128 KiB. O parser interpreta os campos segundo a ação final e rejeita parâmetros numéricos inválidos.
+Linux e Android usam o cache de imagens por CPU para uploads `a=f`, controle `a=a`, composição `a=c` e exclusão de frames `a=d,d=f/F`. A identificação aceita `i` ou `I`; continuações podem repetir `a=f` ou omitir a ação. Uploads aceitam Base64 com ou sem padding, em blocos codificados de até 128 KiB. O parser interpreta os campos segundo a ação final e rejeita parâmetros numéricos inválidos.
 
 O comportamento segue o [protocolo Kitty](https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation) e o código da versão 0.48.2. Para composição, `r` seleciona a origem e `c` o destino, conforme a implementação do cliente/terminal. Uploads aceitam `C` para composição, com precedência sobre o alias `X` descrito no protocolo. Respostas bem-sucedidas a uploads de frame incluem `r`; controle de reprodução bem-sucedido é silencioso. Arquivos compartilhados via memória continuam sem suporte. Transmissão por arquivo depende da configuração existente.
 
@@ -10,7 +10,7 @@ A reprodução suporta estados parado, carregando e executando; escolha explíci
 
 ## Integração Android
 
-A segunda sessão mantém seu adaptador de imagens em `android_images`. Para incorporar os commits desta implementação, inclua também o módulo irmão:
+O adaptador `android_images` inclui os módulos compartilhados de cache, decoder e animação e delega desenho e agendamento ao `SoftwareGraphics`. O módulo de animação é incluído pelo caminho:
 
 ```rust
 #[path = "renderer/image_animation.rs"]
@@ -24,10 +24,12 @@ store.advance_animations(now: Instant, visible: &HashSet<ImageId>) -> AnimationU
 // AnimationUpdate { changed: bool, next_deadline: Option<Instant> }
 ```
 
-Calcule os IDs visíveis usando os mesmos retângulos, scrollback e viewport utilizados para desenhar. Respeite a ordem dos locks: grid e depois cache; solte-os antes da apresentação. Solicite redraw quando `changed` for verdadeiro; use `ControlFlow::WaitUntil` para o menor prazo retornado, ou `Wait` quando não existir prazo. Suspenda os timers enquanto a janela ou superfície Android estiver indisponível. Não crie uma thread de reprodução nem um polling contínuo. `src/software_graphics.rs` e `src/linux_window.rs` mostram a integração Linux.
+Calcule os IDs visíveis usando os mesmos retângulos, scrollback e viewport utilizados para desenhar. Respeite a ordem dos locks: grid e depois cache; solte-os antes da apresentação. Solicite redraw quando `changed` for verdadeiro; use `ControlFlow::WaitUntil` para o menor prazo retornado, ou `Wait` quando não existir prazo. Suspenda os timers enquanto a janela ou superfície Android estiver indisponível; a integração Android também os suspende sem foco. Não crie uma thread de reprodução nem um polling contínuo. `src/software_graphics.rs`, `src/linux_window.rs` e `src/android_window.rs` mostram as integrações.
 
 ## Verificação
 
 Os testes do núcleo usam relógio determinístico para intervalos, repetições, carregamento, exclusão, composição e orçamento de memória. Os testes Linux passam bytes de protocolo pelo decoder, cache e snapshot. `scripts/linux-graphics-smoke.py` verifica pixels reais em Xvfb, incluindo uma sequência sintética com formato semelhante ao icat que continua depois de o emissor parar de escrever. Esse teste não representa execução do binário icat, nem mede FPS ou consumo de energia.
 
-Execute `cargo run --example graphics -- animate` dentro do Kokuban Linux para enviar 30 frames, iniciar três repetições e encerrar o emissor. A aplicação continua responsável pela reprodução. Android precisa incorporar e validar este contrato em dispositivo; a existência do núcleo compartilhado não comprova reprodução Android. Vídeo geral, áudio e medições de desempenho continuam pendentes.
+Execute `cargo run --example graphics -- animate` dentro do Kokuban Linux ou no host SSH acessado pelo Android para enviar 30 frames, iniciar três repetições e encerrar o emissor. A aplicação continua responsável pela reprodução.
+
+No Android `8b0abef`, `scripts/android/media_scenarios.py` verificou a sequência nativa compartilhada no emulador API 35 x86_64, em debug e release: os pixels mudaram entre patches após o emissor encerrar. Foto, Sixel e MP4 H.264 silencioso por SSH também passaram; consulte os [resultados preservados](android-evidence/8b0abef/release-media.json) e a [rota de vídeo](../tools/README.md). O vídeo usa substituição completa de quadros e não depende da extensão de animação. A evidência não mede scanout físico, áudio nem autonomia de bateria; mudanças futuras na integração exigem nova validação.

@@ -1,0 +1,774 @@
+{
+  "utc": "2026-09-06T10:31:21.810628+00:00",
+  "scenario": "ci-release-echo",
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "pid": "13900",
+  "sample_seconds": 15,
+  "process_tree_before": [
+    {
+      "pid": "13900",
+      "parent_pid": "360",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "13919",
+      "parent_pid": "13900",
+      "name": "-sh"
+    }
+  ],
+  "settle_seconds": 3.0,
+  "frame_boundary_exclusive": 4,
+  "pss_before_kib": 30389,
+  "pss_before_by_pid_kib": {
+    "13900": 30389,
+    "13919": 936
+  },
+  "pss_before_process_tree_kib": 31325,
+  "echo_probe_commands_injected": [
+    "echo E0",
+    "echo E1",
+    "echo E2",
+    "echo E3",
+    "echo E4",
+    "echo E5",
+    "echo E6",
+    "echo E7",
+    "echo E8",
+    "echo E9"
+  ],
+  "echo_probe_note": "Short adb key bursts in an otherwise idle shell; application traces correlate input with next PTY output. Individual commands are not independently correlated to scanout.",
+  "pss_after_kib": 30647,
+  "pss_after_by_pid_kib": {
+    "13900": 30647,
+    "13919": 936
+  },
+  "pss_after_process_tree_kib": 31583,
+  "cpu_percent_samples": [
+    23.0,
+    10.0,
+    21.0,
+    20.0,
+    9.0,
+    11.0,
+    24.0,
+    24.0,
+    0.0,
+    23.0,
+    26.0,
+    2.0,
+    22.0,
+    24.0,
+    2.0
+  ],
+  "cpu_percent_mean_one_core": 16.066666666666666,
+  "cpu_percent_max_one_core": 26.0,
+  "cpu_percent_samples_by_pid": {
+    "13900": [
+      23.0,
+      10.0,
+      21.0,
+      20.0,
+      9.0,
+      11.0,
+      24.0,
+      24.0,
+      0.0,
+      23.0,
+      26.0,
+      2.0,
+      22.0,
+      24.0,
+      2.0
+    ],
+    "13919": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "process_tree_after": [
+    {
+      "pid": "13900",
+      "parent_pid": "360",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "13919",
+      "parent_pid": "13900",
+      "name": "-sh"
+    }
+  ],
+  "process_tree_changed": false,
+  "cpu_percent_mean_process_tree_one_core": 16.066666666666666,
+  "input_latency_ms": null,
+  "input_latency_note": "Requires correlated input and presentation tracing; adb round trip is not input latency.",
+  "application_frame_metrics": {
+    "frames": [
+      {
+        "frame": 5,
+        "monotonic_us": 24637944,
+        "render_us": 41784,
+        "input_to_output_present_us": 42088
+      },
+      {
+        "frame": 6,
+        "monotonic_us": 24694777,
+        "render_us": 54786,
+        "input_to_output_present_us": 54981
+      },
+      {
+        "frame": 7,
+        "monotonic_us": 24768988,
+        "render_us": 67323,
+        "input_to_output_present_us": 68112
+      },
+      {
+        "frame": 8,
+        "monotonic_us": 24808750,
+        "render_us": 37948,
+        "input_to_output_present_us": 38306
+      },
+      {
+        "frame": 9,
+        "monotonic_us": 24858127,
+        "render_us": 41733,
+        "input_to_output_present_us": 42105
+      },
+      {
+        "frame": 10,
+        "monotonic_us": 24907662,
+        "render_us": 39388,
+        "input_to_output_present_us": 39992
+      },
+      {
+        "frame": 11,
+        "monotonic_us": 25030404,
+        "render_us": 79977,
+        "input_to_output_present_us": 83272
+      },
+      {
+        "frame": 12,
+        "monotonic_us": 25082343,
+        "render_us": 42417,
+        "input_to_output_present_us": 43167
+      },
+      {
+        "frame": 13,
+        "monotonic_us": 26125316,
+        "render_us": 23379,
+        "input_to_output_present_us": 23583
+      },
+      {
+        "frame": 14,
+        "monotonic_us": 26162825,
+        "render_us": 36004,
+        "input_to_output_present_us": 36138
+      },
+      {
+        "frame": 15,
+        "monotonic_us": 26211668,
+        "render_us": 45901,
+        "input_to_output_present_us": 46258
+      },
+      {
+        "frame": 16,
+        "monotonic_us": 26279436,
+        "render_us": 60486,
+        "input_to_output_present_us": 61213
+      },
+      {
+        "frame": 17,
+        "monotonic_us": 26366741,
+        "render_us": 73812,
+        "input_to_output_present_us": 74633
+      },
+      {
+        "frame": 18,
+        "monotonic_us": 26436433,
+        "render_us": 54365,
+        "input_to_output_present_us": 56768
+      },
+      {
+        "frame": 19,
+        "monotonic_us": 27426936,
+        "render_us": 23537,
+        "input_to_output_present_us": 23683
+      },
+      {
+        "frame": 20,
+        "monotonic_us": 27471948,
+        "render_us": 43555,
+        "input_to_output_present_us": 43600
+      },
+      {
+        "frame": 21,
+        "monotonic_us": 27509050,
+        "render_us": 34389,
+        "input_to_output_present_us": 34727
+      },
+      {
+        "frame": 22,
+        "monotonic_us": 27571930,
+        "render_us": 54930,
+        "input_to_output_present_us": 59953
+      },
+      {
+        "frame": 23,
+        "monotonic_us": 27610039,
+        "render_us": 35451,
+        "input_to_output_present_us": 37837
+      },
+      {
+        "frame": 24,
+        "monotonic_us": 27667126,
+        "render_us": 46678,
+        "input_to_output_present_us": 53929
+      },
+      {
+        "frame": 25,
+        "monotonic_us": 27721702,
+        "render_us": 34258,
+        "input_to_output_present_us": 37834
+      },
+      {
+        "frame": 26,
+        "monotonic_us": 28745871,
+        "render_us": 23808,
+        "input_to_output_present_us": 24015
+      },
+      {
+        "frame": 27,
+        "monotonic_us": 28786954,
+        "render_us": 39577,
+        "input_to_output_present_us": 39675
+      },
+      {
+        "frame": 28,
+        "monotonic_us": 28817051,
+        "render_us": 26779,
+        "input_to_output_present_us": 27533
+      },
+      {
+        "frame": 29,
+        "monotonic_us": 28863956,
+        "render_us": 40743,
+        "input_to_output_present_us": 40928
+      },
+      {
+        "frame": 30,
+        "monotonic_us": 28930588,
+        "render_us": 55746,
+        "input_to_output_present_us": 55759
+      },
+      {
+        "frame": 31,
+        "monotonic_us": 28988067,
+        "render_us": 57196,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 32,
+        "monotonic_us": 29082829,
+        "render_us": 35011,
+        "input_to_output_present_us": 36422
+      },
+      {
+        "frame": 33,
+        "monotonic_us": 30090437,
+        "render_us": 24110,
+        "input_to_output_present_us": 24218
+      },
+      {
+        "frame": 34,
+        "monotonic_us": 30121080,
+        "render_us": 28922,
+        "input_to_output_present_us": 29034
+      },
+      {
+        "frame": 35,
+        "monotonic_us": 30167410,
+        "render_us": 39369,
+        "input_to_output_present_us": 39451
+      },
+      {
+        "frame": 36,
+        "monotonic_us": 30196296,
+        "render_us": 24816,
+        "input_to_output_present_us": 24999
+      },
+      {
+        "frame": 37,
+        "monotonic_us": 30246429,
+        "render_us": 48525,
+        "input_to_output_present_us": 48668
+      },
+      {
+        "frame": 38,
+        "monotonic_us": 30294500,
+        "render_us": 44513,
+        "input_to_output_present_us": 44744
+      },
+      {
+        "frame": 39,
+        "monotonic_us": 30388036,
+        "render_us": 88248,
+        "input_to_output_present_us": 89651
+      },
+      {
+        "frame": 40,
+        "monotonic_us": 30461418,
+        "render_us": 53069,
+        "input_to_output_present_us": 56979
+      },
+      {
+        "frame": 41,
+        "monotonic_us": 31477263,
+        "render_us": 17424,
+        "input_to_output_present_us": 17725
+      },
+      {
+        "frame": 42,
+        "monotonic_us": 31523420,
+        "render_us": 34737,
+        "input_to_output_present_us": 39232
+      },
+      {
+        "frame": 43,
+        "monotonic_us": 31559308,
+        "render_us": 34344,
+        "input_to_output_present_us": 34543
+      },
+      {
+        "frame": 44,
+        "monotonic_us": 31601661,
+        "render_us": 35748,
+        "input_to_output_present_us": 37209
+      },
+      {
+        "frame": 45,
+        "monotonic_us": 31642955,
+        "render_us": 39224,
+        "input_to_output_present_us": 39495
+      },
+      {
+        "frame": 46,
+        "monotonic_us": 31725723,
+        "render_us": 64024,
+        "input_to_output_present_us": 64029
+      },
+      {
+        "frame": 47,
+        "monotonic_us": 31768037,
+        "render_us": 42005,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 48,
+        "monotonic_us": 31842243,
+        "render_us": 33403,
+        "input_to_output_present_us": 33410
+      },
+      {
+        "frame": 49,
+        "monotonic_us": 32895669,
+        "render_us": 24549,
+        "input_to_output_present_us": 24562
+      },
+      {
+        "frame": 50,
+        "monotonic_us": 32940456,
+        "render_us": 36691,
+        "input_to_output_present_us": 36892
+      },
+      {
+        "frame": 51,
+        "monotonic_us": 32986266,
+        "render_us": 44157,
+        "input_to_output_present_us": 44226
+      },
+      {
+        "frame": 52,
+        "monotonic_us": 33031513,
+        "render_us": 43678,
+        "input_to_output_present_us": 43682
+      },
+      {
+        "frame": 53,
+        "monotonic_us": 33073193,
+        "render_us": 38970,
+        "input_to_output_present_us": 39665
+      },
+      {
+        "frame": 54,
+        "monotonic_us": 33187650,
+        "render_us": 102820,
+        "input_to_output_present_us": 104954
+      },
+      {
+        "frame": 55,
+        "monotonic_us": 33241469,
+        "render_us": 52580,
+        "input_to_output_present_us": 52922
+      },
+      {
+        "frame": 56,
+        "monotonic_us": 33315055,
+        "render_us": 36041,
+        "input_to_output_present_us": 36046
+      },
+      {
+        "frame": 57,
+        "monotonic_us": 34357331,
+        "render_us": 18017,
+        "input_to_output_present_us": 18021
+      },
+      {
+        "frame": 58,
+        "monotonic_us": 34400219,
+        "render_us": 41320,
+        "input_to_output_present_us": 41389
+      },
+      {
+        "frame": 59,
+        "monotonic_us": 34432414,
+        "render_us": 30417,
+        "input_to_output_present_us": 30489
+      },
+      {
+        "frame": 60,
+        "monotonic_us": 34482094,
+        "render_us": 42303,
+        "input_to_output_present_us": 44829
+      },
+      {
+        "frame": 61,
+        "monotonic_us": 34521513,
+        "render_us": 36474,
+        "input_to_output_present_us": 36807
+      },
+      {
+        "frame": 62,
+        "monotonic_us": 34613241,
+        "render_us": 71846,
+        "input_to_output_present_us": 75921
+      },
+      {
+        "frame": 63,
+        "monotonic_us": 34697178,
+        "render_us": 74244,
+        "input_to_output_present_us": 74451
+      },
+      {
+        "frame": 64,
+        "monotonic_us": 34770898,
+        "render_us": 35492,
+        "input_to_output_present_us": 35755
+      },
+      {
+        "frame": 65,
+        "monotonic_us": 34809318,
+        "render_us": 38094,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 66,
+        "monotonic_us": 35848057,
+        "render_us": 16857,
+        "input_to_output_present_us": 17012
+      },
+      {
+        "frame": 67,
+        "monotonic_us": 35889330,
+        "render_us": 39334,
+        "input_to_output_present_us": 39503
+      },
+      {
+        "frame": 68,
+        "monotonic_us": 35935805,
+        "render_us": 42807,
+        "input_to_output_present_us": 42882
+      },
+      {
+        "frame": 69,
+        "monotonic_us": 35988393,
+        "render_us": 50569,
+        "input_to_output_present_us": 50678
+      },
+      {
+        "frame": 70,
+        "monotonic_us": 36029934,
+        "render_us": 38685,
+        "input_to_output_present_us": 38885
+      },
+      {
+        "frame": 71,
+        "monotonic_us": 36099401,
+        "render_us": 66133,
+        "input_to_output_present_us": 66448
+      },
+      {
+        "frame": 72,
+        "monotonic_us": 36166394,
+        "render_us": 61852,
+        "input_to_output_present_us": 62820
+      },
+      {
+        "frame": 73,
+        "monotonic_us": 36217445,
+        "render_us": 39587,
+        "input_to_output_present_us": 41553
+      },
+      {
+        "frame": 74,
+        "monotonic_us": 36253890,
+        "render_us": 36370,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 75,
+        "monotonic_us": 37218325,
+        "render_us": 18099,
+        "input_to_output_present_us": 18252
+      },
+      {
+        "frame": 76,
+        "monotonic_us": 37250530,
+        "render_us": 30452,
+        "input_to_output_present_us": 30845
+      },
+      {
+        "frame": 77,
+        "monotonic_us": 37296314,
+        "render_us": 42534,
+        "input_to_output_present_us": 43868
+      },
+      {
+        "frame": 78,
+        "monotonic_us": 37333145,
+        "render_us": 33195,
+        "input_to_output_present_us": 33442
+      },
+      {
+        "frame": 79,
+        "monotonic_us": 37372889,
+        "render_us": 31736,
+        "input_to_output_present_us": 32275
+      },
+      {
+        "frame": 80,
+        "monotonic_us": 37427918,
+        "render_us": 51369,
+        "input_to_output_present_us": 52657
+      },
+      {
+        "frame": 81,
+        "monotonic_us": 37531912,
+        "render_us": 92366,
+        "input_to_output_present_us": 93362
+      },
+      {
+        "frame": 82,
+        "monotonic_us": 37573340,
+        "render_us": 37960,
+        "input_to_output_present_us": 40765
+      }
+    ],
+    "present_intervals_us": [
+      56833,
+      74211,
+      39762,
+      49377,
+      49535,
+      122742,
+      51939,
+      1042973,
+      37509,
+      48843,
+      67768,
+      87305,
+      69692,
+      990503,
+      45012,
+      37102,
+      62880,
+      38109,
+      57087,
+      54576,
+      1024169,
+      41083,
+      30097,
+      46905,
+      66632,
+      57479,
+      94762,
+      1007608,
+      30643,
+      46330,
+      28886,
+      50133,
+      48071,
+      93536,
+      73382,
+      1015845,
+      46157,
+      35888,
+      42353,
+      41294,
+      82768,
+      42314,
+      74206,
+      1053426,
+      44787,
+      45810,
+      45247,
+      41680,
+      114457,
+      53819,
+      73586,
+      1042276,
+      42888,
+      32195,
+      49680,
+      39419,
+      91728,
+      83937,
+      73720,
+      38420,
+      1038739,
+      41273,
+      46475,
+      52588,
+      41541,
+      69467,
+      66993,
+      51051,
+      36445,
+      964435,
+      32205,
+      45784,
+      36831,
+      39744,
+      55029,
+      103994,
+      41428
+    ],
+    "presentation_call_rate_hz": 5.952658890381091,
+    "max_present_gap_ms": 1053.426,
+    "mean_render_ms": 43.60307692307692,
+    "input_to_output_present_ms_samples": [
+      42.088,
+      54.981,
+      68.112,
+      38.306,
+      42.105,
+      39.992,
+      83.272,
+      43.167,
+      23.583,
+      36.138,
+      46.258,
+      61.213,
+      74.633,
+      56.768,
+      23.683,
+      43.6,
+      34.727,
+      59.953,
+      37.837,
+      53.929,
+      37.834,
+      24.015,
+      39.675,
+      27.533,
+      40.928,
+      55.759,
+      36.422,
+      24.218,
+      29.034,
+      39.451,
+      24.999,
+      48.668,
+      44.744,
+      89.651,
+      56.979,
+      17.725,
+      39.232,
+      34.543,
+      37.209,
+      39.495,
+      64.029,
+      33.41,
+      24.562,
+      36.892,
+      44.226,
+      43.682,
+      39.665,
+      104.954,
+      52.922,
+      36.046,
+      18.021,
+      41.389,
+      30.489,
+      44.829,
+      36.807,
+      75.921,
+      74.451,
+      35.755,
+      17.012,
+      39.503,
+      42.882,
+      50.678,
+      38.885,
+      66.448,
+      62.82,
+      41.553,
+      18.252,
+      30.845,
+      43.868,
+      33.442,
+      32.275,
+      52.657,
+      93.362,
+      40.765
+    ]
+  },
+  "application_frame_metric_note": "Opt-in application input-to-next-output-presentation correlation; unrelated output can satisfy it. Presentation calls are not hardware scanout.",
+  "frame_timing_note": "Raw gfxinfo only; NativeActivity softbuffer may not emit Android View frame stats.",
+  "apk_bytes": 2765287,
+  "native_libraries": [
+    {
+      "path": "lib/x86_64/libkokuban.so",
+      "bytes": 2953112,
+      "compressed_bytes": 1154676
+    },
+    {
+      "path": "lib/x86_64/libkokuban_ssh.so",
+      "bytes": 3826096,
+      "compressed_bytes": 1591160
+    }
+  ],
+  "source_run": 34026733947,
+  "source_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34026733947",
+  "source_head_commit": "8b0abef2b8b06989877a375400eca0235d2bb902",
+  "source_artifact": 9987571011,
+  "apk_provenance": "x86-release-provenance.json"
+}

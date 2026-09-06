@@ -1,0 +1,245 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android:
+    name: Android ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            profile: release
+          - target: x86_64-linux-android
+            profile: debug
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_DEV_OPT_LEVEL: '1'
+      ANDROID_NDK_VERSION: 27.1.12297006
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned Rust and Android build tools
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal --component clippy --target '${{ matrix.target }}'
+          rustup run 1.94.1 cargo install cargo-apk --version 0.10.0 --locked
+          echo "RUSTC=$(rustup which --toolchain 1.94.1 rustc)" >> "$GITHUB_ENV"
+          echo "RUSTDOC=$(rustup which --toolchain 1.94.1 rustdoc)" >> "$GITHUB_ENV"
+          dirname "$(rustup which --toolchain 1.94.1 rustc)" >> "$GITHUB_PATH"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ANDROID_NDK_VERSION" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Check validation tooling
+        run: |
+          bash -n scripts/android/build.sh
+          python3 -m unittest discover -s scripts/android -p 'test_*.py'
+          mkdir -p target
+          "$RUSTC" --edition=2021 --test scripts/android/vendor-input-tests.rs -o target/android-vendor-input-tests
+          target/android-vendor-input-tests
+
+      - name: Build APK
+        run: scripts/android/build.sh '${{ matrix.profile }}' '${{ matrix.target }}' --test-signing
+
+      - name: Lint Android library
+        run: rustup run 1.94.1 cargo apk -- clippy --locked --lib --target '${{ matrix.target }}'
+
+      - name: Verify Android dependency isolation
+        shell: bash
+        run: |
+          android_tree="$(rustup run 1.94.1 cargo tree --locked --target '${{ matrix.target }}')"
+          if grep -E '(font-kit|freetype-sys|yeslogic-fontconfig-sys|objc2|block2|core-foundation|core-graphics|core-text|drm) v' <<<"$android_tree"; then
+            echo 'Desktop font/window dependencies leaked into the Android build'
+            exit 1
+          fi
+
+      - name: Record prebuilt input-test APK provenance
+        if: matrix.target == 'x86_64-linux-android'
+        env:
+          APK_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p target/android-evidence
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, zipfile
+          from pathlib import Path
+          apk = Path('target/debug/apk/kokuban.apk')
+          result = {
+              'source_run': int(os.environ['GITHUB_RUN_ID']),
+              'source_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+              'source_head_commit': os.environ['APK_SOURCE_HEAD'],
+              'checkout_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'target': 'x86_64-linux-android',
+              'profile': 'debug-opt1',
+              'apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'apk_bytes': apk.stat().st_size,
+              'rustc': subprocess.check_output([os.environ['RUSTC'], '--version'], text=True).strip(),
+              'completed_gates': ['APK build and signing verification', '16 KiB ELF alignment', 'Android clippy', 'Android dependency isolation'],
+              'device_validation': 'Not completed when this early artifact was published; inspect the full run for device results.',
+          }
+          with zipfile.ZipFile(apk) as archive:
+              result['native_libraries'] = [{'path': item.filename, 'bytes': item.file_size, 'zip_bytes': item.compress_size}
+                                           for item in archive.infolist() if item.filename.endswith('.so')]
+          Path('target/android-evidence/apk-provenance.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+
+      - name: Publish compiled APK for independent input-script iteration
+        if: matrix.target == 'x86_64-linux-android'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-x86_64-debug-apk-${{ github.run_attempt }}
+          path: |
+            target/debug/apk/kokuban.apk
+            target/android-evidence/apk-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Start Android 35 emulator
+        id: emulator
+        if: matrix.target == 'x86_64-linux-android'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openssh-server neovim tmux fzf git ffmpeg
+          sudo mkdir -p /run/sshd
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64'
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/kokuban-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name kokuban-ci --path "$ANDROID_AVD_HOME/kokuban-ci.avd" --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" list avd
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx kokuban-ci
+          sudo chmod 666 /dev/kvm
+          mkdir -p target/android-evidence
+          "$ANDROID_HOME/emulator/emulator" -avd kokuban-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > target/android-evidence/emulator.log 2>&1 &
+          echo "$!" > target/android-evidence/emulator.pid
+
+      - name: Capture host and device state after emulator launch failure
+        if: ${{ !cancelled() && steps.emulator.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/launch/host-diagnostics
+
+      - name: Install, run shell and verify lifecycle
+        id: lifecycle
+        if: matrix.target == 'x86_64-linux-android'
+        run: python3 scripts/android/smoke.py --apk target/debug/apk/kokuban.apk --serial emulator-5554 --trace-frames
+
+      - name: Verify real keyboard composition and touch controls
+        id: ime
+        if: matrix.target == 'x86_64-linux-android'
+        run: python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
+
+      - name: Capture host and device state after ime failure
+        if: ${{ !cancelled() && steps.ime.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/ime/host-diagnostics
+
+      - name: Publish IME diagnostics before longer SSH scenarios
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-ime-${{ github.run_attempt }}
+          path: target/android-evidence/ime/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verify controls clipboard scroll and injected keyboard and mouse input
+        id: controls
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        run: python3 scripts/android/controls_smoke.py --serial emulator-5554 --output target/android-evidence/controls
+
+      - name: Capture host and device state after controls failure
+        if: ${{ !cancelled() && steps.controls.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/controls/host-diagnostics
+
+      - name: Publish control diagnostics before longer SSH scenarios
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-controls-${{ github.run_attempt }}
+          path: target/android-evidence/controls/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Verify SSH trust and interactive development applications
+        id: ssh_debug
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        timeout-minutes: 12
+        run: |
+          python3 scripts/android/launch.py --serial emulator-5554 --apk target/debug/apk/kokuban.apk
+          timeout --signal=INT --kill-after=30s 10m python3 scripts/android/ssh_smoke.py --serial emulator-5554
+
+      - name: Capture host and device state after ssh_debug failure
+        if: ${{ !cancelled() && steps.ssh_debug.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/ssh/host-diagnostics
+
+      - name: Publish debug SSH diagnostics before release scenarios
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-debug-ssh-${{ github.run_attempt }}
+          path: target/android-evidence/ssh/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Record idle memory and CPU
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        run: |
+          python3 scripts/android/launch.py --serial emulator-5554 --apk target/debug/apk/kokuban.apk
+          python3 scripts/android/measure.py --scenario ci-debug-opt1-idle --settle-seconds 3 --apk target/debug/apk/kokuban.apk --serial emulator-5554 --output target/android-evidence/debug-idle
+
+      - name: Build release APK for measured device execution
+        id: release_build
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        run: scripts/android/build.sh release x86_64-linux-android --test-signing
+
+      - name: Verify interactive development using the release APK
+        id: ssh_release
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.release_build.outcome == 'success' }}
+        timeout-minutes: 12
+        run: timeout --signal=INT --kill-after=30s 10m python3 scripts/android/ssh_smoke.py --serial emulator-5554 --upgrade-apk target/release/apk/kokuban.apk --output target/android-evidence/release-ssh
+
+      - name: Capture host and device state after ssh_release failure
+        if: ${{ !cancelled() && steps.ssh_release.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/release-ssh/host-diagnostics
+
+      - name: Publish release SSH diagnostics before final measurements
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.release_build.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-release-ssh-${{ github.run_attempt }}
+          path: target/android-evidence/release-ssh/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Measure release idle and controlled echo
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.release_build.outcome == 'success' }}
+        run: |
+          python3 scripts/android/launch.py --serial emulator-5554 --apk target/release/apk/kokuban.apk
+          python3 scripts/android/measure.py --scenario ci-release-idle --settle-seconds 3 --apk target/release/apk/kokuban.apk --serial emulator-5554 --output target/android-evidence/release-idle
+          python3 scripts/android/measure.py --scenario ci-release-echo --settle-seconds 3 --probe-echo --apk target/release/apk/kokuban.apk --serial emulator-5554 --output target/android-evidence/release-echo
+
+      - name: Upload APK and device evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-${{ matrix.target }}-${{ matrix.profile }}
+          path: |
+            target/${{ matrix.profile }}/apk/kokuban.apk
+            target/release/apk/kokuban.apk
+            target/android-evidence/
+          if-no-files-found: warn
+          retention-days: 14

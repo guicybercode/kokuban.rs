@@ -1,0 +1,1049 @@
+{
+  "utc": "2026-09-06T01:30:09.618291+00:00",
+  "scenario": "ci-release-echo",
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "pid": "7597",
+  "sample_seconds": 15,
+  "process_tree_before": [
+    {
+      "pid": "7597",
+      "parent_pid": "368",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "7617",
+      "parent_pid": "7597",
+      "name": "-sh"
+    }
+  ],
+  "pss_before_kib": 29422,
+  "pss_before_by_pid_kib": {
+    "7597": 29422,
+    "7617": 911
+  },
+  "pss_before_process_tree_kib": 30333,
+  "echo_probe_commands_injected": [
+    "echo E0",
+    "echo E1",
+    "echo E2",
+    "echo E3",
+    "echo E4",
+    "echo E5",
+    "echo E6",
+    "echo E7"
+  ],
+  "echo_probe_note": "Short adb key bursts in an otherwise idle shell; application traces correlate input with next PTY output. Individual commands are not independently correlated to scanout.",
+  "pss_after_kib": 29761,
+  "pss_after_by_pid_kib": {
+    "7597": 29761,
+    "7617": 911
+  },
+  "pss_after_process_tree_kib": 30672,
+  "cpu_percent_samples": [
+    22.0,
+    44.0,
+    25.7,
+    35.0,
+    36.0,
+    19.0,
+    48.0,
+    6.0,
+    59.0,
+    1.0,
+    52.0,
+    16.0,
+    35.0,
+    32.0,
+    19.0
+  ],
+  "cpu_percent_mean_one_core": 29.98,
+  "cpu_percent_max_one_core": 59.0,
+  "cpu_percent_samples_by_pid": {
+    "7597": [
+      22.0,
+      44.0,
+      25.7,
+      35.0,
+      36.0,
+      19.0,
+      48.0,
+      6.0,
+      59.0,
+      1.0,
+      52.0,
+      16.0,
+      35.0,
+      32.0,
+      19.0
+    ],
+    "7617": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "process_tree_after": [
+    {
+      "pid": "7597",
+      "parent_pid": "368",
+      "name": "com.kokuban.terminal"
+    },
+    {
+      "pid": "7617",
+      "parent_pid": "7597",
+      "name": "-sh"
+    }
+  ],
+  "process_tree_changed": false,
+  "cpu_percent_mean_process_tree_one_core": 29.98,
+  "input_latency_ms": null,
+  "input_latency_note": "Requires correlated input and presentation tracing; adb round trip is not input latency.",
+  "application_frame_metrics": {
+    "frames": [
+      {
+        "frame": 5,
+        "monotonic_us": 19021461,
+        "render_us": 47638,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 6,
+        "monotonic_us": 19088446,
+        "render_us": 66874,
+        "input_to_output_present_us": 114633
+      },
+      {
+        "frame": 7,
+        "monotonic_us": 19154408,
+        "render_us": 64360,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 8,
+        "monotonic_us": 19196298,
+        "render_us": 41742,
+        "input_to_output_present_us": 106257
+      },
+      {
+        "frame": 9,
+        "monotonic_us": 19250087,
+        "render_us": 51977,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 10,
+        "monotonic_us": 19294842,
+        "render_us": 44627,
+        "input_to_output_present_us": 96867
+      },
+      {
+        "frame": 11,
+        "monotonic_us": 19364297,
+        "render_us": 65553,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 12,
+        "monotonic_us": 19424027,
+        "render_us": 59628,
+        "input_to_output_present_us": 125290
+      },
+      {
+        "frame": 13,
+        "monotonic_us": 19463793,
+        "render_us": 38138,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 14,
+        "monotonic_us": 19507842,
+        "render_us": 43890,
+        "input_to_output_present_us": 82194
+      },
+      {
+        "frame": 15,
+        "monotonic_us": 19584719,
+        "render_us": 73136,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 16,
+        "monotonic_us": 19648628,
+        "render_us": 63814,
+        "input_to_output_present_us": 137051
+      },
+      {
+        "frame": 17,
+        "monotonic_us": 19717990,
+        "render_us": 60572,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 18,
+        "monotonic_us": 19774233,
+        "render_us": 56143,
+        "input_to_output_present_us": 116819
+      },
+      {
+        "frame": 19,
+        "monotonic_us": 19864394,
+        "render_us": 45813,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 20,
+        "monotonic_us": 19906729,
+        "render_us": 42234,
+        "input_to_output_present_us": 88170
+      },
+      {
+        "frame": 21,
+        "monotonic_us": 20952833,
+        "render_us": 24043,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 22,
+        "monotonic_us": 21002773,
+        "render_us": 49817,
+        "input_to_output_present_us": 74059
+      },
+      {
+        "frame": 23,
+        "monotonic_us": 21046483,
+        "render_us": 42148,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 24,
+        "monotonic_us": 21096232,
+        "render_us": 49587,
+        "input_to_output_present_us": 91959
+      },
+      {
+        "frame": 25,
+        "monotonic_us": 21152085,
+        "render_us": 54335,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 26,
+        "monotonic_us": 21197793,
+        "render_us": 45313,
+        "input_to_output_present_us": 100050
+      },
+      {
+        "frame": 27,
+        "monotonic_us": 21252350,
+        "render_us": 52251,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 28,
+        "monotonic_us": 21305280,
+        "render_us": 52821,
+        "input_to_output_present_us": 105186
+      },
+      {
+        "frame": 29,
+        "monotonic_us": 21347870,
+        "render_us": 41220,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 30,
+        "monotonic_us": 21394627,
+        "render_us": 46629,
+        "input_to_output_present_us": 88174
+      },
+      {
+        "frame": 31,
+        "monotonic_us": 21479545,
+        "render_us": 74747,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 32,
+        "monotonic_us": 21535965,
+        "render_us": 56096,
+        "input_to_output_present_us": 131223
+      },
+      {
+        "frame": 33,
+        "monotonic_us": 21609096,
+        "render_us": 68764,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 34,
+        "monotonic_us": 21653790,
+        "render_us": 44482,
+        "input_to_output_present_us": 113464
+      },
+      {
+        "frame": 35,
+        "monotonic_us": 21724445,
+        "render_us": 45891,
+        "input_to_output_present_us": 45898
+      },
+      {
+        "frame": 36,
+        "monotonic_us": 22774758,
+        "render_us": 30061,
+        "input_to_output_present_us": 30069
+      },
+      {
+        "frame": 37,
+        "monotonic_us": 22824965,
+        "render_us": 48878,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 38,
+        "monotonic_us": 22874049,
+        "render_us": 48933,
+        "input_to_output_present_us": 97966
+      },
+      {
+        "frame": 39,
+        "monotonic_us": 22920719,
+        "render_us": 45016,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 40,
+        "monotonic_us": 22969822,
+        "render_us": 48989,
+        "input_to_output_present_us": 94125
+      },
+      {
+        "frame": 41,
+        "monotonic_us": 23025215,
+        "render_us": 53098,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 42,
+        "monotonic_us": 23065478,
+        "render_us": 40140,
+        "input_to_output_present_us": 93368
+      },
+      {
+        "frame": 43,
+        "monotonic_us": 23112121,
+        "render_us": 44389,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 44,
+        "monotonic_us": 23154392,
+        "render_us": 42114,
+        "input_to_output_present_us": 86668
+      },
+      {
+        "frame": 45,
+        "monotonic_us": 23214012,
+        "render_us": 56247,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 46,
+        "monotonic_us": 23281296,
+        "render_us": 66630,
+        "input_to_output_present_us": 123538
+      },
+      {
+        "frame": 47,
+        "monotonic_us": 23361218,
+        "render_us": 75559,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 48,
+        "monotonic_us": 23429758,
+        "render_us": 67559,
+        "input_to_output_present_us": 144101
+      },
+      {
+        "frame": 49,
+        "monotonic_us": 23489485,
+        "render_us": 46650,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 50,
+        "monotonic_us": 23539134,
+        "render_us": 48860,
+        "input_to_output_present_us": 96320
+      },
+      {
+        "frame": 51,
+        "monotonic_us": 24542721,
+        "render_us": 24385,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 52,
+        "monotonic_us": 24589424,
+        "render_us": 46054,
+        "input_to_output_present_us": 71092
+      },
+      {
+        "frame": 53,
+        "monotonic_us": 24632737,
+        "render_us": 42320,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 54,
+        "monotonic_us": 24681849,
+        "render_us": 48897,
+        "input_to_output_present_us": 91464
+      },
+      {
+        "frame": 55,
+        "monotonic_us": 24726276,
+        "render_us": 42826,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 56,
+        "monotonic_us": 24771199,
+        "render_us": 44068,
+        "input_to_output_present_us": 87755
+      },
+      {
+        "frame": 57,
+        "monotonic_us": 24826500,
+        "render_us": 53232,
+        "input_to_output_present_us": 53241
+      },
+      {
+        "frame": 58,
+        "monotonic_us": 24878535,
+        "render_us": 50142,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 59,
+        "monotonic_us": 24920805,
+        "render_us": 41950,
+        "input_to_output_present_us": 92427
+      },
+      {
+        "frame": 60,
+        "monotonic_us": 24971346,
+        "render_us": 43808,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 61,
+        "monotonic_us": 25038380,
+        "render_us": 66938,
+        "input_to_output_present_us": 110847
+      },
+      {
+        "frame": 62,
+        "monotonic_us": 25121122,
+        "render_us": 79627,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 63,
+        "monotonic_us": 25180697,
+        "render_us": 58862,
+        "input_to_output_present_us": 139207
+      },
+      {
+        "frame": 64,
+        "monotonic_us": 25285529,
+        "render_us": 51953,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 65,
+        "monotonic_us": 25323650,
+        "render_us": 38026,
+        "input_to_output_present_us": 90079
+      },
+      {
+        "frame": 66,
+        "monotonic_us": 26371801,
+        "render_us": 24389,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 67,
+        "monotonic_us": 26429391,
+        "render_us": 57451,
+        "input_to_output_present_us": 82019
+      },
+      {
+        "frame": 68,
+        "monotonic_us": 26492997,
+        "render_us": 53405,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 69,
+        "monotonic_us": 26537381,
+        "render_us": 44138,
+        "input_to_output_present_us": 97798
+      },
+      {
+        "frame": 70,
+        "monotonic_us": 26585043,
+        "render_us": 46279,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 71,
+        "monotonic_us": 26633322,
+        "render_us": 48163,
+        "input_to_output_present_us": 94566
+      },
+      {
+        "frame": 72,
+        "monotonic_us": 26683753,
+        "render_us": 48956,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 73,
+        "monotonic_us": 26734297,
+        "render_us": 50353,
+        "input_to_output_present_us": 99545
+      },
+      {
+        "frame": 74,
+        "monotonic_us": 26786842,
+        "render_us": 51142,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 75,
+        "monotonic_us": 26836962,
+        "render_us": 49974,
+        "input_to_output_present_us": 101267
+      },
+      {
+        "frame": 76,
+        "monotonic_us": 26909527,
+        "render_us": 69401,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 77,
+        "monotonic_us": 26964859,
+        "render_us": 54945,
+        "input_to_output_present_us": 124747
+      },
+      {
+        "frame": 78,
+        "monotonic_us": 27030700,
+        "render_us": 63117,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 79,
+        "monotonic_us": 27104341,
+        "render_us": 73253,
+        "input_to_output_present_us": 136762
+      },
+      {
+        "frame": 80,
+        "monotonic_us": 27173196,
+        "render_us": 41201,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 81,
+        "monotonic_us": 27216342,
+        "render_us": 42941,
+        "input_to_output_present_us": 84353
+      },
+      {
+        "frame": 82,
+        "monotonic_us": 28262023,
+        "render_us": 24540,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 83,
+        "monotonic_us": 28310511,
+        "render_us": 48398,
+        "input_to_output_present_us": 73035
+      },
+      {
+        "frame": 84,
+        "monotonic_us": 28353131,
+        "render_us": 41341,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 85,
+        "monotonic_us": 28398789,
+        "render_us": 45542,
+        "input_to_output_present_us": 87003
+      },
+      {
+        "frame": 86,
+        "monotonic_us": 28454729,
+        "render_us": 54230,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 87,
+        "monotonic_us": 28493415,
+        "render_us": 38002,
+        "input_to_output_present_us": 92921
+      },
+      {
+        "frame": 88,
+        "monotonic_us": 28544017,
+        "render_us": 49547,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 89,
+        "monotonic_us": 28593254,
+        "render_us": 49117,
+        "input_to_output_present_us": 98789
+      },
+      {
+        "frame": 90,
+        "monotonic_us": 28646104,
+        "render_us": 51471,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 91,
+        "monotonic_us": 28690956,
+        "render_us": 44743,
+        "input_to_output_present_us": 96327
+      },
+      {
+        "frame": 92,
+        "monotonic_us": 28767692,
+        "render_us": 70108,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 93,
+        "monotonic_us": 28817069,
+        "render_us": 48634,
+        "input_to_output_present_us": 119516
+      },
+      {
+        "frame": 94,
+        "monotonic_us": 28915188,
+        "render_us": 93609,
+        "input_to_output_present_us": 93811
+      },
+      {
+        "frame": 95,
+        "monotonic_us": 29005571,
+        "render_us": 41231,
+        "input_to_output_present_us": 41239
+      },
+      {
+        "frame": 96,
+        "monotonic_us": 30049420,
+        "render_us": 24123,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 97,
+        "monotonic_us": 30094631,
+        "render_us": 44944,
+        "input_to_output_present_us": 69339
+      },
+      {
+        "frame": 98,
+        "monotonic_us": 30155436,
+        "render_us": 55926,
+        "input_to_output_present_us": 56616
+      },
+      {
+        "frame": 99,
+        "monotonic_us": 30205050,
+        "render_us": 47918,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 100,
+        "monotonic_us": 30253484,
+        "render_us": 48324,
+        "input_to_output_present_us": 96358
+      },
+      {
+        "frame": 101,
+        "monotonic_us": 30305800,
+        "render_us": 50646,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 102,
+        "monotonic_us": 30347426,
+        "render_us": 41486,
+        "input_to_output_present_us": 92278
+      },
+      {
+        "frame": 103,
+        "monotonic_us": 30395889,
+        "render_us": 47088,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 104,
+        "monotonic_us": 30440618,
+        "render_us": 44569,
+        "input_to_output_present_us": 91823
+      },
+      {
+        "frame": 105,
+        "monotonic_us": 30523592,
+        "render_us": 79971,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 106,
+        "monotonic_us": 30579672,
+        "render_us": 55988,
+        "input_to_output_present_us": 136058
+      },
+      {
+        "frame": 107,
+        "monotonic_us": 30659833,
+        "render_us": 65483,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 108,
+        "monotonic_us": 30707000,
+        "render_us": 47047,
+        "input_to_output_present_us": 112655
+      },
+      {
+        "frame": 109,
+        "monotonic_us": 30779262,
+        "render_us": 39845,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 110,
+        "monotonic_us": 30826783,
+        "render_us": 47362,
+        "input_to_output_present_us": 87374
+      },
+      {
+        "frame": 111,
+        "monotonic_us": 31877459,
+        "render_us": 25456,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 112,
+        "monotonic_us": 31925469,
+        "render_us": 47458,
+        "input_to_output_present_us": 73472
+      },
+      {
+        "frame": 113,
+        "monotonic_us": 31964562,
+        "render_us": 38378,
+        "input_to_output_present_us": 38406
+      },
+      {
+        "frame": 114,
+        "monotonic_us": 32012456,
+        "render_us": 43915,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 115,
+        "monotonic_us": 32054345,
+        "render_us": 41773,
+        "input_to_output_present_us": 85814
+      },
+      {
+        "frame": 116,
+        "monotonic_us": 32106488,
+        "render_us": 50668,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 117,
+        "monotonic_us": 32150667,
+        "render_us": 43896,
+        "input_to_output_present_us": 94851
+      },
+      {
+        "frame": 118,
+        "monotonic_us": 32199820,
+        "render_us": 47465,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 119,
+        "monotonic_us": 32250566,
+        "render_us": 50559,
+        "input_to_output_present_us": 98219
+      },
+      {
+        "frame": 120,
+        "monotonic_us": 32328069,
+        "render_us": 73712,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 121,
+        "monotonic_us": 32365791,
+        "render_us": 37386,
+        "input_to_output_present_us": 111438
+      },
+      {
+        "frame": 122,
+        "monotonic_us": 32437541,
+        "render_us": 67181,
+        "input_to_output_present_us": null
+      },
+      {
+        "frame": 123,
+        "monotonic_us": 32484880,
+        "render_us": 46872,
+        "input_to_output_present_us": 114546
+      },
+      {
+        "frame": 124,
+        "monotonic_us": 32560512,
+        "render_us": 43437,
+        "input_to_output_present_us": 43548
+      }
+    ],
+    "present_intervals_us": [
+      66985,
+      65962,
+      41890,
+      53789,
+      44755,
+      69455,
+      59730,
+      39766,
+      44049,
+      76877,
+      63909,
+      69362,
+      56243,
+      90161,
+      42335,
+      1046104,
+      49940,
+      43710,
+      49749,
+      55853,
+      45708,
+      54557,
+      52930,
+      42590,
+      46757,
+      84918,
+      56420,
+      73131,
+      44694,
+      70655,
+      1050313,
+      50207,
+      49084,
+      46670,
+      49103,
+      55393,
+      40263,
+      46643,
+      42271,
+      59620,
+      67284,
+      79922,
+      68540,
+      59727,
+      49649,
+      1003587,
+      46703,
+      43313,
+      49112,
+      44427,
+      44923,
+      55301,
+      52035,
+      42270,
+      50541,
+      67034,
+      82742,
+      59575,
+      104832,
+      38121,
+      1048151,
+      57590,
+      63606,
+      44384,
+      47662,
+      48279,
+      50431,
+      50544,
+      52545,
+      50120,
+      72565,
+      55332,
+      65841,
+      73641,
+      68855,
+      43146,
+      1045681,
+      48488,
+      42620,
+      45658,
+      55940,
+      38686,
+      50602,
+      49237,
+      52850,
+      44852,
+      76736,
+      49377,
+      98119,
+      90383,
+      1043849,
+      45211,
+      60805,
+      49614,
+      48434,
+      52316,
+      41626,
+      48463,
+      44729,
+      82974,
+      56080,
+      80161,
+      47167,
+      72262,
+      47521,
+      1050676,
+      48010,
+      39093,
+      47894,
+      41889,
+      52143,
+      44179,
+      49153,
+      50746,
+      77503,
+      37722,
+      71750,
+      47339,
+      75632
+    ],
+    "presentation_call_rate_hz": 8.789390039228008,
+    "max_present_gap_ms": 1050.676,
+    "mean_render_ms": 50.241591666666665,
+    "input_to_output_present_ms_samples": [
+      114.633,
+      106.257,
+      96.867,
+      125.29,
+      82.194,
+      137.051,
+      116.819,
+      88.17,
+      74.059,
+      91.959,
+      100.05,
+      105.186,
+      88.174,
+      131.223,
+      113.464,
+      45.898,
+      30.069,
+      97.966,
+      94.125,
+      93.368,
+      86.668,
+      123.538,
+      144.101,
+      96.32,
+      71.092,
+      91.464,
+      87.755,
+      53.241,
+      92.427,
+      110.847,
+      139.207,
+      90.079,
+      82.019,
+      97.798,
+      94.566,
+      99.545,
+      101.267,
+      124.747,
+      136.762,
+      84.353,
+      73.035,
+      87.003,
+      92.921,
+      98.789,
+      96.327,
+      119.516,
+      93.811,
+      41.239,
+      69.339,
+      56.616,
+      96.358,
+      92.278,
+      91.823,
+      136.058,
+      112.655,
+      87.374,
+      73.472,
+      38.406,
+      85.814,
+      94.851,
+      98.219,
+      111.438,
+      114.546,
+      43.548
+    ]
+  },
+  "application_frame_metric_note": "Opt-in application input-to-next-output-presentation correlation; unrelated output can satisfy it. Presentation calls are not hardware scanout.",
+  "frame_timing_note": "Raw gfxinfo only; NativeActivity softbuffer may not emit Android View frame stats.",
+  "apk_bytes": 2712039,
+  "native_libraries": [
+    {
+      "path": "lib/x86_64/libkokuban.so",
+      "bytes": 2848408,
+      "compressed_bytes": 1101114
+    },
+    {
+      "path": "lib/x86_64/libkokuban_ssh.so",
+      "bytes": 3826096,
+      "compressed_bytes": 1591160
+    }
+  ]
+}

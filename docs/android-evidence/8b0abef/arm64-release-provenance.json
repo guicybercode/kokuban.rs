@@ -1,0 +1,22 @@
+{
+  "source_run": 34026733947,
+  "source_head_commit": "8b0abef2b8b06989877a375400eca0235d2bb902",
+  "artifact_id": 9987326910,
+  "target": "aarch64-linux-android",
+  "profile": "release",
+  "apk_bytes": 2609645,
+  "apk_sha256": "9bd0a77816d1e47a22d41a4ed3811690181f0984dc830e01a3ce8a4f3aeee78b",
+  "device_validation": "This ARM64 artifact was built; emulator execution used x86_64.",
+  "native_libraries": [
+    {
+      "path": "lib/arm64-v8a/libkokuban.so",
+      "bytes": 2973248,
+      "zip_bytes": 1122284
+    },
+    {
+      "path": "lib/arm64-v8a/libkokuban_ssh.so",
+      "bytes": 3182048,
+      "zip_bytes": 1470348
+    }
+  ]
+}

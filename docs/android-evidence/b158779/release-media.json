@@ -1,0 +1,56 @@
+{
+  "photo": {
+    "name": "Earth photographed by the Apollo 17 crew, 1972-12-07",
+    "credit": "NASA Johnson Space Center Gateway to Astronaut Photography of Earth, AS17-148-22727",
+    "source_page": "https://science.nasa.gov/earth/earth-observatory/the-blue-marble-from-apollo-17-1133/",
+    "url": "https://assets.science.nasa.gov/dynamicimage/assets/science/esd/eo/images/imagerecords/1000/1133/AS17-148-22727_lrg.jpg?crop=faces%2Cfocalpoint&fit=clip&h=1881&w=1881",
+    "sha256": "f5e146bade95fb9a2bed3221a9100b0c4efc8d0d175ca6c2346fcd49ea9ea3c4",
+    "bytes": 373379,
+    "usage_reference": "https://www.nasa.gov/nasa-brand-center/images-and-media/"
+  },
+  "checks": [
+    "NASA photograph landmarks match pixels presented by Android",
+    "photograph deletion removes its presented pixels",
+    "shared Sixel decoder presents a red image rectangle",
+    "native Kitty animation advances and composes patches after emitter exits",
+    "Kitty negative z bands respect explicit and default cell backgrounds",
+    "FFmpeg decodes H.264 MP4 over SSH with changing presented Android image pixels"
+  ],
+  "status": "passed",
+  "photo_origin_pixels": [
+    0,
+    136
+  ],
+  "presented_video_frames": [
+    {
+      "sha256": "0e860a9b4851e80ba808a21b2599bbcc9c76054db7761faa1be0d56bf9a82000",
+      "decoded_frame_indices": [
+        9
+      ]
+    },
+    {
+      "sha256": "3db8b9c468d77b39aef8078c17a787f88de1df313c98e452ff952ecb1e709a9a",
+      "decoded_frame_indices": [
+        28
+      ]
+    },
+    {
+      "sha256": "06b0a9ca9ae02971ddaf6f0864460aa3729474ec3c03820883dc440cee12f60a",
+      "decoded_frame_indices": [
+        47
+      ]
+    },
+    {
+      "sha256": "34213fcdb49ca1c356eb3fe8e30a88593e06a5ed1469ed9e0ebf46afd6b7d13f",
+      "decoded_frame_indices": [
+        65
+      ]
+    }
+  ],
+  "video_note": "Synthetic motion encoded in a real H.264 file; silent playback. Producer FPS and presentation-call rate are distinct.",
+  "source_run": 34006719596,
+  "source_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596",
+  "source_head_commit": "b1587796249bc1e4d0003037eb28034dc4a378eb",
+  "source_artifact": 9981434912,
+  "apk_provenance": "x86-release-provenance.json"
+}
