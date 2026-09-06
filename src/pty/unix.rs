@@ -19,6 +19,11 @@ const CHILD_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const FINAL_REAP_TIMEOUT: Duration = Duration::from_millis(100);
 const CHILD_REAP_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
+#[cfg(target_os = "android")]
+const DEFAULT_SHELL: &str = "/system/bin/sh";
+#[cfg(not(target_os = "android"))]
+const DEFAULT_SHELL: &str = "/bin/sh";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CancellableWriteOutcome {
     Completed,
@@ -39,6 +44,45 @@ impl Pty {
         kitty_graphics: bool,
         sixel_graphics: bool,
     ) -> Result<Self, PtyError> {
+        Self::spawn_shell(cols, rows, kitty_graphics, sixel_graphics, None, &[])
+    }
+
+    /// Starts a session without changing the application's global environment
+    /// or working directory. In particular, Android already has JVM threads
+    /// running before its native entry point is called.
+    pub fn spawn_with_environment(
+        cols: u16,
+        rows: u16,
+        kitty_graphics: bool,
+        sixel_graphics: bool,
+        working_directory: &Path,
+        environment_overrides: &[(OsString, OsString)],
+    ) -> Result<Self, PtyError> {
+        if !working_directory.is_absolute() {
+            return Err(PtyError::InvalidShell(
+                "working directory must be absolute".to_string(),
+            ));
+        }
+        let working_directory = CString::new(working_directory.as_os_str().as_bytes())
+            .map_err(|_| PtyError::InvalidShell("working directory contains NUL".to_string()))?;
+        Self::spawn_shell(
+            cols,
+            rows,
+            kitty_graphics,
+            sixel_graphics,
+            Some(working_directory),
+            environment_overrides,
+        )
+    }
+
+    fn spawn_shell(
+        cols: u16,
+        rows: u16,
+        kitty_graphics: bool,
+        sixel_graphics: bool,
+        working_directory: Option<CString>,
+        environment_overrides: &[(OsString, OsString)],
+    ) -> Result<Self, PtyError> {
         let shell_path = resolve_shell();
         let shell = CString::new(shell_path.as_os_str().as_bytes())
             .map_err(|_| PtyError::InvalidShell("shell path contains NUL".to_string()))?;
@@ -51,9 +95,14 @@ impl Pty {
         login_name.extend_from_slice(shell_name.as_bytes());
         let argv = vec![CString::new(login_name)
             .map_err(|_| PtyError::InvalidShell("shell name contains NUL".to_string()))?];
-        let environment = child_environment(&shell_path, kitty_graphics, sixel_graphics)?;
+        let environment = child_environment(
+            &shell_path,
+            kitty_graphics,
+            sixel_graphics,
+            environment_overrides,
+        )?;
 
-        Self::spawn_prepared(cols, rows, shell, argv, environment)
+        Self::spawn_prepared(cols, rows, shell, argv, environment, working_directory)
     }
 
     fn spawn_prepared(
@@ -62,6 +111,7 @@ impl Pty {
         program: CString,
         argv: Vec<CString>,
         environment: Vec<CString>,
+        working_directory: Option<CString>,
     ) -> Result<Self, PtyError> {
         if argv.is_empty() {
             return Err(PtyError::InvalidShell(
@@ -109,6 +159,7 @@ impl Pty {
                     &program,
                     &argv_ptrs,
                     &environment_ptrs,
+                    working_directory.as_ref(),
                 );
             },
             Ok(ForkResult::Parent { child }) => {
@@ -172,7 +223,7 @@ impl Pty {
                 Err(nix::Error::EAGAIN) => {
                     return Err(std::io::Error::from(std::io::ErrorKind::WouldBlock));
                 }
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", target_os = "android"))]
                 Err(nix::Error::EIO) => return Ok(0),
                 Err(other) => return Err(other.into()),
                 Ok(read) => return Ok(read),
@@ -429,12 +480,16 @@ fn select_shell<F>(
 where
     F: FnMut(&Path) -> bool,
 {
-    [override_shell, user_shell, Some(OsString::from("/bin/sh"))]
-        .into_iter()
-        .flatten()
-        .map(PathBuf::from)
-        .find(|path| path.is_absolute() && is_executable(path))
-        .unwrap_or_else(|| PathBuf::from("/bin/sh"))
+    [
+        override_shell,
+        user_shell,
+        Some(OsString::from(DEFAULT_SHELL)),
+    ]
+    .into_iter()
+    .flatten()
+    .map(PathBuf::from)
+    .find(|path| path.is_absolute() && is_executable(path))
+    .unwrap_or_else(|| PathBuf::from(DEFAULT_SHELL))
 }
 
 fn is_executable_file(path: &Path) -> bool {
@@ -447,6 +502,7 @@ fn child_environment(
     shell: &Path,
     kitty_graphics: bool,
     sixel_graphics: bool,
+    environment_overrides: &[(OsString, OsString)],
 ) -> Result<Vec<CString>, PtyError> {
     const OVERRIDDEN: &[&[u8]] = &[
         b"SHELL",
@@ -458,8 +514,25 @@ fn child_environment(
         b"KOKUBAN_GRAPHICS",
     ];
 
+    let mut variables: std::collections::BTreeMap<OsString, OsString> =
+        std::env::vars_os().collect();
+    for (key, value) in environment_overrides {
+        let key_bytes = key.as_os_str().as_bytes();
+        if key_bytes.is_empty() || key_bytes.contains(&b'=') || key_bytes.contains(&0) {
+            return Err(PtyError::InvalidShell(
+                "invalid environment variable name".to_string(),
+            ));
+        }
+        if value.as_os_str().as_bytes().contains(&0) {
+            return Err(PtyError::InvalidShell(
+                "environment value contains NUL".to_string(),
+            ));
+        }
+        variables.insert(key.clone(), value.clone());
+    }
+
     let mut environment = Vec::new();
-    for (key, value) in std::env::vars_os() {
+    for (key, value) in variables {
         let key = key.as_os_str().as_bytes();
         if OVERRIDDEN.contains(&key) {
             continue;
@@ -594,6 +667,7 @@ fn child_stage_name(stage: u8) -> &'static str {
         2 => "controlling terminal setup",
         3 => "standard stream setup",
         4 => "exec",
+        5 => "working directory setup",
         _ => "unknown child setup stage",
     }
 }
@@ -818,6 +892,7 @@ fn process_groups_alive(pid: Pid, foreground_group: Option<Pid>) -> bool {
         .any(process_group_exists)
 }
 
+#[allow(clippy::too_many_arguments)] // Separate inherited descriptors are required for safe post-fork setup.
 unsafe fn exec_child(
     master_fd: RawFd,
     slave_fd: RawFd,
@@ -826,6 +901,7 @@ unsafe fn exec_child(
     program: &CString,
     argv: &[*const libc::c_char],
     environment: &[*const libc::c_char],
+    working_directory: Option<&CString>,
 ) -> ! {
     unsafe {
         libc::close(master_fd);
@@ -843,6 +919,12 @@ unsafe fn exec_child(
             }
         }
         libc::close(slave_fd);
+
+        if let Some(directory) = working_directory {
+            if libc::chdir(directory.as_ptr()) < 0 {
+                child_setup_failed(error_writer_fd, 5);
+            }
+        }
 
         libc::execve(program.as_ptr(), argv.as_ptr(), environment.as_ptr());
         child_setup_failed(error_writer_fd, 4);
@@ -888,6 +970,11 @@ unsafe fn child_errno() -> libc::c_int {
     unsafe {
         *libc::__errno_location()
     }
+
+    #[cfg(target_os = "android")]
+    unsafe {
+        *libc::__errno()
+    }
 }
 
 #[cfg(test)]
@@ -917,7 +1004,11 @@ mod tests {
 
     fn test_environment() -> Vec<CString> {
         [
-            "PATH=/usr/bin:/bin",
+            if cfg!(target_os = "android") {
+                "PATH=/system/bin"
+            } else {
+                "PATH=/usr/bin:/bin"
+            },
             "TERM=xterm-256color",
             "TERM_PROGRAM=kokuban",
         ]
@@ -1551,6 +1642,7 @@ mod tests {
             (2, "controlling terminal setup"),
             (3, "standard stream setup"),
             (4, "exec"),
+            (5, "working directory setup"),
             (255, "unknown child setup stage"),
         ] {
             assert_eq!(child_stage_name(stage), expected);
@@ -1947,12 +2039,12 @@ mod tests {
 
     #[test]
     fn wait_readable_times_out_without_output() {
-        let program = CString::new("/bin/sh").unwrap();
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
         let argv = ["sh", "-c", "sleep 5"]
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), None).unwrap();
 
         assert!(!pty.wait_readable(Duration::ZERO).unwrap());
         let started = Instant::now();
@@ -1963,12 +2055,12 @@ mod tests {
 
     #[test]
     fn wait_readable_reports_pending_output() {
-        let program = CString::new("/bin/sh").unwrap();
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
         let argv = ["sh", "-c", "printf '__KOKUBAN_READABLE__'; sleep 1"]
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), None).unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         assert!(pty.wait_readable(Duration::ZERO).unwrap());
@@ -1980,12 +2072,12 @@ mod tests {
 
     #[test]
     fn child_exit_becomes_readable_eof() {
-        let program = CString::new("/bin/sh").unwrap();
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
         let argv = ["sh", "-c", "exit 0"]
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), None).unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         assert_eq!(pty.read(&mut [0; 1]).unwrap(), 0);
@@ -2011,7 +2103,7 @@ mod tests {
     #[test]
     fn rejects_relative_shell_paths() {
         let selected = select_shell(Some(OsString::from("zsh")), None, |_| true);
-        assert_eq!(selected, Path::new("/bin/sh"));
+        assert_eq!(selected, Path::new(super::DEFAULT_SHELL));
     }
 
     #[test]
@@ -2024,7 +2116,8 @@ mod tests {
         ];
 
         for (kitty, sixel, expected) in cases {
-            let environment = child_environment(Path::new("/bin/sh"), kitty, sixel).unwrap();
+            let environment =
+                child_environment(Path::new(super::DEFAULT_SHELL), kitty, sixel, &[]).unwrap();
             let values: Vec<&[u8]> = environment
                 .iter()
                 .filter_map(|entry| entry.as_bytes().strip_prefix(b"KOKUBAN_GRAPHICS="))
@@ -2032,6 +2125,147 @@ mod tests {
 
             assert_eq!(values, vec![expected]);
         }
+    }
+
+    #[test]
+    fn session_environment_overrides_are_unique_and_preserve_terminal_identity() {
+        let overrides = [
+            (OsString::from("HOME"), OsString::from("/private/first")),
+            (OsString::from("HOME"), OsString::from("/private/home")),
+            (OsString::from("TERM"), OsString::from("invalid")),
+        ];
+        let environment =
+            child_environment(Path::new(super::DEFAULT_SHELL), true, false, &overrides).unwrap();
+        let homes: Vec<_> = environment
+            .iter()
+            .filter_map(|entry| entry.as_bytes().strip_prefix(b"HOME="))
+            .collect();
+        assert_eq!(homes, [b"/private/home"]);
+        let terms: Vec<_> = environment
+            .iter()
+            .filter_map(|entry| entry.as_bytes().strip_prefix(b"TERM="))
+            .collect();
+        assert_eq!(terms, [b"xterm-256color"]);
+    }
+
+    #[test]
+    fn session_environment_rejects_invalid_names_and_values() {
+        for (name, value) in [
+            ("", "value"),
+            ("NAME=OTHER", "value"),
+            ("NA\0ME", "value"),
+            ("NAME", "val\0ue"),
+        ] {
+            let error = child_environment(
+                Path::new(super::DEFAULT_SHELL),
+                false,
+                false,
+                &[(OsString::from(name), OsString::from(value))],
+            )
+            .unwrap_err();
+            assert!(matches!(error, PtyError::InvalidShell(_)));
+        }
+    }
+
+    #[test]
+    fn child_uses_private_directory_without_changing_parent_directory() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let parent_directory = std::env::current_dir().unwrap();
+        let parent_home = std::env::var_os("HOME");
+        let directory = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        let cwd = CString::new(directory.as_os_str().as_bytes()).unwrap();
+        let environment = child_environment(
+            Path::new(super::DEFAULT_SHELL),
+            false,
+            false,
+            &[(OsString::from("HOME"), directory.clone().into_os_string())],
+        )
+        .unwrap();
+        let argv = [
+            "sh",
+            "-c",
+            "printf '__PRIVATE__:%s:%s:__END__' \"$PWD\" \"$HOME\"",
+        ]
+        .into_iter()
+        .map(|argument| CString::new(argument).unwrap())
+        .collect();
+        let pty = Pty::spawn_prepared(
+            40,
+            4,
+            CString::new(super::DEFAULT_SHELL).unwrap(),
+            argv,
+            environment,
+            Some(cwd),
+        )
+        .unwrap();
+        let output = read_until(&pty, b":__END__");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("__PRIVATE__:{0}:{0}:__END__", directory.display())
+        );
+        assert_eq!(std::env::current_dir().unwrap(), parent_directory);
+        assert_eq!(std::env::var_os("HOME"), parent_home);
+    }
+
+    #[test]
+    fn unavailable_working_directory_is_reported_before_returning_a_session() {
+        let argv = vec![CString::new("sh").unwrap()];
+        let result = Pty::spawn_prepared(
+            40,
+            4,
+            CString::new(super::DEFAULT_SHELL).unwrap(),
+            argv,
+            test_environment(),
+            Some(CString::new("/definitely/not/a/kokuban-directory").unwrap()),
+        );
+        assert!(matches!(
+            result,
+            Err(PtyError::ChildSetup("working directory setup"))
+        ));
+    }
+
+    #[test]
+    fn resize_updates_child_dimensions_and_delivers_winch() {
+        let argv = ["sh", "-c", "trap 'stty size; printf __RESIZED__; exit' WINCH; printf __READY__; while :; do sleep 1; done"]
+            .into_iter().map(|argument| CString::new(argument).unwrap()).collect();
+        let pty = Pty::spawn_prepared(
+            40,
+            4,
+            CString::new(super::DEFAULT_SHELL).unwrap(),
+            argv,
+            test_environment(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(read_until(&pty, b"__READY__"), b"__READY__");
+        pty.resize(71, 19).unwrap();
+        assert_eq!(read_until(&pty, b"__RESIZED__"), b"19 71\r\n__RESIZED__");
+    }
+
+    #[test]
+    fn ctrl_c_reaches_the_foreground_process_group() {
+        let argv = [
+            "sh",
+            "-c",
+            "trap 'printf __INTERRUPTED__; exit' INT; printf __READY__; while :; do sleep 1; done",
+        ]
+        .into_iter()
+        .map(|argument| CString::new(argument).unwrap())
+        .collect();
+        let pty = Pty::spawn_prepared(
+            40,
+            4,
+            CString::new(super::DEFAULT_SHELL).unwrap(),
+            argv,
+            test_environment(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(read_until(&pty, b"__READY__"), b"__READY__");
+        pty.write_all_cancellable(b"\x03", &AtomicBool::new(false))
+            .unwrap();
+        assert!(read_until(&pty, b"__INTERRUPTED__").ends_with(b"__INTERRUPTED__"));
     }
 
     #[test]
@@ -2045,7 +2279,7 @@ mod tests {
 
     #[test]
     fn spawns_a_program_with_terminal_environment() {
-        let program = CString::new("/bin/sh").unwrap();
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
         let argv = [
             "sh",
             "-c",
@@ -2054,7 +2288,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), None).unwrap();
         let expected = b"__KOKUBAN_PTY__:xterm-256color:kokuban";
         let output = read_until(&pty, expected);
 
@@ -2070,7 +2304,7 @@ mod tests {
         let program = CString::new("/definitely/not/a/kokuban-program").unwrap();
         let argv = vec![CString::new("missing-program").unwrap()];
 
-        let error = match Pty::spawn_prepared(40, 4, program, argv, test_environment()) {
+        let error = match Pty::spawn_prepared(40, 4, program, argv, test_environment(), None) {
             Ok(_) => panic!("missing executable unexpectedly started"),
             Err(error) => error,
         };
@@ -2080,7 +2314,7 @@ mod tests {
 
     #[test]
     fn drop_terminates_and_reaps_a_child_that_ignores_hup_and_term() {
-        let program = CString::new("/bin/sh").unwrap();
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
         let argv = [
             "sh",
             "-c",
@@ -2089,7 +2323,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), None).unwrap();
         let pid = pty.child_pid;
         let output = read_until(&pty, b"__KOKUBAN_READY__");
         assert!(output
@@ -2107,7 +2341,7 @@ mod tests {
 
     #[test]
     fn drop_cleans_descendants_after_the_shell_has_already_exited() {
-        let program = CString::new("/bin/sh").unwrap();
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
         let argv = [
             "sh",
             "-c",
@@ -2116,7 +2350,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), None).unwrap();
         let shell_pid = pty.child_pid;
         let output = read_until(&pty, b"\r\n");
         let output = String::from_utf8_lossy(&output);
