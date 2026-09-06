@@ -44,6 +44,14 @@ class Device:
             raise RuntimeError(f"Expected one running process for {package}, got {pids}")
         return pids[0]
 
+    def type_text(self, text, chunk_size=8):
+        # Android input gives a text command's generated events one timestamp.
+        # Long bursts can become stale while a busy emulator processes them.
+        if "%s" in text:
+            raise ValueError("adb input text cannot preserve a literal %s")
+        for offset in range(0, len(text), chunk_size):
+            self.shell("input", "text", text[offset:offset + chunk_size].replace(" ", "%s"))
+
     def screenshot(self, destination):
         data = self.adb("exec-out", "screencap", "-p", binary=True)
         if not data.startswith(b"\x89PNG\r\n\x1a\n"):

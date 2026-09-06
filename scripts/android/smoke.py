@@ -52,7 +52,7 @@ def main():
     def enter(command):
         # Android input replaces %s with spaces; quote the entire argument for
         # the device shell so > and other shell operators reach the terminal.
-        device.shell("input", "text", command.replace(" ", "%s"))
+        device.type_text(command)
         device.shell("input", "keyevent", "KEYCODE_ENTER")
 
     def assert_shell(expected, command):
@@ -66,6 +66,7 @@ def main():
         device.shell("am", "start", "-W", "-n", component)
         process = device.pid(package)
         eventually(lambda: "first frame presented" in device.adb("logcat", "-d", "--pid", process), True, timeout=30)
+        device.screenshot(args.output / "00-shell-ready.png")
         assert_shell("OPEN", f"KOKUBAN_SMOKE_SESSION=kept;printf OPEN > {shlex.quote(marker)}")
         device.screenshot(args.output / "01-shell.png")
         results["checks"].append("PTY executes a command entered through key events")
@@ -93,6 +94,8 @@ def main():
         results["checks"].append("PTY executes commands after repeated rotation")
         results["status"] = "passed"
     finally:
+        if results.get("status") != "passed":
+            device.screenshot(args.output / "failure.png")
         for name, value in (("accelerometer_rotation", old_auto), ("user_rotation", old_rotation)):
             if value == "null":
                 device.shell("settings", "delete", "system", name)
