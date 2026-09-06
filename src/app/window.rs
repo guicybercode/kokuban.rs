@@ -1692,6 +1692,7 @@ fn render_frame() {
                     Vec::new()
                 };
                 pane_render_data.push(PaneRenderData {
+                    id: *id,
                     grid: &pane.grid,
                     rect: *rect,
                     selection: sel,
@@ -1754,6 +1755,22 @@ fn render_frame() {
 }
 
 pub fn render_if_dirty(dirty: &AtomicBool) {
+    // The application's render timer runs even without PTY output. Expiration
+    // must request a frame after an application omits its matching ESU.
+    VIEW_STATE.with(|state| {
+        if let Some(state) = state.borrow().as_ref() {
+            if let Ok(mut tree) = state.pane_tree.try_lock() {
+                let now = std::time::Instant::now();
+                for id in tree.pane_ids() {
+                    if let Some(pane) = tree.pane_mut(id) {
+                        if pane.grid.expire_synchronized_output(now) {
+                            dirty.store(true, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+        }
+    });
     if dirty.load(Ordering::Relaxed) {
         render_frame();
     }

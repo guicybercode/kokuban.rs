@@ -640,6 +640,7 @@ impl Parser {
         match namespace {
             [] => {}
             [b'?'] if matches!(final_byte, b'h' | b'l') => {}
+            [b'?', b'$'] if final_byte == b'p' => {}
             [b'>'] if matches!(final_byte, b'c' | b'q') => {}
             [b' '] if final_byte == b'q' => {}
             [b'!'] if final_byte == b'p' => {}
@@ -657,6 +658,28 @@ impl Parser {
 
         match final_byte {
             b'p' if namespace == [b'!'] => grid.soft_reset(),
+            // DECRQM: report only implemented modes; unknown is distinct from reset.
+            b'p' if namespace == [b'?', b'$'] => {
+                for &mode in params {
+                    let enabled = match mode {
+                        1 => Some(grid.application_cursor_keys),
+                        7 => Some(grid.auto_wrap),
+                        25 => Some(grid.cursor_visible),
+                        47 | 1047 | 1049 => Some(grid.using_alt_screen),
+                        1000 => Some(grid.mouse_tracking == MouseTracking::Normal),
+                        1002 => Some(grid.mouse_tracking == MouseTracking::ButtonEvent),
+                        1003 => Some(grid.mouse_tracking == MouseTracking::AnyEvent),
+                        1004 => Some(grid.focus_events),
+                        1006 => Some(grid.mouse_encoding == MouseEncoding::Sgr),
+                        1007 => Some(grid.alternate_scroll),
+                        2004 => Some(grid.bracketed_paste),
+                        2026 => Some(grid.synchronized_output_active()),
+                        _ => None,
+                    };
+                    let status = enabled.map_or(0, |enabled| if enabled { 1 } else { 2 });
+                    grid.queue_response(format!("\x1b[?{mode};{status}$y").into_bytes());
+                }
+            }
 
             // DECSCUSR — cursor shape (CSI Ps SP q)
             b'q' if has_space => {
@@ -804,6 +827,7 @@ impl Parser {
                             1006 => { grid.mouse_encoding = if set { MouseEncoding::Sgr } else { MouseEncoding::Default }; }
                             1007 => { grid.alternate_scroll = set; }
                             2004 => { grid.bracketed_paste = set; }
+                            2026 => { grid.set_synchronized_output(set); }
                             _ => { log::trace!("Ignoring DEC private mode {param}"); }
                         }
                     }
@@ -1116,6 +1140,44 @@ mod tests {
 
     fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
         Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
+    }
+
+    #[test]
+    fn synchronized_output_and_mode_queries_survive_every_read_boundary() {
+        let stream = b"\x1b[?2026$p\x1b[?2026h\x1b[2JNEW\x1b[?2026$p\x1b[6n\x1b[?2026l\x1b[?2026$p\x1b[?9999$p";
+        for split in 0..=stream.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            parser.feed(&stream[..split], &mut grid);
+            parser.feed(&stream[split..], &mut grid);
+            assert!(!grid.synchronized_output_active());
+            assert_eq!(row_prefix(&grid, 3), "NEW");
+            let responses: Vec<_> = grid.drain_terminal_events().into_iter().map(|event| {
+                let TerminalEvent::Response(bytes) = event else { panic!("expected response") };
+                bytes
+            }).collect();
+            assert_eq!(responses, [
+                b"\x1b[?2026;2$y".to_vec(), b"\x1b[?2026;1$y".to_vec(),
+                b"\x1b[1;4R".to_vec(), b"\x1b[?2026;2$y".to_vec(), b"\x1b[?9999;0$y".to_vec(),
+            ], "split {split}");
+        }
+    }
+
+    #[test]
+    fn synchronized_output_reset_end_and_restart_are_applied_in_order() {
+        for reset in [b"\x1bc".as_slice(), b"\x1b[!p", b"\x1b[?2026l"] {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            for byte in b"\x1b[?2026hPARTIAL\x1b[?2026h" {
+                parser.feed(&[*byte], &mut grid);
+            }
+            assert!(grid.synchronized_output_active());
+            assert_eq!(row_prefix(&grid, 7), "PARTIAL");
+            parser.feed(reset, &mut grid);
+            assert_eq!(grid.synchronized_output_deadline(), None);
+            parser.feed(b"\x1b[?2026h\x1b[?2026l\x1b[?2026h", &mut grid);
+            assert!(grid.synchronized_output_active());
+        }
     }
 
     #[test]

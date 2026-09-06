@@ -63,6 +63,9 @@ jobs:
             xdotool \
             xvfb
 
+      - name: Test real clear fixture and pixel evidence
+        run: python3 -m unittest discover -s scripts -p test_linux_clear_fixture.py
+
       - name: Check all targets
         run: cargo check --locked --all-targets
 
@@ -172,6 +175,23 @@ jobs:
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout 90s python3 scripts/linux-graphics-smoke.py "$PWD/target/debug/kokuban"
+
+      - name: Verify synchronized Linux presentation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 30s python3 scripts/linux-sync-smoke.py \
+              "$PWD/target/debug/kokuban" --artifacts target/linux-sync-smoke
+
+      - name: Upload synchronized presentation evidence
+        if: ${{ always() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-sync-smoke
+          path: target/linux-sync-smoke
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify Linux clipboard and mouse selection
         if: runner.os == 'Linux'

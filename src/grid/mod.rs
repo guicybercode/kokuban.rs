@@ -6,6 +6,7 @@ use buffer::Buffer;
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use marks::MarkIndex;
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthChar;
 
 use crate::parser::kitty_graphics::KittyCommand;
@@ -13,6 +14,7 @@ use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
+const SYNCHRONIZED_OUTPUT_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
@@ -127,6 +129,7 @@ pub struct Grid {
     pub focus_events: bool,
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
+    synchronized_output_deadline: Option<Instant>,
     pub charset: CharSet,
     // Underline state (current SGR)
     pub underline_style: UnderlineStyle,
@@ -194,6 +197,7 @@ impl Grid {
             focus_events: false,
             cursor_style: CursorStyle::default(),
             insert_mode: false,
+            synchronized_output_deadline: None,
             charset: CharSet::Ascii,
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
@@ -232,6 +236,40 @@ impl Grid {
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
     pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
     pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
+
+    pub(crate) fn synchronized_output_active(&self) -> bool {
+        self.synchronized_output_deadline.is_some_and(|deadline| Instant::now() < deadline)
+    }
+
+    pub(crate) fn synchronized_output_deadline(&self) -> Option<Instant> {
+        self.synchronized_output_deadline
+    }
+
+    pub(crate) fn set_synchronized_output(&mut self, enabled: bool) {
+        self.set_synchronized_output_at(enabled, Instant::now());
+    }
+
+    pub(crate) fn set_synchronized_output_at(&mut self, enabled: bool, now: Instant) {
+        if enabled {
+            // Repeated BSU is idempotent. A broken producer cannot postpone
+            // recovery forever by sending BSU without ESU.
+            if self.synchronized_output_deadline.is_none_or(|deadline| now >= deadline) {
+                self.synchronized_output_deadline = Some(now + SYNCHRONIZED_OUTPUT_TIMEOUT);
+            }
+        } else if self.synchronized_output_deadline.take().is_some() {
+            self.mark_all_dirty();
+        }
+    }
+
+    pub(crate) fn expire_synchronized_output(&mut self, now: Instant) -> bool {
+        if self.synchronized_output_deadline.is_some_and(|deadline| now >= deadline) {
+            self.synchronized_output_deadline = None;
+            self.mark_all_dirty();
+            true
+        } else {
+            false
+        }
+    }
 
     /// Iterate every placement reference for cache retention, including a hidden primary screen.
     pub(crate) fn all_image_placements(&self) -> impl Iterator<Item = &ImagePlacement> {
@@ -287,6 +325,7 @@ impl Grid {
     /// DECSTR resets the modes used by subsequent output without erasing the
     /// screen/history or moving the current cursor (xterm soft-reset behavior).
     pub(crate) fn soft_reset(&mut self) {
+        self.set_synchronized_output(false);
         self.cancel_pending_wrap();
         self.saved_cursor_row = 0;
         self.saved_cursor_col = 0;
@@ -1030,6 +1069,25 @@ mod tests {
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
+
+    #[test]
+    fn synchronized_output_has_a_bounded_idempotent_deadline() {
+        let now = std::time::Instant::now();
+        let mut grid = Grid::new(8, 4, 10);
+        grid.set_synchronized_output_at(true, now);
+        let deadline = now + super::SYNCHRONIZED_OUTPUT_TIMEOUT;
+        grid.set_synchronized_output_at(true, now + std::time::Duration::from_millis(50));
+        assert_eq!(grid.synchronized_output_deadline(), Some(deadline));
+        assert!(!grid.expire_synchronized_output(deadline - std::time::Duration::from_nanos(1)));
+        grid.clear_dirty();
+        assert!(grid.expire_synchronized_output(deadline));
+        assert!(grid.is_any_dirty());
+        assert!(!grid.expire_synchronized_output(deadline));
+        grid.set_synchronized_output_at(true, deadline);
+        assert_eq!(grid.synchronized_output_deadline(), Some(deadline + super::SYNCHRONIZED_OUTPUT_TIMEOUT));
+        grid.set_synchronized_output(false);
+        assert_eq!(grid.synchronized_output_deadline(), None);
+    }
 
     #[test]
     fn selection_and_paste_revisions_distinguish_repaint_from_screen_changes() {

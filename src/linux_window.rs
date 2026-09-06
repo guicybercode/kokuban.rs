@@ -991,6 +991,11 @@ impl LinuxWindow {
         let (snapshot, images) = {
             // Match reader lock order; text and image placements share one snapshot.
             let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
+            // Also guard local redraws (resize/selection/IME/image timers),
+            // which do not pass through the PTY update notification.
+            if grid.synchronized_output_active() {
+                return Ok(None);
+            }
             let graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
             sync_selection(&mut self.selection, &mut self.selection_context, &grid);
             let mut snapshot = snapshot_locked_grid(&grid);
