@@ -13,6 +13,8 @@ mod android_runtime;
 mod android_glyph_atlas;
 #[cfg(test)]
 mod android_input;
+#[cfg(test)]
+mod android_controls;
 mod grid;
 mod input;
 mod layout;

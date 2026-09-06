@@ -4,6 +4,7 @@
 #![cfg(target_os = "android")]
 #![allow(dead_code)]
 
+mod android_controls;
 mod android_images;
 mod android_ime;
 mod android_input;
