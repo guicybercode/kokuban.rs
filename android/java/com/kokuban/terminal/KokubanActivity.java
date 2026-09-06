@@ -33,6 +33,7 @@ public final class KokubanActivity extends NativeActivity {
     static { System.loadLibrary("kokuban"); }
 
     private static final int MAX_EDITOR_UNITS = 16384;
+    private static final int MAX_CLIPBOARD_UNITS = 65536;
     private EditorView editor;
     private boolean destroyed;
     private final Rect previousViewport = new Rect(-1, -1, -1, -1);
@@ -42,7 +43,7 @@ public final class KokubanActivity extends NativeActivity {
     private static native void nativeDelete(int before, int after);
     private static native void nativeKey(int code, int unicode, int modifiers);
     private static native void nativeViewport(int left, int top, int right, int bottom, boolean keyboard);
-    private static native void nativeClipboard(String text);
+    private static native void nativeClipboard(long requestId, int status, String text);
     private static native void nativeControl(int id, int action);
 
     @Override protected void onCreate(Bundle state) {
@@ -92,15 +93,31 @@ public final class KokubanActivity extends NativeActivity {
         });
     }
 
-    public void pasteText() {
+    public void pasteText(long requestId) {
         runOnUiThread(() -> {
-            if (destroyed) return;
-            ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            ClipData clip = manager.getPrimaryClip();
-            if (clip == null || clip.getItemCount() == 0) return;
-            // Read plain text only. Do not resolve arbitrary clipboard URIs on the UI thread.
-            CharSequence text = clip.getItemAt(0).getText();
-            if (text != null && text.length() <= MAX_EDITOR_UNITS) nativeClipboard(text.toString());
+            int status = 0;
+            String value = "";
+            try {
+                if (destroyed) {
+                    status = 1;
+                } else {
+                    ClipboardManager manager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    ClipData clip = manager.getPrimaryClip();
+                    if (clip != null && clip.getItemCount() != 0) {
+                        // Plain text only: do not resolve arbitrary clipboard URIs.
+                        CharSequence text = clip.getItemAt(0).getText();
+                        if (text != null) {
+                            if (text.length() > MAX_CLIPBOARD_UNITS) status = 2;
+                            else value = text.toString();
+                        }
+                    }
+                }
+            } catch (RuntimeException error) {
+                status = 1;
+            }
+            // Every request completes, including empty/unavailable/oversized data.
+            // Rust validates UTF-8 bytes and the terminal's current paste target.
+            nativeClipboard(requestId, status, value);
         });
     }
 

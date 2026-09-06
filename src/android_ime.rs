@@ -1,8 +1,8 @@
 //! JNI platform bridge. The activity is borrowed from AndroidApp, never leaked.
-use crate::android_input::{ImeEvent, MAX_IME_BYTES};
+use crate::android_input::{ClipboardReadError, ImeEvent, MAX_IME_BYTES};
 use jni::objects::{JClass, JObject, JString};
 use jni::refs::Global;
-use jni::sys::{jboolean, jint};
+use jni::sys::{jboolean, jint, jlong};
 use jni::{jni_sig, jni_str, EnvUnowned, JValue, JavaVM};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -97,9 +97,14 @@ impl AndroidIme {
     }
 
     /// Clipboard access runs on the UI thread and returns an ImeEvent::Clipboard.
-    pub(crate) fn paste(&self) -> Result<(), String> {
+    pub(crate) fn paste(&self, request_id: u64) -> Result<(), String> {
         self.with_activity(|env, activity| {
-            env.call_method(activity, jni_str!("pasteText"), jni_sig!(() -> void), &[])?;
+            env.call_method(
+                activity,
+                jni_str!("pasteText"),
+                jni_sig!((long) -> void),
+                &[JValue::Long(request_id as jlong)],
+            )?;
             Ok(())
         })
     }
@@ -309,13 +314,29 @@ pub extern "system" fn Java_com_kokuban_terminal_KokubanActivity_nativeViewport<
 pub extern "system" fn Java_com_kokuban_terminal_KokubanActivity_nativeClipboard<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
+    request_id: jlong,
+    status: jint,
     text: JString<'local>,
 ) {
     env.with_env(|env| -> jni::errors::Result<()> {
-        let text = text.try_to_string(env)?;
-        if text.len() <= MAX_IME_BYTES {
-            emit(ImeEvent::Clipboard(text));
-        }
+        let result = match status {
+            0 => text
+                .try_to_string(env)
+                .map_err(|_| ClipboardReadError::Unavailable)
+                .and_then(|text| {
+                    if text.len() <= MAX_IME_BYTES {
+                        Ok(text)
+                    } else {
+                        Err(ClipboardReadError::TooLarge)
+                    }
+                }),
+            2 => Err(ClipboardReadError::TooLarge),
+            _ => Err(ClipboardReadError::Unavailable),
+        };
+        emit(ImeEvent::Clipboard {
+            request_id: request_id as u64,
+            result,
+        });
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();

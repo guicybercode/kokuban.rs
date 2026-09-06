@@ -4,7 +4,9 @@ use crate::android_controls::{
 };
 use crate::android_images::AndroidImages;
 use crate::android_ime::{AccessibleControl, AndroidIme};
-use crate::android_input::{self, ImeEvent, InputModifiers, InputState};
+use crate::android_input::{
+    self, ClipboardReadError, ImeEvent, InputModifiers, InputState, PendingPastes,
+};
 use crate::android_metrics::FrameMetrics;
 use crate::android_runtime::AndroidRuntime;
 use crate::config::{ColorConfig, Config};
@@ -17,6 +19,7 @@ use crate::input::mouse::{
     mouse_wheel_route, MouseWheelRoute, MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN,
     MOUSE_WHEEL_UP,
 };
+use crate::input::paste::encode_paste;
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::selection::{point_from_viewport, SelectionState};
@@ -150,6 +153,7 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         app,
         ime,
         input: InputState::default(),
+        pending_pastes: PendingPastes::default(),
         viewport: None,
         config,
         colors: TerminalColors::new(foreground, background),
@@ -199,6 +203,7 @@ struct AndroidWindow {
     app: AndroidApp,
     ime: AndroidIme,
     input: InputState,
+    pending_pastes: PendingPastes,
     viewport: Option<[u32; 4]>,
     config: Config,
     colors: TerminalColors,
@@ -389,20 +394,9 @@ impl AndroidWindow {
                     self.redraw();
                 }
             }
-            ImeEvent::Clipboard(text) => {
-                let bracketed = self.grid.lock().map(|g| g.bracketed_paste).unwrap_or(false);
-                if text.len() + 12 <= crate::terminal_writer::TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM
-                {
-                    let mut bytes = Vec::with_capacity(text.len() + 12);
-                    if bracketed {
-                        bytes.extend_from_slice(b"\x1b[200~");
-                    }
-                    bytes.extend_from_slice(text.as_bytes());
-                    if bracketed {
-                        bytes.extend_from_slice(b"\x1b[201~");
-                    }
-                    self.send(bytes);
-                }
+            ImeEvent::Clipboard { request_id, result } => {
+                let result = self.clipboard_reply(*request_id, result.as_deref());
+                self.platform_error(result);
             }
             _ => {
                 let preedit_changed = match &event {
@@ -430,6 +424,67 @@ impl AndroidWindow {
                 }
             }
         }
+    }
+
+    fn request_paste(&mut self) -> Result<(), String> {
+        if self.focused == Some(false) || self.surface.is_none() {
+            return Ok(());
+        }
+        let request_id = {
+            let grid = self.grid.lock().map_err(|_| "Grid lock poisoned".to_owned())?;
+            self.pending_pastes
+                .request(grid.screen_revision(), grid.bracketed_paste)
+                .ok_or_else(|| "Clipboard is busy. Try again.".to_owned())?
+        };
+        if let Err(error) = self.ime.paste(request_id) {
+            self.pending_pastes.take(request_id);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn clipboard_reply(
+        &mut self,
+        request_id: u64,
+        result: Result<&str, &ClipboardReadError>,
+    ) -> Result<(), String> {
+        let Some(target) = self.pending_pastes.take(request_id) else {
+            return Ok(());
+        };
+        if self.focused == Some(false) || self.surface.is_none() {
+            return Ok(());
+        }
+        let text = result.map_err(|error| error.message().to_owned())?;
+        let Some(writer) = self.writer.as_ref() else {
+            return Ok(());
+        };
+        let budget = android_input::MAX_IME_BYTES.min(writer.max_nonfatal_input_bytes());
+        let bytes = encode_paste(text, target.bracketed, budget)
+            .map_err(|error| format!("Could not paste: {error}"))?;
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let changed = {
+            let mut grid = self.grid.lock().map_err(|_| "Grid lock poisoned".to_owned())?;
+            if !target.is_current(grid.screen_revision(), grid.bracketed_paste) {
+                log::info!("Clipboard paste cancelled: terminal screen or paste mode changed");
+                return Ok(());
+            }
+            // Validation and enqueue share the grid lock, so a PTY-driven screen
+            // transition cannot interleave between checking and queuing the text.
+            writer
+                .enqueue_nonfatal(bytes)
+                .map_err(|error| format!("Could not paste: {error}"))?;
+            self.metrics.input();
+            let changed = self.selection.is_active() || grid.scroll_offset != 0;
+            self.selection.clear();
+            grid.scroll_to_bottom();
+            changed
+        };
+        if changed {
+            self.redraw();
+        }
+        Ok(())
     }
 
     fn content_bounds(&self, width: u32, height: u32) -> [u32; 4] {
@@ -904,7 +959,10 @@ impl AndroidWindow {
                 Ok(None) => {}
                 Err(error) => self.platform_error(Err(error)),
             },
-            Control::Paste => self.platform_error(self.ime.paste()),
+            Control::Paste => {
+                let result = self.request_paste();
+                self.platform_error(result);
+            }
             Control::More => {
                 if let Some(layout) = self.controls() {
                     self.toolbar_page = (self.toolbar_page + 1) % layout.page_count;
@@ -1382,7 +1440,8 @@ impl AndroidWindow {
                 self.redraw();
             }
         } else if button == MouseButton::Middle {
-            self.platform_error(self.ime.paste());
+            let result = self.request_paste();
+            self.platform_error(result);
         }
     }
 
@@ -1392,6 +1451,7 @@ impl AndroidWindow {
         }
         self.focused = Some(focused);
         if !focused {
+            self.pending_pastes.clear();
             self.touch = None;
             self.touch_contacts.clear();
             self.mouse_press = None;

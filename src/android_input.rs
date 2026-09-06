@@ -2,9 +2,15 @@
 use crate::input::keyboard::{
     encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers,
 };
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Bound one editor transaction; this is separate from the writer queue budget.
 pub(crate) const MAX_IME_BYTES: usize = 64 * 1024;
+const MAX_PENDING_PASTES: usize = 8;
+// Native state survives Activity/window recreation. Never reuse an identifier
+// while an earlier UI-thread clipboard read might still deliver its result.
+static NEXT_PASTE_REQUEST: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug)]
 pub(crate) enum ImeEvent {
@@ -28,12 +34,77 @@ pub(crate) enum ImeEvent {
         bottom: u32,
         keyboard: bool,
     },
-    Clipboard(String),
+    Clipboard {
+        request_id: u64,
+        result: Result<String, ClipboardReadError>,
+    },
     /// Native accessibility actions: 0 activate, 1 focus, 2 clear focus.
     Control {
         id: i32,
         action: i32,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ClipboardReadError {
+    Unavailable,
+    TooLarge,
+}
+
+impl ClipboardReadError {
+    pub(crate) fn message(&self) -> &'static str {
+        match self {
+            Self::Unavailable => "Could not read clipboard text",
+            Self::TooLarge => "Clipboard text exceeds the Android input limit",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PasteTarget {
+    screen_revision: u64,
+    pub bracketed: bool,
+}
+
+impl PasteTarget {
+    pub(crate) fn is_current(&self, screen_revision: u64, bracketed: bool) -> bool {
+        self.screen_revision == screen_revision && self.bracketed == bracketed
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct PendingPastes {
+    requests: HashMap<u64, PasteTarget>,
+}
+
+impl PendingPastes {
+    pub(crate) fn request(&mut self, screen_revision: u64, bracketed: bool) -> Option<u64> {
+        if self.requests.len() >= MAX_PENDING_PASTES {
+            return None;
+        }
+        let previous = NEXT_PASTE_REQUEST
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                value.checked_add(1)
+            })
+            .ok()?;
+        let request_id = previous + 1;
+        self.requests.insert(
+            request_id,
+            PasteTarget {
+                screen_revision,
+                bracketed,
+            },
+        );
+        Some(request_id)
+    }
+
+    pub(crate) fn take(&mut self, request_id: u64) -> Option<PasteTarget> {
+        self.requests.remove(&request_id)
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.requests.clear();
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -107,7 +178,7 @@ impl InputState {
                 key_modifiers.control |= modifiers.control;
                 encode_android_key(*code, *unicode, application_cursor_keys, key_modifiers)
             }
-            ImeEvent::Viewport { .. } | ImeEvent::Clipboard(_) | ImeEvent::Control { .. } => {
+            ImeEvent::Viewport { .. } | ImeEvent::Clipboard { .. } | ImeEvent::Control { .. } => {
                 Vec::new()
             }
         }
@@ -203,6 +274,93 @@ fn encode_android_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipboard_replies_are_correlated_out_of_order_and_only_consumed_once() {
+        let mut pending = PendingPastes::default();
+        let first = pending.request(3, true).unwrap();
+        let second = pending.request(4, false).unwrap();
+        assert!(pending.take(0).is_none());
+        assert!(pending.take(second).unwrap().is_current(4, false));
+        assert!(pending.take(second).is_none());
+        assert!(pending.take(first).unwrap().is_current(3, true));
+        assert!(pending.take(first).is_none());
+    }
+
+    #[test]
+    fn late_clipboard_reply_from_old_window_cannot_consume_new_window_request() {
+        let mut old_window = PendingPastes::default();
+        let old_id = old_window.request(0, false).unwrap();
+        drop(old_window);
+        let mut new_window = PendingPastes::default();
+        let new_id = new_window.request(0, false).unwrap();
+        assert_ne!(old_id, new_id);
+        assert_ne!(new_id, 0);
+        assert!(new_window.take(old_id).is_none());
+        assert!(new_window.take(new_id).is_some());
+    }
+
+    #[test]
+    fn clipboard_pending_limit_releases_capacity_on_error_or_empty_completion() {
+        let mut pending = PendingPastes::default();
+        let ids = (0..MAX_PENDING_PASTES)
+            .map(|_| pending.request(0, false).unwrap())
+            .collect::<Vec<_>>();
+        assert!(pending.request(0, false).is_none());
+        let completions = [Err(ClipboardReadError::Unavailable), Ok(String::new())];
+        for (id, result) in ids.into_iter().zip(completions) {
+            let event = ImeEvent::Clipboard {
+                request_id: id,
+                result,
+            };
+            if let ImeEvent::Clipboard { request_id, .. } = event {
+                assert!(pending.take(request_id).is_some());
+            }
+            assert!(pending.request(0, false).is_some());
+            assert!(pending.request(0, false).is_none());
+        }
+    }
+
+    #[test]
+    fn clearing_pending_clipboard_reads_invalidates_old_ids_and_preserves_new_requests() {
+        let mut pending = PendingPastes::default();
+        let old = pending.request(1, true).unwrap();
+        pending.clear();
+        let next = pending.request(2, false).unwrap();
+        assert!(pending.take(old).is_none());
+        assert!(pending.take(next).unwrap().is_current(2, false));
+    }
+
+    #[test]
+    fn paste_target_requires_same_screen_and_bracketed_mode() {
+        let mut pending = PendingPastes::default();
+        let id = pending.request(10, true).unwrap();
+        let target = pending.take(id).unwrap();
+        assert!(target.bracketed);
+        assert!(target.is_current(10, true));
+        assert!(!target.is_current(12, true)); // Includes an alternate-screen round trip.
+        assert!(!target.is_current(10, false));
+    }
+
+    #[test]
+    fn clipboard_completions_do_not_bypass_window_validation_or_commit_preedit() {
+        let mut input = InputState::default();
+        let modifiers = InputModifiers::default();
+        input.handle(&ImeEvent::Preedit("pending".into()), false, modifiers);
+        for result in [Ok("text".to_owned()), Err(ClipboardReadError::TooLarge)] {
+            assert!(input
+                .handle(
+                    &ImeEvent::Clipboard {
+                        request_id: 1,
+                        result
+                    },
+                    false,
+                    modifiers
+                )
+                .is_empty());
+            assert_eq!(input.preedit(), "pending");
+        }
+    }
 
     #[test]
     fn accent_composition_only_writes_the_final_commit() {
