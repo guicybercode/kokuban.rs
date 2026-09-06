@@ -50,6 +50,9 @@ entre perfis preservando os dados de teste com a mesma chave local.
 - `src/android_window.rs`: NativeActivity, softbuffer e sessão PTY. Suspensão
   libera Surface/Context; retomada recria recursos e preserva shell/grid. O
   loop espera eventos, sem redesenho contínuo em repouso.
+- `src/android_pty_size.rs`: informa ao PTY a área física do terminal sem barra
+  de controles ou IME. Aplica mudanças somente em pixels mesmo quando a grade
+  não muda e guarda apenas dimensões aceitas pelo ioctl (`3de3bb3`).
 - `src/android_runtime.rs`: HOME e diretórios privados (0700), ambiente e cwd
   passados somente ao filho. Shell de fallback Android: `/system/bin/sh`.
 - Configuração: `files/config/kokuban/kokuban.toml`; HOME: `files/home`, ambos
@@ -65,10 +68,24 @@ entre perfis preservando os dados de teste com a mesma chave local.
   sua apresentação; esses limites não são limites globais de PSS. Animações
   visíveis usam `WaitUntil`; superfície ausente ou perda de foco suspendem os
   timers. O núcleo também limita frames e metadados de posicionamento.
+  Imagens opacas podem evitar o desenho de imagens totalmente encobertas;
+  essa otimização não elimina seus dados nem, por si só, seus timers.
+  Camadas Kitty abaixo de `i32::MIN / 2` ficam atrás dos fundos explícitos das
+  células, mantendo visibilidade através do fundo padrão (`1df1a00`).
 - `src/android_input.rs`: composição, commit e tradução para bytes do terminal.
   `src/android_ime.rs` e `android/java/.../KokubanActivity.java`: adaptação dos
   callbacks de InputConnection, viewport e clipboard às mensagens Rust.
   NativeActivity/winit 0.30 não expõe esses eventos de composição sozinho.
+- O winit usado somente no Android vem de `vendor/winit-0.30.13`, com origem,
+  licença e alterações registradas no [manifesto de manutenção](../vendor/README.md).
+  A adaptação entrega mouse nativo e modificadores antes das teclas, preservando
+  teclas nomeadas e evitando botões duplicados. Desktop mantém o pacote do registry.
+- Colagem usa o encoder compartilhado, normaliza quebras de linha e remove
+  controles embutidos. O limite de 64 KiB inclui os marcadores de bracketed paste.
+  Até oito leituras assíncronas recebem IDs distintos; respostas obsoletas após
+  mudança de tela, modo ou foco são descartadas. Recusa da fila mostra erro e
+  preserva a sessão (`7f9075e`). Seleção acompanha o descarte do histórico e
+  limita a cópia antes da alocação (`231509c`).
 
 O código do terminal, PTY, parser, renderização e semântica de entrada permanece
 Rust. Existe uma pequena ponte Java para os contratos do sistema Android.
