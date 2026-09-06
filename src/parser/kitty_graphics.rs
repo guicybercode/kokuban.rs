@@ -1,6 +1,15 @@
 use base64::Engine;
 
-const MAX_PAYLOAD_BASE64_BYTES: usize = 4096;
+// Released kitten clients emit up to 128 KiB of encoded data per APC. Keep a
+// separate bounded allowance for control keys and the leading graphics marker.
+pub(super) const MAX_PAYLOAD_BASE64_BYTES: usize = 128 * 1024;
+pub(super) const MAX_KITTY_APC_BYTES: usize = MAX_PAYLOAD_BASE64_BYTES + 1024;
+const PAYLOAD_ENGINE: base64::engine::general_purpose::GeneralPurpose =
+    base64::engine::general_purpose::GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        base64::engine::general_purpose::GeneralPurposeConfig::new()
+            .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+    );
 
 #[derive(Debug, Clone)]
 pub struct KittyCommand {
@@ -275,7 +284,7 @@ pub fn parse_kitty_command(data: &[u8]) -> Option<KittyCommand> {
             log::warn!("Kitty graphics chunk exceeds {MAX_PAYLOAD_BASE64_BYTES} encoded bytes");
             return None;
         }
-        match base64::engine::general_purpose::STANDARD.decode(payload_b64) {
+        match PAYLOAD_ENGINE.decode(payload_b64) {
             Ok(decoded) => cmd.payload = decoded,
             Err(e) => {
                 log::warn!("Failed to decode kitty graphics payload: {e}");
@@ -349,13 +358,24 @@ mod tests {
         let mut exact = b"f=100,m=1;".to_vec();
         exact.extend_from_slice(&exact_payload);
 
-        let command = parse_kitty_command(&exact).expect("4096-byte chunk should be accepted");
+        let command = parse_kitty_command(&exact).expect("128 KiB chunk should be accepted");
         assert_eq!(command.payload.len(), MAX_PAYLOAD_BASE64_BYTES / 4 * 3);
 
         let oversized_payload = vec![b'A'; MAX_PAYLOAD_BASE64_BYTES + 4];
         let mut oversized = b"f=100,m=1;".to_vec();
         oversized.extend_from_slice(&oversized_payload);
         assert!(parse_kitty_command(&oversized).is_none());
+    }
+
+    #[test]
+    fn accepts_padded_and_unpadded_payloads_but_rejects_invalid_base64() {
+        for payload in ["AQ==", "AQ", "AQI=", "AQI", "AQID"] {
+            let command = parse_kitty_command(format!("i=9;{payload}").as_bytes()).unwrap();
+            assert_eq!(command.payload, [1, 2, 3][..command.payload.len()]);
+        }
+        for payload in ["AR", "A", "AQ$", "AQ==extra", "-_8"] {
+            assert!(parse_kitty_command(format!("i=9;{payload}").as_bytes()).is_none());
+        }
     }
 
     #[test]
