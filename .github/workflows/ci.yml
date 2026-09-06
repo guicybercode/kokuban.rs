@@ -46,9 +46,16 @@ jobs:
             libfontconfig1-dev \
             libfreetype6-dev \
             libxkbcommon-x11-0 \
+            fzf \
+            neovim \
+            openssh-client \
+            openssh-server \
             pkg-config \
+            tmux \
             x11-apps \
             xauth \
+            xclip \
+            xdotool \
             xvfb
 
       - name: Check all targets
@@ -151,3 +158,21 @@ jobs:
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout 90s python3 scripts/linux-graphics-smoke.py "$PWD/target/debug/kokuban"
+
+      - name: Verify Linux SSH and interactive development applications
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=10s 180s python3 scripts/linux-apps-smoke.py \
+              "$PWD/target/debug/kokuban" \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-apps-artifacts"
+
+      - name: Upload Linux application smoke evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-apps-smoke
+          path: ${{ runner.temp }}/kokuban-apps-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
