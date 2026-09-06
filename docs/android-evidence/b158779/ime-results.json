@@ -1,0 +1,47 @@
+{
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "ime": "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME",
+  "checks": [
+    "native accessible control bounds are at least 48dp",
+    "real IME taps, accent popup, Backspace and Enter produce café via PTY",
+    "explicit keyboard control hides and reopens the IME",
+    "real Korean 2-set taps compose ㄱ + ㅏ into 가 with preedit and Enter delivery via PTY"
+  ],
+  "status": "passed",
+  "ime_version": {
+    "versionName": "14.2.09.629370537-preload-x86_64",
+    "versionCode": "143544272"
+  },
+  "system_locale": "en-US",
+  "last_capture": "restore-english-keyboard",
+  "utf8_result": "café",
+  "latin_callbacks": {
+    "preedit": 0,
+    "commit": 2
+  },
+  "hangul_callbacks": {
+    "preedit": 2,
+    "commit": 2
+  },
+  "hangul_utf8_result": "가",
+  "hangul_layout": "Korean 2-set",
+  "ime_callbacks": {
+    "preedit": 2,
+    "commit": 2
+  },
+  "composition": "nonempty preedit and committed PTY text observed",
+  "restored_layout": "English",
+  "source_run": 34008178897,
+  "source_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34008178897",
+  "source_artifact": 9981671142,
+  "apk_provenance": "ime-provenance.json",
+  "visual_limitation": "Hangul preedit/commit reached the PTY, but the CFF2 fallback glyph is empty in this APK; a corrected build still requires visual validation.",
+  "comparison_scope": "This version compares decoded shell marker text; the subsequent collector 9d15669 requires exact raw bytes."
+}

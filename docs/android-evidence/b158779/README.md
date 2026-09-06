@@ -27,6 +27,14 @@ O gate IME deste run falhou ao localizar a busca de idiomas do Gboard, antes
 de testar Hangul. A entrada de `café` já tinha passado. Este conjunto não
 comprova composição intermediária nem aprovação de toda a matriz.
 
+O teste posterior [34008178897](https://github.com/guicybercode/kokuban.rs/actions/runs/34008178897)
+passou IME e controles com o mesmo APK e scripts `1bdb18d`. `ime-results.json`
+e `ime-provenance.json` preservam esse escopo separado: Gboard real enviou dois
+preedits não vazios ao compor `가`, Enter entregou o texto esperado ao PTY e o
+layout English foi restaurado. O glifo CFF2 ainda ficou vazio visualmente.
+A comparação desse coletor era textual; `9d15669` acrescentou comparação de
+bytes brutos e seu resultado deve ser registrado com o próximo APK.
+
 ## Medições release
 
 APK x86_64: 2.732.519 bytes. O arquivo de proveniência contém seu SHA256 e

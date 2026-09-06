@@ -154,7 +154,7 @@ cenários ainda não executados.
 | Release CI ARM64 | Build de `b158779` passou: APK 2.580.973 bytes (2,46 MiB); lib terminal 2.921.336 bytes; SSH 3.182.048 bytes. [Proveniência e SHA256](android-evidence/b158779/arm64-release-provenance.json), run [34006719596](https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596). Execução do dispositivo usa x86_64. |
 | AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
 | Instalação/shell/lifecycle CI x86_64 | Passou novamente em `b158779`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/b158779/lifecycle.json). |
-| IME real | Gboard produziu `café` por toque no teclado/seletor de acento, Backspace e Enter, com cinco commits e sem preedit. A transação Hangul de composição obrigatória continua em validação; `adb input text` não prova composição. |
+| IME real | Gboard 14.2.09 passou `café` por toque/seletor de acento, Backspace/Enter, ocultação/reabertura e a transação Hangul `ㄱ`+`ㅏ`→`가`: dois preedits não vazios, texto recebido pelo PTY e restauração do layout English. [Resultado no APK b158779 com scripts 1bdb18d](android-evidence/b158779/ime-results.json). O glifo CFF2 ficou vazio; a correção visual e o coletor posterior de bytes exatos precisam de nova execução. |
 | SSH/ferramentas | Cliente: 9 testes unitários e 2 testes CLI/servidor no host passaram. Android passou trust, chave pública, Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1, desconexão e retorno ao shell local. O teste corrigido de resize passou em debug e release `c41bc56`: 25x46→4x104. [Resultados e perfis](android-evidence/c41bc56/README.md). |
 | Foto/animação/vídeo | Seis cenários passaram em debug e release `b158779`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, camadas Kitty negativas e MP4 H.264 silencioso com pixels de frames decodificados distintos. [Resultados](android-evidence/b158779/release-media.json), [camada atrás do fundo](android-evidence/b158779/background-layer.png), [fundo padrão revelando imagem](android-evidence/b158779/background-layer-reveal.png), [vídeo](android-evidence/b158779/video.png). |
 | Consumo release x86_64 | `b158779`, 15 s ociosos após 3 s de espera: PSS do app 25.586→29.712 KiB; app+shell 26.517→30.643 KiB; CPU média 0,2% de um núcleo, zero novos quadros. [Amostras](android-evidence/b158779/release-idle.json). APK x86_64 2.732.519 bytes; [proveniência](android-evidence/b158779/x86-release-provenance.json). |
@@ -194,7 +194,8 @@ diferem das amostras anteriores, portanto esses números não demonstram uma
 melhora causal de latência. Os [dados e limites da medição](android-evidence/b158779/README.md)
 preservam o contexto e a fórmula do percentil.
 
-A pendência de entrada é a transação de composição intermediária com IME real.
+O fluxo de composição intermediária passou com Gboard real. A pendência de
+entrada é validar o glifo CFF2 corrigido e os bytes exatos no novo APK.
 Controles, seleção/clipboard, caminhos de teclado/mouse, lifecycle, aplicações
 e mídia passaram no APK integrado `b158779`. A nova medição release inclui a
 redução de redesenhos `48099f6` e a janela de coleta corrigida `dbc5e47`.
