@@ -8078,3 +8078,119 @@ mod tests {
         assert!(!arm_grid_redraw(&redraw_pending));
     }
 }
+
+#[cfg(test)]
+mod graphics_tests {
+    use super::{atlas_cell_dimensions, draw_grid_snapshot_with_images, snapshot_grid};
+    use crate::config::ImagesConfig;
+    use crate::glyph_atlas::GlyphAtlas;
+    use crate::grid::cell::Color;
+    use crate::grid::Grid;
+    use crate::parser::ansi::GraphicsSupport;
+    use crate::software_graphics::SoftwareGraphics;
+    use crate::terminal_colors::TerminalColors;
+    use crate::terminal_decoder::TerminalDecoder;
+    use std::sync::Mutex;
+
+    fn render_images(mut grid: Grid, commands: &[u8]) -> (Vec<u32>, (u16, u16)) {
+        let mut atlas = GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0)
+            .expect("system monospace fallback should be available");
+        let cell_size = atlas_cell_dimensions(&atlas).unwrap();
+        grid.cell_pixel_width = cell_size.0;
+        grid.cell_pixel_height = cell_size.1;
+        let mut graphics = SoftwareGraphics::new(&ImagesConfig::default());
+        let mut decoder = TerminalDecoder::new(GraphicsSupport {
+            kitty: true,
+            sixel: true,
+        });
+        let mut remaining = commands;
+        while !remaining.is_empty() {
+            let step = decoder.feed_until_event(remaining, &mut grid);
+            assert!(step.consumed > 0);
+            remaining = &remaining[step.consumed..];
+            for event in step.events {
+                graphics.process(event, &mut grid);
+            }
+        }
+        let images = graphics.snapshot(&grid, cell_size);
+        assert!(
+            !images.is_empty(),
+            "test must exercise actual image compositing"
+        );
+        let frame_size = (
+            grid.cols() as u32 * u32::from(cell_size.0),
+            grid.rows() as u32 * u32::from(cell_size.1),
+        );
+        let snapshot = snapshot_grid(&Mutex::new(grid)).unwrap();
+        let mut frame = vec![0; frame_size.0 as usize * frame_size.1 as usize];
+        draw_grid_snapshot_with_images(
+            &mut frame,
+            frame_size,
+            &mut atlas,
+            TerminalColors::new((255, 255, 255), (0, 0, 0)),
+            cell_size,
+            &snapshot,
+            false,
+            &images,
+        );
+        (frame, cell_size)
+    }
+
+    #[test]
+    fn lowest_layer_is_visible_through_default_background_but_below_explicit_background() {
+        for (z_index, expected_second_cell) in
+            [(-1_073_741_825, 0x0000ff), (-1_073_741_824, 0xff0000)]
+        {
+            let mut grid = Grid::new(2, 1, 0);
+            grid.buffer.cell_mut(0, 1).bg = Color::Rgb(0, 0, 255);
+            let command =
+                format!("\x1b_Ga=T,f=32,s=1,v=1,i=1,c=2,r=1,C=1,z={z_index};/wAA/w==\x1b\\");
+            let (frame, cell_size) = render_images(grid, command.as_bytes());
+
+            for row in frame.chunks_exact(usize::from(cell_size.0) * 2) {
+                assert!(row[..usize::from(cell_size.0)]
+                    .iter()
+                    .all(|pixel| *pixel == 0xff0000));
+                assert!(row[usize::from(cell_size.0)..]
+                    .iter()
+                    .all(|pixel| *pixel == expected_second_cell));
+            }
+        }
+    }
+
+    #[test]
+    fn negative_layer_is_below_text_and_zero_layer_covers_text() {
+        for z_index in [-1, 0] {
+            let mut grid = Grid::new(2, 1, 0);
+            grid.buffer.cell_mut(0, 0).c = 'M';
+            grid.buffer.cell_mut(0, 0).fg = Color::Rgb(255, 255, 255);
+            let command =
+                format!("\x1b_Ga=T,f=32,s=1,v=1,i=1,c=2,r=1,C=1,z={z_index};/wAA/w==\x1b\\");
+            let (frame, cell_size) = render_images(grid, command.as_bytes());
+
+            let glyph_visible = frame.chunks_exact(usize::from(cell_size.0) * 2).any(|row| {
+                row[..usize::from(cell_size.0)]
+                    .iter()
+                    .any(|pixel| *pixel != 0xff0000)
+            });
+            assert_eq!(glyph_visible, z_index < 0);
+            assert!(frame
+                .chunks_exact(usize::from(cell_size.0) * 2)
+                .all(|row| row[usize::from(cell_size.0)..]
+                    .iter()
+                    .all(|pixel| *pixel == 0xff0000)));
+        }
+    }
+
+    #[test]
+    fn overlapping_images_are_sorted_by_z_index_before_compositing() {
+        let commands = concat!(
+            "\x1b_Ga=T,f=32,s=1,v=1,i=1,c=2,r=1,C=1,z=2;/wAA/w==\x1b\\",
+            "\x1b_Ga=T,f=32,s=1,v=1,i=2,c=2,r=1,C=1,z=-1;AP8A/w==\x1b\\",
+            "\x1b_Ga=T,f=32,s=1,v=1,i=3,c=2,r=1,C=1,z=1;AAD//w==\x1b\\",
+        );
+        let (frame, _) = render_images(Grid::new(2, 1, 0), commands.as_bytes());
+
+        assert!(frame.iter().all(|pixel| *pixel == 0xff0000));
+    }
+}

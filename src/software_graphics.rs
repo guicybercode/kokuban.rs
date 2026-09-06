@@ -76,14 +76,23 @@ mod tests {
 
         let responses = feed(&mut decoder, &mut graphics, &mut grid, &input);
 
-        assert_eq!(responses, [b"\x1b_Gi=7;OK\x1b\\".to_vec(), b"\x1b[3;5R".to_vec()]);
+        assert_eq!(
+            responses,
+            [b"\x1b_Gi=7;OK\x1b\\".to_vec(), b"\x1b[3;5R".to_vec()]
+        );
         assert_eq!(grid.buffer.cell(2, 3).c, 'X');
         let images = graphics.snapshot(&grid, (4, 8));
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].rectangle, (8.0, 8.0, 2.0, 1.0));
         assert_eq!(images[0].size, (2, 1));
         let mut frame = vec![0; 48 * 48];
-        draw_image_rgba(&mut frame, (48, 48), &images[0].pixels, images[0].size, images[0].rectangle);
+        draw_image_rgba(
+            &mut frame,
+            (48, 48),
+            &images[0].pixels,
+            images[0].size,
+            images[0].rectangle,
+        );
         assert_eq!(&frame[8 * 48 + 7..8 * 48 + 11], &[0, 0xff0000, 0x00ff00, 0]);
         assert_eq!(frame.iter().filter(|pixel| **pixel != 0).count(), 2);
     }
@@ -96,12 +105,17 @@ mod tests {
             let mut encoder = png::Encoder::new(&mut png, 2, 1);
             encoder.set_color(png::ColorType::Rgba);
             encoder.set_depth(png::BitDepth::Eight);
-            encoder.write_header().unwrap().write_image_data(&[255, 0, 0, 128, 0, 255, 0, 0]).unwrap();
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(&[255, 0, 0, 128, 0, 255, 0, 0])
+                .unwrap();
         }
         let command = upload("a=T,f=100,i=8,C=1", &png);
-        let responses: Vec<_> = command.chunks(3).flat_map(|part| {
-            feed(&mut decoder, &mut graphics, &mut grid, part)
-        }).collect();
+        let responses: Vec<_> = command
+            .chunks(3)
+            .flat_map(|part| feed(&mut decoder, &mut graphics, &mut grid, part))
+            .collect();
 
         assert_eq!(responses, [b"\x1b_Gi=8;OK\x1b\\".to_vec()]);
         assert_eq!((grid.cursor_row, grid.cursor_col), (0, 0));
@@ -110,7 +124,13 @@ mod tests {
         assert_eq!(images[0].size, (2, 1));
         assert_eq!(images[0].rectangle, (0.0, 0.0, 2.0, 1.0));
         let mut frame = [0x0000ff; 2];
-        draw_image_rgba(&mut frame, (2, 1), &images[0].pixels, images[0].size, images[0].rectangle);
+        draw_image_rgba(
+            &mut frame,
+            (2, 1),
+            &images[0].pixels,
+            images[0].size,
+            images[0].rectangle,
+        );
         assert_eq!(frame, [0x80007f, 0x0000ff]);
     }
 
@@ -118,7 +138,9 @@ mod tests {
     fn consecutive_sixels_keep_native_pixels_and_move_text_in_event_order() {
         let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
         let responses = feed(
-            &mut decoder, &mut graphics, &mut grid,
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
             b"\x1b[2;3H\x1bPq#1;2;100;0;0~\x1b\\\x1bPq#1;2;0;100;0~\x1b\\X\x1b[6n",
         );
 
@@ -130,10 +152,20 @@ mod tests {
         assert_eq!(images[1].rectangle, (8.0, 16.0, 1.0, 6.0));
         let mut frame = vec![0; 48 * 48];
         for image in images {
-            draw_image_rgba(&mut frame, (48, 48), &image.pixels, image.size, image.rectangle);
+            draw_image_rgba(
+                &mut frame,
+                (48, 48),
+                &image.pixels,
+                image.size,
+                image.rectangle,
+            );
         }
-        for row in 8..14 { assert_eq!(frame[row * 48 + 8], 0xff0000); }
-        for row in 16..22 { assert_eq!(frame[row * 48 + 8], 0x00ff00); }
+        for row in 8..14 {
+            assert_eq!(frame[row * 48 + 8], 0xff0000);
+        }
+        for row in 16..22 {
+            assert_eq!(frame[row * 48 + 8], 0x00ff00);
+        }
         assert_eq!(frame.iter().filter(|pixel| **pixel != 0).count(), 12);
     }
 
@@ -146,7 +178,8 @@ mod tests {
         let input = [
             upload("a=T,f=32,s=1,v=1,i=7", &[255; 4]),
             b"\x1bPq~\x1b\\X\x1b[c".to_vec(),
-        ].concat();
+        ]
+        .concat();
 
         let responses = feed(&mut decoder, &mut graphics, &mut grid, &input);
 
@@ -161,15 +194,30 @@ mod tests {
     #[test]
     fn deleting_alt_screen_placement_preserves_pixels_referenced_by_primary_screen() {
         let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
-        feed(&mut decoder, &mut graphics, &mut grid, &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255; 4]));
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255; 4]),
+        );
         let primary = graphics.snapshot(&grid, (4, 8));
         assert_eq!(primary.len(), 1);
 
         feed(&mut decoder, &mut graphics, &mut grid, b"\x1b[?1049h");
         assert!(graphics.snapshot(&grid, (4, 8)).is_empty());
-        let response = feed(&mut decoder, &mut graphics, &mut grid, b"\x1b_Ga=p,i=7,C=1\x1b\\");
+        let response = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=p,i=7,C=1\x1b\\",
+        );
         assert_eq!(response, [b"\x1b_Gi=7;OK\x1b\\".to_vec()]);
-        feed(&mut decoder, &mut graphics, &mut grid, b"\x1b_Ga=d,d=I,i=7\x1b\\");
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=d,d=I,i=7\x1b\\",
+        );
         assert!(graphics.snapshot(&grid, (4, 8)).is_empty());
         assert!(graphics.store.get(primary[0].image_id).is_some());
 
@@ -177,18 +225,37 @@ mod tests {
         let restored = graphics.snapshot(&grid, (4, 8));
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].image_id, primary[0].image_id);
-        feed(&mut decoder, &mut graphics, &mut grid, b"\x1b_Ga=d,d=I,i=7\x1b\\");
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=d,d=I,i=7\x1b\\",
+        );
         assert!(graphics.snapshot(&grid, (4, 8)).is_empty());
         assert_eq!(graphics.store.image_count(), 0);
-        assert_eq!(primary[0].pixels.as_ref(), &[255; 4], "an in-flight frame keeps its immutable pixels");
+        assert_eq!(
+            primary[0].pixels.as_ref(),
+            &[255; 4],
+            "an in-flight frame keeps its immutable pixels"
+        );
     }
 
     #[test]
     fn retransmission_on_alt_screen_invalidates_hidden_primary_placements() {
         let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
-        feed(&mut decoder, &mut graphics, &mut grid, &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255; 4]));
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255; 4]),
+        );
         feed(&mut decoder, &mut graphics, &mut grid, b"\x1b[?1049h");
-        feed(&mut decoder, &mut graphics, &mut grid, &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255, 0, 0, 255]));
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255, 0, 0, 255]),
+        );
         let replacement = graphics.snapshot(&grid, (4, 8));
         assert_eq!(replacement.len(), 1);
         assert_eq!(replacement[0].pixels.as_ref(), &[255, 0, 0, 255]);
@@ -196,8 +263,16 @@ mod tests {
         feed(&mut decoder, &mut graphics, &mut grid, b"\x1b[?1049l");
         assert!(graphics.snapshot(&grid, (4, 8)).is_empty());
         assert!(grid.image_placements.is_empty());
-        feed(&mut decoder, &mut graphics, &mut grid, b"\x1b_Ga=p,i=7,C=1\x1b\\");
-        assert_eq!(graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(), &[255, 0, 0, 255]);
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=p,i=7,C=1\x1b\\",
+        );
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[255, 0, 0, 255]
+        );
     }
 
     #[test]
@@ -206,18 +281,29 @@ mod tests {
             max_memory_mb: 1,
             ..ImagesConfig::default()
         });
-        feed(&mut decoder, &mut graphics, &mut grid,
-            &upload("a=T,f=32,s=512,v=512,i=1,C=1", &vec![255; 1024 * 1024]));
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=512,v=512,i=1,C=1", &vec![255; 1024 * 1024]),
+        );
         let old_frame = graphics.snapshot(&grid, (4, 8));
         assert_eq!(old_frame.len(), 1);
-        let responses = feed(&mut decoder, &mut graphics, &mut grid,
-            &upload("a=T,f=32,s=1,v=1,i=2,C=1", &[255, 0, 0, 255]));
+        let responses = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,i=2,C=1", &[255, 0, 0, 255]),
+        );
 
         assert_eq!(responses, [b"\x1b_Gi=2;OK\x1b\\".to_vec()]);
         assert_eq!(graphics.store.image_count(), 1);
         assert!(graphics.store.get(old_frame[0].image_id).is_none());
         assert_eq!(grid.image_placements.len(), 1);
-        assert_eq!(graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(), &[255, 0, 0, 255]);
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[255, 0, 0, 255]
+        );
         assert_eq!(old_frame[0].pixels.len(), 1024 * 1024);
         assert_eq!(&old_frame[0].pixels[..4], &[255; 4]);
     }
@@ -225,15 +311,26 @@ mod tests {
     #[test]
     fn repeated_tiny_placements_evict_oldest_metadata_at_the_limit() {
         let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
-        feed(&mut decoder, &mut graphics, &mut grid, &upload("a=t,f=32,s=1,v=1,i=7,q=2", &[255; 4]));
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=t,f=32,s=1,v=1,i=7,q=2", &[255; 4]),
+        );
         for placement in 1..=MAX_PLACEMENTS + 1 {
             let command = format!("\x1b_Ga=p,i=7,p={placement},C=1,q=2\x1b\\");
             assert!(feed(&mut decoder, &mut graphics, &mut grid, command.as_bytes()).is_empty());
         }
 
         assert_eq!(grid.image_placements.len(), MAX_PLACEMENTS);
-        assert_eq!(grid.image_placements.first().unwrap().client_placement_id, Some(2));
-        assert_eq!(grid.image_placements.last().unwrap().client_placement_id, Some((MAX_PLACEMENTS + 1) as u32));
+        assert_eq!(
+            grid.image_placements.first().unwrap().client_placement_id,
+            Some(2)
+        );
+        assert_eq!(
+            grid.image_placements.last().unwrap().client_placement_id,
+            Some((MAX_PLACEMENTS + 1) as u32)
+        );
         assert_eq!(graphics.store.image_count(), 1);
         assert_eq!((grid.cursor_row, grid.cursor_col), (0, 0));
     }
