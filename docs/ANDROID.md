@@ -146,14 +146,14 @@ cenários ainda não executados.
 | Atlas | 7 testes determinísticos passaram (A8, baseline, estilos, cache e limites). |
 | Regressão compartilhada | 447 testes do binário macOS passaram após integrar imagens em `14972d3`, Rust 1.94.1. |
 | Entrada Rust | 5 testes de IME e 6 do encoder compartilhado passaram em harness; os testes foram integrados ao binário para o CI. |
-| Controles | 6 testes de geometria/gestos passaram; seleção, clipboard e acessibilidade implementados, ainda sem validação aprovada no dispositivo. |
-| APK atual ARM64 debug opt1 | Build com SSH, dex e os dois ELF de 16 KiB passou. APK local: 5.640.685 bytes; lib terminal: 3.608.736 bytes; lib SSH: 6.099.768 bytes. Esse perfil não é release. |
+| Controles | 7 cenários de dispositivo passaram no APK debug opt1 `b158779`: toolbar, teclas, Esc com IME, seleção/copy/paste, scroll 22→0, mouse SGR e modificadores Ctrl/Shift/Alt. Bytes recebidos pelo PTY coincidem exatamente; entrada injetada pelo Android, sem periférico USB físico. [Resultados](android-evidence/b158779/controls.json), [seleção](android-evidence/b158779/selection-drag.png), [colagem](android-evidence/b158779/clipboard.png). |
+| Amostra anterior ARM64 debug opt1 | Build com SSH, dex e os dois ELF de 16 KiB passou. APK local: 5.640.685 bytes; lib terminal: 3.608.736 bytes; lib SSH: 6.099.768 bytes. Esse perfil não é release. |
 | APK inicial ARM64 | Build e assinatura executados localmente com SDK35/NDK27.1/Rust1.94.1. |
 | APK com ponte IME | Build completo em `0b0e8a4`: launcher KokubanActivity, hasCode=true, classes.dex de 12.656 bytes, lib debug sem símbolos de 7.490.768 bytes; assinaturas v2/v3 e zipalign16 passaram. |
-| Release CI ARM64 | Build de `95684d2` passou: APK 2.564.589 bytes (2,45 MiB); lib terminal 2.887.392 bytes; SSH 3.182.048 bytes. SHA256 no [registro](android-evidence/cf4525c/results.json), artefato no run [34003114279](https://github.com/guicybercode/kokuban.rs/actions/runs/34003114279). |
+| Release CI ARM64 | Build de `b158779` passou: APK 2.580.973 bytes (2,46 MiB); lib terminal 2.921.336 bytes; SSH 3.182.048 bytes. [Proveniência e SHA256](android-evidence/b158779/arm64-release-provenance.json), run [34006719596](https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596). Execução do dispositivo usa x86_64. |
 | AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
 | Instalação/shell/lifecycle CI x86_64 | Passou em `cf4525c`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais. Capturas inspecionadas; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/cf4525c/results.json). |
-| IME real, toque, seleção/clipboard | Necessitam execução com teclado Android real; `adb input text` não prova composição. |
+| IME real | Gboard produziu `café` por toque no teclado/seletor de acento, Backspace e Enter, com cinco commits e sem preedit. A transação Hangul de composição obrigatória continua em validação; `adb input text` não prova composição. |
 | SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Em Android, passaram rejeição de host desconhecido/alterado, chave pública, sessão interativa e resize remoto 25x46→4x104. Em `b9ba8b8`, debug e release passaram Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1 e retorno ao shell local. [Resultados](android-evidence/b9ba8b8/results.json). |
 | Foto/animação/vídeo | Passaram em debug e release `b9ba8b8`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, MP4 H.264 silencioso com pixels de frames decodificados distintos. [Foto](android-evidence/b9ba8b8/photo.png), [vídeo](android-evidence/b9ba8b8/video.png). |
 | Consumo release x86_64 | Run [34003348109](https://github.com/guicybercode/kokuban.rs/actions/runs/34003348109), 15 s ociosos após abrir: PSS do app 25.608→29.356 KiB; app+shell 26.519→30.267 KiB; CPU média 0,133% de um núcleo. [Amostras](android-evidence/1b9847b/release-idle.json). |
@@ -190,8 +190,8 @@ O cenário de eco provocou 120 apresentações em 15 segundos e será usado para
 avaliar quadros redundantes. A amostra de vídeo inclui cliente SSH e coleta de screenshots; seu escopo e
 perfil estão registrados separadamente.
 
-As pendências de execução são composição com IME real e controles,
-seleção/clipboard e caminhos de teclado/mouse. A matriz completa de lifecycle,
+A pendência de entrada é a transação de composição intermediária com IME real.
+Controles, seleção/clipboard e caminhos de teclado/mouse passaram em `b158779`. A matriz completa de lifecycle,
 SSH, aplicações e mídia deve passar novamente no APK integrado; os resultados
 de `b9ba8b8` identificam uma versão anterior. A redução de redesenhos de
 `48099f6` também precisa de nova medição release com a janela de coleta
