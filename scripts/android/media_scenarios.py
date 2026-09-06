@@ -178,13 +178,18 @@ def run_media_scenarios(device, enter, server_root, output, serial, package):
         # Kitty's lowest z band belongs below explicit cell backgrounds, but
         # remains visible through default-background cells. Reuse the Linux PNG.
         dimensions = (linux.WIDTH, linux.HEIGHT)
-        for name, z, visible in [("negative-layer", -1, linux.BLUE),
-                                 ("background-layer", -(2 ** 31), linux.RED)]:
+        for name, z, visible, marker in [("negative-layer", -1, linux.BLUE, linux.YELLOW),
+                                         ("background-layer", -(2 ** 31), linux.RED, linux.CYAN)]:
             payload = linux.payload("kitty", linux.BLUE).replace(
                 b"q=2,C=1;", f"q=2,C=1,z={z};".encode("ascii"), 1)
+            # A new marker is a rendering barrier after the PNG. Reusing the
+            # prior marker could accept an intermediate frame after d=A removes
+            # the old image but before the replacement has been decoded.
+            marker_sgr = ";".join(str(channel) for channel in marker).encode("ascii")
+            payload = payload.replace(b"48;2;255;255;0m", b"48;2;" + marker_sgr + b"m")
             send_bytes(name, clear + b"\x1b[48;2;255;0;0m\x1b[2J" + payload)
             wait_pixels(name, lambda rgb, size: region_color(rgb, size, origin, dimensions, visible)
-                        and rectangle(rgb, size, linux.YELLOW))
+                        and rectangle(rgb, size, marker))
         # Overwrite cell backgrounds without ED, which would erase placements.
         send_bytes("background-layer-reveal", b"\x1b[0m\x1b[H" + b" " * 20 + b"\r\n" + b" " * 20
                    + b"\x1b[10;1H")
