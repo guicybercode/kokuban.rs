@@ -42,7 +42,7 @@ jobs:
           dirname "$(rustup which --toolchain 1.94.1 rustc)" >> "$GITHUB_PATH"
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
-          sdkmanager "ndk;$ANDROID_NDK_VERSION" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ANDROID_NDK_VERSION" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
 
       - name: Check validation tooling
         run: |
@@ -68,8 +68,8 @@ jobs:
         if: matrix.target == 'x86_64-linux-android'
         shell: bash
         run: |
-          sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
-          echo no | avdmanager create avd --name kokuban-ci --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64'
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name kokuban-ci --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
           sudo chmod 666 /dev/kvm
           mkdir -p target/android-evidence
           "$ANDROID_HOME/emulator/emulator" -avd kokuban-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > target/android-evidence/emulator.log 2>&1 &
