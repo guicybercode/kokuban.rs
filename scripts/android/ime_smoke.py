@@ -118,9 +118,14 @@ def main():
     held_pointer = None
     korean_added = False
 
+    def save_results():
+        (args.output / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
+
     def dump(label):
         nonlocal capture_index
         capture_index += 1
+        results["last_capture"] = label
+        save_results()
         remote = "/sdcard/kokuban-ime-ui.xml"
         # The focused app remains the active window while the IME is shown.
         # Include interactive windows to expose the keyboard and accent popup.
@@ -293,14 +298,23 @@ def main():
         results["error"] = str(error)
         raise
     finally:
-        if held_pointer:
-            device.shell("input", "motionevent", "UP", str(held_pointer[0]), str(held_pointer[1]), check=False)
-        if results["status"] != "passed":
-            device.screenshot(args.output / "failure.png")
+        # An ADB failure can also make screenshot/settings restoration fail.
+        # Persist the original scenario result before attempting device cleanup.
+        save_results()
+        cleanup_errors = []
+
+        def cleanup(label, action):
             try:
-                dump("failure")
+                return action()
             except Exception as error:
-                results["capture_error"] = str(error)
+                cleanup_errors.append(f"{label}: {error}")
+                return None
+
+        if held_pointer:
+            cleanup("release pointer", lambda: device.shell("input", "motionevent", "UP", str(held_pointer[0]), str(held_pointer[1]), check=False))
+        if results["status"] != "passed":
+            cleanup("failure screenshot", lambda: device.screenshot(args.output / "failure.png"))
+            cleanup("failure UI", lambda: dump("failure"))
         if korean_added:
             try:
                 return_to_terminal()
@@ -312,16 +326,20 @@ def main():
                 results["status"] = "failed"
         for (namespace, key), value in original.items():
             if key == "default_input_method" and value != "null":
-                device.shell("ime", "set", value, check=False)
+                cleanup("restore input method", lambda: device.shell("ime", "set", value, check=False))
             elif value == "null":
-                device.shell("settings", "delete", namespace, key, check=False)
+                cleanup(f"restore {key}", lambda: device.shell("settings", "delete", namespace, key, check=False))
             else:
-                device.shell("settings", "put", namespace, key, value, check=False)
+                cleanup(f"restore {key}", lambda: device.shell("settings", "put", namespace, key, value, check=False))
         if not had_trace:
-            device.shell("run-as", package, "rm", "-f", trace, check=False)
-        device.shell("rm", "-f", "/sdcard/kokuban-ime-ui.xml", check=False)
-        (args.output / "logcat.txt").write_text(device.adb("logcat", "-d", "-T", start_time, check=False))
-        (args.output / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
+            cleanup("remove trace flag", lambda: device.shell("run-as", package, "rm", "-f", trace, check=False))
+        cleanup("remove UI dump", lambda: device.shell("rm", "-f", "/sdcard/kokuban-ime-ui.xml", check=False))
+        cleanup("capture logcat", lambda: (args.output / "logcat.txt").write_text(device.adb("logcat", "-d", "-T", start_time, check=False)))
+        if cleanup_errors:
+            results["cleanup_errors"] = cleanup_errors
+            results["status"] = "failed"
+            results.setdefault("error", "IME cleanup or evidence capture failed")
+        save_results()
     if results["status"] != "passed":
         raise AssertionError(results.get("restore_error", "IME validation failed"))
     print(json.dumps(results, ensure_ascii=False, indent=2))
