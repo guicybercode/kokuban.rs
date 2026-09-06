@@ -1,16 +1,20 @@
-//! Run inside Kokuban: cargo run --example graphics -- kitty|sixel|stream|photo.png
+//! Run inside Kokuban: cargo run --example graphics -- kitty|sixel|animate|stream|photo.png
 use base64::Engine;
 use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
 
 fn kitty_frame(output: &mut impl Write, png: &[u8]) -> io::Result<()> {
+    kitty_upload(output, "a=T,f=100,i=42,q=2,C=1,c=40,r=12", png)
+}
+
+fn kitty_upload(output: &mut impl Write, control: &str, png: &[u8]) -> io::Result<()> {
     let encoded = base64::engine::general_purpose::STANDARD.encode(png);
     let chunks = encoded.as_bytes().chunks(4096);
     let count = chunks.len();
     for (index, chunk) in chunks.enumerate() {
         let more = u8::from(index + 1 < count);
         if index == 0 {
-            write!(output, "\x1b_Ga=T,f=100,i=42,q=2,C=1,c=40,r=12,m={more};")?;
+            write!(output, "\x1b_G{control},m={more};")?;
         } else {
             write!(output, "\x1b_Gm={more};")?;
         }
@@ -70,6 +74,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::thread::sleep(deadline.saturating_sub(start.elapsed()));
             }
             output.write_all(b"\x1b[u\x1b[12B\r\nStream complete (120 frames)\r\n")?;
+        }
+        Some("animate") => {
+            kitty_frame(&mut output, &pattern(0)?)?;
+            output.write_all(b"\x1b_Ga=a,i=42,r=1,z=40,v=4,q=2\x1b\\")?;
+            for frame in 1..30 {
+                kitty_upload(&mut output, "a=f,f=100,i=42,z=40,q=2", &pattern(frame)?)?;
+            }
+            // The terminal owns playback after this process exits (three loops).
+            output.write_all(b"\x1b_Ga=a,i=42,s=3,q=2\x1b\\\x1b[12B\r\nNative animation: 30 frames, 3 loops (Linux)\r\n")?;
         }
         Some("kitty") => {
             kitty_frame(&mut output, &pattern(0)?)?;

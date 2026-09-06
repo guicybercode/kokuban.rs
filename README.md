@@ -10,7 +10,7 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 
 - **Native rendering**: Metal GPU renderer on macOS; software rasterizer with winit + softbuffer on Linux
 - **Built-in parser**: VT/ANSI escape sequence parser with support for complex SGR modes (faint, conceal, styled underlines)
-- **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux includes alpha blending, image layers, and a bounded CPU cache
+- **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux also supports native Kitty animation with a bounded CPU cache
 - **Pane management (macOS)**: Split windows vertically or horizontally, navigate with vim-style keybinds
 - **Zoom (macOS)**: Dynamic font size adjustment per session
 - **Selection (macOS)**: Mouse-driven text selection with configurable colors
@@ -67,11 +67,12 @@ cargo run --example graphics -- kitty
 cargo run --example graphics -- sixel
 cargo run --example graphics -- /path/to/photo.png
 cargo run --example graphics -- stream
+cargo run --example graphics -- animate  # Linux
 ```
 
-The Rust example sends PNG images in Kitty chunks or a Sixel color pattern. `stream` replaces the same image for 120 frames with a requested rate of 30 FPS. This exercises externally supplied frame updates; it is not a benchmark or an implementation of Kitty animation controls. Native Kitty frame/animation/composition commands, general video playback and audio remain unfinished.
+The Rust example sends PNG images in Kitty chunks or a Sixel color pattern. `stream` replaces the same image for 120 frames with a requested rate of 30 FPS. `animate` uploads 30 frames and exits; Linux continues playback for three loops using Kitty animation controls. These examples are not performance benchmarks. General video playback and audio remain unfinished; the macOS renderer returns `ENOTSUP` for animation commands.
 
-Images follow terminal scrolling. Image placements crossing a partial scroll region are discarded to avoid painting over fixed text. The Linux cache limits both decoded bytes and image count (4096); snapshots share pixel buffers, so concurrent upload and rendering can temporarily retain more memory than the cache limit. Configuration applies at startup:
+Images follow terminal scrolling. Image placements crossing a partial scroll region are discarded to avoid painting over fixed text. The Linux cache limits decoded bytes, image count (4096), retained frames across the cache (4096), and frames per image (256). Animation frames use complete RGBA canvases, including delta uploads, and count against the byte limit. Snapshots share pixel buffers, so concurrent upload and rendering can temporarily retain more memory than the cache limit. Hidden animations schedule no timer and catch up when visible again. See the [shared animation contract](docs/ANIMATION.md). Configuration applies at startup:
 
 ```toml
 [images]
