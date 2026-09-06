@@ -52,9 +52,13 @@ at release time.
 
 ## Current dependency observations
 
-The v0.1 lockfile inventory selects **148 packages for Linux x86_64** and **86
+The v0.1 lockfile inventory selects **151 packages for Linux x86_64** and **89
 packages for each macOS architecture**, excluding Kokuban itself and including
 the conservative build dependency closure described above.
+
+Unicode composition adds `unicode-normalization 0.1.25`, `tinyvec 1.13.2` and
+`tinyvec_macros 0.1.1` to both target graphs. Their published crates include
+license texts; the existing generator collects them without supplements.
 
 Most declare MIT and/or Apache-2.0. The selected graphs also contain BSD-2-Clause,
 BSD-3-Clause, ISC, Zlib, 0BSD, Unlicense, Unicode-3.0, MPL-2.0, and an optional

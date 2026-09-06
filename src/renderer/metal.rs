@@ -316,10 +316,10 @@ impl MetalRenderer {
                     continue;
                 }
 
-                if cell.c != ' ' && cell.c != '\0' {
+                for character in cell.normalized_chars().filter(|c| *c != ' ' && *c != '\0') {
                     let cw = cell_w * render_width;
                     // Box drawing: geometric lines
-                    if let Some(segs) = box_drawing::box_drawing_lines(cell.c, cw, cell_h) {
+                    if let Some(segs) = box_drawing::box_drawing_lines(character, cw, cell_h) {
                         for (lx0, ly0, lx1, ly1) in segs {
                             let is_horiz = (ly0 - ly1).abs() < 0.01;
                             let half = line_thickness / 2.0;
@@ -335,9 +335,9 @@ impl MetalRenderer {
                             vertices.push(Vertex::new(rx1, ry1, white_u, white_v, fg_packed, fg_packed));
                             vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
                         }
-                    } else if braille::is_braille(cell.c) {
+                    } else if braille::is_braille(character) {
                         // Braille: render dots
-                        let dots = braille::braille_dots(cell.c);
+                        let dots = braille::braille_dots(character);
                         let dot_r = cell_w / 6.0;
                         let col_spacing = cw / 2.0;
                         let row_spacing = cell_h / 4.0;
@@ -353,8 +353,16 @@ impl MetalRenderer {
                         }
                     } else {
                         // Normal glyph from atlas
-                        let key = GlyphKey { c: cell.c, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
+                        let key = GlyphKey { c: character, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
                         let glyph = atlas.get_or_insert(key);
+                        // Remaining combining marks overlay the base glyph. A
+                        // transparent foreground-colored background avoids
+                        // erasing it in the glyph quad's uncovered pixels.
+                        let glyph_bg = if unicode_width::UnicodeWidthChar::width(character) == Some(0) {
+                            fg_packed & 0xFFFFFF00
+                        } else {
+                            bg_packed
+                        };
                         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
                             let gx0 = x0 + glyph.bearing_x as f32;
                             let gy0 = y0 + atlas.ascent + glyph.bearing_y as f32;
@@ -362,12 +370,12 @@ impl MetalRenderer {
                             let gy1 = gy0 + glyph.pixel_h as f32;
                             let (u0, v0, u1, v1) =
                                 glyph_uv_bounds(atlas.width, atlas.height, &glyph);
-                            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, glyph_bg));
                         }
                     }
                 }
@@ -1266,6 +1274,50 @@ mod tests {
         assert!(test_draw(&mut renderer, &mut atlas, &grid, &resized));
         finish_test_frames(&renderer);
         assert_eq!(test_pixel(&resized, 40, 2), [20, 200, 10, 255]);
+    }
+
+    #[test]
+    fn metal_composed_and_decomposed_accents_render_identical_pixels() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let mut renderer = MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let mut atlas = GlyphAtlas::new("Menlo", 16.0, 1.0).unwrap();
+        for (composed, decomposed) in [("éãç", "e\u{301}a\u{303}c\u{327}"), ("ÁÇÑ", "A\u{301}C\u{327}N\u{303}")] {
+            let mut frames = Vec::new();
+            for text in [composed, decomposed] {
+                let mut grid = Grid::new(8, 4, 0);
+                for character in text.chars() { grid.put_char(character); }
+                let texture = test_target(&renderer, 128, 96);
+                assert!(test_draw(&mut renderer, &mut atlas, &grid, &texture));
+                finish_test_frames(&renderer);
+                frames.push(test_region(&texture, 128, 64));
+                let stored: String = (0..3).flat_map(|col| grid.visible_cell(0, col).chars()).collect();
+                assert_eq!(stored, text, "drawing must preserve the original copied text");
+            }
+            assert!(frames[0].chunks_exact(4).any(|pixel| pixel[..3] != [0, 0, 0]));
+            assert_eq!(frames[0], frames[1]);
+        }
+    }
+
+    #[test]
+    fn metal_uncomposed_mark_overlays_without_erasing_the_base_glyph() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let mut renderer = MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let mut atlas = GlyphAtlas::new("Menlo", 16.0, 1.0).unwrap();
+        let mut frames = Vec::new();
+        for text in ["  x", "  x\u{301}"] {
+            let mut grid = Grid::new(8, 4, 0);
+            for character in text.chars() { grid.put_char(character); }
+            let texture = test_target(&renderer, 128, 96);
+            assert!(test_draw(&mut renderer, &mut atlas, &grid, &texture));
+            finish_test_frames(&renderer);
+            frames.push(test_region(&texture, 128, 64));
+        }
+        assert_ne!(frames[0], frames[1], "the uncomposed accent must be visible");
+        for (base, combined) in frames[0].chunks_exact(4).zip(frames[1].chunks_exact(4)) {
+            for channel in 0..3 {
+                assert!(combined[channel] >= base[channel], "the accent must not erase base pixels");
+            }
+        }
     }
 
     #[test]

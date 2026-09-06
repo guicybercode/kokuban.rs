@@ -2856,7 +2856,7 @@ fn snapshot_locked_grid(grid: &Grid) -> GridSnapshot {
 
     for row in 0..rows {
         for column in 0..columns {
-            cells.push(*grid.visible_cell(row, column));
+            cells.push(grid.visible_cell(row, column).clone());
         }
     }
 
@@ -3428,9 +3428,9 @@ fn draw_grid_snapshot_with_images(
                 continue;
             }
 
-            if cell.c != ' ' && cell.c != '\0' {
+            for c in cell.normalized_chars().filter(|&c| c != ' ' && c != '\0') {
                 let glyph = atlas.get_or_insert(GlyphKey {
-                    c: cell.c,
+                    c,
                     bold: cell.flags.contains(CellFlags::BOLD),
                     italic: cell.flags.contains(CellFlags::ITALIC),
                 });
@@ -7908,7 +7908,7 @@ mod tests {
         };
         let reversed = Cell {
             flags: CellFlags::BOLD | CellFlags::REVERSE,
-            ..normal
+            ..normal.clone()
         };
 
         assert_eq!(
@@ -8196,6 +8196,28 @@ mod tests {
         ] {
             assert!(cell_content_is_visible(visible_flags));
             assert!(!cell_content_is_visible(visible_flags | CellFlags::HIDDEN));
+        }
+    }
+
+    #[test]
+    fn decomposed_accents_render_like_precomposed_text_without_changing_copy() {
+        let mut atlas = test_atlas();
+        for (original, composed) in [("e\u{301}X", "éX"), ("a\u{303}X", "ãX"), ("c\u{327}X", "çX")] {
+            let make_grid = |text: &str| {
+                let mut grid = Grid::new(4, 1, 0);
+                grid.cursor_visible = false;
+                let mut parser = crate::parser::ansi::Utf8Parser::new();
+                parser.feed(text.as_bytes(), &mut grid);
+                grid
+            };
+            let grid = make_grid(original);
+            assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(),
+                original.strip_suffix('X').unwrap());
+            let (decomposed_frame, _) = render_grid(grid, &mut atlas);
+            let (composed_frame, _) = render_grid(make_grid(composed), &mut atlas);
+            let (plain_frame, _) = render_grid(make_grid(&format!("{}X", original.chars().next().unwrap())), &mut atlas);
+            assert_eq!(decomposed_frame, composed_frame);
+            assert_ne!(decomposed_frame, plain_frame, "accent must change rendered pixels");
         }
     }
 

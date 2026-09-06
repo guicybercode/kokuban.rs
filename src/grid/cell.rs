@@ -1,4 +1,6 @@
 use bitflags::bitflags;
+use std::sync::Arc;
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -31,9 +33,12 @@ pub enum UnderlineStyle {
     Dashed,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Cell {
     pub c: char,
+    // Only cells with combining scalars allocate. Cloned render snapshots share
+    // the immutable tail until another scalar is appended to the live cell.
+    pub(crate) tail: Option<Arc<String>>,
     pub fg: Color,
     pub bg: Color,
     pub flags: CellFlags,
@@ -41,10 +46,37 @@ pub struct Cell {
     pub underline_color: Color,
 }
 
+impl Cell {
+    /// The exact scalar sequence received from the application.
+    pub(crate) fn chars(&self) -> impl Iterator<Item = char> + '_ {
+        std::iter::once(self.c).chain(self.tail.as_deref().map_or("", String::as_str).chars())
+    }
+
+    /// Compose glyphs for the scalar-based renderers without changing copied text.
+    /// Remaining combining scalars are drawn at the same cell origin.
+    pub(crate) fn normalized_chars(&self) -> impl Iterator<Item = char> + '_ {
+        self.chars().nfc()
+    }
+
+    pub(crate) fn text_len(&self) -> usize {
+        self.c.len_utf8() + self.tail.as_deref().map_or(0, String::len)
+    }
+
+    pub(crate) fn set_char(&mut self, c: char) {
+        self.c = c;
+        self.tail = None;
+    }
+
+    pub(crate) fn push_combining(&mut self, c: char) {
+        Arc::make_mut(self.tail.get_or_insert_with(|| Arc::new(String::new()))).push(c);
+    }
+}
+
 impl Default for Cell {
     fn default() -> Self {
         Self {
             c: ' ',
+            tail: None,
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),

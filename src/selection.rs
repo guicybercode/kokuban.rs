@@ -215,16 +215,16 @@ impl SelectionState {
                 if cell.flags.contains(CellFlags::WIDE_CONT) || cell.c == '\0' {
                     continue;
                 }
-                if cell.c == ' ' {
+                if cell.c == ' ' && cell.tail.is_none() {
                     spaces += 1;
                     continue;
                 }
                 let required = spaces
-                    .checked_add(cell.c.len_utf8())
+                    .checked_add(cell.text_len())
                     .ok_or(SelectionTextError::TooLarge)?;
                 check_text_budget(&text, required, max_bytes)?;
                 text.extend(std::iter::repeat_n(' ', spaces));
-                text.push(cell.c);
+                text.extend(cell.chars());
                 spaces = 0;
             }
             if row != last {
@@ -499,11 +499,8 @@ mod tests {
     #[test]
     fn copy_preserves_stored_combining_scalars_and_nonbreaking_spaces() {
         let mut grid = Grid::new(5, 1, 10);
-        // Cell currently stores only one scalar. Exercise copying available
-        // data without claiming recovery of marks already lost by put_char.
-        for (col, character) in ['e', '\u{301}', '\u{a0}', ' ', ' '].into_iter().enumerate() {
-            grid.buffer.cell_mut(0, col).c = character;
-        }
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        parser.feed("e\u{301}\u{a0}  ".as_bytes(), &mut grid);
         let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 4 });
         assert_eq!(
             selection.get_text_with_limit(&grid, 5),
@@ -513,6 +510,20 @@ mod tests {
             selection.get_text_with_limit(&grid, 4),
             Err(SelectionTextError::TooLarge)
         );
+    }
+
+    #[test]
+    fn copying_counts_all_combining_bytes_and_preserves_decomposed_text_in_history() {
+        let mut grid = Grid::new(5, 2, 2);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        let original = "e\u{301}日\u{302} \u{303}";
+        parser.feed(original.as_bytes(), &mut grid);
+        parser.feed(b"\x1b[S", &mut grid);
+        let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 4 });
+        assert_eq!(selection.get_text_with_limit(&grid, original.len()), Ok(original.to_string()));
+        assert_eq!(selection.get_text_with_limit(&grid, original.len() - 1), Err(SelectionTextError::TooLarge));
+        let wide_half = selected(GridPoint { row: 0, col: 2 }, GridPoint { row: 0, col: 2 });
+        assert_eq!(wide_half.get_text(&grid), "日\u{302}");
     }
 
     #[test]
