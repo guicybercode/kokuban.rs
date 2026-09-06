@@ -1,8 +1,13 @@
 import base64
 import importlib.util
 import io
+import json
 from pathlib import Path
 import random
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 import zlib
 
@@ -12,6 +17,17 @@ spec.loader.exec_module(media)
 
 
 class MediaTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required for actual photo decoding")
+    def test_photo_decodes_one_frame_without_fps_filter_dropping_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            photo, stats = Path(directory) / "photo.ppm", Path(directory) / "stats.json"
+            photo.write_bytes(b"P6\n2 2\n255\n" + bytes((255, 0, 0)) * 4)
+            process = subprocess.run([sys.executable, str(Path(media.__file__)), str(photo),
+                                      "--photo", "--width", "2", "--height", "2", "--hold", "0", "--stats", str(stats)],
+                                     capture_output=True, timeout=10, check=True)
+            self.assertEqual(json.loads(stats.read_text())["frames_sent"], 1)
+            self.assertIn(b"a=T,f=32,s=2,v=2", process.stdout)
+
     def test_chunked_frame_roundtrips_and_finishes_once(self):
         pixels = random.Random(72).randbytes(64 * 64 * 4)
         chunks = list(media.kitty_frame(pixels, 64, 64))

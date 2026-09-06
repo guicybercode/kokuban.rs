@@ -59,7 +59,8 @@ def main():
     if not (1 <= args.width <= 1280 and 1 <= args.height <= 720 and 0 < args.fps <= 30
             and 0 < args.duration <= 600 and 0 <= args.hold <= 600 and 1 <= args.image_id <= 2**32 - 1):
         parser.error("size <=1280x720, 0<fps<=30, duration<=600s, hold<=600s, nonzero uint32 image ID required")
-    filters = (f"fps={args.fps},scale={args.width}:{args.height}:force_original_aspect_ratio=decrease,"
+    filters = (("" if args.photo else f"fps={args.fps},")
+               + f"scale={args.width}:{args.height}:force_original_aspect_ratio=decrease,"
                f"pad={args.width}:{args.height}:(ow-iw)/2:(oh-ih)/2,format=rgba")
     command = ["ffmpeg", "-nostdin", "-v", "error", "-i", str(args.input), "-an", "-vf", filters,
                "-frames:v", "1" if args.photo else str(max(1, int(args.fps * args.duration))),
