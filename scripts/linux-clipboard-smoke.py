@@ -67,10 +67,11 @@ def child() -> None:
                 if requested == "mouse":
                     mouse_mode = b"\x1b[?1002h\x1b[?1006h"
                     line = SHIFT_LINE
-                elif requested not in ("paste", "copy"):
+                elif requested not in ("paste", "plain", "copy"):
                     raise AssertionError(f"unknown smoke phase: {requested}")
+                paste_mode = b"\x1b[?2004l" if requested == "plain" else b"\x1b[?2004h"
                 os.write(1, b"\x1b[?25l\x1b[2J\x1b[H" + line
-                         + b"\x1b[?2004h" + mouse_mode + b"\x1b[6n")
+                         + paste_mode + mouse_mode + b"\x1b[6n")
             readable, _, _ = select.select([sys.stdin.fileno()], [], [], 0.02)
             if not readable:
                 continue
@@ -258,6 +259,10 @@ class ClipboardSmoke:
         self.set_clipboard(PASTE_TWO)
         self.key("shift+Insert")
         self.verify_input(EXPECTED_TWO)
+        self.phase("plain")
+        self.set_clipboard(PASTE_ONE)
+        self.key("ctrl+shift+v")
+        self.verify_input(EXPECTED_ONE[6:-6])
         self.phase("copy")
         self.copy_selection(COPY_TEXT)
         self.phase("mouse")

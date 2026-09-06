@@ -140,6 +140,20 @@ See `kokuban.toml` in the repository root for the complete default configuration
 
 ## Keybinds
 
+Linux supports these clipboard and selection actions:
+
+| Action | Linux input |
+|--------|-------------|
+| Select text | Left-button drag |
+| Select text while an application captures the mouse | `Shift` + left-button drag |
+| Copy selection | `Ctrl+Shift+C` |
+| Paste clipboard | `Ctrl+Shift+V` or `Shift+Insert` |
+| Select all retained text | `Ctrl+Shift+A` |
+
+Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
+
+The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy currently inserts line breaks between physical terminal rows; soft-wrap reconstruction and OSC 52 remote clipboard commands remain pending. See [Linux application validation](docs/LINUX_APPS.md).
+
 These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux provides terminal keyboard/IME and mouse input and scrollback; it does not yet implement this pane shortcut table.
 
 | Action              | Keybind             |
