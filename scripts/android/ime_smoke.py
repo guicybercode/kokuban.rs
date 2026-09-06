@@ -112,7 +112,8 @@ def main():
         key: match.group(1) if (match := re.search(rf"\b{key}=([^\s]+)", ime_details)) else "unknown"
         for key in ("versionName", "versionCode")
     }
-    results["system_locale"] = device.shell("getprop", "persist.sys.locale")
+    results["system_locale"] = (device.shell("getprop", "persist.sys.locale")
+                                or device.shell("getprop", "ro.product.locale"))
     start_time = device.shell("date", "+%m-%d %H:%M:%S.000")
     capture_index = 0
     held_pointer = None
@@ -185,7 +186,7 @@ def main():
         try:
             korean = language_node(root, ["Korean", "한국어"], ime_package)
         except LookupError:
-            tap("gboard-search-languages", ["Search", "Search languages"])
+            tap("gboard-search-languages", ["Search", "Search language", "Search languages"])
             # ASCII injection only navigates settings; tested Hangul uses real key taps.
             device.type_text("Korean")
             korean = language_node(dump("gboard-korean-search"), ["Korean", "한국어"], ime_package)
