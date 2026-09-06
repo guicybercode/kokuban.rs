@@ -2,8 +2,13 @@
 //!
 //! Fonts are read from Android's system directories; no desktop font discovery,
 //! FreeType, fontconfig, or bundled proprietary fonts are required. Fallback
-//! outlines are loaded on first use and at most two fallback fonts are retained.
+//! bytes are loaded on first use and at most two fallback fonts are retained.
+//! Fallback outlines are rasterized per glyph instead of expanding whole CJK fonts.
 
+#[path = "android_font_fallback.rs"]
+mod font_fallback;
+
+use font_fallback::FontFallback;
 use fontdue::{Font, FontSettings, Metrics};
 use std::collections::HashMap;
 use std::fs::File;
@@ -61,7 +66,7 @@ const EMPTY_GLYPH: GlyphEntry = GlyphEntry {
 
 struct FallbackFont {
     path: PathBuf,
-    font: Font,
+    font: FontFallback,
 }
 
 pub struct GlyphAtlas {
@@ -241,13 +246,15 @@ impl GlyphAtlas {
                 if self.fallbacks.iter().any(|font| font.path == path) || !path.is_file() {
                     continue;
                 }
-                let Ok(font) = load_font(&path, self.font_size * self.scale_factor) else {
-                    continue;
-                };
-                let has_glyph = font.has_glyph(character);
+                // Release bytes before reading another large CJK collection.
+                // Already-rasterized atlas entries remain valid after eviction.
                 if self.fallbacks.len() == MAX_FALLBACK_FONTS {
                     self.fallbacks.remove(0);
                 }
+                let Ok(font) = read_font_bytes(&path).and_then(FontFallback::from_bytes) else {
+                    continue;
+                };
+                let has_glyph = font.has_glyph(character);
                 log::info!("Android fallback font: {}", path.display());
                 self.fallbacks.push(FallbackFont { path, font });
                 if has_glyph {
@@ -259,9 +266,14 @@ impl GlyphAtlas {
     }
 
     fn insert_font_glyph(&mut self, key: GlyphKey, fallback: Option<usize>) -> GlyphEntry {
-        let font = fallback.map_or(&self.font, |index| &self.fallbacks[index].font);
         let scaled_size = self.font_size * self.scale_factor;
-        let metrics = font.metrics(key.c, scaled_size);
+        let metrics = match fallback {
+            Some(index) => match self.fallbacks[index].font.metrics(key.c, scaled_size) {
+                Some(metrics) => metrics,
+                None => return self.replacement,
+            },
+            None => self.font.metrics(key.c, scaled_size),
+        };
         if metrics.width == 0 || metrics.height == 0 {
             return EMPTY_GLYPH;
         }
@@ -278,7 +290,18 @@ impl GlyphAtlas {
         if self.cursor_y + height as u32 > self.height {
             return self.replacement;
         }
-        let (_, bitmap) = font.rasterize(key.c, scaled_size);
+        let bitmap = match fallback {
+            Some(index) => match self.fallbacks[index].font.rasterize(
+                key.c,
+                scaled_size,
+                metrics,
+                ATLAS_SIZE as usize,
+            ) {
+                Some(bitmap) => bitmap,
+                None => return self.replacement,
+            },
+            None => self.font.rasterize(key.c, scaled_size).1,
+        };
         let entry = GlyphEntry {
             atlas_x: self.cursor_x,
             atlas_y: self.cursor_y,
@@ -379,17 +402,25 @@ fn styled_dimensions(metrics: Metrics, key: GlyphKey) -> (usize, usize) {
     )
 }
 
-fn load_font(path: &Path, scale: f32) -> Result<Font, String> {
+fn read_font_bytes(path: &Path) -> Result<Vec<u8>, String> {
     let file = File::open(path).map_err(|error| error.to_string())?;
-    let mut bytes = Vec::new();
+    let size = file.metadata().map_err(|error| error.to_string())?.len();
+    if size > MAX_FONT_BYTES {
+        return Err("font file exceeds 32 MiB limit".to_owned());
+    }
+    let mut bytes = Vec::with_capacity(size as usize);
     file.take(MAX_FONT_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     if bytes.len() as u64 > MAX_FONT_BYTES {
         return Err("font file exceeds 32 MiB limit".to_owned());
     }
+    Ok(bytes)
+}
+
+fn load_font(path: &Path, scale: f32) -> Result<Font, String> {
     Font::from_bytes(
-        bytes,
+        read_font_bytes(path)?,
         FontSettings {
             scale,
             load_substitutions: false,
@@ -519,6 +550,31 @@ mod tests {
             assert!(entry.atlas_y + entry.pixel_h <= atlas.height);
         }
         assert_eq!(atlas.get_or_insert(key(' ')), EMPTY_GLYPH);
+    }
+
+    #[test]
+    fn cff2_collection_fallback_produces_visible_hangul_outlines() {
+        // Android can install a variable CFF2 collection under the filename
+        // NotoSansCJK-Regular.ttc. Without ttf-parser's variable-fonts feature,
+        // fontdue still finds its cmap entries but returns empty glyph outlines.
+        let font =
+            FontFallback::from_bytes(include_bytes!("../fonts/android-cff2-test.ttc").to_vec())
+                .unwrap();
+        assert!(font.has_glyph('ㄱ'));
+        assert!(font.has_glyph('가'));
+        let mut atlas = atlas();
+        atlas.fallbacks.push(FallbackFont {
+            path: PathBuf::from("android-cff2-test.ttc"),
+            font,
+        });
+        for character in ['ㄱ', '가'] {
+            let glyph = atlas.get_or_insert(key(character));
+            assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0);
+            assert!(coverage(&atlas, glyph) > 0);
+            assert_ne!(glyph, atlas.replacement);
+        }
+        assert_eq!(atlas.get_or_insert(key('\u{3000}')), EMPTY_GLYPH);
+        assert_eq!((atlas.cell_width, atlas.cell_height), (12.0, 24.0));
     }
 
     #[test]

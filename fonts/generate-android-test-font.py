@@ -22,7 +22,7 @@ def rectangle(left, bottom, right, top):
 
 
 builder = FontBuilder(1000, isTTF=True)
-characters = {32: "space", 63: "question", 65: "A", 77: "M", 103: "g", 233: "eacute", 0xFFFD: "replacement"}
+characters = {32: "space", 63: "question", 65: "A", 77: "M", 103: "g", 233: "eacute", 0x03A9: "curve", 0xFFFD: "replacement"}
 names = [".notdef", *characters.values()]
 builder.setupGlyphOrder(names)
 builder.setupCharacterMap(characters)
@@ -30,6 +30,11 @@ glyphs = {name: rectangle(50, 0, 500, 700) for name in names}
 glyphs["space"] = rectangle(0, 0, 0, 0)
 glyphs["g"] = rectangle(50, -200, 500, 500)
 glyphs["eacute"] = rectangle(50, 0, 500, 850)
+curve = TTGlyphPen(None)
+curve.moveTo((50, -100))
+curve.qCurveTo((275, 1000), (500, -100))
+curve.closePath()
+glyphs["curve"] = curve.glyph()
 builder.setupGlyf(glyphs)
 builder.setupHorizontalMetrics({name: (600, 50) for name in names})
 builder.setupHorizontalHeader(ascent=900, descent=-250, lineGap=50)

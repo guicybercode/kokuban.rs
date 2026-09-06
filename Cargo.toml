@@ -8,6 +8,8 @@ crate-type = ["cdylib"]
 
 [dev-dependencies]
 fontdue = { version = "=0.9.3", default-features = false, features = ["std", "simd"] }
+ttf-parser = { version = "=0.21.1", default-features = false, features = ["variable-fonts"] }
+ab_glyph_rasterizer = "=0.1.10"
 
 [dependencies]
 nix = { version = "0.29", features = ["term", "fs", "process", "signal", "poll"] }
@@ -30,6 +32,10 @@ pathfinder_geometry = "0.5"
 winit_android = { package = "winit", path = "vendor/winit-0.30.13", default-features = false, features = ["rwh_06", "android-native-activity"] }
 softbuffer = { version = "0.4.8", default-features = false }
 fontdue = { version = "=0.9.3", default-features = false, features = ["std", "simd"] }
+# Android's NotoSansCJK-Regular.ttc can contain variable CFF2 outlines.
+# fontdue otherwise recognizes their cmap entries but produces empty glyphs.
+ttf-parser = { version = "=0.21.1", default-features = false, features = ["variable-fonts"] }
+ab_glyph_rasterizer = "=0.1.10"
 android_logger = "0.15"
 jni = "=0.22.4"
 

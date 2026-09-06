@@ -870,6 +870,7 @@ dependencies = [
 name = "kokuban"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph_rasterizer",
  "android_logger",
  "arboard",
  "base64",
@@ -893,6 +894,7 @@ dependencies = [
  "softbuffer",
  "thiserror 2.0.18",
  "toml",
+ "ttf-parser 0.21.1",
  "unicode-width",
  "winit 0.30.13",
  "winit 0.30.13 (registry+https://github.com/rust-lang/crates.io-index)",
