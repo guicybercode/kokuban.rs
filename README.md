@@ -2,6 +2,8 @@
 
 A native GPU terminal emulator built from scratch in Rust.
 
+![Kokuban brand](docs/screenshots/kokuban-brand.png)
+
 ![Kokuban terminal window](docs/screenshots/hero.png)
 
 Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS and a software rasterizer on Linux. It includes its own VT/ANSI parser, PTY handling, glyph rendering, pane management, and graphics protocol support.
