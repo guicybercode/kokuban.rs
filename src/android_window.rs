@@ -1326,7 +1326,9 @@ impl Drop for AndroidWindow {
 impl ApplicationHandler<Event> for AndroidWindow {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
-        if event_loop.exiting() || self.surface.is_none() {
+        // Android can pause an Activity before terminating its native surface.
+        // Unfocused windows conservatively stop animation timers as well.
+        if event_loop.exiting() || self.surface.is_none() || self.focused == Some(false) {
             return;
         }
         let Some(window) = &self.window else {
