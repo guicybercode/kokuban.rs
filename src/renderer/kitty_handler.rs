@@ -1129,7 +1129,7 @@ fn apply_resolved_delete_to_placements(
     let spec = cmd.delete_specifier.unwrap_or(KittyDeleteSpec::All);
 
     let removed_image_ids = match spec {
-        KittyDeleteSpec::NoOp => HashSet::new(),
+        KittyDeleteSpec::NoOp | KittyDeleteSpec::Frame { .. } => HashSet::new(),
         KittyDeleteSpec::All | KittyDeleteSpec::AllImages => {
             remove_matching_kitty_placements(placements, |placement| {
                 placement_intersects_grid(
