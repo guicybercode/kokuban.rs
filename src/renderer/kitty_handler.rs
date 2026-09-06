@@ -16,6 +16,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
+use std::time::Instant;
 
 const MAX_PENDING_IMAGE_BYTES: usize = 64 * 1024 * 1024;
 const DECOMPRESSION_CHUNK_BYTES: usize = 32 * 1024;
@@ -103,7 +104,10 @@ impl ChunkAssembler {
         }
 
         if let Some(pending) = self.pending.as_ref() {
-            if will_place {
+            if will_place
+                || (pending.metadata.action == KittyAction::Frame)
+                    != (cmd.action == KittyAction::Frame)
+            {
                 let error = ChunkAssemblyError {
                     image_id: pending.image_id,
                     image_number: pending
@@ -340,7 +344,7 @@ impl KittyHandler {
     /// Returns any PTY response, cursor movement, and deferred cache effects.
     pub(crate) fn process(
         &mut self,
-        cmd: KittyCommand,
+        mut cmd: KittyCommand,
         store: &mut ImageStore,
         cursor_row: usize,
         cursor_col: usize,
@@ -350,19 +354,36 @@ impl KittyHandler {
         grid_rows: usize,
         placements: &mut Vec<ImagePlacement>,
     ) -> KittyProcessOutcome {
+        // Frame continuations may repeat a=f or omit a entirely. An explicit
+        // a=t is a new transfer and must not be appended to a pending frame.
+        if cmd.action == KittyAction::Transmit
+            && !cmd.action_explicit
+            && self.chunks.pending.as_ref().is_some_and(|pending| {
+                pending.metadata.action == KittyAction::Frame
+            })
+        {
+            cmd.action = KittyAction::Frame;
+        }
         let selectors_conflict = cmd.image_id.is_some() && cmd.image_number.is_some();
-        if cmd.invalid_image_selector || selectors_conflict {
-            self.chunks.abort();
-            let reason = if selectors_conflict {
+        if cmd.invalid_animation_parameters || cmd.invalid_image_selector || selectors_conflict {
+            let reason = if cmd.invalid_animation_parameters {
+                "EINVAL:invalid animation parameters"
+            } else if selectors_conflict {
                 "EINVAL:image ID and image number are mutually exclusive"
             } else {
                 "EINVAL:invalid image selector"
             };
+            let mut identity = (cmd.image_id, cmd.image_number, cmd.quiet);
+            if let Some(pending) = self.chunks.pending.take() {
+                if cmd.action == KittyAction::Frame && pending.metadata.action == KittyAction::Frame {
+                    identity = (Some(pending.image_id), pending.metadata.image_number, pending.metadata.quiet);
+                }
+            }
             return KittyProcessOutcome::new(
                 kitty_response(
-                    cmd.image_id,
-                    cmd.image_number,
-                    cmd.quiet,
+                    identity.0,
+                    identity.1,
+                    identity.2,
                     true,
                     reason,
                 ),
@@ -372,7 +393,7 @@ impl KittyHandler {
 
         if !matches!(
             cmd.action,
-            KittyAction::Transmit | KittyAction::TransmitAndPlace
+            KittyAction::Transmit | KittyAction::TransmitAndPlace | KittyAction::Frame
         ) && self.chunks.abort()
         {
             log::warn!("Aborted pending Kitty transmission on non-transmit command");
@@ -480,6 +501,9 @@ impl KittyHandler {
                 KittyProcessOutcome::new(result.0, result.1)
             }
             KittyAction::Delete => {
+                if let Some(KittyDeleteSpec::Frame { frame, delete_last_image }) = cmd.delete_specifier {
+                    return self.handle_frame_delete(&cmd, store, placements, frame, delete_last_image);
+                }
                 let hard_delete_candidates = self.handle_delete(
                     &cmd,
                     store,
@@ -496,10 +520,229 @@ impl KittyHandler {
                     retransmitted_image_id: None,
                 }
             }
-            KittyAction::Frame | KittyAction::Animate | KittyAction::Compose => {
-                // Out of scope
-                KittyProcessOutcome::new(None, None)
+            KittyAction::Frame => {
+                let response = self.handle_frame(cmd, store);
+                self.prune_image_registries(store, placements);
+                KittyProcessOutcome::new(response, None)
             }
+            KittyAction::Animate | KittyAction::Compose =>
+                KittyProcessOutcome::new(self.handle_animation_control(&cmd, store), None),
+        }
+    }
+
+    fn animation_target(
+        &self,
+        cmd: &KittyCommand,
+        store: &ImageStore,
+    ) -> Option<(KittyImageId, ImageId)> {
+        if let Some(client_id) = cmd.image_id.filter(|id| *id != 0) {
+            self.resolve_client_image(client_id, store)
+                .map(|id| (client_id, id))
+        } else {
+            cmd.image_number
+                .filter(|number| *number != 0)
+                .and_then(|number| self.resolve_image_number(number, store))
+        }
+    }
+
+    fn handle_frame(&mut self, cmd: KittyCommand, store: &mut ImageStore) -> Option<Vec<u8>> {
+        // Frames reuse an image identity; they must never allocate a client ID.
+        let client_id = self
+            .animation_target(&cmd, store)
+            .map(|(client_id, _)| client_id)
+            .unwrap_or(0);
+        let completed = match self.chunks.push(cmd, false, || client_id) {
+            Ok(Some(completed)) => completed,
+            Ok(None) => return None,
+            Err(error) => return chunk_error_response(error),
+        };
+        let cmd = completed.metadata;
+        let Some((client_id, image_id)) = self.animation_target(&cmd, store) else {
+            return kitty_response(
+                cmd.image_id,
+                cmd.image_number,
+                cmd.quiet,
+                true,
+                "ENOENT:animation image not found",
+            );
+        };
+        let Some(KittyAnimationCommand::Frame(params)) = cmd.animation else {
+            return kitty_response(
+                Some(client_id),
+                cmd.image_number,
+                cmd.quiet,
+                true,
+                "EINVAL:missing frame parameters",
+            );
+        };
+        let error_response = |reason| {
+            frame_response(
+                Some(client_id),
+                cmd.image_number,
+                params.edit_frame.map(|frame| frame.get()),
+                cmd.quiet,
+                true,
+                reason,
+            )
+        };
+        let image_data = match cmd.transmission {
+            KittyTransmission::Direct => completed.data,
+            KittyTransmission::File | KittyTransmission::TempFile => {
+                match load_file_data(
+                    &completed.data,
+                    cmd.transmission == KittyTransmission::TempFile,
+                    self.options,
+                ) {
+                    Ok(data) => data,
+                    Err(error) => {
+                        return file_load_error_response_with_number(
+                            client_id,
+                            cmd.image_number,
+                            cmd.quiet,
+                            error,
+                        )
+                    }
+                }
+            }
+            KittyTransmission::SharedMemory => {
+                return error_response("ENOSYS:shared memory not supported")
+            }
+        };
+        let image_data = match maybe_decompress_with_limit(
+            &image_data,
+            cmd.compression,
+            self.options.max_image_bytes,
+        ) {
+            Ok(data) => data,
+            Err(error) => {
+                return decompression_error_response_with_number(
+                    client_id,
+                    cmd.image_number,
+                    cmd.quiet,
+                    error,
+                )
+            }
+        };
+        let (width, height, format) = match cmd.format {
+            KittyFormat::Png => (0, 0, ImageFormat::Png),
+            KittyFormat::Rgb | KittyFormat::Rgba => {
+                let (width, height) = (cmd.width.unwrap_or(0), cmd.height.unwrap_or(0));
+                let channels = if cmd.format == KittyFormat::Rgb { 3 } else { 4 };
+                let expected = u64::from(width)
+                    .checked_mul(u64::from(height))
+                    .and_then(|pixels| pixels.checked_mul(channels))
+                    .and_then(|bytes| usize::try_from(bytes).ok());
+                if width == 0 || height == 0 || expected != Some(image_data.len()) {
+                    return error_response("EINVAL:frame data does not match dimensions");
+                }
+                (
+                    width,
+                    height,
+                    if channels == 3 {
+                        ImageFormat::Rgb
+                    } else {
+                        ImageFormat::Rgba
+                    },
+                )
+            }
+        };
+        match store.store_animation_frame(
+            image_id,
+            &image_data,
+            width,
+            height,
+            format,
+            &params,
+            Instant::now(),
+        ) {
+            Ok(frame) => frame_response(
+                Some(client_id),
+                cmd.image_number,
+                Some(frame),
+                cmd.quiet,
+                false,
+                "OK",
+            ),
+            Err(error) => error_response(error.response_message()),
+        }
+    }
+
+    fn handle_animation_control(
+        &self,
+        cmd: &KittyCommand,
+        store: &mut ImageStore,
+    ) -> Option<Vec<u8>> {
+        let Some((client_id, image_id)) = self.animation_target(cmd, store) else {
+            return kitty_response(
+                cmd.image_id,
+                cmd.image_number,
+                cmd.quiet,
+                true,
+                "ENOENT:animation image not found",
+            );
+        };
+        let result = match (cmd.action, cmd.animation) {
+            (KittyAction::Animate, Some(KittyAnimationCommand::Control(control))) => {
+                store.control_animation(image_id, &control, Instant::now())
+            }
+            (KittyAction::Compose, Some(KittyAnimationCommand::Compose(composition))) => {
+                store.compose_animation_frame(image_id, &composition, Instant::now())
+            }
+            _ => {
+                return kitty_response(
+                    Some(client_id),
+                    cmd.image_number,
+                    cmd.quiet,
+                    true,
+                    "EINVAL:missing animation parameters",
+                )
+            }
+        };
+        match result {
+            // Successful animation control must be silent: icat sends it after
+            // its response-reading loop, so an OK would leak into the shell.
+            Ok(()) if cmd.action == KittyAction::Animate => None,
+            Ok(()) => kitty_response(Some(client_id), cmd.image_number, cmd.quiet, false, "OK"),
+            Err(error) => kitty_response(
+                Some(client_id),
+                cmd.image_number,
+                cmd.quiet,
+                true,
+                error.response_message(),
+            ),
+        }
+    }
+
+    fn handle_frame_delete(
+        &self,
+        cmd: &KittyCommand,
+        store: &mut ImageStore,
+        placements: &mut Vec<ImagePlacement>,
+        frame: u32,
+        delete_last_image: bool,
+    ) -> KittyProcessOutcome {
+        let Some((client_id, image_id)) = self.animation_target(cmd, store) else {
+            return KittyProcessOutcome::new(None, None);
+        };
+        match store.delete_animation_frame(image_id, frame, delete_last_image, Instant::now()) {
+            Ok(()) => {
+                let mut outcome = KittyProcessOutcome::new(None, None);
+                if store.get(image_id).is_none() {
+                    placements.retain(|placement| placement.image_id != image_id);
+                    outcome.retransmitted_image_id = Some(image_id);
+                }
+                outcome
+            }
+            Err(error) => KittyProcessOutcome::new(
+                kitty_response(
+                    Some(client_id),
+                    cmd.image_number,
+                    cmd.quiet,
+                    true,
+                    error.response_message(),
+                ),
+                None,
+            ),
         }
     }
 
@@ -671,34 +914,7 @@ impl KittyHandler {
             }
             Ok(Some(completed)) => completed,
             Err(error) => {
-                let reason = match error.kind {
-                    ChunkAssemblyErrorKind::Interleaved { received_id } => {
-                        format!("EINVAL:interleaved transmission i={received_id}")
-                    }
-                    ChunkAssemblyErrorKind::InterleavedNumber { received_number } => {
-                        format!("EINVAL:interleaved transmission I={received_number}")
-                    }
-                    ChunkAssemblyErrorKind::UnexpectedStart => {
-                        "EINVAL:new transmission before previous completed".to_owned()
-                    }
-                    ChunkAssemblyErrorKind::TooLarge => {
-                        "E2BIG:transmission exceeds pending image limit".to_owned()
-                    }
-                    ChunkAssemblyErrorKind::AllocationFailed => {
-                        "ENOMEM:failed to buffer transmission".to_owned()
-                    }
-                };
-                log::warn!(
-                    "Rejected Kitty transmission for image {}: {reason}",
-                    error.image_id
-                );
-                let response = kitty_response(
-                    Some(error.image_id),
-                    error.image_number,
-                    error.quiet,
-                    true,
-                    &reason,
-                );
+                let response = chunk_error_response(error);
                 return TransmitOutcome {
                     response,
                     stored: None,
@@ -1470,6 +1686,48 @@ fn append_decompressed(
     Ok(())
 }
 
+fn chunk_error_response(error: ChunkAssemblyError) -> Option<Vec<u8>> {
+    let reason = match error.kind {
+        ChunkAssemblyErrorKind::Interleaved { received_id } => {
+            format!("EINVAL:interleaved transmission i={received_id}")
+        }
+        ChunkAssemblyErrorKind::InterleavedNumber { received_number } => {
+            format!("EINVAL:interleaved transmission I={received_number}")
+        }
+        ChunkAssemblyErrorKind::UnexpectedStart => {
+            "EINVAL:new transmission before previous completed".to_owned()
+        }
+        ChunkAssemblyErrorKind::TooLarge => {
+            "E2BIG:transmission exceeds pending image limit".to_owned()
+        }
+        ChunkAssemblyErrorKind::AllocationFailed => {
+            "ENOMEM:failed to buffer transmission".to_owned()
+        }
+    };
+    kitty_response(
+        Some(error.image_id),
+        error.image_number,
+        error.quiet,
+        true,
+        &reason,
+    )
+}
+
+fn frame_response(
+    image_id: Option<KittyImageId>,
+    image_number: Option<u32>,
+    frame: Option<u32>,
+    quiet: u8,
+    is_error: bool,
+    result: &str,
+) -> Option<Vec<u8>> {
+    let mut response = kitty_response(image_id, image_number, quiet, is_error, result)?;
+    if let Some(frame) = frame {
+        let position = response.iter().position(|&byte| byte == b';')?;
+        response.splice(position..position, format!(",r={frame}").bytes());
+    }
+    Some(response)
+}
 fn kitty_response(
     image_id: Option<KittyImageId>,
     image_number: Option<u32>,
