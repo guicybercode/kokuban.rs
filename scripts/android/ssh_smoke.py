@@ -250,9 +250,9 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                 "rust": [shutil.which("rustup") or "rustup", "run", "1.94.1", "rustc", "--version"],
             }.items()}
             results["status"] = "passed"
-        except Exception as error:
+        except (Exception, KeyboardInterrupt) as error:
             results["status"] = "failed"
-            results["error"] = str(error)
+            results["error"] = str(error) or type(error).__name__
             raise
         finally:
             cleanup_errors = []
