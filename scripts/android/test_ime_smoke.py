@@ -61,6 +61,14 @@ class ImeEvidenceTests(unittest.TestCase):
         self.assertTrue(choice_active(ET.fromstring('<node selected="false" checked="true"/>')))
         self.assertFalse(choice_active(ET.fromstring('<node selected="false" checked="false"/>')))
 
+    def test_korean_action_labels_are_resolved_even_with_english_system_locale(self):
+        root = ET.fromstring('''<hierarchy>
+          <node package="keyboard" content-desc="스페이스" bounds="[0,0][400,100]"/>
+          <node package="keyboard" content-desc="입력" bounds="[400,0][500,100]"/>
+        </hierarchy>''')
+        self.assertEqual(center(find_node(root, ["Space", "스페이스"], "keyboard")), (200, 50))
+        self.assertEqual(center(find_node(root, ["Enter", "입력"], "keyboard")), (450, 50))
+
 
 if __name__ == "__main__":
     unittest.main()

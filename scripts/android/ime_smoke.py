@@ -177,7 +177,7 @@ def main():
             tap(f"{label}-show-keyboard", ["Show or hide keyboard"], package)
             eventually(ime_visible, True, 30)
         root = dump(f"{label}-space")
-        x, y = center(find_node(root, ["Space"], ime_package))
+        x, y = center(find_node(root, ["Space", "스페이스"], ime_package))
         device.shell("input", "swipe", str(x), str(y), str(x), str(y), "900")
         choices = dump(f"{label}-language-picker")
         device.screenshot(args.output / f"{label}-language-picker.png")
@@ -319,7 +319,7 @@ def main():
             tap("hangul-kiyeok", ["ㄱ", "기역", "Giyeok", "Kiyeok"])
             tap("hangul-a", ["ㅏ", "아"])
             device.screenshot(args.output / "hangul-before-enter.png")
-            tap("hangul-enter", ["Enter", "Return", "New line", "Done"])
+            tap("hangul-enter", ["Enter", "Return", "New line", "Done", "입력"])
             eventually(lambda: device.shell("run-as", package, "cat", cjk_marker, check=False), "가", 45)
             current = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
             results["hangul_callbacks"] = {key: current[key] - baseline[key] for key in current}
