@@ -71,6 +71,16 @@ content; review evidence before attaching it to a public issue or PR.
 
 ## Real IME, touch and external keyboard checks
 
+```sh
+python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
+```
+
+The automated scenario uses the installed Latin/English IME's actual keys and
+accent popup to enter `café`, exercises deletion and Enter, and verifies the
+PTY's UTF-8 output. It also requires composing and committed IME callbacks,
+checks native accessibility target sizes, and hides/reopens the keyboard. XML,
+screenshots and callback counts are retained for diagnosing keyboard differences.
+
 Use an installed IME such as the emulator's default Gboard. Record its package
 and version with `adb shell settings get secure default_input_method` and
 `adb shell dumpsys package <ime-package>`. Test the following on the actual soft
@@ -139,6 +149,11 @@ temporary client keys. Unknown and changed hosts must fail before executing a
 command. Real PTY sessions edit a Rust project in Neovim, use two tmux panes,
 select an item with fzf, inspect Git changes, compile/run the edited project,
 propagate Android rotation to the remote PTY, and return to the local shell.
+The same SSH session displays a pinned NASA photograph, Sixel, native Kitty
+animation, and an H.264 video decoded by host FFmpeg. Screenshot pixels are
+checked against the photo and animation fixtures; video samples must change in
+the image region. Producer frame counts and Android presentation-call timing
+are reported separately, with CPU/PSS samples during video.
 
 With `--upgrade-apk`, trust checks and fixture provisioning run in debug first;
 interactive tests run after an upgrade to the non-debuggable release APK. Both

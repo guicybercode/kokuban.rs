@@ -86,27 +86,37 @@ jobs:
           echo "$!" > target/android-evidence/emulator.pid
 
       - name: Install, run shell and verify lifecycle
+        id: lifecycle
         if: matrix.target == 'x86_64-linux-android'
         run: python3 scripts/android/smoke.py --apk target/debug/apk/kokuban.apk --serial emulator-5554 --trace-frames
 
-      - name: Verify SSH trust and interactive development applications
+      - name: Verify real keyboard composition and touch controls
         if: matrix.target == 'x86_64-linux-android'
-        run: python3 scripts/android/ssh_smoke.py --serial emulator-5554
+        run: python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
+
+      - name: Verify SSH trust and interactive development applications
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        run: |
+          python3 scripts/android/launch.py --serial emulator-5554 --apk target/debug/apk/kokuban.apk
+          python3 scripts/android/ssh_smoke.py --serial emulator-5554
 
       - name: Record idle memory and CPU
-        if: matrix.target == 'x86_64-linux-android'
-        run: python3 scripts/android/measure.py --scenario ci-debug-opt1-idle --apk target/debug/apk/kokuban.apk --serial emulator-5554 --output target/android-evidence/debug-idle
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        run: |
+          python3 scripts/android/launch.py --serial emulator-5554 --apk target/debug/apk/kokuban.apk
+          python3 scripts/android/measure.py --scenario ci-debug-opt1-idle --apk target/debug/apk/kokuban.apk --serial emulator-5554 --output target/android-evidence/debug-idle
 
       - name: Build release APK for measured device execution
-        if: matrix.target == 'x86_64-linux-android'
+        id: release_build
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
         run: scripts/android/build.sh release x86_64-linux-android --test-signing
 
       - name: Verify interactive development using the release APK
-        if: matrix.target == 'x86_64-linux-android'
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.release_build.outcome == 'success' }}
         run: python3 scripts/android/ssh_smoke.py --serial emulator-5554 --upgrade-apk target/release/apk/kokuban.apk --output target/android-evidence/release-ssh
 
       - name: Measure release idle and controlled echo
-        if: matrix.target == 'x86_64-linux-android'
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.release_build.outcome == 'success' }}
         run: |
           python3 scripts/android/launch.py --serial emulator-5554 --apk target/release/apk/kokuban.apk
           python3 scripts/android/measure.py --scenario ci-release-idle --apk target/release/apk/kokuban.apk --serial emulator-5554 --output target/android-evidence/release-idle

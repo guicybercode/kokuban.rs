@@ -19,6 +19,7 @@ import tempfile
 import time
 
 from device import Device
+from media_scenarios import run_media_scenarios
 from smoke import eventually
 
 
@@ -219,6 +220,7 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             time.sleep(1)
             device.screenshot(args.output / "06-rust-project.png")
             results["checks"].append("edited Rust project compiles and runs remotely; Git sees the edit")
+            results["media"] = run_media_scenarios(device, enter, server_root, args.output / "media", args.serial, args.package)
             enter("exit")
             time.sleep(1)
             local_back = server_root / "local-back"
@@ -235,6 +237,10 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                 "rust": [shutil.which("rustup") or "rustup", "run", "1.94.1", "rustc", "--version"],
             }.items()}
             results["status"] = "passed"
+        except Exception as error:
+            results["status"] = "failed"
+            results["error"] = str(error)
+            raise
         finally:
             cleanup_errors = []
             def cleanup(action):
@@ -266,6 +272,8 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                 cleanup(lambda: process.wait(timeout=10))
             server_log.close()
             results["cleanup_errors"] = cleanup_errors
+            if cleanup_errors:
+                results["status"] = "failed"
             (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
             if cleanup_errors:
                 raise RuntimeError("Test cleanup failed: " + "; ".join(cleanup_errors))
