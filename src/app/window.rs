@@ -16,6 +16,7 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
+use crate::renderer::pane_scene::image_intersects_content;
 use crate::selection::{point_from_viewport, GridPoint};
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
@@ -29,6 +30,7 @@ use objc2_metal::*;
 use objc2_quartz_core::*;
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -1755,17 +1757,34 @@ fn render_frame() {
 }
 
 pub fn render_if_dirty(dirty: &AtomicBool) {
-    // The application's render timer runs even without PTY output. Expiration
-    // must request a frame after an application omits its matching ESU.
+    // The timer runs without PTY output: both synchronized-update expiration and
+    // a visible Kitty animation can request their next frame independently.
     VIEW_STATE.with(|state| {
         if let Some(state) = state.borrow().as_ref() {
+            // Keep the reader's canonical atlas → tree → image_store lock order.
+            let Ok(atlas) = state.atlas.try_lock() else { return };
             if let Ok(mut tree) = state.pane_tree.try_lock() {
                 let now = std::time::Instant::now();
+                let mut visible_images = HashSet::new();
                 for id in tree.pane_ids() {
                     if let Some(pane) = tree.pane_mut(id) {
                         if pane.grid.expire_synchronized_output(now) {
                             dirty.store(true, Ordering::Relaxed);
                         }
+                        let content_size = [pane.rect.width,
+                            (pane.rect.height - state.status_bar_height).max(0.0)];
+                        for placement in &pane.grid.image_placements {
+                            if image_intersects_content(&placement.mode,
+                                [atlas.cell_width, atlas.cell_height], content_size)
+                            {
+                                visible_images.insert(placement.image_id);
+                            }
+                        }
+                    }
+                }
+                if let Ok(mut store) = state.image_store.try_lock() {
+                    if store.advance_animations(now, &visible_images).changed {
+                        dirty.store(true, Ordering::Relaxed);
                     }
                 }
             }

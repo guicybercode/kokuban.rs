@@ -1,4 +1,5 @@
 use super::Vertex;
+use crate::graphics::PlacementMode;
 use crate::layout::{PaneId, PixelRect};
 use std::collections::HashMap;
 
@@ -86,9 +87,25 @@ pub(crate) fn content_clip(
     Some([x as usize, y as usize, (right - x) as usize, (bottom - y) as usize])
 }
 
+pub(crate) fn image_intersects_content(
+    placement: &PlacementMode,
+    cell_size: [f32; 2],
+    content_size: [f32; 2],
+) -> bool {
+    let (x, y, width, height) = placement.pixel_rect(cell_size[0], cell_size[1]);
+    content_size[0] > 0.0 && content_size[1] > 0.0
+        && width > 0.0 && height > 0.0
+        && x < content_size[0] && x + width > 0.0
+        && y < content_size[1] && y + height > 0.0
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{append_translated, content_clip, PaneScene, PaneSceneCache, SceneImage};
+    use super::{
+        append_translated, content_clip, image_intersects_content, PaneScene, PaneSceneCache,
+        SceneImage,
+    };
+    use crate::graphics::{InlineRenderSize, PlacementMode};
     use crate::grid::Grid;
     use crate::layout::PixelRect;
     use crate::renderer::Vertex;
@@ -177,5 +194,23 @@ mod tests {
             scene(grid.visible_cell(0, 0).c as u8)
         });
         assert_eq!(cache.get(1).unwrap().content[0].fg_color, u32::from(b'B'));
+    }
+
+    #[test]
+    fn animation_visibility_uses_the_content_area_and_includes_partial_images() {
+        let placement = |row, col| PlacementMode::Inline {
+            row, col, cols: 2, rows: 2, x_offset: 0, y_offset: 0,
+            render_size: InlineRenderSize::CellAnchored,
+        };
+        let cell_size = [10.0, 20.0];
+        let content_size = [80.0, 60.0];
+        for (row, col) in [(0, 0), (-1, 0), (2, 0), (0, 7)] {
+            assert!(image_intersects_content(&placement(row, col), cell_size, content_size));
+        }
+        // Row 3 is in the status bar; row -2 is fully in scrollback.
+        for (row, col) in [(-2, 0), (3, 0), (0, 8)] {
+            assert!(!image_intersects_content(&placement(row, col), cell_size, content_size));
+        }
+        assert!(!image_intersects_content(&placement(-1, 0), cell_size, [80.0, 0.0]));
     }
 }

@@ -2,7 +2,9 @@ use super::box_drawing;
 use super::braille;
 use super::brush::BrushRenderer;
 use super::image_store::ImageStore;
-use super::pane_scene::{append_translated, content_clip, PaneScene, PaneSceneCache, SceneImage};
+use super::pane_scene::{
+    append_translated, content_clip, image_intersects_content, PaneScene, PaneSceneCache, SceneImage,
+};
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
@@ -621,16 +623,15 @@ impl MetalRenderer {
         let grid_height = (rect.height - status_bar_height).max(0.0);
         for placement in &pane.grid.image_placements {
             let Some(image) = store.get(placement.image_id) else { continue };
+            if !image_intersects_content(&placement.mode,
+                [atlas.cell_width, atlas.cell_height], [rect.width, grid_height])
+            {
+                continue;
+            }
             let (placement_x, placement_y, w, h) =
                 placement.mode.pixel_rect(atlas.cell_width, atlas.cell_height);
             let x0 = rect.x + placement_x;
             let y0 = rect.y + placement_y;
-            if w <= 0.0 || h <= 0.0
-                || y0 + h <= rect.y || y0 >= rect.y + grid_height
-                || x0 + w <= rect.x || x0 >= rect.x + rect.width
-            {
-                continue;
-            }
             let x1 = (x0 + w).min(rect.x + rect.width);
             let y1 = (y0 + h).min(rect.y + grid_height);
             let u0 = if x0 < rect.x { (rect.x - x0) / w } else { 0.0 };
