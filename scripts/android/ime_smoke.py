@@ -355,7 +355,7 @@ def main():
             results["hangul_utf8_result"] = "가"
             results["hangul_layout"] = "Korean 2-set"
             device.screenshot(args.output / "hangul-result.png")
-            if results["hangul_callbacks"]["preedit"] == 0:
+            if results["hangul_callbacks"]["preedit"] <= 0:
                 raise AssertionError("Hangul reached the PTY without a nonempty preedit callback; composition remains unverified")
             results["checks"].append("real Korean 2-set taps compose ㄱ + ㅏ into 가 with preedit and Enter delivery via PTY")
         results["ime_callbacks"] = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
