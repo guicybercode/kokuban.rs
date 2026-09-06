@@ -4,6 +4,26 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Avanço verificado em 2026-09-05
+
+O código em `5849e76`, publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34001238053): **497 testes Linux e 430 macOS**, check de todos os alvos, Clippy, isolamento de dependências e primeiro quadro Linux sob Xvfb. O novo teste `scripts/linux-graphics-smoke.py` verificou pixels apresentados de Kitty PNG e Sixel, substituição vermelho→verde e ambos os protocolos desabilitados. A existência de uma janela não basta para esse teste passar.
+
+- `a0050a4`: decoder RGB/RGBA/PNG compartilhado e cache CPU limitado por bytes e 4096 imagens.
+- `94952b6`: eventos gráficos ordenados no leitor do PTY, com respostas fora do lock do grid.
+- `24c8333`: composição RGBA com escala, transparência e recorte.
+- `defbec8`: imagens acompanham texto e histórico, com isolamento da tela alternativa. Imagens que cruzam margens parciais são descartadas, uma limitação ainda documentada.
+- `8a272eb`, `826275e` e `5849e76`: Linux anuncia e renderiza os protocolos habilitados, aplica camadas Kitty e desempata pelo ID do cliente; testes integrados cobrem upload, respostas, exclusão, retransmissão, cache e composição.
+- `e08c992`: exemplo Rust para PNG, Sixel e sequência de 120 quadros; README distingue recursos por plataforma.
+- `ee01e9a`: validação gráfica Xvfb reproduzível no CI.
+
+Esses resultados comprovam imagens estáticas e substituição de quadros no Linux/X11. Não comprovam reprodução geral de vídeo, áudio, animação nativa Kitty, FPS sustentado, baixo consumo, experiência Wayland, SSH completo, compatibilidade abrangente de aplicações ou Android. O exemplo `stream` solicita 30 FPS, mas ainda não foi medido como benchmark. A compilação do exemplo passou no CI; sua presença não substitui teste de reprodução.
+
+O prompt da segunda sessão foi entregue ao usuário e publicado em `62bce8e`; a preferência por commits sem Codex como coautor foi registrada em `f38e4ab`. Não há evidência de execução da segunda sessão nesta auditoria. O próximo trabalho continua sendo entregar e verificar todos os requisitos abaixo; a matriz inicial fica preservada como referência.
+
+As compilações locais encontraram falta de espaço em disco. Foram removidos artefatos de `target/` e duas extrações de dependências Cargo gerados nesta sessão; a validação Linux foi feita no CI. Antes de compilar o APK, confira novamente espaço livre além de SDK/NDK.
+
+## Matriz inicial e critérios restantes
+
 | Requisito | Evidência inicial | Falta para comprovar entrega |
 | --- | --- | --- |
 | Linux utilizável | `src/main.rs`, `src/linux_window.rs`: janela winit X11/Wayland, desenho por CPU, PTY, entrada/IME e rolagem. `.github/workflows/ci.yml`: checks e primeiro quadro Xvfb configurados. | Testar sessão interativa real em X11 e Wayland, fontes/DPI, clipboard, seleção, resize, encerramento, instalação e configuração. Registrar resultados por versão. |
