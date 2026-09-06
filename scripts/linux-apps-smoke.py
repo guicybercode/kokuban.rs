@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Exercise a real Linux window, verified loopback SSH, and interactive TUIs.
 
-Run as an ordinary user under Xvfb. Only Python's standard library is imported;
-external programs are OpenSSH, xdotool, xwd, Neovim, fzf, and tmux. The daemon,
+Run as an ordinary user under Xvfb with -noreset. Only Python's standard library
+is imported; external programs are OpenSSH, xdotool, xmodmap, xwd, Neovim, fzf,
+and tmux. The daemon,
 keys, authorized_keys, known_hosts, and tmux socket belong to one temporary
 fixture. No existing SSH configuration, account, or service is modified.
 
@@ -12,6 +13,7 @@ and https://man.openbsd.org/sshd for the pinned-key and foreground-daemon flags.
 """
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -46,6 +48,30 @@ def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
     kwargs.setdefault("check", True)
     kwargs.setdefault("capture_output", True)
     return subprocess.run(args, **kwargs)
+
+
+@contextmanager
+def unicode_keyboard():
+    """Install one stable accented key before winit reads the X11 keymap."""
+    # xdotool otherwise maps and immediately unmaps a spare key for é. A
+    # consumer processing XKB notifications later can see only the restored
+    # map. This fixture tests normal Unicode input, not transient key remaps.
+    # Xvfb -noreset keeps this map between xmodmap and the terminal's connection.
+    mapping = run(["xmodmap", "-pke"]).stdout.decode()
+    spare = next((line for line in mapping.splitlines()
+                  if line.startswith("keycode ") and "=" in line
+                  and all(symbol == "NoSymbol" for symbol in line.partition("=")[2].split())), None)
+    if spare is None:
+        raise AssertionError("Xvfb has no unused keycode for the Unicode fixture")
+    expression = spare.partition("=")[0] + "= eacute Eacute"
+    try:
+        run(["xmodmap", "-e", expression])
+        observed = run(["xmodmap", "-pke"]).stdout.decode()
+        if "eacute" not in observed.split():
+            raise AssertionError("Unicode keymap was reset; start Xvfb with -noreset")
+        yield
+    finally:
+        run(["xmodmap", "-e", spare], check=False)
 
 
 def process_identity(pid: int) -> Optional[list[int]]:
@@ -429,7 +455,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
 def check(binary: Path, artifacts: Optional[Path]) -> None:
     if sys.platform != "linux" or os.geteuid() == 0:
         raise SystemExit("run this fixture as an ordinary Linux user under Xvfb")
-    required = ("ssh", "ssh-keygen", "sshd", "xdotool", "xwd", "nvim", "fzf", "tmux")
+    required = ("ssh", "ssh-keygen", "sshd", "xdotool", "xmodmap", "xwd", "nvim", "fzf", "tmux")
     missing = [name for name in required if shutil.which(name) is None]
     if missing:
         raise SystemExit("missing test programs: " + ", ".join(missing))
@@ -466,7 +492,8 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
                 if (rejected.returncode != 255 or b"Host key verification failed" not in rejected.stderr
                         or (directory / "wrong-host-executed").exists()):
                     raise AssertionError("the deliberately wrong pinned host key was not rejected")
-                exercise_window(directory, port, binary, daemon)
+                with unicode_keyboard():
+                    exercise_window(directory, port, binary, daemon)
             print(
                 "PASS Linux SSH: wrong host key rejected; pinned-key authentication; "
                 "window input; remote PTY resize; Ctrl-C; Neovim Unicode save; "

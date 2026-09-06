@@ -53,6 +53,7 @@ jobs:
             pkg-config \
             tmux \
             x11-apps \
+            x11-xserver-utils \
             xauth \
             xclip \
             xdotool \
@@ -171,7 +172,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24 -noreset" \
             timeout --kill-after=10s 180s python3 scripts/linux-apps-smoke.py \
               "$PWD/target/debug/kokuban" \
               --artifacts-dir "$RUNNER_TEMP/kokuban-apps-artifacts"

@@ -26,7 +26,7 @@ Em um Linux com as dependências do workflow instaladas, execute como usuário c
 
 ```sh
 cargo build --locked
-xvfb-run -a -s '-screen 0 1280x900x24' timeout 180s \
+xvfb-run -a -s '-screen 0 1280x900x24 -noreset' timeout 180s \
   python3 scripts/linux-apps-smoke.py "$PWD/target/debug/kokuban" \
   --artifacts-dir /tmp/kokuban-apps-evidence
 xvfb-run -a -s '-screen 0 800x600x24' timeout 90s \
