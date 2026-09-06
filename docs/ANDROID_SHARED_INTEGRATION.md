@@ -1,5 +1,33 @@
 # Handoff: integração dos componentes compartilhados Android
 
+## Estado após a integração
+
+Os merges normais `3775e6a` e `5638fab` incorporaram a base compartilhada e a
+documentação Linux até `46e74fb`. O lockfile preserva as dependências das duas
+plataformas e os dois pacotes winit; o teste PTY usa o novo argumento e o shell
+portável. As adaptações Android foram concluídas em commits separados:
+
+- `231509c`: seleção limitada, revisão de tela e acompanhamento da evicção.
+- `7f9075e`: encoder compartilhado de paste, IDs assíncronos, revisão/modo,
+  limite e recusa da fila sem encerrar a sessão.
+- `3de3bb3`: dimensões físicas da área terminal e atualização só após ioctl
+  bem-sucedido, incluindo mudanças sem alterar linhas/colunas.
+- `1df1a00`: camadas Kitty atrás de fundos explícitos, visíveis através do
+  fundo padrão. A otimização de opacidade permanece no renderer compartilhado.
+
+Testes Rust cobrem evicção/limpeza, limites UTF-8, paste com controles,
+respostas obsoletas e saturação da fila, além de resize somente em pixels.
+O APK integrado `b158779` passou lifecycle, sete cenários de controles e
+clipboard, aplicações SSH e seis cenários de mídia em debug/release,
+incluindo as camadas negativas. As [evidências e medições](android-evidence/b158779/README.md)
+registram perfis, hashes e limites. O teste estrito de resize remoto precisa
+ser repetido após descartar uma leitura debug vazia; composição intermediária
+com IME real continua em validação. Periféricos USB físicos não foram testados.
+
+A auditoria abaixo fica preservada como referência do contrato original.
+
+## Auditoria original
+
 Auditoria estática de **Android `4bc7b12` × Linux/vídeo `c02228d`**, base comum
 `e8218a5`. As mudanças Linux auditadas estão em **main `cf2b9ac`**. A sessão
 Android continua trabalhando em `codex/android-native`, na worktree irmã
