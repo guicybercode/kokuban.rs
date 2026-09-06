@@ -4,6 +4,17 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Clipboard, seleção e aplicações SSH verificados em 2026-09-05
+
+O código `f4c7330`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005044694): **566 testes Linux e 480 macOS**, check, Clippy, imagens/animação e testes de janela real. A sessão SSH com chave do servidor fixada rejeitou a chave incorreta e validou autenticação, teclado, resize remoto, Ctrl+C, edição Unicode no Neovim 0.9.5, seleção no fzf 0.44.1, divisão/comando no tmux 3.4 e desconexão normal.
+
+- `e8218a5`: seleção limitada por coordenadas e bytes, com revisão de tela e acompanhamento do descarte de histórico.
+- `d261466` e `219f66d`: clipboard fora da thread da janela, paste limitado e integração dos atalhos/seleção Linux.
+- `26d776d`: teste XTest de UTF-8, cópia com destaque visual e retenção do clipboard, colagem e seleção local com Shift durante mouse SGR.
+- `fca890e`, `1c3e13b` e `f4c7330`: sessão OpenSSH real e fixtures de autenticação/teclado estáveis. Detalhes e versões em [validação de aplicações Linux](LINUX_APPS.md).
+
+A evidência é Linux/X11; Wayland, IME completo, soft-wrap/grafemas compostos, OSC 52 e outros aplicativos continuam pendentes. A reprodução com mpv e medições de mídia estão em desenvolvimento separado. As seções abaixo preservam os resultados das entregas anteriores.
+
 ## Animação nativa verificada em 2026-09-05
 
 O código `ab40737`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34002541075): **533 testes Linux e 462 macOS**, check de todos os alvos, Clippy e isolamento de dependências. O teste Xvfb confirmou imagens estáticas e, adicionalmente, reprodução nativa com pixels herdados entre frames, duas repetições completas e manutenção do último frame por mais de um ciclo após o emissor parar de escrever.

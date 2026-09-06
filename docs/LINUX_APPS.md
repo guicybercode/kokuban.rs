@@ -2,11 +2,22 @@
 
 Os testes em `scripts/linux-apps-smoke.py` e `scripts/linux-clipboard-smoke.py` abrem o Kokuban em Xvfb e enviam eventos XTest para a janela. Não injetam a entrada diretamente no PTY. O workflow Linux instala as ferramentas de teste e guarda evidência da sessão SSH em um artefato do CI.
 
+O commit `f4c7330`, integrado à `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005044694), com **566 testes Linux e 480 macOS**, check, Clippy e todos os cenários gráficos e interativos. O artefato `linux-apps-smoke` registrou `kokuban ssh café` salvo pelo Neovim, `beta` selecionado pelo fzf, comando executado na divisão do tmux e encerramento normal.
+
+| Aplicação no runner Linux | Versão verificada |
+| --- | --- |
+| OpenSSH | 9.6p1, pacote Ubuntu 3ubuntu13.19 |
+| Neovim | 0.9.5 |
+| fzf | 0.44.1 |
+| tmux | 3.4 |
+
 ## SSH e aplicações
 
 O teste inicia um `sshd` temporário, sem privilégios, escutando apenas em `127.0.0.1`. Gera chaves de cliente/servidor exclusivas para a execução e fixa a chave pública do servidor no `known_hosts` do teste. A tentativa com uma chave incorreta precisa falhar antes de executar o comando remoto. A conexão correta exige verificação estrita e autenticação por chave. Configurações e credenciais existentes do usuário não são utilizadas.
 
 A sessão aberta pelo terminal verifica PTY remoto, `TERM`, teclado, mudança de 80×24 para 88×27, SIGWINCH e interrupção por Ctrl+C. Depois usa aplicações interativas reais: insere e salva texto Unicode no Neovim, escolhe `beta` no fzf, divide um tmux pelo teclado e executa um comando na nova área. Arquivos de resultado, versões, logs e screenshots registram os passos; as chaves temporárias não entram nos artefatos. O encerramento deve terminar a sessão SSH e a janela normalmente.
+
+O teste instala uma tecla `é` estável com `xmodmap` antes de abrir a janela e restaura o mapeamento ao sair. Isso evita o remapeamento transitório do xdotool; `Xvfb -noreset` mantém a configuração entre as conexões. O resultado comprova entrada Unicode por tecla mapeada, sem comprovar composição por IME, dead keys ou mudanças rápidas de layout.
 
 Esses cenários verificam operações concretas das versões instaladas no runner. Não comprovam todos os plugins, aplicações, servidores, métodos de autenticação, Wayland ou Android. SSH Linux utiliza o cliente disponível no sistema. A aplicação do terminal permanece Rust; OpenSSH, editores e ferramentas de teste são programas externos.
 

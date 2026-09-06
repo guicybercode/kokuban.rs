@@ -13,7 +13,7 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 - **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux also supports native Kitty animation with a bounded CPU cache
 - **Pane management (macOS)**: Split windows vertically or horizontally, navigate with vim-style keybinds
 - **Zoom (macOS)**: Dynamic font size adjustment per session
-- **Selection (macOS)**: Mouse-driven text selection with configurable colors
+- **Selection and clipboard**: Mouse-driven selection on macOS and Linux; Linux copy/paste shortcuts with an asynchronous system clipboard
 - **Status bar (macOS)**: Shows shell, working directory, and pane index
 - **Prompt marks (macOS)**: Visual indicators for command boundaries with navigation shortcuts
 - **Configuration**: TOML-based config file with font, color, and keybind customization
