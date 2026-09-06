@@ -1728,11 +1728,11 @@ fn render_frame() {
         });
 
         let img_store = state.image_store.lock().unwrap();
-        state.renderer.draw_frame(
+        let presented = state.renderer.draw_frame(
             &pane_render_data,
             &dividers,
             &mut atlas,
-            ProtocolObject::from_ref(&*drawable),
+            Some(ProtocolObject::from_ref(&*drawable)),
             &texture,
             size.width as f32,
             size.height as f32,
@@ -1752,7 +1752,9 @@ fn render_frame() {
 
         // Keep rendering during fade-in animation
         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
-        redraw.finish(still_animating);
+        if presented {
+            redraw.finish(still_animating);
+        }
     });
 }
 
