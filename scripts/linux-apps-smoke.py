@@ -422,7 +422,9 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
         raise SystemExit("missing test programs: " + ", ".join(missing))
     if artifacts:
         artifacts.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="kokuban-apps-") as temporary:
+    # StrictModes validates authorized_keys ancestors. A private directory
+    # beneath the account's home avoids the world-writable /tmp ancestor.
+    with tempfile.TemporaryDirectory(prefix="kokuban-apps-", dir=Path.home()) as temporary:
         directory = Path(temporary)
         daemon = None
         try:
