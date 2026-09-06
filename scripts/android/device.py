@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import struct
 import subprocess
 import time
 
@@ -48,6 +49,21 @@ class Device:
         if not data.startswith(b"\x89PNG\r\n\x1a\n"):
             raise RuntimeError("screencap did not return a PNG")
         Path(destination).write_bytes(data)
+        return struct.unpack(">II", data[16:24])
+
+    def process_tree(self, root_pid):
+        rows = self.shell("ps", "-A", "-o", "PID,PPID,NAME").splitlines()
+        processes = []
+        for row in rows:
+            fields = row.split(maxsplit=2)
+            if len(fields) == 3 and fields[0].isdigit() and fields[1].isdigit():
+                processes.append({"pid": fields[0], "parent_pid": fields[1], "name": fields[2]})
+        included = {str(root_pid)}
+        while True:
+            expanded = included | {p["pid"] for p in processes if p["parent_pid"] in included}
+            if expanded == included:
+                return [p for p in processes if p["pid"] in included]
+            included = expanded
 
     def details(self):
         return {name: self.shell("getprop", prop) for name, prop in {

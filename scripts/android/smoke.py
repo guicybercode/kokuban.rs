@@ -38,7 +38,9 @@ def main():
     device.wait_boot()
     device.adb("install", "-r", str(args.apk.resolve()), timeout=120)
     package = args.package
-    component = f"{package}/android.app.NativeActivity"
+    component = device.shell("cmd", "package", "resolve-activity", "--brief", package).splitlines()[-1]
+    if not component.startswith(package + "/"):
+        raise RuntimeError(f"No launcher activity found for {package}: {component}")
     private = device.shell("run-as", package, "pwd")
     marker = f"{private}/files/kokuban-smoke-result.txt"
     device.shell("run-as", package, "rm", "-f", marker)
@@ -58,10 +60,12 @@ def main():
         eventually(lambda: device.shell("run-as", package, "cat", marker, check=False), expected)
 
     try:
+        device.shell("input", "keyevent", "KEYCODE_WAKEUP")
+        device.shell("input", "keyevent", "KEYCODE_MENU")
         device.shell("am", "force-stop", package)
         device.shell("am", "start", "-W", "-n", component)
-        time.sleep(2)
         process = device.pid(package)
+        eventually(lambda: "first frame presented" in device.adb("logcat", "-d", "--pid", process), True, timeout=30)
         assert_shell("OPEN", f"KOKUBAN_SMOKE_SESSION=kept;printf OPEN > {shlex.quote(marker)}")
         device.screenshot(args.output / "01-shell.png")
         results["checks"].append("PTY executes a command entered through key events")
@@ -80,8 +84,11 @@ def main():
             time.sleep(1)
             if device.pid(package) != process:
                 raise AssertionError("Application process changed during rotation")
-            device.screenshot(args.output / f"03-rotation-{len(results['checks'])}.png")
-            results["checks"].append(f"process survives rotation {rotation}")
+            def rotated():
+                width, height = device.screenshot(args.output / f"03-rotation-{len(results['checks'])}.png")
+                return width > height if rotation == 1 else height > width
+            eventually(rotated, True)
+            results["checks"].append(f"process survives actual screen rotation {rotation}")
         assert_shell("OPEN_RESUME_kept_ROTATE_kept", f"printf _ROTATE_$KOKUBAN_SMOKE_SESSION >> {shlex.quote(marker)}")
         results["checks"].append("PTY executes commands after repeated rotation")
         results["status"] = "passed"

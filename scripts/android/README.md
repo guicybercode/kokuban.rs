@@ -21,6 +21,12 @@ the installed NDK and cargo-apk versions, fetches with `--locked`, builds offlin
 and verifies the lockfile has not changed. cargo-apk 0.10.0 does not accept
 `--locked` on its packaging subcommand.
 
+The build also compiles the minimal Java OS bridge with `javac --release 8` and
+Android's `d8`, then adds `classes.dex`, aligns and re-signs the APK. APK signature
+verification and alignment checks must pass before the final file replaces the
+packaging output. The Java bridge is required for Android's IME/InputConnection
+contract; terminal parsing, rendering and application behavior remain in Rust.
+
 `--test-signing` uses a generated development key under the ignored `target/`
 directory. These APKs are for tests. For distribution omit that flag and supply
 `CARGO_APK_RELEASE_KEYSTORE` and `CARGO_APK_RELEASE_KEYSTORE_PASSWORD` securely.
@@ -95,6 +101,9 @@ The report includes APK and uncompressed/compressed native-library sizes, PSS
 before/after, and samples from Android `top` where 100% means one CPU core. The
 first `top` sample is discarded because it spans an unspecified prior interval.
 Raw sources are retained. Missing data remains `null`; it is never called zero.
+Main-process metrics and the combined process tree (including shell and SSH
+children) are reported separately. If processes enter or exit during sampling,
+the combined CPU value is unavailable rather than implying a complete reading.
 
 `gfxinfo` is captured for investigation, but NativeActivity/softbuffer may not
 populate View frame metrics. End-to-end input latency and presentation cadence

@@ -52,4 +52,6 @@ if [[ "$profile" == release ]]; then build_args+=(--release); fi
 CARGO_NET_OFFLINE=true rustup run 1.94.1 cargo apk "${build_args[@]}"
 current_lock_hash="$(python3 -c 'import hashlib; print(hashlib.sha256(open("Cargo.lock", "rb").read()).hexdigest())')"
 [[ "$lock_hash" == "$current_lock_hash" ]] || { echo 'Cargo.lock changed during packaging' >&2; exit 1; }
-echo "APK: ${CARGO_TARGET_DIR:-$project_root/target}/$profile/apk/kokuban.apk"
+apk_path="${CARGO_TARGET_DIR:-$project_root/target}/$profile/apk/kokuban.apk"
+python3 scripts/android/package.py --apk "$apk_path" --profile "$profile" --target "$target"
+echo "APK: $apk_path"
