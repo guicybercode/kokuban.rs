@@ -11,6 +11,9 @@ use crate::input::mouse::{
     mouse_wheel_route, MouseWheelRoute, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
     MAX_WHEEL_STEPS_PER_EVENT,
 };
+use crate::input::paste::{encode_paste, MAX_PASTE_BYTES};
+use crate::linux_clipboard::{ClipboardEvent, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES};
+use crate::selection::{point_from_viewport, GridPoint, SelectionState};
 use crate::pty::Pty;
 use crate::parser::ansi::GraphicsSupport;
 use crate::software_graphics::{ImageSnapshot, SoftwareGraphics};
@@ -20,6 +23,7 @@ use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 use softbuffer::{Context, Surface};
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -32,7 +36,7 @@ use winit::event::{
     DeviceId, ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
 };
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::ModifiersState;
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{ImePurpose, Window, WindowId};
 
 const INITIAL_CELL_WIDTH: u32 = 10;
@@ -62,12 +66,77 @@ type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
 
 #[derive(Debug)]
 enum LinuxEvent {
+    Clipboard(ClipboardEvent),
     GridUpdated,
     WindowTitleChanged,
     ReaderExited(ReaderStatus),
     WriterExited(WriterStatus),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClipboardAction {
+    Copy,
+    Paste,
+    SelectAll,
+}
+
+#[derive(Default)]
+struct SelectionContext {
+    revision: u64,
+    dropped_rows: usize,
+}
+
+fn sync_selection(selection: &mut SelectionState, context: &mut SelectionContext, grid: &Grid) {
+    let dropped_rows = grid
+        .total_lines_pushed
+        .saturating_sub(grid.scrollback_len());
+    if context.revision != grid.selection_revision() || dropped_rows < context.dropped_rows {
+        selection.clear();
+    } else {
+        selection.rebase_after_eviction(dropped_rows - context.dropped_rows);
+    }
+    context.revision = grid.selection_revision();
+    context.dropped_rows = dropped_rows;
+}
+
+fn selection_point_at_pointer(
+    grid: &Grid,
+    position: PhysicalPosition<f64>,
+    cell_size: (u16, u16),
+) -> Option<GridPoint> {
+    if !position.x.is_finite() || !position.y.is_finite() {
+        return None;
+    }
+    let dimensions = TerminalDimensions {
+        columns: u16::try_from(grid.cols()).ok()?,
+        rows: u16::try_from(grid.rows()).ok()?,
+    };
+    let position = PhysicalPosition::new(position.x.max(0.0), position.y.max(0.0));
+    // Mouse reports are (column, row), one-based; selection points are
+    // (row, column), zero-based retained-grid coordinates.
+    let (column, row) = terminal_cell_at_pointer(position, cell_size, dimensions)?;
+    Some(point_from_viewport(grid, row - 1, column - 1))
+}
+
+fn clipboard_action(key: Key<&str>, modifiers: ModifiersState) -> Option<ClipboardAction> {
+    if modifiers == (ModifiersState::CONTROL | ModifiersState::SHIFT) {
+        if let Key::Character(text) = key {
+            if text.eq_ignore_ascii_case("c") {
+                return Some(ClipboardAction::Copy);
+            }
+            if text.eq_ignore_ascii_case("v") {
+                return Some(ClipboardAction::Paste);
+            }
+            if text.eq_ignore_ascii_case("a") {
+                return Some(ClipboardAction::SelectAll);
+            }
+        }
+    }
+    if modifiers == ModifiersState::SHIFT && key == Key::Named(NamedKey::Insert) {
+        return Some(ClipboardAction::Paste);
+    }
+    None
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ReaderStatus {
     Normal,
@@ -99,6 +168,12 @@ enum GridAccessError {
 struct TerminalDimensions {
     columns: u16,
     rows: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalSize {
+    cells: TerminalDimensions,
+    pixels: (u16, u16),
 }
 
 #[derive(Debug, Default)]
@@ -581,6 +656,10 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     let redraw_pending = Arc::new(AtomicBool::new(false));
     let window_title_pending = Arc::new(AtomicBool::new(false));
     let event_proxy = event_loop.create_proxy();
+    let clipboard_proxy = event_proxy.clone();
+    let clipboard = LinuxClipboard::new(move |event| {
+        let _ = clipboard_proxy.send_event(LinuxEvent::Clipboard(event));
+    }).map_err(|error| log::warn!("Linux clipboard worker unavailable: {error}")).ok();
     let writer_proxy = event_proxy.clone();
     let mut writer = TerminalWriter::spawn(pty.clone(), move |exit| {
         let _ = writer_proxy.send_event(LinuxEvent::WriterExited(classify_writer_exit(exit)));
@@ -639,6 +718,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         redraw_pending,
         window_title_pending,
     );
+    application.clipboard = clipboard;
 
     let run_result = event_loop
         .run_app(&mut application)
@@ -657,6 +737,12 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
 }
 
 struct LinuxWindow {
+    clipboard: Option<LinuxClipboard>,
+    paste_request: u64,
+    pending_pastes: HashMap<u64, (bool, u64)>,
+    selection: SelectionState,
+    selection_context: SelectionContext,
+    selection_drag: Option<DeviceId>,
     // Drop the surface and its display connection before releasing the window.
     surface: Option<SoftwareSurface>,
     context: Option<Context<Arc<Window>>>,
@@ -664,6 +750,7 @@ struct LinuxWindow {
     glyph_atlas: Option<GlyphAtlas>,
     atlas_scale_factor: Option<f64>,
     cell_dimensions: Option<(u16, u16)>,
+    applied_pty_size: Option<TerminalSize>,
     background: u32,
     colors: TerminalColors,
     font_family: String,
@@ -707,12 +794,19 @@ impl LinuxWindow {
         window_title_pending: Arc<AtomicBool>,
     ) -> Self {
         Self {
+            clipboard: None,
+            paste_request: 0,
+            pending_pastes: HashMap::new(),
+            selection: SelectionState::default(),
+            selection_context: SelectionContext::default(),
+            selection_drag: None,
             surface: None,
             context: None,
             window: None,
             glyph_atlas: None,
             atlas_scale_factor: None,
             cell_dimensions: None,
+            applied_pty_size: None,
             background: rgb_to_xrgb(background.0, background.1, background.2),
             colors: TerminalColors::new(foreground, background),
             font_family,
@@ -781,11 +875,11 @@ impl LinuxWindow {
         self.glyph_atlas = Some(glyph_atlas);
         self.atlas_scale_factor = Some(scale_factor);
         self.cell_dimensions = Some(cell_dimensions);
-        if let Some(applied_inner_size) =
-            immediate_surface_size_to_reconcile(window.request_inner_size(requested_inner_size))
-        {
-            self.resize_terminal_for_surface(applied_inner_size)?;
-        }
+        let applied_inner_size = immediate_surface_size_to_reconcile(
+            window.request_inner_size(requested_inner_size),
+            window.inner_size(),
+        );
+        self.resize_terminal_for_surface(applied_inner_size)?;
         window.request_redraw();
         Ok(())
     }
@@ -815,17 +909,27 @@ impl LinuxWindow {
         Ok(changed)
     }
 
-    fn resize_terminal_for_surface(&self, size: PhysicalSize<u32>) -> Result<bool, String> {
+    fn resize_terminal_for_surface(&mut self, size: PhysicalSize<u32>) -> Result<bool, String> {
         let cell_dimensions = self.cell_dimensions.ok_or_else(|| {
             "could not resize the Linux terminal before glyph metrics were ready".to_string()
         })?;
-        let Some(target) = terminal_dimensions_for_surface(size, cell_dimensions) else {
+        let Some(target) = terminal_size_for_surface(size, cell_dimensions) else {
             return Ok(false);
         };
 
-        resize_terminal_with(self.grid.as_ref(), target, |columns, rows| {
-            self.pty.resize(columns, rows)
-        })
+        resize_terminal_with(
+            self.grid.as_ref(),
+            &mut self.applied_pty_size,
+            target,
+            |size| {
+                self.pty.resize_with_pixels(
+                    size.cells.columns,
+                    size.cells.rows,
+                    size.pixels.0,
+                    size.pixels.1,
+                )
+            },
+        )
         .map_err(|error| error.to_string())
     }
 
@@ -857,7 +961,10 @@ impl LinuxWindow {
             // Match reader lock order; text and image placements share one snapshot.
             let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
             let graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
-            (snapshot_locked_grid(&grid), graphics.snapshot(&grid, cell_dimensions))
+            sync_selection(&mut self.selection, &mut self.selection_context, &grid);
+            let mut snapshot = snapshot_locked_grid(&grid);
+            apply_selection_to_snapshot(&mut snapshot, &self.selection, &grid, self.colors);
+            (snapshot, graphics.snapshot(&grid, cell_dimensions))
         };
         let preedit_layout = self
             .ime_preedit
@@ -923,6 +1030,164 @@ impl LinuxWindow {
             |area| window.set_ime_cursor_area(area.position, area.size),
         );
         Ok(Some(terminal_content_visible))
+    }
+
+    fn clear_selection(&mut self) {
+        if self.selection.is_active() {
+            self.selection.clear();
+            if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+    }
+
+    fn select_at_pointer(
+        &mut self,
+        position: PhysicalPosition<f64>,
+        start: bool,
+    ) -> Result<bool, GridAccessError> {
+        let Some(cell_size) = self.cell_dimensions else {
+            return Ok(false);
+        };
+        let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+        sync_selection(&mut self.selection, &mut self.selection_context, &grid);
+        if !start && !self.selection.is_active() {
+            return Ok(false);
+        }
+        let Some(point) = selection_point_at_pointer(&grid, position, cell_size) else {
+            return Ok(false);
+        };
+        if start {
+            self.selection.start(point);
+        } else {
+            self.selection.update(point);
+        }
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+        Ok(true)
+    }
+
+    fn handle_clipboard_action(&mut self, action: ClipboardAction) -> Result<(), GridAccessError> {
+        let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+        sync_selection(&mut self.selection, &mut self.selection_context, &grid);
+        match action {
+            ClipboardAction::SelectAll => {
+                let first_row = if grid.using_alt_screen {
+                    grid.scrollback_len()
+                } else {
+                    0
+                };
+                self.selection.start(GridPoint {
+                    row: first_row as i64,
+                    col: 0,
+                });
+                self.selection.update(GridPoint {
+                    row: (grid.scrollback_len() + grid.rows() - 1) as i64,
+                    col: grid.cols() - 1,
+                });
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+            }
+            ClipboardAction::Copy => {
+                if self.selection.is_active() {
+                    match self
+                        .selection
+                        .get_text_with_limit(&grid, MAX_CLIPBOARD_TEXT_BYTES)
+                    {
+                        Ok(text) => {
+                            if let Some(clipboard) = &self.clipboard {
+                                if let Err(error) = clipboard.copy_text(text) {
+                                    log::warn!("could not copy selection: {error}");
+                                }
+                            }
+                        }
+                        Err(_) => log::warn!("selection exceeds the clipboard byte limit"),
+                    }
+                }
+            }
+            ClipboardAction::Paste => {
+                // Keep the target mode/revision with this request. Clipboard IO
+                // runs asynchronously and may finish after a screen transition.
+                // Bound replies waiting in the UI event queue, as well as the
+                // clipboard worker's own bounded command queue.
+                if self.pending_pastes.len() >= 8 {
+                    log::warn!("clipboard paste queue is full");
+                    return Ok(());
+                }
+                self.paste_request = self.paste_request.wrapping_add(1);
+                while self.pending_pastes.contains_key(&self.paste_request) {
+                    self.paste_request = self.paste_request.wrapping_add(1);
+                }
+                if let Some(clipboard) = &self.clipboard {
+                    match clipboard.request_paste(self.paste_request) {
+                        Ok(()) => {
+                            self.pending_pastes.insert(
+                                self.paste_request,
+                                (grid.bracketed_paste, grid.screen_revision()),
+                            );
+                        }
+                        Err(error) => log::warn!("could not request clipboard paste: {error}"),
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_clipboard_event(&mut self, event: ClipboardEvent) -> Result<(), GridAccessError> {
+        match event {
+            ClipboardEvent::CopyFinished(result) => {
+                if let Err(error) = result {
+                    log::warn!("could not copy selection: {error}");
+                }
+            }
+            ClipboardEvent::Paste { request_id, result } => {
+                let Some((bracketed, revision)) = self.pending_pastes.remove(&request_id) else {
+                    return Ok(());
+                };
+                let text = match result {
+                    Ok(text) => text,
+                    Err(error) => {
+                        log::warn!("could not read clipboard: {error}");
+                        return Ok(());
+                    }
+                };
+                let Some(writer) = self.writer.as_ref() else {
+                    return Ok(());
+                };
+                let bytes = match encode_paste(
+                    &text,
+                    bracketed,
+                    writer.max_nonfatal_input_bytes().min(MAX_PASTE_BYTES),
+                ) {
+                    Ok(bytes) if !bytes.is_empty() => bytes,
+                    Ok(_) => return Ok(()),
+                    Err(error) => {
+                        log::warn!("could not encode clipboard paste: {error}");
+                        return Ok(());
+                    }
+                };
+                let mut grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+                if grid.bracketed_paste != bracketed || grid.screen_revision() != revision {
+                    log::warn!("clipboard paste cancelled because the terminal screen or paste mode changed");
+                    return Ok(());
+                }
+                match writer.enqueue_nonfatal(bytes) {
+                    Ok(()) => {
+                        grid.scroll_offset = 0;
+                        grid.mark_all_dirty();
+                        self.selection.clear();
+                        if let Some(window) = &self.window {
+                            window.request_redraw();
+                        }
+                    }
+                    Err(error) => log::warn!("clipboard paste was not queued: {error}"),
+                }
+            }
+        }
+        Ok(())
     }
 
     fn fail(&mut self, event_loop: &ActiveEventLoop, error: String) {
@@ -1117,6 +1382,12 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     return;
                 }
                 let active_button = self.pointer_route.active_motion_button();
+                if self.selection_drag == Some(device_id) {
+                    if let Err(error) = self.select_at_pointer(position, false) {
+                        self.fail(event_loop, error.to_string());
+                    }
+                    return;
+                }
                 let grid = self.grid.as_ref();
                 let writer = self.writer.as_ref();
                 let result = dispatch_mouse_motion_with(
@@ -1158,6 +1429,29 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     button_code,
                     self.cell_dimensions,
                 );
+                let local_press = if button == MouseButton::Left && state.is_pressed() {
+                    match self.grid.lock() {
+                        Ok(grid) => grid.mouse_tracking == MouseTracking::None || self.modifiers.shift_key(),
+                        Err(_) => {
+                            // Drop the poisoned guard before calling the error path.
+                            false
+                        }
+                    }
+                } else { false };
+                let local_release = button == MouseButton::Left && state == ElementState::Released
+                    && self.selection_drag == Some(device_id);
+                if local_press || local_release {
+                    if let Some(position) = self.pointer_route.position_for(device_id) {
+                        match self.select_at_pointer(position, local_press) {
+                            Ok(true) if local_press => self.selection_drag = Some(device_id),
+                            Ok(_) => {},
+                            Err(error) => { self.fail(event_loop, error.to_string()); return; }
+                        }
+                    }
+                    if local_release { self.selection_drag = None; }
+                    self.pointer_route.record_button_dispatch(device_id, state, button_code, false, cell_dimensions);
+                    return;
+                }
                 let result = dispatch_mouse_button_and_motion_with(
                     self.grid.as_ref(),
                     self.pointer_route.position_for(device_id),
@@ -1315,6 +1609,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             .enqueue(bytes)
                     },
                 );
+                if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) { self.clear_selection(); }
                 self.handle_terminal_input_result(event_loop, result);
             }
             WindowEvent::KeyboardInput {
@@ -1324,6 +1619,16 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             } => {
                 if !terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     return;
+                }
+                if !is_synthetic && event.state.is_pressed() {
+                    if let Some(action) = clipboard_action(event.logical_key.as_ref(), self.modifiers) {
+                        if !event.repeat {
+                            if let Err(error) = self.handle_clipboard_action(action) {
+                                self.fail(event_loop, error.to_string());
+                            }
+                        }
+                        return;
+                    }
                 }
                 let scrollback_action =
                     scrollback_action_from_winit(&event, is_synthetic, self.modifiers);
@@ -1346,6 +1651,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             .enqueue(bytes)
                     },
                 );
+                if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) { self.clear_selection(); }
                 self.handle_terminal_input_result(event_loop, result);
             }
             WindowEvent::Resized(size) => {
@@ -1397,8 +1703,18 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             Err(error) => {
                                 log::warn!(
                                     "could not preserve the Linux terminal grid at scale \
-                                     {scale_factor}: {error}; waiting for the next resize event"
+                                     {scale_factor}: {error}; using the current window size"
                                 );
+                                // The atlas has changed even if the window cannot resize.
+                                // No subsequent Resized event is guaranteed in this case.
+                                if let Some(size) =
+                                    self.window.as_ref().map(|window| window.inner_size())
+                                {
+                                    if let Err(error) = self.resize_terminal_for_surface(size) {
+                                        self.fail(event_loop, error);
+                                        return;
+                                    }
+                                }
                             }
                         }
                     }
@@ -1444,6 +1760,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: LinuxEvent) {
         match event {
+            LinuxEvent::Clipboard(event) => {
+                if terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
+                    if let Err(error) = self.handle_clipboard_event(event) {
+                        self.fail(event_loop, error.to_string());
+                    }
+                }
+            }
             LinuxEvent::GridUpdated => {
                 if let Some(window) = self.window.as_ref() {
                     window.request_redraw();
@@ -1669,8 +1992,11 @@ fn configured_terminal_dimensions(columns: u16, rows: u16) -> TerminalDimensions
 
 fn immediate_surface_size_to_reconcile(
     immediate: Option<PhysicalSize<u32>>,
-) -> Option<PhysicalSize<u32>> {
-    immediate
+    current: PhysicalSize<u32>,
+) -> PhysicalSize<u32> {
+    // Asynchronous backends may keep the existing size until a later event.
+    // Publish that actual pixel area now, including on the first atlas setup.
+    immediate.unwrap_or(current)
 }
 
 fn is_current_surface_size(event_size: PhysicalSize<u32>, current_size: PhysicalSize<u32>) -> bool {
@@ -1769,6 +2095,21 @@ fn terminal_dimensions_for_surface(
     })
 }
 
+fn terminal_size_for_surface(
+    surface_size: PhysicalSize<u32>,
+    cell_dimensions: (u16, u16),
+) -> Option<TerminalSize> {
+    Some(TerminalSize {
+        cells: terminal_dimensions_for_surface(surface_size, cell_dimensions)?,
+        // winsize uses unsigned shorts. Keep residual partial-cell pixels: the
+        // graphics viewport is the full drawable area, not only complete cells.
+        pixels: (
+            surface_size.width.min(u32::from(u16::MAX)) as u16,
+            surface_size.height.min(u32::from(u16::MAX)) as u16,
+        ),
+    })
+}
+
 fn physical_size_for_terminal(
     terminal_dimensions: TerminalDimensions,
     cell_dimensions: (u16, u16),
@@ -1792,42 +2133,59 @@ fn physical_size_for_terminal(
 
 fn apply_terminal_resize<P, G>(
     current: TerminalDimensions,
-    target: TerminalDimensions,
+    applied: &mut Option<TerminalSize>,
+    target: TerminalSize,
     resize_pty: P,
     resize_grid: G,
 ) -> std::io::Result<bool>
 where
-    P: FnOnce(u16, u16) -> std::io::Result<()>,
+    P: FnOnce(TerminalSize) -> std::io::Result<()>,
     G: FnOnce(u16, u16),
 {
-    if current == target {
+    let grid_changed = current != target.cells;
+    if !grid_changed && *applied == Some(target) {
         return Ok(false);
     }
 
-    resize_pty(target.columns, target.rows)?;
-    resize_grid(target.columns, target.rows);
+    if *applied != Some(target) {
+        resize_pty(target)?;
+    }
+    if grid_changed {
+        resize_grid(target.cells.columns, target.cells.rows);
+    }
+    // Failed ioctls leave the remembered size untouched so the same target can
+    // be retried. Pixel-only updates do not disturb cursor, scroll or wrap state.
+    *applied = Some(target);
     Ok(true)
 }
 
 fn resize_terminal_with<F>(
     grid: &Mutex<Grid>,
-    target: TerminalDimensions,
+    applied: &mut Option<TerminalSize>,
+    target: TerminalSize,
     resize_pty: F,
 ) -> Result<bool, TerminalResizeError>
 where
-    F: FnOnce(u16, u16) -> std::io::Result<()>,
+    F: FnOnce(TerminalSize) -> std::io::Result<()>,
 {
     let mut grid = grid.lock().map_err(|_| TerminalResizeError::Grid {
-        target,
+        target: target.cells,
         source: GridAccessError::Poisoned,
     })?;
-    let current = terminal_dimensions_from_locked_grid(&grid)
-        .map_err(|source| TerminalResizeError::Grid { target, source })?;
+    let current = terminal_dimensions_from_locked_grid(&grid).map_err(|source| {
+        TerminalResizeError::Grid {
+            target: target.cells,
+            source,
+        }
+    })?;
 
-    apply_terminal_resize(current, target, resize_pty, |columns, rows| {
+    apply_terminal_resize(current, applied, target, resize_pty, |columns, rows| {
         grid.resize(usize::from(columns), usize::from(rows));
     })
-    .map_err(|source| TerminalResizeError::Pty { target, source })
+    .map_err(|source| TerminalResizeError::Pty {
+        target: target.cells,
+        source,
+    })
 }
 
 fn dispatch_keyboard_input_with<E, W>(
@@ -2433,6 +2791,28 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
     Ok(snapshot_locked_grid(&grid))
 }
 
+fn apply_selection_to_snapshot(
+    snapshot: &mut GridSnapshot,
+    selection: &SelectionState,
+    grid: &Grid,
+    colors: TerminalColors,
+) {
+    if !selection.is_active() {
+        return;
+    }
+    let foreground = colors.default_background();
+    let background = colors.resolve_foreground(Color::Default, false);
+    for row in 0..snapshot.rows {
+        for column in 0..snapshot.columns {
+            if selection.contains_cell(grid, row, column) {
+                let cell = &mut snapshot.cells[row * snapshot.columns + column];
+                cell.fg = Color::Rgb(foreground.0, foreground.1, foreground.2);
+                cell.bg = Color::Rgb(background.0, background.1, background.2);
+                cell.flags.remove(CellFlags::REVERSE | CellFlags::FAINT);
+            }
+        }
+    }
+}
 fn snapshot_locked_grid(grid: &Grid) -> GridSnapshot {
     let columns = grid.cols();
     let rows = grid.rows();
@@ -3354,8 +3734,8 @@ mod tests {
         resolve_cell_underline_color, reveal_ime_input_viewport, rgb_to_xrgb, rounded_i32,
         set_grid_cell_dimensions, snapshot_grid, snapshot_window_title,
         sync_ime_cursor_area_with, terminal_accepts_input, terminal_cell_at_pointer,
-        terminal_color_query_value, terminal_dimensions_for_surface, underline_anchor_y,
-        GridAccessError,
+        terminal_color_query_value, terminal_dimensions_for_surface, terminal_size_for_surface,
+        underline_anchor_y, GridAccessError,
         ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
         ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseMotionDispatchOutcome,
         MouseMotionState, MouseWheelState, PointerRouteState, ReaderStatus, ResolvedCellColors,
@@ -3609,14 +3989,17 @@ mod tests {
         let requested = PhysicalSize::new(800, 480);
         let constrained = PhysicalSize::new(790, 470);
 
-        assert_eq!(immediate_surface_size_to_reconcile(None), None);
         assert_eq!(
-            immediate_surface_size_to_reconcile(Some(requested)),
-            Some(requested)
+            immediate_surface_size_to_reconcile(None, constrained),
+            constrained
         );
         assert_eq!(
-            immediate_surface_size_to_reconcile(Some(constrained)),
-            Some(constrained)
+            immediate_surface_size_to_reconcile(Some(requested), constrained),
+            requested
+        );
+        assert_eq!(
+            immediate_surface_size_to_reconcile(Some(constrained), requested),
+            constrained
         );
         assert!(is_current_surface_size(constrained, constrained));
         assert!(!is_current_surface_size(requested, constrained));
@@ -3638,7 +4021,7 @@ mod tests {
             PhysicalSize::new(MAX_REQUESTED_PHYSICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT)
         );
         assert_eq!(requested, current_surface);
-        let target = terminal_dimensions_for_surface(requested, grown_cell_dimensions)
+        let target = terminal_size_for_surface(requested, grown_cell_dimensions)
             .expect("the capped physical size should map to a terminal grid");
         let grid = Mutex::new(Grid::new(
             usize::from(configured.columns),
@@ -3647,8 +4030,8 @@ mod tests {
         ));
         let pty_size = RefCell::new(None);
 
-        assert!(resize_terminal_with(&grid, target, |columns, rows| {
-            pty_size.replace(Some((columns, rows)));
+        assert!(resize_terminal_with(&grid, &mut None, target, |size| {
+            pty_size.replace(Some((size.cells.columns, size.cells.rows)));
             Ok(())
         })
         .expect("the unchanged capped size should reconcile successfully"));
@@ -3753,22 +4136,137 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pixel_size_uses_the_drawable_area_and_saturates_without_wrapping() {
+        let size = terminal_size_for_surface(PhysicalSize::new(809, 499), (10, 20)).unwrap();
+        assert_eq!(
+            size.cells,
+            TerminalDimensions {
+                columns: 80,
+                rows: 24
+            }
+        );
+        assert_eq!(size.pixels, (809, 499));
+        assert_eq!(
+            terminal_size_for_surface(PhysicalSize::new(u32::MAX, u32::MAX), (10, 20))
+                .unwrap()
+                .pixels,
+            (u16::MAX, u16::MAX),
+        );
+        assert_eq!(
+            terminal_size_for_surface(PhysicalSize::new(0, 480), (10, 20)),
+            None
+        );
+    }
+
+    #[test]
+    fn initial_metrics_and_pixel_only_resizes_update_pty_without_resizing_grid() {
+        let cells = TerminalDimensions {
+            columns: 80,
+            rows: 24,
+        };
+        let mut applied = None;
+        let mut calls = Vec::new();
+        // Initial atlas, partial-cell window growth, then a DPI change that
+        // preserves the configured grid all need distinct pixel dimensions.
+        for (surface, metrics) in [
+            (PhysicalSize::new(800, 480), (10, 20)),
+            (PhysicalSize::new(809, 499), (10, 20)),
+            (PhysicalSize::new(1600, 960), (20, 40)),
+        ] {
+            let target = terminal_size_for_surface(surface, metrics).unwrap();
+            assert_eq!(target.cells, cells);
+            assert!(apply_terminal_resize(
+                cells,
+                &mut applied,
+                target,
+                |size| {
+                    calls.push(size.pixels);
+                    Ok(())
+                },
+                |_, _| panic!("pixel-only changes must preserve the grid state"),
+            )
+            .unwrap());
+            assert_eq!(applied, Some(target));
+            assert!(!apply_terminal_resize(
+                cells,
+                &mut applied,
+                target,
+                |_| panic!("duplicate window events must not repeat the ioctl"),
+                |_, _| panic!("duplicate window events must not resize the grid"),
+            )
+            .unwrap());
+        }
+        assert_eq!(calls, [(800, 480), (809, 499), (1600, 960)]);
+    }
+
+    #[test]
+    fn failed_pixel_or_grid_resize_retains_last_success_and_can_retry_same_target() {
+        let initial = terminal_size_for_surface(PhysicalSize::new(800, 480), (10, 20)).unwrap();
+        for surface in [PhysicalSize::new(809, 499), PhysicalSize::new(1000, 600)] {
+            let grid = Mutex::new(Grid::new(80, 24, 0));
+            {
+                let mut grid = grid.lock().unwrap();
+                grid.cursor_row = 7;
+                grid.cursor_col = 80;
+                grid.scroll_top = 3;
+                grid.scroll_bottom = 20;
+                grid.dirty[0] = false;
+                grid.buffer.cell_mut(0, 0).c = 'x';
+            }
+            let mut applied = Some(initial);
+            let target = terminal_size_for_surface(surface, (10, 20)).unwrap();
+            let mut calls = 0;
+            let result = resize_terminal_with(&grid, &mut applied, target, |_| {
+                calls += 1;
+                assert!(matches!(grid.try_lock(), Err(TryLockError::WouldBlock)));
+                Err(io::Error::from_raw_os_error(5))
+            });
+            assert!(matches!(result, Err(TerminalResizeError::Pty { .. })));
+            assert_eq!(applied, Some(initial));
+            assert_eq!(grid.lock().unwrap().cols(), 80);
+
+            assert!(resize_terminal_with(&grid, &mut applied, target, |size| {
+                calls += 1;
+                assert_eq!(size, target);
+                assert!(matches!(grid.try_lock(), Err(TryLockError::WouldBlock)));
+                Ok(())
+            })
+            .unwrap());
+            assert_eq!(calls, 2);
+            assert_eq!(applied, Some(target));
+            let grid = grid.lock().unwrap();
+            assert_eq!(
+                (grid.cols(), grid.rows()),
+                (
+                    usize::from(target.cells.columns),
+                    usize::from(target.cells.rows)
+                )
+            );
+            if target.cells == initial.cells {
+                assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
+                assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
+                assert!(!grid.dirty[0]);
+                assert_eq!(grid.buffer.cell(0, 0).c, 'x');
+            }
+        }
+    }
+
+    #[test]
     fn resize_transaction_calls_pty_before_grid_commit() {
         let order = RefCell::new(Vec::new());
         let current = TerminalDimensions {
             columns: 80,
             rows: 24,
         };
-        let target = TerminalDimensions {
-            columns: 100,
-            rows: 30,
-        };
+        let target = terminal_size_for_surface(PhysicalSize::new(1000, 600), (10, 20)).unwrap();
+        let mut applied = None;
 
         assert!(apply_terminal_resize(
             current,
+            &mut applied,
             target,
-            |columns, rows| {
-                assert_eq!((columns, rows), (100, 30));
+            |size| {
+                assert_eq!(size, target);
                 order.borrow_mut().push("pty");
                 Ok(())
             },
@@ -3779,11 +4277,14 @@ mod tests {
         )
         .expect("fake PTY resize should succeed"));
         assert_eq!(order.into_inner(), ["pty", "grid"]);
+        assert_eq!(applied, Some(target));
     }
 
     #[test]
-    fn unchanged_terminal_dimensions_do_not_call_the_pty() {
+    fn unchanged_terminal_cells_and_pixels_do_not_call_the_pty() {
         let grid = Mutex::new(Grid::new(80, 24, 0));
+        let target = terminal_size_for_surface(PhysicalSize::new(800, 480), (10, 20)).unwrap();
+        let mut applied = Some(target);
         let pty_calls = AtomicUsize::new(0);
         {
             let mut grid = grid.lock().expect("test grid should be available");
@@ -3795,17 +4296,10 @@ mod tests {
             grid.buffer.cell_mut(0, 0).c = 'x';
         }
 
-        assert!(!resize_terminal_with(
-            &grid,
-            TerminalDimensions {
-                columns: 80,
-                rows: 24,
-            },
-            |_, _| {
-                pty_calls.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            },
-        )
+        assert!(!resize_terminal_with(&grid, &mut applied, target, |_| {
+            pty_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        },)
         .expect("unchanged dimensions should be a no-op"));
         assert_eq!(pty_calls.load(Ordering::Relaxed), 0);
         let grid = grid.lock().expect("no-op should keep grid available");
@@ -3830,11 +4324,9 @@ mod tests {
         }
         let error = resize_terminal_with(
             &grid,
-            TerminalDimensions {
-                columns: 100,
-                rows: 30,
-            },
-            |_, _| Err(io::Error::from_raw_os_error(5)),
+            &mut None,
+            terminal_size_for_surface(PhysicalSize::new(1000, 600), (10, 20)).unwrap(),
+            |_| Err(io::Error::from_raw_os_error(5)),
         )
         .expect_err("fake PTY failure should abort the transaction");
 
@@ -3861,13 +4353,11 @@ mod tests {
 
         assert!(resize_terminal_with(
             &grid,
-            TerminalDimensions {
-                columns: 100,
-                rows: 30,
-            },
-            |columns, rows| {
+            &mut None,
+            terminal_size_for_surface(PhysicalSize::new(1000, 600), (10, 20)).unwrap(),
+            |size| {
                 assert!(matches!(grid.try_lock(), Err(TryLockError::WouldBlock)));
-                pty_size.replace(Some((columns, rows)));
+                pty_size.replace(Some((size.cells.columns, size.cells.rows)));
                 Ok(())
             },
         )
@@ -7903,11 +8393,9 @@ mod tests {
         let pty_calls = AtomicUsize::new(0);
         let error = resize_terminal_with(
             grid.as_ref(),
-            TerminalDimensions {
-                columns: 2,
-                rows: 2,
-            },
-            |_, _| {
+            &mut None,
+            terminal_size_for_surface(PhysicalSize::new(20, 40), (10, 20)).unwrap(),
+            |_| {
                 pty_calls.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             },
@@ -8251,5 +8739,341 @@ mod graphics_tests {
                 "client image 20 must cover image 10 in either transmission order"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod selection_clipboard_tests {
+    use super::{
+        apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer,
+        snapshot_locked_grid, sync_selection, ClipboardAction, SelectionContext,
+    };
+    use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
+    use crate::grid::Grid;
+    use crate::selection::{GridPoint, SelectionState};
+    use crate::terminal_colors::TerminalColors;
+    use winit::dpi::PhysicalPosition;
+    use winit::keyboard::{Key, ModifiersState, NamedKey};
+
+    fn selected(start: GridPoint, end: GridPoint) -> SelectionState {
+        let mut selection = SelectionState::default();
+        selection.start(start);
+        selection.update(end);
+        selection
+    }
+
+    fn write_row(grid: &mut Grid, row: usize, text: &str) {
+        grid.set_cursor_pos(row, 0);
+        for character in text.chars() {
+            grid.put_char(character);
+        }
+    }
+
+    #[test]
+    fn pointer_selection_uses_zero_based_rows_and_columns_independently() {
+        let grid = Grid::new(8, 3, 10);
+        for ((x, y), expected) in [
+            ((0.0, 0.0), GridPoint { row: 0, col: 0 }),
+            ((39.0, 5.0), GridPoint { row: 0, col: 3 }),
+            ((0.0, 20.0), GridPoint { row: 1, col: 0 }),
+            ((31.0, 42.0), GridPoint { row: 2, col: 3 }),
+            ((-100.0, -100.0), GridPoint { row: 0, col: 0 }),
+            ((1_000.0, 1_000.0), GridPoint { row: 2, col: 7 }),
+        ] {
+            assert_eq!(
+                selection_point_at_pointer(&grid, PhysicalPosition::new(x, y), (10, 20)),
+                Some(expected),
+                "pointer ({x}, {y}) must map to a zero-based selection cell"
+            );
+        }
+    }
+
+    #[test]
+    fn pointer_selection_rejects_nonfinite_positions_and_zero_sized_cells() {
+        let grid = Grid::new(8, 3, 10);
+        for position in [
+            PhysicalPosition::new(f64::NAN, 0.0),
+            PhysicalPosition::new(0.0, f64::NAN),
+            PhysicalPosition::new(f64::INFINITY, 0.0),
+            PhysicalPosition::new(0.0, f64::NEG_INFINITY),
+        ] {
+            assert_eq!(selection_point_at_pointer(&grid, position, (10, 20)), None);
+        }
+        for cell_size in [(0, 20), (10, 0), (0, 0)] {
+            assert_eq!(
+                selection_point_at_pointer(&grid, PhysicalPosition::new(0.0, 0.0), cell_size),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn pointer_selection_snaps_wide_characters_and_tracks_visible_history() {
+        let mut grid = Grid::new(8, 3, 10);
+        grid.set_cursor_pos(1, 2);
+        grid.put_char('日');
+        let position = PhysicalPosition::new(39.0, 21.0);
+        let point = selection_point_at_pointer(&grid, position, (10, 20)).unwrap();
+        assert_eq!(point, GridPoint { row: 1, col: 2 });
+        assert_eq!(selected(point, point).get_text(&grid), "日");
+
+        grid.scroll_up(1);
+        grid.scroll_viewport_up(1);
+        let history_point = selection_point_at_pointer(&grid, position, (10, 20)).unwrap();
+        assert_eq!(history_point, point);
+        assert_eq!(selected(history_point, history_point).get_text(&grid), "日");
+        grid.scroll_to_bottom();
+        assert_eq!(
+            selection_point_at_pointer(&grid, PhysicalPosition::new(39.0, 1.0), (10, 20)),
+            Some(point)
+        );
+    }
+
+    #[test]
+    fn clipboard_shortcuts_accept_only_the_documented_modifier_combinations() {
+        let clipboard_modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
+        for (key, expected) in [
+            ("c", ClipboardAction::Copy),
+            ("C", ClipboardAction::Copy),
+            ("v", ClipboardAction::Paste),
+            ("V", ClipboardAction::Paste),
+            ("a", ClipboardAction::SelectAll),
+            ("A", ClipboardAction::SelectAll),
+        ] {
+            assert_eq!(
+                clipboard_action(Key::Character(key), clipboard_modifiers),
+                Some(expected)
+            );
+        }
+        assert_eq!(
+            clipboard_action(Key::Named(NamedKey::Insert), ModifiersState::SHIFT),
+            Some(ClipboardAction::Paste)
+        );
+        for key in ["x", "cv", "ç", "", "\u{3}", "\u{16}"] {
+            assert_eq!(
+                clipboard_action(Key::Character(key), clipboard_modifiers),
+                None
+            );
+        }
+        assert_eq!(
+            clipboard_action(Key::Named(NamedKey::Delete), clipboard_modifiers),
+            None
+        );
+    }
+
+    #[test]
+    fn clipboard_shortcuts_leave_control_and_meta_keys_for_terminal_apps() {
+        for modifiers in [
+            ModifiersState::empty(),
+            ModifiersState::CONTROL,
+            ModifiersState::SHIFT,
+            ModifiersState::ALT,
+            ModifiersState::SUPER,
+            ModifiersState::CONTROL | ModifiersState::ALT,
+            ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT,
+            ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::SUPER,
+        ] {
+            for key in ["c", "v", "a", "C", "V", "A"] {
+                assert_eq!(
+                    clipboard_action(Key::Character(key), modifiers),
+                    None,
+                    "{key} with {modifiers:?} belongs to ordinary terminal input"
+                );
+            }
+        }
+        for modifiers in [
+            ModifiersState::empty(),
+            ModifiersState::CONTROL,
+            ModifiersState::ALT,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ModifiersState::ALT | ModifiersState::SHIFT,
+        ] {
+            assert_eq!(
+                clipboard_action(Key::Named(NamedKey::Insert), modifiers),
+                None
+            );
+        }
+    }
+
+    #[test]
+    fn selection_snapshot_covers_a_whole_wide_glyph_and_preserves_hidden_content() {
+        let mut grid = Grid::new(5, 2, 10);
+        write_row(&mut grid, 0, "a日b");
+        for column in 1..=2 {
+            let cell = grid.buffer.cell_mut(0, column);
+            cell.fg = Color::Rgb(10, 20, 30);
+            cell.bg = Color::Rgb(40, 50, 60);
+            cell.flags
+                .insert(CellFlags::REVERSE | CellFlags::FAINT | CellFlags::HIDDEN);
+            cell.underline_style = UnderlineStyle::Curly;
+            cell.underline_color = Color::Rgb(70, 80, 90);
+        }
+        let colors = TerminalColors::new((200, 210, 220), (11, 22, 33));
+        let selection = selected(GridPoint { row: 0, col: 2 }, GridPoint { row: 0, col: 2 });
+        let mut snapshot = snapshot_locked_grid(&grid);
+        apply_selection_to_snapshot(&mut snapshot, &selection, &grid, colors);
+
+        for column in 1..=2 {
+            let cell = snapshot.cell(0, column).unwrap();
+            assert_eq!(cell.fg, Color::Rgb(11, 22, 33));
+            assert_eq!(cell.bg, Color::Rgb(200, 210, 220));
+            assert!(cell.flags.contains(CellFlags::HIDDEN));
+            assert!(!cell.flags.intersects(CellFlags::REVERSE | CellFlags::FAINT));
+            assert_eq!(cell.underline_style, UnderlineStyle::Curly);
+            assert_eq!(cell.underline_color, Color::Rgb(70, 80, 90));
+            assert_eq!(
+                cell.flags & (CellFlags::WIDE | CellFlags::WIDE_CONT),
+                grid.buffer.cell(0, column).flags & (CellFlags::WIDE | CellFlags::WIDE_CONT)
+            );
+            let resolved = colors.resolve_cell_colors(cell.fg, cell.bg, cell.flags);
+            assert_eq!(resolved.foreground, (11, 22, 33));
+            assert_eq!(resolved.background, (200, 210, 220));
+        }
+        for (row, column) in [(0, 0), (0, 3), (1, 1)] {
+            let before = grid.buffer.cell(row, column);
+            let after = snapshot.cell(row, column).unwrap();
+            assert_eq!(
+                (after.c, after.fg, after.bg, after.flags),
+                (before.c, before.fg, before.bg, before.flags)
+            );
+        }
+        // Highlighting modifies only the render snapshot, never application text.
+        assert_eq!(grid.buffer.cell(0, 1).fg, Color::Rgb(10, 20, 30));
+        assert!(grid
+            .buffer
+            .cell(0, 1)
+            .flags
+            .contains(CellFlags::REVERSE | CellFlags::FAINT));
+        assert_eq!(selection.get_text(&grid), "日");
+    }
+
+    #[test]
+    fn selection_snapshot_projects_scrollback_and_reverse_drag() {
+        let mut grid = Grid::new(4, 2, 10);
+        write_row(&mut grid, 0, "old");
+        write_row(&mut grid, 1, "live");
+        grid.scroll_up(1);
+        grid.scroll_viewport_up(1);
+        let selection = selected(GridPoint { row: 1, col: 1 }, GridPoint { row: 0, col: 2 });
+        let mut snapshot = snapshot_locked_grid(&grid);
+        apply_selection_to_snapshot(
+            &mut snapshot,
+            &selection,
+            &grid,
+            TerminalColors::new((200, 210, 220), (11, 22, 33)),
+        );
+        assert_eq!(selection.get_text(&grid), "d\nli");
+        for (row, column) in [(0, 2), (0, 3), (1, 0), (1, 1)] {
+            assert_eq!(
+                snapshot.cell(row, column).unwrap().bg,
+                Color::Rgb(200, 210, 220)
+            );
+        }
+        for (row, column) in [(0, 0), (0, 1), (1, 2), (1, 3)] {
+            assert_eq!(snapshot.cell(row, column).unwrap().bg, Color::Default);
+        }
+    }
+
+    #[test]
+    fn selection_sync_rebases_evicted_history_once_and_clears_when_fully_lost() {
+        let mut grid = Grid::new(4, 2, 1);
+        write_row(&mut grid, 0, "old");
+        write_row(&mut grid, 1, "keep");
+        let mut selection = SelectionState::default();
+        let mut context = SelectionContext::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 1, col: 0 });
+        selection.update(GridPoint { row: 1, col: 3 });
+        for expected_row in [1, 0] {
+            grid.scroll_up(1);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert_eq!(selection.get_text(&grid), "keep");
+            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
+        }
+        assert_eq!(context.dropped_rows, 1);
+        grid.scroll_up(1);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn selection_sync_invalidates_coordinates_on_grid_revision_changes() {
+        let changes: [fn(&mut Grid); 6] = [
+            |grid| grid.erase_in_display(2),
+            |grid| grid.erase_in_display(3),
+            |grid| grid.resize(5, 3),
+            |grid| grid.enter_alt_screen(),
+            |grid| grid.reset_terminal_state(),
+            |grid| {
+                grid.scroll_top = 1;
+                grid.scroll_up(1);
+            },
+        ];
+        for change in changes {
+            let mut grid = Grid::new(4, 3, 10);
+            let mut selection = SelectionState::default();
+            let mut context = SelectionContext::default();
+            sync_selection(&mut selection, &mut context, &grid);
+            selection.start(GridPoint { row: 0, col: 0 });
+            change(&mut grid);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert!(!selection.is_active());
+            assert_eq!(context.revision, grid.selection_revision());
+        }
+        let mut grid = Grid::new(4, 3, 10);
+        grid.enter_alt_screen();
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        grid.leave_alt_screen();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn repaint_invalidates_selection_without_changing_the_paste_target_screen() {
+        let mut grid = Grid::new(4, 3, 10);
+        grid.enter_alt_screen();
+        grid.bracketed_paste = true;
+        let paste_screen = grid.screen_revision();
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        grid.erase_in_display(2);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+        assert_eq!(grid.screen_revision(), paste_screen);
+        assert!(grid.bracketed_paste);
+        grid.scroll_top = 1;
+        grid.scroll_up(1);
+        grid.resize(5, 3);
+        assert_eq!(grid.screen_revision(), paste_screen);
+        grid.leave_alt_screen();
+        assert_ne!(grid.screen_revision(), paste_screen);
+    }
+
+    #[test]
+    fn unchanged_geometry_and_viewport_scrolling_preserve_selection() {
+        let mut grid = Grid::new(4, 2, 10);
+        write_row(&mut grid, 0, "keep");
+        grid.scroll_up(1);
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        selection.update(GridPoint { row: 0, col: 3 });
+        let revision = grid.selection_revision();
+        grid.resize(4, 2);
+        grid.scroll_viewport_up(1);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "keep");
+        assert_eq!(grid.selection_revision(), revision);
+        grid.scroll_to_bottom();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "keep");
     }
 }

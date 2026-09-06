@@ -2,6 +2,8 @@
 
 Copie o texto abaixo para uma segunda sessão do Codex. Ele atribui trabalho de implementação e validação em paralelo à sessão principal.
 
+Atualização de integração: a sessão Android já trabalha em `../kokuban-android`, branch `codex/android-native`. Ao continuar, leia primeiro o [contrato de integração compartilhada](ANDROID_SHARED_INTEGRATION.md), que descreve os ajustes necessários para incorporar clipboard, seleção e vídeo da `main` sem perder as mudanças Android. A auditoria inicial abaixo fica como referência histórica.
+
 ---
 
 Trabalhe no Kokuban, terminal Rust do repositório `/Users/eguimacs/cybercode/kokuban.rs`. O objetivo completo do usuário é um terminal leve, utilizável em Linux e Android, com SSH, fotos, vídeo, animações e compatibilidade com aplicações modernas de desenvolvimento. Implemente o aplicativo Android nativo e publique cada pequena alteração validada. Continue além de planejamento, extração de biblioteca ou compilação: entregue um APK instalável e evidências de uso real.

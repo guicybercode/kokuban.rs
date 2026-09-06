@@ -246,11 +246,23 @@ impl Pty {
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
+        self.resize_with_pixels(cols, rows, 0, 0)
+    }
+
+    /// Report the drawable terminal area, in physical pixels, along with its grid.
+    /// Callers without pixel metrics can continue using `resize`.
+    pub fn resize_with_pixels(
+        &self,
+        cols: u16,
+        rows: u16,
+        pixel_width: u16,
+        pixel_height: u16,
+    ) -> std::io::Result<()> {
         let win_size = libc::winsize {
             ws_row: rows,
             ws_col: cols,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
+            ws_xpixel: pixel_width,
+            ws_ypixel: pixel_height,
         };
         resize_with_ioctl(
             &win_size,
@@ -1055,6 +1067,47 @@ mod tests {
     #[test]
     fn pty_can_be_shared_with_a_reader_thread() {
         assert_send_sync::<Pty>();
+    }
+
+    #[test]
+    fn pixel_aware_resize_is_visible_through_the_real_pty_winsize() {
+        let program = CString::new(super::DEFAULT_SHELL).unwrap();
+        let argv = ["sh", "-c", "printf '__SIZE_READY__'; read value"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment(), None).unwrap();
+        assert_eq!(read_until(&pty, b"__SIZE_READY__"), b"__SIZE_READY__");
+
+        let size = || {
+            let mut actual = libc::winsize {
+                ws_row: 0,
+                ws_col: 0,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            assert_eq!(
+                unsafe { libc::ioctl(pty.master_fd(), libc::TIOCGWINSZ, &mut actual) },
+                0
+            );
+            (
+                actual.ws_col,
+                actual.ws_row,
+                actual.ws_xpixel,
+                actual.ws_ypixel,
+            )
+        };
+        assert_eq!(size(), (80, 24, 0, 0));
+        pty.resize_with_pixels(80, 24, 800, 480).unwrap();
+        assert_eq!(size(), (80, 24, 800, 480));
+        pty.resize_with_pixels(80, 24, 809, 499).unwrap();
+        assert_eq!(size(), (80, 24, 809, 499));
+        pty.resize_with_pixels(100, 30, 1000, 600).unwrap();
+        assert_eq!(size(), (100, 30, 1000, 600));
+        // The existing API keeps its zero-pixel contract for callers that
+        // have not yet integrated physical renderer dimensions.
+        pty.resize(90, 25).unwrap();
+        assert_eq!(size(), (90, 25, 0, 0));
     }
 
     #[test]

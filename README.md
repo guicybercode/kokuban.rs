@@ -13,7 +13,7 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 - **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux also supports native Kitty animation with a bounded CPU cache
 - **Pane management (macOS)**: Split windows vertically or horizontally, navigate with vim-style keybinds
 - **Zoom (macOS)**: Dynamic font size adjustment per session
-- **Selection (macOS)**: Mouse-driven text selection with configurable colors
+- **Selection and clipboard**: Mouse-driven selection on macOS and Linux; Linux copy/paste shortcuts with an asynchronous system clipboard
 - **Status bar (macOS)**: Shows shell, working directory, and pane index
 - **Prompt marks (macOS)**: Visual indicators for command boundaries with navigation shortcuts
 - **Configuration**: TOML-based config file with font, color, and keybind customization
@@ -23,7 +23,7 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 - **macOS**: Metal GPU renderer (11.0+)
 - **Linux**: Software rasterizer with X11/Wayland via winit
 
-Android is under development and does not yet have a runnable APK. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md) and [Android session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and required evidence.
+Android APK builds and emulator validation are being developed on the separate `codex/android-native` branch; Android is not yet integrated into `main`. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md), [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md) and [second-session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and evidence.
 
 ## Installation
 
@@ -70,7 +70,7 @@ cargo run --example graphics -- stream
 cargo run --example graphics -- animate  # Linux
 ```
 
-The Rust example sends PNG images in Kitty chunks or a Sixel color pattern. `stream` replaces the same image for 120 frames with a requested rate of 30 FPS. `animate` uploads 30 frames and exits; Linux continues playback for three loops using Kitty animation controls. These examples are not performance benchmarks. General video playback and audio remain unfinished; the macOS renderer returns `ENOTSUP` for animation commands.
+The Rust example sends PNG images in Kitty chunks or a Sixel color pattern. `stream` replaces the same image for 120 frames with a requested rate of 30 FPS. `animate` uploads 30 frames and exits; Linux continues playback for three loops using Kitty animation controls. These examples are not performance benchmarks. Linux also plays video through external mpv's direct Kitty output; a 320×180 lossless clip, pause/resume and all 72 visible frames passed the [real-player test](docs/LINUX_VIDEO.md). Audio and sustained playback remain unverified. The macOS renderer returns `ENOTSUP` for animation commands.
 
 Images follow terminal scrolling. Image placements crossing a partial scroll region are discarded to avoid painting over fixed text. The Linux cache limits decoded bytes, image count (4096), retained frames across the cache (4096), and frames per image (256). Animation frames use complete RGBA canvases, including delta uploads, and count against the byte limit. Snapshots share pixel buffers, so concurrent upload and rendering can temporarily retain more memory than the cache limit. Hidden animations schedule no timer and catch up when visible again. See the [shared animation contract](docs/ANIMATION.md). Configuration applies at startup:
 
@@ -139,6 +139,20 @@ zoom_reset = "cmd+0"
 See `kokuban.toml` in the repository root for the complete default configuration.
 
 ## Keybinds
+
+Linux supports these clipboard and selection actions:
+
+| Action | Linux input |
+|--------|-------------|
+| Select text | Left-button drag |
+| Select text while an application captures the mouse | `Shift` + left-button drag |
+| Copy selection | `Ctrl+Shift+C` |
+| Paste clipboard | `Ctrl+Shift+V` or `Shift+Insert` |
+| Select all retained text | `Ctrl+Shift+A` |
+
+Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
+
+The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy currently inserts line breaks between physical terminal rows; soft-wrap reconstruction and OSC 52 remote clipboard commands remain pending. See [Linux application validation](docs/LINUX_APPS.md).
 
 These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux provides terminal keyboard/IME and mouse input and scrollback; it does not yet implement this pane shortcut table.
 

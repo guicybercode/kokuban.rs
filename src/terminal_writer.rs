@@ -258,7 +258,6 @@ impl TerminalWriter {
         }
     }
 
-    #[cfg(target_os = "macos")]
     pub(crate) fn max_nonfatal_input_bytes(&self) -> usize {
         self.max_nonfatal_outstanding_bytes
     }
