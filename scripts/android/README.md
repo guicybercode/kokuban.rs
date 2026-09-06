@@ -86,6 +86,22 @@ keys and modifiers, clipboard paste and SGR mouse press/release. It verifies
 selection and scroll against presented geometry. These injections do not prove
 compatibility with a physical USB/Bluetooth keyboard or mouse.
 
+For script iteration, `Android input checks` reuses an APK artifact from a
+recorded full Android run and runs `ime`, `controls`, or `all` without rebuilding
+Rust. Its evidence records the APK run/commit/hash separately from the checkout
+containing the current test scripts. A pass applies to that APK, not to newer
+application code. The full Android matrix remains the application gate.
+
+```sh
+gh workflow run android-input.yml --ref codex/android-native \
+  -f source_run=34003726906 -f suite=ime
+```
+
+[GitHub requires the dispatch workflow on the default branch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+Before this port is merged, changes to the listed input-script PR paths trigger
+the fast IME scenario using the explicitly pinned run in the workflow. Update
+that pin when selecting a newer APK or when its retained artifact expires.
+
 Use an installed IME such as the emulator's default Gboard. Record its package
 and version with `adb shell settings get secure default_input_method` and
 `adb shell dumpsys package <ime-package>`. Test the following on the actual soft
