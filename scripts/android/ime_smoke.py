@@ -98,7 +98,9 @@ def main():
         nonlocal capture_index
         capture_index += 1
         remote = "/sdcard/kokuban-ime-ui.xml"
-        device.shell("uiautomator", "dump", "--compressed", remote, timeout=30)
+        # The focused app remains the active window while the IME is shown.
+        # Include interactive windows to expose the keyboard and accent popup.
+        device.shell("uiautomator", "dump", "--compressed", "--windows", remote, timeout=30)
         xml = device.shell("cat", remote)
         (args.output / f"{capture_index:02d}-{label}.xml").write_text(xml + "\n")
         return ET.fromstring(xml)
