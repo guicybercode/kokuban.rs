@@ -4,7 +4,8 @@ Desenvolvimento em `codex/android-native`, worktree `../kokuban-android`.
 Base inicial `origin/main` em `62bce8e`; os componentes compartilhados de imagens
 foram integrados por merges normais em `14972d3` e `4ea2588`; `3775e6a`
 incorporou a base Linux `385a91c`, com seleção/clipboard, dimensões físicas
-do PTY e descarte de desenhos de imagens opacas que cobrem outras imagens. Nenhuma alteração da worktree
+do PTY e descarte de desenhos de imagens opacas que cobrem outras imagens.
+O merge `5638fab` incorporou a documentação Linux de `46e74fb`. Nenhuma alteração da worktree
 Linux foi descartada. Esta entrega ainda está em validação: APK gerado não
 significa Android pronto.
 
@@ -152,13 +153,13 @@ cenários ainda não executados.
 | APK com ponte IME | Build completo em `0b0e8a4`: launcher KokubanActivity, hasCode=true, classes.dex de 12.656 bytes, lib debug sem símbolos de 7.490.768 bytes; assinaturas v2/v3 e zipalign16 passaram. |
 | Release CI ARM64 | Build de `b158779` passou: APK 2.580.973 bytes (2,46 MiB); lib terminal 2.921.336 bytes; SSH 3.182.048 bytes. [Proveniência e SHA256](android-evidence/b158779/arm64-release-provenance.json), run [34006719596](https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596). Execução do dispositivo usa x86_64. |
 | AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
-| Instalação/shell/lifecycle CI x86_64 | Passou em `cf4525c`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais. Capturas inspecionadas; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/cf4525c/results.json). |
+| Instalação/shell/lifecycle CI x86_64 | Passou novamente em `b158779`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/b158779/lifecycle.json). |
 | IME real | Gboard produziu `café` por toque no teclado/seletor de acento, Backspace e Enter, com cinco commits e sem preedit. A transação Hangul de composição obrigatória continua em validação; `adb input text` não prova composição. |
-| SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Em Android, passaram rejeição de host desconhecido/alterado, chave pública, sessão interativa e resize remoto 25x46→4x104. Em `b9ba8b8`, debug e release passaram Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1 e retorno ao shell local. [Resultados](android-evidence/b9ba8b8/results.json). |
-| Foto/animação/vídeo | Passaram em debug e release `b9ba8b8`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, MP4 H.264 silencioso com pixels de frames decodificados distintos. [Foto](android-evidence/b9ba8b8/photo.png), [vídeo](android-evidence/b9ba8b8/video.png). |
-| Consumo release x86_64 | Run [34003348109](https://github.com/guicybercode/kokuban.rs/actions/runs/34003348109), 15 s ociosos após abrir: PSS do app 25.608→29.356 KiB; app+shell 26.519→30.267 KiB; CPU média 0,133% de um núcleo. [Amostras](android-evidence/1b9847b/release-idle.json). |
-| Vídeo release x86_64 | Amostra de 8 s, MP4 320×180@12, SSH e IME visível: PSS do app 49.964→63.194 KiB; CPU média app 47,25%, árvore 48,5% de um núcleo. Chamadas de apresentação 20,08 Hz, desenho/apresentação média 30,87 ms; não é medida de FPS de vídeo efetivamente exibido. [Dados](android-evidence/b9ba8b8/video-measurements.json). |
-| Entrada release x86_64 | Probe de eco com teclas Android injetadas: 64 correlações callback→próximo quadro de saída, mediana 94,35 ms, máximo 144,10 ms; desenho/apresentação média 50,24 ms. [Amostras](android-evidence/1b9847b/release-echo.json). Não mede teclado físico até scanout. |
+| SSH/ferramentas | Cliente: 9 testes unitários e 2 testes CLI/servidor no host passaram. Android `b158779` passou trust, chave pública, Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1, desconexão e retorno ao shell local. O resize release registrou 25x46→4x104; o debug foi descartado por leitura vazia e aguarda nova execução do teste corrigido. [Resultados e perfis](android-evidence/b158779/release-ssh.json). |
+| Foto/animação/vídeo | Seis cenários passaram em debug e release `b158779`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, camadas Kitty negativas e MP4 H.264 silencioso com pixels de frames decodificados distintos. [Resultados](android-evidence/b158779/release-media.json), [camada atrás do fundo](android-evidence/b158779/background-layer.png), [fundo padrão revelando imagem](android-evidence/b158779/background-layer-reveal.png), [vídeo](android-evidence/b158779/video.png). |
+| Consumo release x86_64 | `b158779`, 15 s ociosos após 3 s de espera: PSS do app 25.586→29.712 KiB; app+shell 26.517→30.643 KiB; CPU média 0,2% de um núcleo, zero novos quadros. [Amostras](android-evidence/b158779/release-idle.json). APK x86_64 2.732.519 bytes; [proveniência](android-evidence/b158779/x86-release-provenance.json). |
+| Vídeo release x86_64 | `b158779`, amostra de 8 s, MP4 320×180@12, SSH e IME visível: PSS do app 55.875→53.352 KiB; CPU média app 54,66%, árvore 55,54% de um núcleo. Chamadas de apresentação 18,01 Hz, desenho/apresentação média 42,94 ms; não é medida de FPS de vídeo efetivamente exibido. [Dados](android-evidence/b158779/video-measurements.json). |
+| Entrada release x86_64 | `b158779`, dez comandos de eco com teclas Android injetadas em 15 s: 77 quadros, 74 correlações callback→próximo quadro de saída, mediana 41,08 ms, p95 81,88 ms; desenho/apresentação média 42,61 ms. [Amostras](android-evidence/b158779/release-echo.json). Não mede teclado físico até scanout. |
 
 Ferramentas reproduzíveis:
 
@@ -186,17 +187,20 @@ até os critérios de execução serem comprovados.
 
 A amostra ociosa inclui a estabilização após abrir o app; a PSS cresceu durante
 os 15 segundos. CPU é a do processo Android, não a CPU total do emulador/host.
-O cenário de eco provocou 120 apresentações em 15 segundos e será usado para
-avaliar quadros redundantes. A amostra de vídeo inclui cliente SSH e coleta de screenshots; seu escopo e
-perfil estão registrados separadamente.
+O cenário de eco provocou 77 apresentações para dez comandos em 15 segundos.
+A amostra de vídeo inclui cliente SSH e coleta de screenshots; seu escopo e
+perfil estão registrados separadamente. Quantidade de comandos e runners
+diferem das amostras anteriores, portanto esses números não demonstram uma
+melhora causal de latência. Os [dados e limites da medição](android-evidence/b158779/README.md)
+preservam o contexto e a fórmula do percentil.
 
 A pendência de entrada é a transação de composição intermediária com IME real.
-Controles, seleção/clipboard e caminhos de teclado/mouse passaram em `b158779`. A matriz completa de lifecycle,
-SSH, aplicações e mídia deve passar novamente no APK integrado; os resultados
-de `b9ba8b8` identificam uma versão anterior. A redução de redesenhos de
-`48099f6` também precisa de nova medição release com a janela de coleta
-corrigida em `dbc5e47`. Não considerar este documento uma declaração de
-entrega final.
+Controles, seleção/clipboard, caminhos de teclado/mouse, lifecycle, aplicações
+e mídia passaram no APK integrado `b158779`. A nova medição release inclui a
+redução de redesenhos `48099f6` e a janela de coleta corrigida `dbc5e47`.
+O teste de resize remoto ainda exige nova aprovação: `5b1fa95` elimina o falso
+positivo de arquivo vazio usando publicação atômica e dimensões válidas.
+Não considerar este documento uma declaração de entrega final.
 
 Referências primárias: [winit Android](https://docs.rs/winit/latest/winit/platform/android/),
 [android-activity](https://github.com/rust-mobile/android-activity),

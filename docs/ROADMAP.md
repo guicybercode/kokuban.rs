@@ -8,7 +8,7 @@ Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize a
 
 A branch `codex/android-native`, PR [#8](https://github.com/guicybercode/kokuban.rs/pull/8), contém o APK NativeActivity, PTY/shell Android, fontes fontdue, entrada/toque, clipboard e cliente SSH Rust. Em `b9ba8b8`, o emulador Android 15/API 35 x86_64 executou SSH com verificação da identidade do host, Neovim, tmux, fzf, Git e build/run Rust, em debug e release. Foto, Sixel, animação Kitty após o emissor encerrar e vídeo H.264 silencioso por SSH tiveram verificação de pixels. [Resultados, APK e medições](ANDROID.md) identificam exatamente as versões testadas.
 
-IME real e controles/clipboard ainda não têm aprovação do teste de dispositivo. O merge normal `3775e6a` incorporou `main` em `385a91c`; as adaptações e a regressão do APK integrado continuam em andamento. Esta evidência da branch não declara suporte Android concluído ou já integrado na `main`.
+O APK integrado `b158779` passou sete cenários de controles/clipboard, lifecycle, aplicações SSH e seis cenários de mídia, incluindo as camadas Kitty negativas. A medição release registrou 0,2% de um núcleo em repouso, PSS do app de 25.586→29.712 KiB e mediana de 41,08 ms no cenário controlado de eco. Composição intermediária com IME real ainda está em validação; `café` por toque já passou. O teste de resize SSH está sendo repetido com validação estrita após descartar um resultado debug que leu o arquivo vazio. Os merges normais `3775e6a` e `5638fab` incorporaram a base Linux e sua documentação até `46e74fb`. Esta evidência da branch não declara suporte Android concluído ou já integrado na `main`.
 
 ## Primeira medição Linux release em 2026-09-05
 
