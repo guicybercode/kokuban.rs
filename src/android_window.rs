@@ -14,7 +14,7 @@ use crate::android_metrics::FrameMetrics;
 use crate::android_runtime::AndroidRuntime;
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
-use crate::grid::cell::CellFlags;
+use crate::grid::cell::{CellFlags, Color};
 use crate::grid::{Grid, MouseEncoding, MouseTracking};
 use crate::input::keyboard::TerminalKey;
 use crate::input::mouse::{
@@ -615,7 +615,25 @@ impl AndroidWindow {
         let mut frame = surface.buffer_mut().map_err(|e| e.to_string())?;
         let frame_size = (size.width, size.height);
         frame.fill(rgb(self.colors.default_background()));
+        // Kitty's lowest image layer sits behind non-default cell backgrounds.
+        for image in images.iter().filter(|image| image.z_index < i32::MIN / 2) {
+            draw_image_rgba(
+                &mut frame,
+                frame_size,
+                &image.pixels,
+                image.size,
+                (
+                    image.rectangle.0 + left as f32,
+                    image.rectangle.1 + top as f32,
+                    image.rectangle.2,
+                    image.rectangle.3,
+                ),
+            );
+        }
         for (index, cell) in cells.iter().enumerate() {
+            if cell.bg == Color::Default && !cell.flags.contains(CellFlags::REVERSE) {
+                continue;
+            }
             let x = left + (index as u32 % columns as u32) * cell_width;
             let y = top + (index as u32 / columns as u32) * cell_height;
             let colors = self
@@ -630,7 +648,10 @@ impl AndroidWindow {
                 255,
             );
         }
-        for image in images.iter().filter(|image| image.z_index < 0) {
+        for image in images
+            .iter()
+            .filter(|image| (i32::MIN / 2..0).contains(&image.z_index))
+        {
             draw_image_rgba(
                 &mut frame,
                 frame_size,
