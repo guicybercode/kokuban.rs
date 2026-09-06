@@ -42,11 +42,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
+            ffmpeg \
             fonts-dejavu-core \
             libfontconfig1-dev \
             libfreetype6-dev \
             libxkbcommon-x11-0 \
             fzf \
+            mpv \
             neovim \
             openssh-client \
             openssh-server \
@@ -166,6 +168,24 @@ jobs:
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py \
               "$PWD/target/debug/kokuban"
+
+      - name: Verify real mpv Kitty video and pause under Xvfb
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 90s python3 scripts/linux-video-smoke.py \
+              "$PWD/target/debug/kokuban" --build-profile debug \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-video-artifacts"
+
+      - name: Upload Linux video smoke evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-video-smoke
+          path: ${{ runner.temp }}/kokuban-video-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify Linux SSH and interactive development applications
         if: runner.os == 'Linux'
