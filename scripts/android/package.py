@@ -48,6 +48,13 @@ def add_payload(source, destination, dex, ssh_binary=None, abi=None):
             result.write(path, name, compress_type=zipfile.ZIP_DEFLATED)
 
 
+def check_elf_alignment(output):
+    alignments = [int(line.split()[-1], 16) for line in output.splitlines() if line.split() and line.split()[0] == "LOAD"]
+    if not alignments or any(alignment < 16384 for alignment in alignments):
+        raise RuntimeError(f"ELF LOAD segments must support 16 KiB pages, found {alignments}")
+    return alignments
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=Path, required=True)
@@ -59,6 +66,10 @@ def main():
     sdk = Path(os.environ["ANDROID_HOME"])
     build_tools = sdk / "build-tools/35.0.0"
     android_jar = sdk / "platforms/android-35/android.jar"
+    ndk = Path(os.environ.get("ANDROID_NDK_ROOT", str(sdk / "ndk/27.1.12297006")))
+    readers = list((ndk / "toolchains/llvm/prebuilt").glob("*/bin/llvm-readelf"))
+    if len(readers) != 1:
+        raise RuntimeError("Could not identify the pinned NDK llvm-readelf")
     sources = sorted((root / "android/java").rglob("*.java"))
     if not sources:
         raise RuntimeError("Android IME bridge sources are missing")
@@ -109,6 +120,15 @@ def main():
                 raise RuntimeError("Signed APK is missing the IME bridge")
             if args.ssh_binary and f"lib/{abi}/libkokuban_ssh.so" not in apk.namelist():
                 raise RuntimeError("Signed APK is missing the SSH executable")
+        with zipfile.ZipFile(signed) as apk:
+            for name in apk.namelist():
+                if name.endswith(".so"):
+                    library = staging / Path(name).name
+                    with apk.open(name) as reader, library.open("wb") as writer:
+                        shutil.copyfileobj(reader, writer)
+                    program_headers = subprocess.check_output([str(readers[0]), "-lW", str(library)], text=True)
+                    alignments = check_elf_alignment(program_headers)
+                    print(f"16 KiB ELF LOAD alignment verified: {name} ({alignments})")
         os.replace(signed, args.apk)
 
 

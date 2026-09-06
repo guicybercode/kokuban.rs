@@ -5,10 +5,17 @@ import tempfile
 import unittest
 import zipfile
 
-from package import add_payload
+from package import add_payload, check_elf_alignment
 
 
 class ApkPayloadTests(unittest.TestCase):
+    def test_elf_alignment_rejects_four_kib_and_missing_program_headers(self):
+        with self.assertRaises(RuntimeError):
+            check_elf_alignment("LOAD 0x000000 0x0000 0x0000 0x1234 0x1234 R E 0x1000")
+        with self.assertRaises(RuntimeError):
+            check_elf_alignment("no ELF header")
+        self.assertEqual(check_elf_alignment("LOAD 0x000000 0x0000 0x0000 0x1234 0x1234 R E 0x4000"), [16384])
+
     def test_replaces_bridge_preserves_native_code_and_removes_invalid_signatures(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

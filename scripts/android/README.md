@@ -11,7 +11,7 @@ Requirements: Rust 1.94.1, cargo-apk 0.10.0, NDK 27.1.12297006, Android platform
 ```sh
 rustup target add --toolchain 1.94.1 aarch64-linux-android
 rustup run 1.94.1 cargo install cargo-apk --version 0.10.0 --locked
-scripts/android/build.sh debug aarch64-linux-android
+scripts/android/build.sh debug aarch64-linux-android --test-signing
 scripts/android/build.sh release aarch64-linux-android --test-signing
 ```
 
@@ -26,12 +26,23 @@ Android's `d8`, then adds `classes.dex`, aligns and re-signs the APK. APK signat
 verification and alignment checks must pass before the final file replaces the
 packaging output. The Java bridge is required for Android's IME/InputConnection
 contract; terminal parsing, rendering and application behavior remain in Rust.
+The standalone Rust SSH client is built and packaged as `libkokuban_ssh.so` so
+Android can execute it from the extracted native-library directory. Both native
+ELFs must expose 16 KiB-aligned LOAD segments; ZIP alignment alone is insufficient.
+The build appends the necessary linker flags while preserving existing flags.
+
+Android debug builds default to optimization level 1, because unoptimized pixel
+loops are unsuitable for interactive use. This setting is confined to the Android
+build process. Measurements from these builds must be labeled `debug-opt1` and
+must not be reported as release measurements.
 
 `--test-signing` uses a generated development key under the ignored `target/`
 directory. These APKs are for tests. For distribution omit that flag and supply
 `CARGO_APK_RELEASE_KEYSTORE` and `CARGO_APK_RELEASE_KEYSTORE_PASSWORD` securely.
 Never commit a private signing key. Build ARM64 and x86_64 into separate target
 directories if their artifacts need to coexist; the APK basename is shared.
+Use `--test-signing` for both debug and release builds to share the same test key
+and allow an in-place upgrade without losing the test application's storage.
 
 ## Real PTY and lifecycle smoke
 
@@ -46,6 +57,12 @@ resume, and repeated rotation. Screenshots, device identity, and logs are writte
 under `target/android-evidence/smoke/`. The script restores rotation settings.
 Use an isolated test device: installation replaces the matching test package and
 the script force-stops it before launching. This requires a debuggable build.
+
+The key-injection helper sends eight-character chunks. Android gives a long
+`input text` burst one timestamp, so its later events can become stale on a busy
+emulator. Chunking models typing and avoids that harness artifact; it does not
+prove acceptable input latency. Screenshots are captured before the first command
+and on failure to retain evidence when shell input fails.
 
 The smoke test injects key events through adb; it does **not** prove composition
 or any other behavior of a real IME. If a test fails, inspect its screenshots and
