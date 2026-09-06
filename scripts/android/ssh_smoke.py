@@ -100,6 +100,8 @@ LogLevel VERBOSE
         public = (server_root / "host.pub").read_text().split()[:2]
         changed = (server_root / "changed-host.pub").read_text().split()[:2]
         app_test = "files/home/.kokuban-ssh-ci"
+        local_back = f"files/home/.kokuban-ssh-back-{server_root.name}"
+        device.shell("run-as", args.package, "rm", "-f", local_back)
         private_write(f"{app_test}/identity", (server_root / "identity").read_bytes())
         private_write(f"{app_test}/known_hosts", f"[{args.host}]:{args.port} {' '.join(public)}\n".encode())
         private_write(f"{app_test}/changed_hosts", f"[{args.host}]:{args.port} {' '.join(changed)}\n".encode())
@@ -223,16 +225,25 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             device.screenshot(args.output / "06-rust-project.png")
             results["checks"].append("edited Rust project compiles and runs remotely; Git sees the edit")
             results["media"] = run_media_scenarios(device, enter, server_root, args.output / "media", args.serial, args.package)
+            app_pid = device.pid(args.package)
+            clients = [process for process in device.process_tree(app_pid) if process["name"] == "libkokuban_ssh.so"]
+            if len(clients) != 1:
+                raise AssertionError(f"Expected one interactive packaged SSH client before exit, got {clients}")
+            client_pid = clients[0]["pid"]
             enter("exit")
-            time.sleep(1)
-            local_back = server_root / "local-back"
-            # The --batch option belongs to the packaged client, so this also
-            # proves we left the remote OpenSSH shell and returned to Android.
-            enter(f'{ssh} --known-hosts "$HOME/.kokuban-ssh-ci/known_hosts" {connection} "printf LOCAL_BACK > {local_back}"')
-            eventually(lambda: local_back.read_text() if local_back.exists() else "", "LOCAL_BACK")
-            results["checks"].append("SSH disconnect returns to a usable Android shell")
+            eventually(lambda: client_pid not in [process["pid"] for process in device.process_tree(app_pid)], True, timeout=15)
+            if device.pid(args.package) != app_pid:
+                raise AssertionError("Application process changed while disconnecting SSH")
+            results["ssh_exit_observed"] = True
+            # Returning to the local shell must not depend on a new network
+            # connection. Only a command entered through the PTY writes this
+            # marker; release verification waits until the debug restore below.
+            enter(f'printf LOCAL_BACK > "$HOME/{Path(local_back).name}"')
+            if not upgraded:
+                eventually(lambda: private_read(local_back), "LOCAL_BACK")
             enter('rm -rf "$HOME/.kokuban-ssh-ci"')
             time.sleep(1)
+            device.screenshot(args.output / "07-local-shell.png")
             results["versions"] = {name: subprocess.check_output(command, text=True).splitlines()[0] for name, command in {
                 "git": ["git", "--version"], "neovim": ["nvim", "--version"],
                 "tmux": ["tmux", "-V"], "fzf": ["fzf", "--version"],
@@ -261,6 +272,14 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
                     cleanup(lambda scenario=scenario: results["batch_diagnostics"].update({scenario: private_read(f"{app_test}/{scenario}.log")[:2000]}))
             if upgraded:
                 cleanup(lambda: device.adb("install", "-r", str(args.debug_apk.resolve()), timeout=120))
+            returned = private_read(local_back) == "LOCAL_BACK"
+            results["local_shell_marker_verified"] = returned
+            if results["status"] == "passed":
+                if returned and results.get("ssh_exit_observed"):
+                    results["checks"].append("SSH disconnect returns to a usable Android shell")
+                else:
+                    cleanup_errors.append("Private marker did not prove a usable local shell after SSH exited")
+            cleanup(lambda: device.shell("run-as", args.package, "rm", "-f", local_back, check=False))
             absent = device.shell("run-as", args.package, "sh", "-c", f"test ! -e {shlex.quote(app_test)} && echo CLEAN", check=False) == "CLEAN"
             results["terminal_removed_private_credentials"] = absent
             if results["status"] == "passed" and not absent:
