@@ -1,0 +1,86 @@
+{
+  "source_run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34003726906",
+  "commit": "b9ba8b8",
+  "interactive_profile": "release",
+  "trust_provisioning_profile": "debug opt1 before verified release upgrade",
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "checks": [
+    "unknown host rejected in batch",
+    "changed host rejected before command execution",
+    "verified host and client key execute a remote command",
+    "interactive SSH propagates Android PTY resize",
+    "Neovim edits and saves Rust source through Android SSH",
+    "tmux creates two interactive panes and returns to SSH shell",
+    "fzf filters and selects beta interactively",
+    "edited Rust project compiles and runs remotely; Git sees the edit",
+    "SSH disconnect returns to a usable Android shell"
+  ],
+  "versions": {
+    "git": "git version 2.55.0",
+    "neovim": "NVIM v0.9.5",
+    "tmux": "tmux 3.4",
+    "fzf": "0.44.1 (debian)",
+    "rust": "rustc 1.94.1 (e408947bf 2026-03-25)"
+  },
+  "media": {
+    "photo": {
+      "name": "Earth photographed by the Apollo 17 crew, 1972-12-07",
+      "credit": "NASA Johnson Space Center Gateway to Astronaut Photography of Earth, AS17-148-22727",
+      "source_page": "https://science.nasa.gov/earth/earth-observatory/the-blue-marble-from-apollo-17-1133/",
+      "url": "https://assets.science.nasa.gov/dynamicimage/assets/science/esd/eo/images/imagerecords/1000/1133/AS17-148-22727_lrg.jpg?crop=faces%2Cfocalpoint&fit=clip&h=1881&w=1881",
+      "sha256": "f5e146bade95fb9a2bed3221a9100b0c4efc8d0d175ca6c2346fcd49ea9ea3c4",
+      "bytes": 373379,
+      "usage_reference": "https://www.nasa.gov/nasa-brand-center/images-and-media/"
+    },
+    "checks": [
+      "NASA photograph landmarks match pixels presented by Android",
+      "photograph deletion removes its presented pixels",
+      "shared Sixel decoder presents a red image rectangle",
+      "native Kitty animation advances and composes patches after emitter exits",
+      "FFmpeg decodes H.264 MP4 over SSH with changing presented Android image pixels"
+    ],
+    "status": "passed",
+    "photo_origin_pixels": [
+      0,
+      136
+    ],
+    "presented_video_frames": [
+      {
+        "sha256": "98cdc155e80acde33e0df721996b30476ffc64f0995a4feba0f4ca5f6e793e9f",
+        "decoded_frame_indices": [
+          0
+        ]
+      },
+      {
+        "sha256": "507ca776ff58bfc7d09bd99dd33a9c4cd3f1b16ca6d1dc899f53688caa3c7628",
+        "decoded_frame_indices": [
+          16
+        ]
+      },
+      {
+        "sha256": "c153959ec47dc77f84a1a809fc711831a998f41d0aa42f18d4a2bea6b0c9e433",
+        "decoded_frame_indices": [
+          31
+        ]
+      },
+      {
+        "sha256": "58c32d2f96463b1631612cef2ac720b3d22a28c414cf5b7a3193ec69aa7be7ca",
+        "decoded_frame_indices": [
+          46
+        ]
+      }
+    ],
+    "video_note": "Synthetic motion encoded in a real H.264 file; silent playback. Producer FPS and presentation-call rate are distinct."
+  },
+  "terminal_removed_private_credentials": true,
+  "cleanup_errors": [],
+  "release_x86_apk_bytes": 2707943,
+  "release_x86_apk_sha256": "2b318d76410d87c2edbdfafffbe24573ff34f8279064bab1b343e5d9fd61c0ec"
+}

@@ -134,9 +134,10 @@ cenários ainda não executados.
 | AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
 | Instalação/shell/lifecycle CI x86_64 | Passou em `cf4525c`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais. Capturas inspecionadas; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/cf4525c/results.json). |
 | IME real, toque, seleção/clipboard | Necessitam execução com teclado Android real; `adb input text` não prova composição. |
-| SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Em Android, passaram rejeição de host desconhecido/alterado, chave pública, sessão interativa e resize remoto 25x46→4x104. Neovim encontrou Esc consumido pelo IME; correção publicada, ainda em revalidação. tmux/fzf/Git/build permanecem pendentes. |
-| Foto/animação/vídeo | Pipeline compartilhado e coleta por pixels implementados. Produtor FFmpeg passou 3 testes, incluindo foto única; testes de reconhecimento de pixels passaram. Apresentação Android e consumo ainda dependem do smoke. |
+| SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Em Android, passaram rejeição de host desconhecido/alterado, chave pública, sessão interativa e resize remoto 25x46→4x104. Em `b9ba8b8`, debug e release passaram Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1 e retorno ao shell local. [Resultados](android-evidence/b9ba8b8/results.json). |
+| Foto/animação/vídeo | Passaram em debug e release `b9ba8b8`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, MP4 H.264 silencioso com pixels de frames decodificados distintos. [Foto](android-evidence/b9ba8b8/photo.png), [vídeo](android-evidence/b9ba8b8/video.png). |
 | Consumo release x86_64 | Run [34003348109](https://github.com/guicybercode/kokuban.rs/actions/runs/34003348109), 15 s ociosos após abrir: PSS do app 25.608→29.356 KiB; app+shell 26.519→30.267 KiB; CPU média 0,133% de um núcleo. [Amostras](android-evidence/1b9847b/release-idle.json). |
+| Vídeo release x86_64 | Amostra de 8 s, MP4 320×180@12, SSH e IME visível: PSS do app 49.964→63.194 KiB; CPU média app 47,25%, árvore 48,5% de um núcleo. Chamadas de apresentação 20,08 Hz, desenho/apresentação média 30,87 ms; não é medida de FPS de vídeo efetivamente exibido. [Dados](android-evidence/b9ba8b8/video-measurements.json). |
 | Entrada release x86_64 | Probe de eco com teclas Android injetadas: 64 correlações callback→próximo quadro de saída, mediana 94,35 ms, máximo 144,10 ms; desenho/apresentação média 50,24 ms. [Amostras](android-evidence/1b9847b/release-echo.json). Não mede teclado físico até scanout. |
 
 Ferramentas reproduzíveis:
@@ -157,14 +158,17 @@ apresentação não equivalem a scanout físico. Evidências
 locais vão para `target/android-evidence`, sem credenciais ou dados privados.
 Leia também `scripts/android/README.md` e a [rota de mídia](../tools/README.md).
 As primeiras capturas preservadas mostram [shell](android-evidence/cf4525c/shell.png),
-[SSH](android-evidence/cf4525c/ssh.png) e a [falha de Esc no Neovim](android-evidence/cf4525c/neovim-escape-failure.png).
+[SSH](android-evidence/cf4525c/ssh.png) e a [falha inicial de Esc no Neovim](android-evidence/cf4525c/neovim-escape-failure.png).
+A execução posterior mostra [Neovim corrigido](android-evidence/b9ba8b8/neovim.png)
+e [duas panes tmux](android-evidence/b9ba8b8/tmux.png).
 O [PR #8](https://github.com/guicybercode/kokuban.rs/pull/8) permanece em rascunho
 até os critérios de execução serem comprovados.
 
 A amostra ociosa inclui a estabilização após abrir o app; a PSS cresceu durante
 os 15 segundos. CPU é a do processo Android, não a CPU total do emulador/host.
 O cenário de eco provocou 120 apresentações em 15 segundos e será usado para
-avaliar quadros redundantes. Mídia em release ainda não possui medição aprovada.
+avaliar quadros redundantes. A amostra de vídeo inclui cliente SSH e coleta de screenshots; seu escopo e
+perfil estão registrados separadamente.
 
 Ainda é necessário concluir e demonstrar todos os cenários de
 `SECOND_SESSION_PROMPT.md`: IME real e teclados externos, seleção/clipboard,
