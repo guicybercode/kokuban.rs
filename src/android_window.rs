@@ -427,7 +427,7 @@ impl AndroidWindow {
         let cell_height = atlas.cell_height.ceil().max(1.0) as u32;
         let columns = (view_width / cell_width).clamp(1, 512) as u16;
         let rows = (view_height / cell_height).clamp(1, 256) as u16;
-        let (cells, cursor, images, selected) = {
+        let (cells, cursor, images, selected, scroll_offset) = {
             let mut grid = self.grid.lock().map_err(|_| "Grid lock poisoned")?;
             if grid.cols() != columns as usize || grid.rows() != rows as usize {
                 // Do not commit new grid dimensions if the PTY resize fails.
@@ -472,6 +472,7 @@ impl AndroidWindow {
                     .map_err(|_| "Image store lock poisoned")?
                     .snapshot(&grid, (cell_width as u16, cell_height as u16)),
                 selected,
+                grid.scroll_offset,
             )
         };
         let surface = self.surface.as_mut().ok_or("Surface unavailable")?;
@@ -762,6 +763,12 @@ impl AndroidWindow {
         window.pre_present_notify();
         frame.present().map_err(|e| e.to_string())?;
         self.metrics.presented(render_started);
+        self.metrics.geometry(
+            [left, top, right, bottom],
+            [cell_width, cell_height],
+            [columns, rows],
+            scroll_offset,
+        );
         let accessible_controls = controls
             .buttons
             .iter()

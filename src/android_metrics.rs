@@ -7,6 +7,15 @@ pub(crate) struct FrameMetrics {
     frame: u64,
     input: Option<Instant>,
     output_after_input: bool,
+    geometry: Option<Geometry>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Geometry {
+    bounds: [u32; 4],
+    cell: [u32; 2],
+    grid: [u16; 2],
+    scroll_offset: usize,
 }
 
 impl FrameMetrics {
@@ -17,6 +26,7 @@ impl FrameMetrics {
             frame: 0,
             input: None,
             output_after_input: false,
+            geometry: None,
         }
     }
 
@@ -59,5 +69,34 @@ impl FrameMetrics {
     pub(crate) fn suspend(&mut self) {
         self.input = None;
         self.output_after_input = false;
+        self.geometry = None;
+    }
+
+    /// Record only changed geometry after a successful presentation. Coordinates
+    /// are native surface pixels; no cell contents or selection text are logged.
+    pub(crate) fn geometry(
+        &mut self,
+        bounds: [u32; 4],
+        cell: [u32; 2],
+        grid: [u16; 2],
+        scroll_offset: usize,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        let geometry = Geometry {
+            bounds,
+            cell,
+            grid,
+            scroll_offset,
+        };
+        if self.geometry == Some(geometry) {
+            return;
+        }
+        self.geometry = Some(geometry);
+        log::info!(
+            "metric geometry left={} top={} right={} bottom={} cell_width={} cell_height={} columns={} rows={} scroll_offset={}",
+            bounds[0], bounds[1], bounds[2], bounds[3], cell[0], cell[1], grid[0], grid[1], scroll_offset
+        );
     }
 }
