@@ -130,11 +130,11 @@ cenários ainda não executados.
 | APK atual ARM64 debug opt1 | Build com SSH, dex e os dois ELF de 16 KiB passou. APK local: 5.640.685 bytes; lib terminal: 3.608.736 bytes; lib SSH: 6.099.768 bytes. Esse perfil não é release. |
 | APK inicial ARM64 | Build e assinatura executados localmente com SDK35/NDK27.1/Rust1.94.1. |
 | APK com ponte IME | Build completo em `0b0e8a4`: launcher KokubanActivity, hasCode=true, classes.dex de 12.656 bytes, lib debug sem símbolos de 7.490.768 bytes; assinaturas v2/v3 e zipalign16 passaram. |
-| Release CI ARM64 | Job de `4476798` passou build, Clippy e isolamento de dependências; artefato disponível no run [34001536192](https://github.com/guicybercode/kokuban.rs/actions/runs/34001536192). |
+| Release CI ARM64 | Build de `95684d2` passou: APK 2.564.589 bytes (2,45 MiB); lib terminal 2.887.392 bytes; SSH 3.182.048 bytes. SHA256 no [registro](android-evidence/cf4525c/results.json), artefato no run [34003114279](https://github.com/guicybercode/kokuban.rs/actions/runs/34003114279). |
 | AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
-| Instalação/shell/lifecycle CI x86_64 | O run `34001876882` instalou e abriu a Activity, iniciou shell e apresentou quadro; falhou no comando longo de entrada (eventos expirados no InputDispatcher). Debug opt1 e entrada em blocos estão em revalidação; lifecycle ainda não aprovado. |
+| Instalação/shell/lifecycle CI x86_64 | Passou em `cf4525c`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais. Capturas inspecionadas; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/cf4525c/results.json). |
 | IME real, toque, seleção/clipboard | Necessitam execução com teclado Android real; `adb input text` não prova composição. |
-| SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Matriz Android/Neovim/tmux/fzf/Git/build ainda em execução no CI. |
+| SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Em Android, passaram rejeição de host desconhecido/alterado, chave pública, sessão interativa e resize remoto 25x46→4x104. Neovim encontrou Esc consumido pelo IME; correção publicada, ainda em revalidação. tmux/fzf/Git/build permanecem pendentes. |
 | Foto/animação/vídeo | Pipeline compartilhado e coleta por pixels implementados. Produtor FFmpeg passou 3 testes, incluindo foto única; testes de reconhecimento de pixels passaram. Apresentação Android e consumo ainda dependem do smoke. |
 | Consumo | PSS, CPU, latência e fluidez ainda sem medições aprovadas em runtime. Tamanho de build não prova baixo consumo. |
 
@@ -155,6 +155,8 @@ controlado de eco; saída não relacionada pode contaminá-la. Chamadas de
 apresentação não equivalem a scanout físico. Evidências
 locais vão para `target/android-evidence`, sem credenciais ou dados privados.
 Leia também `scripts/android/README.md` e a [rota de mídia](../tools/README.md).
+As primeiras capturas preservadas mostram [shell](android-evidence/cf4525c/shell.png),
+[SSH](android-evidence/cf4525c/ssh.png) e a [falha de Esc no Neovim](android-evidence/cf4525c/neovim-escape-failure.png).
 O [PR #8](https://github.com/guicybercode/kokuban.rs/pull/8) permanece em rascunho
 até os critérios de execução serem comprovados.
 

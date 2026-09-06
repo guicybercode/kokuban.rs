@@ -1,0 +1,57 @@
+{
+  "runtime_run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34003083495",
+  "runtime_commit": "cf4525c",
+  "profile": "debug with opt-level=1, debug symbols disabled",
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "lifecycle": {
+    "status": "passed",
+    "checks": [
+      "PTY executes a command entered through key events",
+      "same process and PTY survive home/resume",
+      "process survives actual screen rotation 1",
+      "process survives actual screen rotation 0",
+      "process survives actual screen rotation 1",
+      "process survives actual screen rotation 0",
+      "PTY executes commands after repeated rotation"
+    ]
+  },
+  "ssh": {
+    "passed_checks": [
+      "unknown host rejected in batch",
+      "changed host rejected before command execution",
+      "verified host and client key execute a remote command",
+      "interactive SSH propagates Android PTY resize"
+    ],
+    "remote_pty_sizes": {
+      "before": "25 46",
+      "after": "4 104"
+    },
+    "incomplete_reason": "Neovim did not leave INSERT: Android IME consumed Escape. Fixture also auto-commented the next source line. Follow-up fixes need another device run."
+  },
+  "release_arm64_build": {
+    "run": 34003114279,
+    "commit": "95684d2700d1e1c7f257c77eb6ad70d81f412a19",
+    "apk_bytes": 2564589,
+    "sha256": "bcd0b8362304c1d5f09faabad1c86bbcca87be30ec2bb8086e8ceca49f5237c0",
+    "native_libraries": [
+      {
+        "path": "lib/arm64-v8a/libkokuban.so",
+        "bytes": 2887392,
+        "zip_bytes": 1076428
+      },
+      {
+        "path": "lib/arm64-v8a/libkokuban_ssh.so",
+        "bytes": 3182048,
+        "zip_bytes": 1470348
+      }
+    ]
+  },
+  "scope": "These are execution/build observations, not proof of complete Android support. IME composition, controls, remaining remote applications, media and release runtime measurements remain pending."
+}
