@@ -4,7 +4,10 @@
 ASCII adb keys only prepare a shell `read`. The tested text, Backspace and Enter
 come from taps on the actual keyboard. Screenshots, UI XML, callback counts and
 the shell's UTF-8 result are retained; preedit is claimed only if observed.
-Requires an installed debuggable Kokuban APK and an English Latin keyboard.
+The strict composition check adds Korean 2-set in Gboard through its settings UI,
+types Hangul by touch, and restores the active English layout. Requires an
+installed debuggable Kokuban APK and an English Latin keyboard; strict mode
+requires Gboard with its Korean layout available.
 """
 
 import argparse
@@ -53,6 +56,19 @@ def center(node):
     return (left + right) // 2, (top + bottom) // 2
 
 
+def language_node(root, languages, package):
+    """Language rows can include a region or layout after the language name."""
+    labels = set()
+    for node in root.iter("node"):
+        if node.get("package") != package:
+            continue
+        for value in (node.get("text", ""), node.get("content-desc", "")):
+            if any(re.match(rf"^{re.escape(language)}(?:$|[\s,(])", value, re.IGNORECASE)
+                   for language in languages):
+                labels.add(value)
+    return find_node(root, labels or languages, package)
+
+
 def callback_counts(log):
     return {
         operation: len(re.findall(rf"ime callback operation={operation} nonempty=true", log))
@@ -65,7 +81,7 @@ def main():
     parser.add_argument("--serial")
     parser.add_argument("--package", default="com.kokuban.terminal")
     parser.add_argument("--ime", help="Installed input-method component; defaults to the device's current IME")
-    parser.add_argument("--require-preedit", action="store_true", help="Fail if the IME only commits text without composing transactions")
+    parser.add_argument("--require-preedit", action="store_true", help="Also require real Korean 2-set composition with nonempty preedit callbacks")
     parser.add_argument("--output", type=Path, default=Path("target/android-evidence/ime"))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -87,12 +103,20 @@ def main():
     ime_package = ime.split("/", 1)[0]
     private = device.shell("run-as", package, "pwd")
     marker = f"{private}/files/ime-smoke-result.txt"
+    cjk_marker = f"{private}/files/ime-smoke-hangul.txt"
     trace = "files/config/kokuban/trace-frames"
     had_trace = device.shell("run-as", package, "sh", "-c", f"test -f {trace} && echo yes", check=False) == "yes"
     results = {"device": device.details(), "ime": ime, "checks": [], "status": "failed"}
+    ime_details = device.shell("dumpsys", "package", ime_package)
+    results["ime_version"] = {
+        key: match.group(1) if (match := re.search(rf"\b{key}=([^\s]+)", ime_details)) else "unknown"
+        for key in ("versionName", "versionCode")
+    }
+    results["system_locale"] = device.shell("getprop", "persist.sys.locale")
     start_time = device.shell("date", "+%m-%d %H:%M:%S.000")
     capture_index = 0
     held_pointer = None
+    korean_added = False
 
     def dump(label):
         nonlocal capture_index
@@ -114,6 +138,58 @@ def main():
     def ime_visible():
         state = device.shell("dumpsys", "input_method")
         return "mInputShown=true" in state or "isInputViewShown=true" in state
+
+    def return_to_terminal():
+        for index in range(6):
+            root = dump(f"return-terminal-{index}")
+            if any(node.get("package") == package and node.get("class") == "android.widget.Button"
+                   for node in root.iter("node")):
+                return
+            device.shell("input", "keyevent", "KEYCODE_BACK")
+        raise AssertionError("Gboard settings did not return to the terminal")
+
+    def switch_language(languages, label):
+        if not ime_visible():
+            tap(f"{label}-show-keyboard", ["Show or hide keyboard"], package)
+            eventually(ime_visible, True, 30)
+        root = dump(f"{label}-space")
+        x, y = center(find_node(root, ["Space"], ime_package))
+        device.shell("input", "swipe", str(x), str(y), str(x), str(y), "900")
+        choices = dump(f"{label}-language-picker")
+        device.screenshot(args.output / f"{label}-language-picker.png")
+        x, y = center(language_node(choices, languages, ime_package))
+        device.shell("input", "tap", str(x), str(y))
+        selected = dump(f"{label}-keyboard")
+        device.screenshot(args.output / f"{label}-keyboard.png")
+        return selected
+
+    def add_korean_layout():
+        nonlocal korean_added
+        if ime_package != "com.google.android.inputmethod.latin":
+            raise AssertionError("Strict Hangul fixture currently requires Gboard; composition is unverified for this IME")
+        root = dump("gboard-toolbar")
+        try:
+            settings = find_node(root, ["Settings"], ime_package)
+        except LookupError:
+            tap("gboard-features", ["Open features menu"])
+            settings = find_node(dump("gboard-settings-button"), ["Settings"], ime_package)
+        device.shell("input", "tap", *map(str, center(settings)))
+        tap("gboard-languages", ["Languages"])
+        tap("gboard-add-keyboard", ["Add keyboard", "Add Keyboard"])
+        root = dump("gboard-language-list")
+        try:
+            korean = language_node(root, ["Korean", "한국어"], ime_package)
+        except LookupError:
+            tap("gboard-search-languages", ["Search", "Search languages"])
+            # ASCII injection only navigates settings; tested Hangul uses real key taps.
+            device.type_text("Korean")
+            korean = language_node(dump("gboard-korean-search"), ["Korean", "한국어"], ime_package)
+        device.shell("input", "tap", *map(str, center(korean)))
+        tap("gboard-korean-layout", ["2-set", "Dubeolsik", "두벌식"])
+        tap("gboard-save-korean", ["Done"])
+        korean_added = True
+        device.screenshot(args.output / "gboard-configured-languages.png")
+        return_to_terminal()
 
     try:
         device.shell("settings", "put", "secure", "show_ime_with_hard_keyboard", "1")
@@ -186,12 +262,32 @@ def main():
         results["checks"].append("explicit keyboard control hides and reopens the IME")
         logs = device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False)
         counts = callback_counts(logs)
-        results["ime_callbacks"] = counts
-        results["composition"] = "preedit and commit observed" if counts["preedit"] and counts["commit"] else "intermediate preedit not observed"
+        results["latin_callbacks"] = counts
         if counts["commit"] == 0:
             raise AssertionError("Text arrived without a committed IME transaction")
-        if args.require_preedit and counts["preedit"] == 0:
-            raise AssertionError("This IME did not exercise setComposingText; composition remains unverified")
+        if args.require_preedit:
+            add_korean_layout()
+            command = f'printf READY > {shlex.quote(cjk_marker)}; IFS= read -r K; printf "$K" > {shlex.quote(cjk_marker)}'
+            device.type_text(command)
+            device.shell("input", "keyevent", "KEYCODE_ENTER")
+            eventually(lambda: device.shell("run-as", package, "cat", cjk_marker, check=False), "READY", 45)
+            switch_language(["Korean", "한국어"], "korean")
+            baseline = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
+            tap("hangul-kiyeok", ["ㄱ", "기역", "Giyeok", "Kiyeok"])
+            tap("hangul-a", ["ㅏ", "아"])
+            device.screenshot(args.output / "hangul-before-enter.png")
+            tap("hangul-enter", ["Enter", "Return", "New line", "Done"])
+            eventually(lambda: device.shell("run-as", package, "cat", cjk_marker, check=False), "가", 45)
+            current = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
+            results["hangul_callbacks"] = {key: current[key] - baseline[key] for key in current}
+            results["hangul_utf8_result"] = "가"
+            results["hangul_layout"] = "Korean 2-set"
+            device.screenshot(args.output / "hangul-result.png")
+            if results["hangul_callbacks"]["preedit"] == 0:
+                raise AssertionError("Hangul reached the PTY without a nonempty preedit callback; composition remains unverified")
+            results["checks"].append("real Korean 2-set taps compose ㄱ + ㅏ into 가 with preedit and Enter delivery via PTY")
+        results["ime_callbacks"] = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
+        results["composition"] = "nonempty preedit and committed PTY text observed" if results["ime_callbacks"]["preedit"] else "intermediate preedit not observed"
         results["status"] = "passed"
     except Exception as error:
         results["error"] = str(error)
@@ -205,6 +301,15 @@ def main():
                 dump("failure")
             except Exception as error:
                 results["capture_error"] = str(error)
+        if korean_added:
+            try:
+                return_to_terminal()
+                restored = switch_language(["English"], "restore-english")
+                find_node(restored, ["q"], ime_package)
+                results["restored_layout"] = "English"
+            except Exception as error:
+                results["restore_error"] = str(error)
+                results["status"] = "failed"
         for (namespace, key), value in original.items():
             if key == "default_input_method" and value != "null":
                 device.shell("ime", "set", value, check=False)
@@ -217,6 +322,8 @@ def main():
         device.shell("rm", "-f", "/sdcard/kokuban-ime-ui.xml", check=False)
         (args.output / "logcat.txt").write_text(device.adb("logcat", "-d", "-T", start_time, check=False))
         (args.output / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
+    if results["status"] != "passed":
+        raise AssertionError(results.get("restore_error", "IME validation failed"))
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
 

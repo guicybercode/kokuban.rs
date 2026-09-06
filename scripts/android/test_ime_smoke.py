@@ -1,7 +1,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-from ime_smoke import callback_counts, center, find_node, node_bounds
+from ime_smoke import callback_counts, center, find_node, language_node, node_bounds
 
 
 class ImeEvidenceTests(unittest.TestCase):
@@ -43,6 +43,18 @@ class ImeEvidenceTests(unittest.TestCase):
         ])
         self.assertEqual(callback_counts(log), {"preedit": 1, "commit": 1})
         self.assertEqual(callback_counts("adb input text café"), {"preedit": 0, "commit": 0})
+
+    def test_language_rows_allow_region_and_layout_without_matching_other_languages(self):
+        root = ET.fromstring('''<hierarchy>
+          <node package="keyboard" text="English (US)&#10;QWERTY" bounds="[0,0][300,60]" />
+          <node package="keyboard" text="Korean&#10;2-set" bounds="[0,60][300,120]" />
+          <node package="keyboard" text="Koreanized" bounds="[0,120][300,180]" />
+          <node package="app" text="Korean" bounds="[0,0][20,20]" />
+        </hierarchy>''')
+        self.assertEqual(center(language_node(root, ["Korean"], "keyboard")), (150, 90))
+        self.assertEqual(center(language_node(root, ["English"], "keyboard")), (150, 30))
+        with self.assertRaises(LookupError):
+            language_node(root, ["Japanese"], "keyboard")
 
 
 if __name__ == "__main__":
