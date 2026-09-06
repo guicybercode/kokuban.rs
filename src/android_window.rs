@@ -19,7 +19,7 @@ use crate::input::mouse::{
 };
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
-use crate::selection::{GridPoint, SelectionState};
+use crate::selection::{point_from_viewport, SelectionState};
 use crate::software_graphics::SoftwareGraphics;
 use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
@@ -170,6 +170,7 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         toolbar_page: 0,
         selecting: false,
         selection: SelectionState::default(),
+        selection_epoch: SelectionEpoch::default(),
         mouse_position: None,
         mouse_press: None,
         mouse_click_origin: None,
@@ -218,6 +219,7 @@ struct AndroidWindow {
     toolbar_page: usize,
     selecting: bool,
     selection: SelectionState,
+    selection_epoch: SelectionEpoch,
     mouse_position: Option<(DeviceId, f64, f64)>,
     mouse_press: Option<(DeviceId, MouseAction)>,
     mouse_click_origin: Option<(f64, f64)>,
@@ -236,6 +238,33 @@ enum MouseAction {
     Toolbar(Control),
     Selection,
     Terminal { button: u8, encoding: MouseEncoding },
+}
+
+#[derive(Default)]
+struct SelectionEpoch {
+    revision: u64,
+    dropped: usize,
+}
+
+impl SelectionEpoch {
+    /// Synchronize retained-history coordinates while holding the grid lock.
+    /// Return whether a selection drag must stop before accepting another point.
+    fn sync(&mut self, selection: &mut SelectionState, grid: &Grid) -> bool {
+        let revision = grid.selection_revision();
+        let dropped = grid.total_lines_pushed.saturating_sub(grid.scrollback_len());
+        let cancel_drag = if revision != self.revision || dropped < self.dropped {
+            selection.clear();
+            true
+        } else {
+            let was_active = selection.is_active();
+            selection.rebase_after_eviction(dropped.saturating_sub(self.dropped));
+            was_active && !selection.is_active()
+        };
+        // Update even without a selection, so a new drag never inherits old loss.
+        self.revision = revision;
+        self.dropped = dropped;
+        cancel_drag
+    }
 }
 
 impl AndroidWindow {
@@ -461,15 +490,15 @@ impl AndroidWindow {
         let cell_height = atlas.cell_height.ceil().max(1.0) as u32;
         let columns = (view_width / cell_width).clamp(1, 512) as u16;
         let rows = (view_height / cell_height).clamp(1, 256) as u16;
-        let (cells, cursor, images, selected, scroll_offset) = {
+        let (cells, cursor, images, selected, scroll_offset, cancel_selection_drag) = {
             let mut grid = self.grid.lock().map_err(|_| "Grid lock poisoned")?;
             if grid.cols() != columns as usize || grid.rows() != rows as usize {
                 // Do not commit new grid dimensions if the PTY resize fails.
                 self.pty.resize(columns, rows).map_err(|e| e.to_string())?;
                 grid.resize(columns as usize, rows as usize);
-                self.selection.clear();
                 log::info!("terminal resized: {columns}x{rows}");
             }
+            let cancel_selection_drag = self.selection_epoch.sync(&mut self.selection, &grid);
             grid.cell_pixel_width = cell_width as u16;
             grid.cell_pixel_height = cell_height as u16;
             let cells = (0..grid.rows())
@@ -483,19 +512,10 @@ impl AndroidWindow {
             let selected = cells
                 .iter()
                 .enumerate()
-                .map(|(index, cell)| {
+                .map(|(index, _)| {
                     let row = index / usize::from(columns);
                     let col = index % usize::from(columns);
-                    self.selection
-                        .contains(row, col, grid.scroll_offset, grid.scrollback_len())
-                        || (cell.flags.contains(CellFlags::WIDE_CONT)
-                            && col > 0
-                            && self.selection.contains(
-                                row,
-                                col - 1,
-                                grid.scroll_offset,
-                                grid.scrollback_len(),
-                            ))
+                    self.selection.contains_cell(&grid, row, col)
                 })
                 .collect::<Vec<_>>();
             (
@@ -507,6 +527,7 @@ impl AndroidWindow {
                     .snapshot(&grid, (cell_width as u16, cell_height as u16)),
                 selected,
                 grid.scroll_offset,
+                cancel_selection_drag,
             )
         };
         let surface = self.surface.as_mut().ok_or("Surface unavailable")?;
@@ -803,6 +824,9 @@ impl AndroidWindow {
             [columns, rows],
             scroll_offset,
         );
+        if cancel_selection_drag {
+            self.cancel_selection_drag();
+        }
         let accessible_controls = controls
             .buttons
             .iter()
@@ -875,14 +899,11 @@ impl AndroidWindow {
                 self.selecting = !self.selecting;
                 self.selection.clear();
             }
-            Control::Copy => {
-                if self.selection.is_active() {
-                    let text = self.grid.lock().map(|grid| self.selection.get_text(&grid));
-                    if let Ok(text) = text {
-                        self.platform_error(self.ime.copy(&text));
-                    }
-                }
-            }
+            Control::Copy => match self.selection_text() {
+                Ok(Some(text)) => self.platform_error(self.ime.copy(&text)),
+                Ok(None) => {}
+                Err(error) => self.platform_error(Err(error)),
+            },
             Control::Paste => self.platform_error(self.ime.paste()),
             Control::More => {
                 if let Some(layout) = self.controls() {
@@ -893,7 +914,7 @@ impl AndroidWindow {
         self.redraw();
     }
 
-    fn visible_cell(&self, x: f64, y: f64, clamp: bool) -> Option<(usize, usize)> {
+    fn pointer_cell(&self, x: f64, y: f64, clamp: bool) -> Option<(usize, usize)> {
         if !x.is_finite() || !y.is_finite() {
             return None;
         }
@@ -904,34 +925,80 @@ impl AndroidWindow {
         let atlas = self.atlas.as_ref()?;
         let x = x.clamp(f64::from(rect.left), f64::from(rect.right - 1)) - f64::from(rect.left);
         let y = y.clamp(f64::from(rect.top), f64::from(rect.bottom - 1)) - f64::from(rect.top);
-        let grid = self.grid.lock().ok()?;
         Some((
             (x / f64::from(atlas.cell_width.ceil().max(1.0))) as usize,
             (y / f64::from(atlas.cell_height.ceil().max(1.0))) as usize,
         ))
-        .map(|(col, row)| {
-            (
-                col.min(grid.cols().saturating_sub(1)),
-                row.min(grid.rows().saturating_sub(1)),
-            )
-        })
     }
 
-    fn selection_point(&self, x: f64, y: f64) -> Option<GridPoint> {
-        let (mut col, row) = self.visible_cell(x, y, true)?;
+    fn visible_cell(&self, x: f64, y: f64, clamp: bool) -> Option<(usize, usize)> {
+        let (col, row) = self.pointer_cell(x, y, clamp)?;
         let grid = self.grid.lock().ok()?;
-        if col > 0
-            && grid
-                .visible_cell(row, col)
-                .flags
-                .contains(CellFlags::WIDE_CONT)
+        Some((
+            col.min(grid.cols().saturating_sub(1)),
+            row.min(grid.rows().saturating_sub(1)),
+        ))
+    }
+
+    fn cancel_selection_drag(&mut self) {
+        if self.selecting
+            && self
+                .touch
+                .as_ref()
+                .is_some_and(|gesture| matches!(gesture.region, TouchRegion::Terminal))
         {
-            col -= 1;
+            // Keep contact bookkeeping until lift, preventing a canceled drag
+            // from turning into a new tap or an accidental keyboard request.
+            self.touch = None;
         }
-        Some(GridPoint {
-            row: grid.scrollback_len() as i64 - grid.scroll_offset as i64 + row as i64,
-            col,
-        })
+        if matches!(self.mouse_press, Some((_, MouseAction::Selection))) {
+            self.mouse_press = None;
+            self.mouse_click_origin = None;
+            self.mouse_click_canceled = true;
+        }
+    }
+
+    fn select_at(&mut self, x: f64, y: f64, start: bool) -> bool {
+        let Some((col, row)) = self.pointer_cell(x, y, true) else {
+            return false;
+        };
+        let (cancel_drag, accepted) = {
+            let Ok(grid) = self.grid.lock() else {
+                return false;
+            };
+            let cancel_drag = self.selection_epoch.sync(&mut self.selection, &grid);
+            let accepted = start || (!cancel_drag && self.selection.is_active());
+            if accepted {
+                let point = point_from_viewport(&grid, row, col);
+                if start {
+                    self.selection.start(point);
+                } else {
+                    self.selection.update(point);
+                }
+            }
+            (cancel_drag, accepted)
+        };
+        if cancel_drag {
+            self.cancel_selection_drag();
+        }
+        accepted
+    }
+
+    fn selection_text(&mut self) -> Result<Option<String>, String> {
+        let (cancel_drag, text) = {
+            let grid = self.grid.lock().map_err(|_| "Grid lock poisoned".to_owned())?;
+            let cancel_drag = self.selection_epoch.sync(&mut self.selection, &grid);
+            let text = self.selection.is_active().then(|| {
+                self.selection
+                    .get_text_with_limit(&grid, android_input::MAX_IME_BYTES)
+                    .map_err(|_| "Selection is too large to copy (64 KiB maximum)".to_owned())
+            });
+            (cancel_drag, text)
+        };
+        if cancel_drag {
+            self.cancel_selection_drag();
+        }
+        text.transpose()
     }
 
     fn touch_event(&mut self, id: u64, phase: TouchPhase, x: f64, y: f64) {
@@ -971,9 +1038,7 @@ impl AndroidWindow {
                     return;
                 };
                 if matches!(region, TouchRegion::Terminal) && self.selecting {
-                    if let Some(point) = self.selection_point(x, y) {
-                        self.selection.start(point);
-                    }
+                    self.select_at(x, y, true);
                 }
                 self.touch = Some(TouchGesture::new(id, region, x, y));
             }
@@ -987,9 +1052,7 @@ impl AndroidWindow {
                 let lines = gesture.move_to(x, y, 8.0 * scale, line_height);
                 let terminal = matches!(gesture.region, TouchRegion::Terminal);
                 if terminal && self.selecting {
-                    if let Some(point) = self.selection_point(x, y) {
-                        self.selection.update(point);
-                    }
+                    self.select_at(x, y, false);
                 } else if terminal && lines != 0 {
                     self.scroll(lines, x, y);
                 }
@@ -1006,9 +1069,7 @@ impl AndroidWindow {
                     self.activate_control(control);
                 } else if matches!(gesture.region, TouchRegion::Terminal) {
                     if self.selecting {
-                        if let Some(point) = self.selection_point(x, y) {
-                            self.selection.update(point);
-                        }
+                        self.select_at(x, y, false);
                     } else if lines != 0 {
                         self.scroll(lines, x, y);
                     } else if !gesture.dragged && layout.terminal.contains(x, y) {
@@ -1165,10 +1226,8 @@ impl AndroidWindow {
             self.mouse_click_canceled |= (x - start_x).hypot(y - start_y) > 8.0 * scale;
         }
         if matches!(self.mouse_press, Some((_, MouseAction::Selection))) {
-            if let Some(point) = self.selection_point(x, y) {
-                self.selection.update(point);
-                self.redraw();
-            }
+            self.select_at(x, y, false);
+            self.redraw();
             return;
         }
         if matches!(self.mouse_press, Some((_, MouseAction::Toolbar(_)))) {
@@ -1318,8 +1377,7 @@ impl AndroidWindow {
                 false,
             );
         } else if button == MouseButton::Left {
-            if let Some(point) = self.selection_point(x, y) {
-                self.selection.start(point);
+            if self.select_at(x, y, true) {
                 self.mouse_press = Some((device, MouseAction::Selection));
                 self.redraw();
             }
