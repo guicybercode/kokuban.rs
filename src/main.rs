@@ -2,7 +2,15 @@
 mod app;
 mod config;
 mod graphics;
+#[cfg(not(target_os = "android"))]
 mod glyph_atlas;
+#[cfg(target_os = "android")]
+#[path = "android_glyph_atlas.rs"]
+mod glyph_atlas;
+#[cfg(test)]
+mod android_runtime;
+#[cfg(all(test, not(target_os = "android")))]
+mod android_glyph_atlas;
 mod grid;
 mod input;
 mod layout;
@@ -58,5 +66,10 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-compile_error!("kokuban currently supports only macOS and Linux targets");
+#[cfg(target_os = "android")]
+fn main() {
+    // Android loads the cdylib via NativeActivity; build APKs with --lib.
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
+compile_error!("kokuban supports macOS, Linux and Android targets");

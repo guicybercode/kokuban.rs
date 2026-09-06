@@ -3,6 +3,12 @@ name = "kokuban"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib"]
+
+[dev-dependencies]
+fontdue = { version = "=0.9.3", default-features = false, features = ["std", "simd"] }
+
 [dependencies]
 nix = { version = "0.29", features = ["term", "fs", "process", "signal", "poll"] }
 toml = "1.0"
@@ -15,8 +21,40 @@ unicode-width = "0.2"
 png = "0.17"
 flate2 = "1"
 base64 = "0.22"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
 font-kit = "0.14"
 pathfinder_geometry = "0.5"
+
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "android-native-activity"] }
+softbuffer = { version = "0.4.8", default-features = false }
+fontdue = { version = "=0.9.3", default-features = false, features = ["std", "simd"] }
+android_logger = "0.15"
+
+[package.metadata.android]
+package = "com.kokuban.terminal"
+apk_name = "kokuban"
+build_targets = ["aarch64-linux-android"]
+strip = "split"
+
+[package.metadata.android.sdk]
+min_sdk_version = 26
+target_sdk_version = 35
+
+[package.metadata.android.application]
+label = "Kokuban"
+theme = "@android:style/Theme.Material.NoActionBar"
+extract_native_libs = true
+
+[package.metadata.android.application.activity]
+config_changes = "orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|keyboard|navigation"
+launch_mode = "singleTop"
+exported = true
+resizeable_activity = true
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.INTERNET"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
