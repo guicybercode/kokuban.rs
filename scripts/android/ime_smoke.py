@@ -19,6 +19,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from device import Device
+from measure import pss_kib
 from smoke import eventually
 
 
@@ -162,6 +163,16 @@ def main():
     def ime_visible():
         state = device.shell("dumpsys", "input_method")
         return "mInputShown=true" in state or "isInputViewShown=true" in state
+
+    def hangul_memory(stage):
+        memory = device.shell("dumpsys", "meminfo", process)
+        (args.output / f"hangul-meminfo-{stage}.txt").write_text(memory + "\n")
+        measurements = results.setdefault("hangul_memory", {
+            "pid": process,
+            "scope": "Kokuban main process; excludes the IME and shell; snapshot difference is not an isolated font-allocation measurement",
+        })
+        measurements[f"pss_{stage}_kib"] = pss_kib(memory)
+        save_results()
 
     def return_to_terminal():
         for index in range(6):
@@ -315,12 +326,17 @@ def main():
             device.shell("input", "keyevent", "KEYCODE_ENTER")
             eventually(lambda: device.shell("run-as", package, "cat", cjk_marker, check=False), "READY", 45)
             switch_language(["Korean", "한국어"], "korean")
+            hangul_memory("before")
             baseline = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
             tap("hangul-kiyeok", ["ㄱ", "기역", "Giyeok", "Kiyeok"])
             tap("hangul-a", ["ㅏ", "아"])
             device.screenshot(args.output / "hangul-before-enter.png")
             tap("hangul-enter", ["Enter", "Return", "New line", "Done", "입력"])
             eventually(lambda: device.shell("run-as", package, "cat", cjk_marker, check=False), "가", 45)
+            hangul_memory("after")
+            memory = results["hangul_memory"]
+            if memory["pss_before_kib"] is not None and memory["pss_after_kib"] is not None:
+                memory["pss_delta_kib"] = memory["pss_after_kib"] - memory["pss_before_kib"]
             current = callback_counts(device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False))
             results["hangul_callbacks"] = {key: current[key] - baseline[key] for key in current}
             results["hangul_utf8_result"] = "가"
