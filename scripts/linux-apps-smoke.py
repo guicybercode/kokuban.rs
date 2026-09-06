@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Exercise a real Linux window, verified loopback SSH, and interactive TUIs.
 
-Run as an ordinary user under Xvfb. Only Python's standard library is imported;
-external programs are OpenSSH, xdotool, xwd, Neovim, fzf, and tmux. The daemon,
+Run as an ordinary user under Xvfb with -noreset. Only Python's standard library
+is imported; external programs are OpenSSH, xdotool, xmodmap, xwd, Neovim, fzf,
+and tmux. The daemon,
 keys, authorized_keys, known_hosts, and tmux socket belong to one temporary
 fixture. No existing SSH configuration, account, or service is modified.
 
@@ -12,6 +13,7 @@ and https://man.openbsd.org/sshd for the pinned-key and foreground-daemon flags.
 """
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -46,6 +48,30 @@ def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
     kwargs.setdefault("check", True)
     kwargs.setdefault("capture_output", True)
     return subprocess.run(args, **kwargs)
+
+
+@contextmanager
+def unicode_keyboard():
+    """Install one stable accented key before winit reads the X11 keymap."""
+    # xdotool otherwise maps and immediately unmaps a spare key for é. A
+    # consumer processing XKB notifications later can see only the restored
+    # map. This fixture tests normal Unicode input, not transient key remaps.
+    # Xvfb -noreset keeps this map between xmodmap and the terminal's connection.
+    mapping = run(["xmodmap", "-pke"]).stdout.decode()
+    spare = next((line for line in mapping.splitlines()
+                  if line.startswith("keycode ") and "=" in line
+                  and all(symbol == "NoSymbol" for symbol in line.partition("=")[2].split())), None)
+    if spare is None:
+        raise AssertionError("Xvfb has no unused keycode for the Unicode fixture")
+    expression = spare.partition("=")[0] + "= eacute Eacute"
+    try:
+        run(["xmodmap", "-e", expression])
+        observed = run(["xmodmap", "-pke"]).stdout.decode()
+        if "eacute" not in observed.split():
+            raise AssertionError("Unicode keymap was reset; start Xvfb with -noreset")
+        yield
+    finally:
+        run(["xmodmap", "-e", spare], check=False)
 
 
 def process_identity(pid: int) -> Optional[list[int]]:
@@ -250,7 +276,9 @@ def key(*keys: str) -> None:
 
 
 def type_text(text: str) -> None:
-    run(["xdotool", "type", "--clearmodifiers", "--delay", "15", "--", text])
+    result = run(["xdotool", "type", "--clearmodifiers", "--delay", "15", "--", text])
+    if result.stderr:
+        print("XTest typing: " + result.stderr.decode(errors="replace"), file=sys.stderr)
 
 
 def screenshot(window: str, destination: Path) -> None:
@@ -324,6 +352,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
     with (directory / "terminal.log").open("wb") as log:
         terminal = subprocess.Popen([str(binary)], cwd=directory, env=environment, stdout=log, stderr=log)
         processes = (daemon, terminal)
+        window = None
         try:
             window = wait_for("Linux window", lambda: find_window(terminal), processes)
             run(["xdotool", "windowfocus", "--sync", window])
@@ -403,6 +432,16 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
             terminal.wait(timeout=STEP_TIMEOUT)
             if terminal.returncode != 0 or (directory / "ssh-exit").read_text() != "0":
                 raise AssertionError("SSH or the Linux terminal did not disconnect cleanly")
+        except BaseException:
+            inserted = directory / "nvim-inserted"
+            if inserted.exists():
+                print(f"Observed Neovim text: {inserted.read_bytes()!r}", file=sys.stderr)
+            if window:
+                try:
+                    screenshot(window, directory / "failure.png")
+                except (OSError, ValueError, subprocess.SubprocessError) as error:
+                    print(f"Could not capture failed application: {error}", file=sys.stderr)
+            raise
         finally:
             try:
                 run(["tmux", "-S", str(directory / "tmux.sock"), "kill-server"], check=False)
@@ -416,7 +455,7 @@ def exercise_window(directory: Path, port: int, binary: Path, daemon: subprocess
 def check(binary: Path, artifacts: Optional[Path]) -> None:
     if sys.platform != "linux" or os.geteuid() == 0:
         raise SystemExit("run this fixture as an ordinary Linux user under Xvfb")
-    required = ("ssh", "ssh-keygen", "sshd", "xdotool", "xwd", "nvim", "fzf", "tmux")
+    required = ("ssh", "ssh-keygen", "sshd", "xdotool", "xmodmap", "xwd", "nvim", "fzf", "tmux")
     missing = [name for name in required if shutil.which(name) is None]
     if missing:
         raise SystemExit("missing test programs: " + ", ".join(missing))
@@ -453,7 +492,8 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
                 if (rejected.returncode != 255 or b"Host key verification failed" not in rejected.stderr
                         or (directory / "wrong-host-executed").exists()):
                     raise AssertionError("the deliberately wrong pinned host key was not rejected")
-                exercise_window(directory, port, binary, daemon)
+                with unicode_keyboard():
+                    exercise_window(directory, port, binary, daemon)
             print(
                 "PASS Linux SSH: wrong host key rejected; pinned-key authentication; "
                 "window input; remote PTY resize; Ctrl-C; Neovim Unicode save; "
@@ -473,7 +513,7 @@ def check(binary: Path, artifacts: Optional[Path]) -> None:
                 for name in ("terminal.log", "sshd.log", "host-key-rejection.log", "versions.json",
                              "remote-ready.json", "remote-resize.json", "input.json", "interrupted.json",
                              "tmux-panes.json", "session-result.json", "editor.txt", "fzf-result", "tmux-result",
-                             "neovim.png", "fzf.png", "tmux.png"):
+                             "neovim.png", "fzf.png", "tmux.png", "failure.png", "nvim-ready", "nvim-inserted"):
                     if (directory / name).is_file():
                         shutil.copyfile(directory / name, artifacts / name)
 
