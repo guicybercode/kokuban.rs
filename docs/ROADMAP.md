@@ -4,6 +4,39 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Animação nativa verificada em 2026-09-05
+
+O código `ab40737`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34002541075): **533 testes Linux e 462 macOS**, check de todos os alvos, Clippy e isolamento de dependências. O teste Xvfb confirmou imagens estáticas e, adicionalmente, reprodução nativa com pixels herdados entre frames, duas repetições completas e manutenção do último frame por mais de um ciclo após o emissor parar de escrever.
+
+- `82773bc` e `4e9c5b5`: Base64 sem padding, blocos codificados de 128 KiB e comandos tipados de animação.
+- `b10a890` e `f1ebd9e`: canvases limitados por memória, composição/edição/exclusão de frames e respostas de protocolo, incluindo seleção por número `I`.
+- `17484b3` e `45fa644`: agendamento apenas para imagens visíveis no Linux e verificação dos pixels apresentados.
+- `ab40737`: exemplo `cargo run --example graphics -- animate` e [contrato de integração Android](ANIMATION.md).
+
+O teste visual usa uma sequência sintética compatível com o formato do icat; não executou o binário icat nem mediu desempenho. A reprodução nativa foi comprovada no Linux/X11. Vídeo geral, áudio, experiência Wayland, SSH e aplicações reais, clipboard/seleção Linux e consumo de recursos continuam exigindo trabalho e evidência. Metal retorna `ENOTSUP` para animação.
+
+A segunda sessão está ativa na worktree `../kokuban-android`, branch `codex/android-native`; nela já há commits de aplicação, gráficos, entrada e SSH Android. Esses commits ainda não foram integrados nesta `main` nem validados aqui em dispositivo. A sessão Android deve incorporar o novo módulo e o agendamento descritos no contrato antes de comprovar animação no aplicativo.
+
+## Primeira validação de imagens em 2026-09-05
+
+O código em `5849e76`, publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34001238053): **497 testes Linux e 430 macOS**, check de todos os alvos, Clippy, isolamento de dependências e primeiro quadro Linux sob Xvfb. O novo teste `scripts/linux-graphics-smoke.py` verificou pixels apresentados de Kitty PNG e Sixel, substituição vermelho→verde e ambos os protocolos desabilitados. A existência de uma janela não basta para esse teste passar.
+
+- `a0050a4`: decoder RGB/RGBA/PNG compartilhado e cache CPU limitado por bytes e 4096 imagens.
+- `94952b6`: eventos gráficos ordenados no leitor do PTY, com respostas fora do lock do grid.
+- `24c8333`: composição RGBA com escala, transparência e recorte.
+- `defbec8`: imagens acompanham texto e histórico, com isolamento da tela alternativa. Imagens que cruzam margens parciais são descartadas, uma limitação ainda documentada.
+- `8a272eb`, `826275e` e `5849e76`: Linux anuncia e renderiza os protocolos habilitados, aplica camadas Kitty e desempata pelo ID do cliente; testes integrados cobrem upload, respostas, exclusão, retransmissão, cache e composição.
+- `e08c992`: exemplo Rust para PNG, Sixel e sequência de 120 quadros; README distingue recursos por plataforma.
+- `ee01e9a`: validação gráfica Xvfb reproduzível no CI.
+
+Esses resultados comprovam imagens estáticas e substituição de quadros no Linux/X11. Não comprovam reprodução geral de vídeo, áudio, animação nativa Kitty, FPS sustentado, baixo consumo, experiência Wayland, SSH completo, compatibilidade abrangente de aplicações ou Android. O exemplo `stream` solicita 30 FPS, mas ainda não foi medido como benchmark. A compilação do exemplo passou no CI; sua presença não substitui teste de reprodução.
+
+O prompt da segunda sessão foi entregue ao usuário e publicado em `62bce8e`; a preferência por commits sem Codex como coautor foi registrada em `f38e4ab`. Não há evidência de execução da segunda sessão nesta auditoria. O próximo trabalho continua sendo entregar e verificar todos os requisitos abaixo; a matriz inicial fica preservada como referência.
+
+As compilações locais encontraram falta de espaço em disco. Foram removidos artefatos de `target/` e duas extrações de dependências Cargo gerados nesta sessão; a validação Linux foi feita no CI. Antes de compilar o APK, confira novamente espaço livre além de SDK/NDK.
+
+## Matriz inicial e critérios restantes
+
 | Requisito | Evidência inicial | Falta para comprovar entrega |
 | --- | --- | --- |
 | Linux utilizável | `src/main.rs`, `src/linux_window.rs`: janela winit X11/Wayland, desenho por CPU, PTY, entrada/IME e rolagem. `.github/workflows/ci.yml`: checks e primeiro quadro Xvfb configurados. | Testar sessão interativa real em X11 e Wayland, fontes/DPI, clipboard, seleção, resize, encerramento, instalação e configuração. Registrar resultados por versão. |

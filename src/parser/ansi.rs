@@ -8,9 +8,8 @@ use crate::parser::sixel;
 const MAX_CSI_PARAMS: usize = 32;
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_BYTES: usize = 64 * 1024;
-// Kitty requires direct payloads to be chunked at 4 KiB. Keep room for
-// control metadata and implementations that use a somewhat larger packet.
-const MAX_APC_BYTES: usize = 16 * 1024;
+// Cover the bounded packet size used by released kitten clients plus metadata.
+const MAX_APC_BYTES: usize = super::kitty_graphics::MAX_KITTY_APC_BYTES;
 const MAX_DCS_BYTES: usize = 16 * 1024 * 1024;
 
 fn terminal_pixel_extent(cells: usize, cell_pixels: u16) -> u64 {
@@ -2263,6 +2262,25 @@ mod tests {
         parser.feed(b"x\x1b\\", &mut grid);
         assert!(drain_kitty_commands(&mut grid).is_empty());
         assert_eq!(parser.parser.apc_data.capacity(), 0);
+    }
+
+    #[test]
+    fn accepts_large_kitten_packets_across_pty_reads_then_unpadded_tail() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let mut stream = b"\x1b_Ga=T,f=32,s=24577,v=1,i=9,m=1;".to_vec();
+        stream.extend(std::iter::repeat_n(b'A', super::kitty_graphics::MAX_PAYLOAD_BASE64_BYTES));
+        stream.extend_from_slice(b"\x1b\\\x1b_Gm=0;AQIDBA\x1b\\X");
+        for part in stream.chunks(4096) {
+            parser.feed(part, &mut grid);
+        }
+        let commands = drain_kitty_commands(&mut grid);
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0].payload.len(), 98304);
+        assert!(commands[0].more_chunks);
+        assert_eq!(commands[1].payload, [1, 2, 3, 4]);
+        assert!(!commands[1].more_chunks);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'X');
     }
 
     #[test]

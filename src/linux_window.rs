@@ -12,7 +12,9 @@ use crate::input::mouse::{
     MAX_WHEEL_STEPS_PER_EVENT,
 };
 use crate::pty::Pty;
-use crate::software_raster::{draw_glyph_a8, fill_rect};
+use crate::parser::ansi::GraphicsSupport;
+use crate::software_graphics::{ImageSnapshot, SoftwareGraphics};
+use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
@@ -21,6 +23,7 @@ use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use thiserror::Error;
 use unicode_width::UnicodeWidthChar;
 use winit::application::ApplicationHandler;
@@ -565,8 +568,14 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     grid.default_fg_hex = terminal_color_query_value(foreground);
     grid.default_bg_hex = terminal_color_query_value(background);
     let grid = Arc::new(Mutex::new(grid));
+    let graphics_support = GraphicsSupport {
+        kitty: config.images.kitty_graphics_enabled(),
+        sixel: config.images.sixel_graphics_enabled(),
+    };
+    let graphics = Arc::new(Mutex::new(SoftwareGraphics::new(&config.images)));
+    let reader_graphics = graphics.clone();
     let pty = Arc::new(
-        Pty::spawn(columns, rows, false, false)
+        Pty::spawn(columns, rows, graphics_support.kitty, graphics_support.sixel)
             .map_err(|error| format!("could not start the Linux shell: {error}"))?,
     );
     let redraw_pending = Arc::new(AtomicBool::new(false));
@@ -582,9 +591,14 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     let update_title_grid = grid.clone();
     let update_title_pending = window_title_pending.clone();
     let mut observed_window_title = WINDOW_TITLE.to_string();
-    let reader = match TerminalReader::spawn_text(
+    let reader = match TerminalReader::spawn_with_graphics(
         pty.clone(),
         grid.clone(),
+        graphics_support,
+        move |event, grid| {
+            let mut graphics = reader_graphics.lock().map_err(|_| ReaderExit::GridPoisoned)?;
+            Ok(graphics.process(event, grid))
+        },
         move || {
             signal_grid_update(&update_proxy, update_pending.as_ref());
             if changed_window_title(update_title_grid.as_ref(), &mut observed_window_title)
@@ -618,6 +632,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         initial_size,
         exit_after_first_frame,
         grid,
+        graphics,
         pty,
         reader,
         writer,
@@ -658,6 +673,7 @@ struct LinuxWindow {
     first_frame_presented: bool,
     applied_window_title: String,
     grid: Arc<Mutex<Grid>>,
+    graphics: Arc<Mutex<SoftwareGraphics>>,
     pty: Arc<Pty>,
     reader: Option<TerminalReader>,
     writer: Option<TerminalWriter>,
@@ -666,6 +682,7 @@ struct LinuxWindow {
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
+    occluded: bool,
     pointer_route: PointerRouteState<DeviceId>,
     ime_active: bool,
     ime_preedit: Option<ImePreedit>,
@@ -682,6 +699,7 @@ impl LinuxWindow {
         initial_size: LogicalSize<u32>,
         exit_after_first_frame: bool,
         grid: Arc<Mutex<Grid>>,
+        graphics: Arc<Mutex<SoftwareGraphics>>,
         pty: Arc<Pty>,
         reader: TerminalReader,
         writer: TerminalWriter,
@@ -704,6 +722,7 @@ impl LinuxWindow {
             first_frame_presented: false,
             applied_window_title: WINDOW_TITLE.to_string(),
             grid,
+            graphics,
             pty,
             reader: Some(reader),
             writer: Some(writer),
@@ -712,6 +731,7 @@ impl LinuxWindow {
             reader_status: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
+            occluded: false,
             pointer_route: PointerRouteState::default(),
             ime_active: false,
             ime_preedit: None,
@@ -833,7 +853,12 @@ impl LinuxWindow {
         let cell_dimensions = self
             .cell_dimensions
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
-        let snapshot = snapshot_grid(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        let (snapshot, images) = {
+            // Match reader lock order; text and image placements share one snapshot.
+            let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
+            let graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
+            (snapshot_locked_grid(&grid), graphics.snapshot(&grid, cell_dimensions))
+        };
         let preedit_layout = self
             .ime_preedit
             .as_ref()
@@ -864,7 +889,7 @@ impl LinuxWindow {
             .buffer_mut()
             .map_err(|error| format!("could not acquire the software-rendering buffer: {error}"))?;
         buffer.fill(self.background);
-        draw_grid_snapshot(
+        draw_grid_snapshot_with_images(
             &mut buffer,
             (width.get(), height.get()),
             glyph_atlas,
@@ -872,6 +897,7 @@ impl LinuxWindow {
             cell_dimensions,
             &snapshot,
             preedit_layout.is_none(),
+            &images,
         );
         if let Some(layout) = preedit_layout.as_ref() {
             draw_ime_preedit(
@@ -1012,6 +1038,37 @@ impl Drop for LinuxWindow {
 }
 
 impl ApplicationHandler<LinuxEvent> for LinuxWindow {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(ControlFlow::Wait);
+        if event_loop.exiting() || self.occluded || self.surface.is_none() {
+            return;
+        }
+        let (Some(window), Some(cell_size)) = (&self.window, self.cell_dimensions) else {
+            return;
+        };
+        let size = window.inner_size();
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+        let result = (|| {
+            // Preserve the PTY reader's grid -> graphics lock order.
+            let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
+            let mut graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
+            Ok::<_, String>(graphics.advance_animations(&grid, cell_size, Instant::now()))
+        })();
+        match result {
+            Ok(update) => {
+                if update.changed {
+                    window.request_redraw();
+                }
+                if let Some(deadline) = update.next_deadline {
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                }
+            }
+            Err(error) => self.fail(event_loop, error),
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -1032,6 +1089,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
         }
 
         match event {
+            WindowEvent::Occluded(occluded) => {
+                self.occluded = occluded;
+                if !occluded {
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
+                }
+            }
             WindowEvent::CloseRequested => {
                 self.request_terminal_shutdown();
                 event_loop.exit();
@@ -2362,8 +2427,13 @@ fn modifiers_after_focus_change(current: ModifiersState, focused: bool) -> Modif
     }
 }
 
+#[cfg(test)]
 fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
     let grid = grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+    Ok(snapshot_locked_grid(&grid))
+}
+
+fn snapshot_locked_grid(grid: &Grid) -> GridSnapshot {
     let columns = grid.cols();
     let rows = grid.rows();
     let mut cells = Vec::with_capacity(columns.saturating_mul(rows));
@@ -2384,7 +2454,7 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
         None
     };
 
-    Ok(GridSnapshot {
+    GridSnapshot {
         columns,
         rows,
         cells,
@@ -2392,7 +2462,7 @@ fn snapshot_grid(grid: &Mutex<Grid>) -> Result<GridSnapshot, GridAccessError> {
         input_cursor: (grid.cursor_row, grid.cursor_col),
         wrap_pending: grid.is_wrap_pending(),
         auto_wrap: grid.auto_wrap,
-    })
+    }
 }
 
 fn snapshot_window_title(grid: &Mutex<Grid>) -> Result<String, GridAccessError> {
@@ -2862,6 +2932,7 @@ fn draw_cell_underline(
     }
 }
 
+#[cfg(test)]
 fn draw_grid_snapshot(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -2871,7 +2942,53 @@ fn draw_grid_snapshot(
     snapshot: &GridSnapshot,
     draw_terminal_cursor: bool,
 ) {
+    draw_grid_snapshot_with_images(frame, frame_size, atlas, colors, cell_dimensions,
+        snapshot, draw_terminal_cursor, &[]);
+}
+
+fn draw_images(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    images: &[ImageSnapshot],
+    include: impl Fn(i32) -> bool,
+) {
+    for image in images.iter().filter(|image| include(image.z_index)) {
+        draw_image_rgba(frame, frame_size, &image.pixels, image.size, image.rectangle);
+    }
+}
+
+fn draw_grid_snapshot_with_images(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    atlas: &mut GlyphAtlas,
+    colors: TerminalColors,
+    cell_dimensions: (u16, u16),
+    snapshot: &GridSnapshot,
+    draw_terminal_cursor: bool,
+    images: &[ImageSnapshot],
+) {
     let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
+
+    // Kitty's lowest layer is behind non-default cell backgrounds. Ordinary
+    // negative z values are above backgrounds but below glyphs.
+    draw_images(frame, frame_size, images, |z| z < i32::MIN / 2);
+    for row in 0..snapshot.rows {
+        for column in 0..snapshot.columns {
+            let Some(cell) = snapshot.cell(row, column) else { continue; };
+            if cell.flags.contains(CellFlags::WIDE_CONT) { continue; }
+            let Some(origin) = cell_origin(row, column, cell_dimensions) else { continue; };
+            if !images.is_empty() && cell.bg == Color::Default
+                && !cell.flags.contains(CellFlags::REVERSE) {
+                continue;
+            }
+            let width = if cell.flags.contains(CellFlags::WIDE) {
+                cell_size.0.saturating_mul(2)
+            } else { cell_size.0 };
+            fill_rect(frame, frame_size, origin, (width, cell_size.1),
+                resolve_cell_colors(colors, cell).background, u8::MAX);
+        }
+    }
+    draw_images(frame, frame_size, images, |z| (i32::MIN / 2..0).contains(&z));
 
     for row in 0..snapshot.rows {
         for column in 0..snapshot.columns {
@@ -2890,15 +3007,6 @@ fn draw_grid_snapshot(
             } else {
                 cell_size.0
             };
-
-            fill_rect(
-                frame,
-                frame_size,
-                origin,
-                (background_width, cell_size.1),
-                resolved.background,
-                u8::MAX,
-            );
 
             if !cell_content_is_visible(cell.flags) {
                 continue;
@@ -2942,6 +3050,7 @@ fn draw_grid_snapshot(
         }
     }
 
+    draw_images(frame, frame_size, images, |z| z >= 0);
     if !draw_terminal_cursor {
         return;
     }
@@ -8009,5 +8118,138 @@ mod tests {
 
         assert!(arm_grid_redraw(&redraw_pending));
         assert!(!arm_grid_redraw(&redraw_pending));
+    }
+}
+
+#[cfg(test)]
+mod graphics_tests {
+    use super::{atlas_cell_dimensions, draw_grid_snapshot_with_images, snapshot_grid};
+    use crate::config::ImagesConfig;
+    use crate::glyph_atlas::GlyphAtlas;
+    use crate::grid::cell::Color;
+    use crate::grid::Grid;
+    use crate::parser::ansi::GraphicsSupport;
+    use crate::software_graphics::SoftwareGraphics;
+    use crate::terminal_colors::TerminalColors;
+    use crate::terminal_decoder::TerminalDecoder;
+    use std::sync::Mutex;
+
+    fn render_images(mut grid: Grid, commands: &[u8]) -> (Vec<u32>, (u16, u16)) {
+        let mut atlas = GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0)
+            .expect("system monospace fallback should be available");
+        let cell_size = atlas_cell_dimensions(&atlas).unwrap();
+        grid.cell_pixel_width = cell_size.0;
+        grid.cell_pixel_height = cell_size.1;
+        let mut graphics = SoftwareGraphics::new(&ImagesConfig::default());
+        let mut decoder = TerminalDecoder::new(GraphicsSupport {
+            kitty: true,
+            sixel: true,
+        });
+        let mut remaining = commands;
+        while !remaining.is_empty() {
+            let step = decoder.feed_until_event(remaining, &mut grid);
+            assert!(step.consumed > 0);
+            remaining = &remaining[step.consumed..];
+            for event in step.events {
+                graphics.process(event, &mut grid);
+            }
+        }
+        let images = graphics.snapshot(&grid, cell_size);
+        assert!(
+            !images.is_empty(),
+            "test must exercise actual image compositing"
+        );
+        let frame_size = (
+            grid.cols() as u32 * u32::from(cell_size.0),
+            grid.rows() as u32 * u32::from(cell_size.1),
+        );
+        let snapshot = snapshot_grid(&Mutex::new(grid)).unwrap();
+        let mut frame = vec![0; frame_size.0 as usize * frame_size.1 as usize];
+        draw_grid_snapshot_with_images(
+            &mut frame,
+            frame_size,
+            &mut atlas,
+            TerminalColors::new((255, 255, 255), (0, 0, 0)),
+            cell_size,
+            &snapshot,
+            false,
+            &images,
+        );
+        (frame, cell_size)
+    }
+
+    #[test]
+    fn lowest_layer_is_visible_through_default_background_but_below_explicit_background() {
+        for (z_index, expected_second_cell) in
+            [(-1_073_741_825, 0x0000ff), (-1_073_741_824, 0xff0000)]
+        {
+            let mut grid = Grid::new(2, 1, 0);
+            grid.buffer.cell_mut(0, 1).bg = Color::Rgb(0, 0, 255);
+            let command =
+                format!("\x1b_Ga=T,f=32,s=1,v=1,i=1,c=2,r=1,C=1,z={z_index};/wAA/w==\x1b\\");
+            let (frame, cell_size) = render_images(grid, command.as_bytes());
+
+            for row in frame.chunks_exact(usize::from(cell_size.0) * 2) {
+                assert!(row[..usize::from(cell_size.0)]
+                    .iter()
+                    .all(|pixel| *pixel == 0xff0000));
+                assert!(row[usize::from(cell_size.0)..]
+                    .iter()
+                    .all(|pixel| *pixel == expected_second_cell));
+            }
+        }
+    }
+
+    #[test]
+    fn negative_layer_is_below_text_and_zero_layer_covers_text() {
+        for z_index in [-1, 0] {
+            let mut grid = Grid::new(2, 1, 0);
+            grid.buffer.cell_mut(0, 0).c = 'M';
+            grid.buffer.cell_mut(0, 0).fg = Color::Rgb(255, 255, 255);
+            let command =
+                format!("\x1b_Ga=T,f=32,s=1,v=1,i=1,c=2,r=1,C=1,z={z_index};/wAA/w==\x1b\\");
+            let (frame, cell_size) = render_images(grid, command.as_bytes());
+
+            let glyph_visible = frame.chunks_exact(usize::from(cell_size.0) * 2).any(|row| {
+                row[..usize::from(cell_size.0)]
+                    .iter()
+                    .any(|pixel| *pixel != 0xff0000)
+            });
+            assert_eq!(glyph_visible, z_index < 0);
+            assert!(frame
+                .chunks_exact(usize::from(cell_size.0) * 2)
+                .all(|row| row[usize::from(cell_size.0)..]
+                    .iter()
+                    .all(|pixel| *pixel == 0xff0000)));
+        }
+    }
+
+    #[test]
+    fn overlapping_images_are_sorted_by_z_index_before_compositing() {
+        let commands = concat!(
+            "\x1b_Ga=T,f=32,s=1,v=1,i=1,c=2,r=1,C=1,z=2;/wAA/w==\x1b\\",
+            "\x1b_Ga=T,f=32,s=1,v=1,i=2,c=2,r=1,C=1,z=-1;AP8A/w==\x1b\\",
+            "\x1b_Ga=T,f=32,s=1,v=1,i=3,c=2,r=1,C=1,z=1;AAD//w==\x1b\\",
+        );
+        let (frame, _) = render_images(Grid::new(2, 1, 0), commands.as_bytes());
+
+        assert!(frame.iter().all(|pixel| *pixel == 0xff0000));
+    }
+
+    #[test]
+    fn equal_z_index_uses_client_image_id_independently_of_transmission_order() {
+        for (first, second) in [(20, 10), (10, 20)] {
+            let pixel = |id| if id == 20 { "/wAA/w==" } else { "AP8A/w==" };
+            let commands = format!(
+                "\x1b_Ga=T,f=32,s=1,v=1,i={first},c=2,r=1,C=1,z=0;{}\x1b\\\x1b_Ga=T,f=32,s=1,v=1,i={second},c=2,r=1,C=1,z=0;{}\x1b\\",
+                pixel(first), pixel(second),
+            );
+            let (frame, _) = render_images(Grid::new(2, 1, 0), commands.as_bytes());
+
+            assert!(
+                frame.iter().all(|pixel| *pixel == 0xff0000),
+                "client image 20 must cover image 10 in either transmission order"
+            );
+        }
     }
 }

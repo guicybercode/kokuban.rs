@@ -28,13 +28,14 @@ mod render_scene;
 mod selection;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod software_raster;
+#[cfg(target_os = "linux")]
+mod software_graphics;
 mod terminal_decoder;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod terminal_reader;
 mod terminal_writer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
-#[cfg(target_os = "macos")]
 mod renderer;
 mod window_title;
 
