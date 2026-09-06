@@ -163,8 +163,17 @@ def main():
         device.shell("input", "swipe", str(x), str(y), str(x), str(y), "900")
         choices = dump(f"{label}-language-picker")
         device.screenshot(args.output / f"{label}-language-picker.png")
-        x, y = center(language_node(choices, languages, ime_package))
+        try:
+            choice = language_node(choices, languages, ime_package)
+        except LookupError:
+            # LatinIME delegates the Space long-press to the system's input
+            # method picker, whose nodes belong to Android rather than Gboard.
+            choice = language_node(choices, languages, "android")
+        x, y = center(choice)
         device.shell("input", "tap", str(x), str(y))
+        active_ime = device.shell("settings", "get", "secure", "default_input_method")
+        if active_ime != ime:
+            raise AssertionError(f"Language picker selected a different input method: {active_ime}")
         selected = dump(f"{label}-keyboard")
         device.screenshot(args.output / f"{label}-keyboard.png")
         return selected
@@ -249,6 +258,11 @@ def main():
         popup = dump("accent-popup")
         accent_x, accent_y = center(find_node(popup, ["é", "e, acute", "e acute", "e with acute"], ime_package))
         device.shell("input", "motionevent", "MOVE", str(accent_x), str(accent_y))
+        # Hold on the desired key before lifting, and retain its visual state.
+        # This distinguishes a missed popup selection from lost committed text.
+        time.sleep(0.2)
+        device.screenshot(args.output / "accent-selected.png")
+        dump("accent-selected")
         device.shell("input", "motionevent", "UP", str(accent_x), str(accent_y))
         held_pointer = None
         tap("key-to-delete", ["x"])
