@@ -4,7 +4,20 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
-## Avanço verificado em 2026-09-05
+## Animação nativa verificada em 2026-09-05
+
+O código `ab40737`, integrado e publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34002541075): **533 testes Linux e 462 macOS**, check de todos os alvos, Clippy e isolamento de dependências. O teste Xvfb confirmou imagens estáticas e, adicionalmente, reprodução nativa com pixels herdados entre frames, duas repetições completas e manutenção do último frame por mais de um ciclo após o emissor parar de escrever.
+
+- `82773bc` e `4e9c5b5`: Base64 sem padding, blocos codificados de 128 KiB e comandos tipados de animação.
+- `b10a890` e `f1ebd9e`: canvases limitados por memória, composição/edição/exclusão de frames e respostas de protocolo, incluindo seleção por número `I`.
+- `17484b3` e `45fa644`: agendamento apenas para imagens visíveis no Linux e verificação dos pixels apresentados.
+- `ab40737`: exemplo `cargo run --example graphics -- animate` e [contrato de integração Android](ANIMATION.md).
+
+O teste visual usa uma sequência sintética compatível com o formato do icat; não executou o binário icat nem mediu desempenho. A reprodução nativa foi comprovada no Linux/X11. Vídeo geral, áudio, experiência Wayland, SSH e aplicações reais, clipboard/seleção Linux e consumo de recursos continuam exigindo trabalho e evidência. Metal retorna `ENOTSUP` para animação.
+
+A segunda sessão está ativa na worktree `../kokuban-android`, branch `codex/android-native`; nela já há commits de aplicação, gráficos, entrada e SSH Android. Esses commits ainda não foram integrados nesta `main` nem validados aqui em dispositivo. A sessão Android deve incorporar o novo módulo e o agendamento descritos no contrato antes de comprovar animação no aplicativo.
+
+## Primeira validação de imagens em 2026-09-05
 
 O código em `5849e76`, publicado na `main`, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34001238053): **497 testes Linux e 430 macOS**, check de todos os alvos, Clippy, isolamento de dependências e primeiro quadro Linux sob Xvfb. O novo teste `scripts/linux-graphics-smoke.py` verificou pixels apresentados de Kitty PNG e Sixel, substituição vermelho→verde e ambos os protocolos desabilitados. A existência de uma janela não basta para esse teste passar.
 
