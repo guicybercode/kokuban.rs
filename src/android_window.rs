@@ -270,19 +270,33 @@ impl AndroidWindow {
         if bytes.is_empty() {
             return;
         }
+        let mut changed = false;
         if let Some(writer) = &self.writer {
             if let Err(error) = writer.enqueue(bytes) {
                 self.error = Some(format!("Input queue: {error}"));
                 log::error!("{}", self.error.as_deref().unwrap_or("Input failed"));
             } else {
                 self.metrics.input();
+                changed = self.selection.is_active();
                 self.selection.clear();
                 if let Ok(mut grid) = self.grid.lock() {
+                    changed |= grid.scroll_offset != 0;
                     grid.scroll_to_bottom();
                 }
             }
         }
-        self.redraw();
+        // Ordinary input has no local echo: the PTY update requests its frame.
+        // Selection clears and the viewport returns to live output immediately,
+        // even when the foreground program does not echo its input.
+        if changed {
+            self.redraw();
+        }
+    }
+
+    fn release_control(&mut self) {
+        if std::mem::take(&mut self.control) {
+            self.redraw();
+        }
     }
 
     fn input_modifiers(&self) -> InputModifiers {
@@ -301,7 +315,7 @@ impl AndroidWindow {
             .unwrap_or(false);
         let bytes = android_input::encode_key(key, application, self.input_modifiers());
         if !bytes.is_empty() {
-            self.control = false;
+            self.release_control();
             self.send(bytes);
         }
     }
@@ -309,7 +323,7 @@ impl AndroidWindow {
     fn text(&mut self, text: &str) {
         let bytes = android_input::encode_text(text, self.input_modifiers());
         if !bytes.is_empty() {
-            self.control = false;
+            self.release_control();
             self.send(bytes);
         }
     }
@@ -320,8 +334,14 @@ impl AndroidWindow {
                 if let Some(control) = Control::from_id(*id) {
                     match action {
                         0 => self.activate_control(control),
-                        1 => self.accessible_focus = Some(control),
-                        2 if self.accessible_focus == Some(control) => self.accessible_focus = None,
+                        1 if self.accessible_focus != Some(control) => {
+                            self.accessible_focus = Some(control);
+                            self.redraw();
+                        }
+                        2 if self.accessible_focus == Some(control) => {
+                            self.accessible_focus = None;
+                            self.redraw();
+                        }
                         _ => {}
                     }
                 }
@@ -333,8 +353,12 @@ impl AndroidWindow {
                 bottom,
                 keyboard,
             } => {
-                self.viewport = Some([*left, *top, *right, *bottom]);
-                self.keyboard = *keyboard;
+                let viewport = Some([*left, *top, *right, *bottom]);
+                if self.viewport != viewport || self.keyboard != *keyboard {
+                    self.viewport = viewport;
+                    self.keyboard = *keyboard;
+                    self.redraw();
+                }
             }
             ImeEvent::Clipboard(text) => {
                 let bracketed = self.grid.lock().map(|g| g.bracketed_paste).unwrap_or(false);
@@ -352,6 +376,14 @@ impl AndroidWindow {
                 }
             }
             _ => {
+                let preedit_changed = match &event {
+                    ImeEvent::Preedit(text) => {
+                        text.len() <= android_input::MAX_IME_BYTES
+                            && self.input.preedit() != text.as_str()
+                    }
+                    ImeEvent::Commit(_) | ImeEvent::Finish => !self.input.preedit().is_empty(),
+                    _ => false,
+                };
                 let application = self
                     .grid
                     .lock()
@@ -361,12 +393,14 @@ impl AndroidWindow {
                     .input
                     .handle(&event, application, self.input_modifiers());
                 if !bytes.is_empty() {
-                    self.control = false;
+                    self.release_control();
                     self.send(bytes);
+                }
+                if preedit_changed {
+                    self.redraw();
                 }
             }
         }
-        self.redraw();
     }
 
     fn content_bounds(&self, width: u32, height: u32) -> [u32; 4] {
