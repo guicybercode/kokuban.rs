@@ -1,9 +1,18 @@
 pub mod box_drawing;
 pub mod braille;
+#[cfg(target_os = "macos")]
 pub mod brush;
+pub(crate) mod image_decode;
+#[cfg(target_os = "macos")]
 pub mod image_store;
+#[cfg(any(target_os = "linux", test))]
+pub(crate) mod software_image_store;
+#[cfg(target_os = "linux")]
+pub(crate) use software_image_store as image_store;
 pub mod kitty_handler;
+#[cfg(target_os = "macos")]
 pub mod metal;
+#[cfg(target_os = "macos")]
 pub mod shaders;
 
 #[repr(C)]

@@ -1,4 +1,5 @@
-use super::image_store::{probe_image_data, ImageFormat, ImageStore};
+use super::image_decode::{probe_image_data, ImageFormat};
+use super::image_store::ImageStore;
 use crate::graphics::{
     resolve_kitty_placement_layout, ClientImageRegistry, ImageId,
     ImageNumberRegistry, ImagePlacement, InlineRenderSize, KittyImageId,
@@ -1989,7 +1990,6 @@ mod tests {
         resolve_kitty_placement_layout, retain_unreferenced_image_ids, ImageId,
         ImagePlacement, InlineRenderSize, PlacementMode,
     };
-    #[cfg(target_os = "macos")]
     use crate::grid::Grid;
     use crate::parser::kitty_graphics::{
         KittyAction, KittyCommand, KittyCompression, KittyDeleteSpec, KittyFormat,
@@ -2050,7 +2050,21 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
+    fn test_image_store() -> Option<ImageStore> {
+        #[cfg(target_os = "macos")]
+        {
+            let Some(device) = MTLCreateSystemDefaultDevice() else {
+                eprintln!("skipping Metal integration test: no device is available");
+                return None;
+            };
+            Some(ImageStore::new(device, 1))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Some(ImageStore::new(1))
+        }
+    }
+
     fn process_graphics_outcome(
         handler: &mut KittyHandler,
         command: KittyCommand,
@@ -2070,7 +2084,6 @@ mod tests {
         )
     }
 
-    #[cfg(target_os = "macos")]
     fn process_graphics(
         handler: &mut KittyHandler,
         command: KittyCommand,
@@ -2363,14 +2376,11 @@ mod tests {
         assert!(client_image_registry_needs_pruning(45, 10, 2));
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn kitty_retransmission_in_alt_cleans_both_screens_but_preserves_sixel() {
-        let Some(device) = MTLCreateSystemDefaultDevice() else {
-            eprintln!("skipping Metal integration test: no device is available");
+        let Some(mut store) = test_image_store() else {
             return;
         };
-        let mut store = ImageStore::new(device, 1);
         let mut handler = KittyHandler::new(file_options(64, true));
         let mut grid = Grid::new(80, 24, 0);
 
@@ -2474,14 +2484,11 @@ mod tests {
         assert_eq!(grid.image_placements[0].image_id, stored_image_id);
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn explicit_image_ids_are_isolated_between_handlers_sharing_a_store() {
-        let Some(device) = MTLCreateSystemDefaultDevice() else {
-            eprintln!("skipping Metal integration test: no device is available");
+        let Some(mut store) = test_image_store() else {
             return;
         };
-        let mut store = ImageStore::new(device, 1);
         let sixel_id = store
             .store(
                 &[255, 255, 0, 255, 255, 0, 255, 255, 255, 0, 255, 255],
@@ -2700,14 +2707,11 @@ mod tests {
         assert!(store.get(second_stored_id).is_some());
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn image_numbers_translate_client_ids_and_retain_evicted_placements_for_delete() {
-        let Some(device) = MTLCreateSystemDefaultDevice() else {
-            eprintln!("skipping Metal integration test: no device is available");
+        let Some(mut store) = test_image_store() else {
             return;
         };
-        let mut store = ImageStore::new(device, 1);
         let foreign_id = store
             .store(
                 &[255, 255, 0, 255],
@@ -2791,14 +2795,11 @@ mod tests {
         assert!(store.get(foreign_id).is_some());
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn uppercase_by_number_deletes_unreferenced_newest_generation_and_falls_back() {
-        let Some(device) = MTLCreateSystemDefaultDevice() else {
-            eprintln!("skipping Metal integration test: no device is available");
+        let Some(mut store) = test_image_store() else {
             return;
         };
-        let mut store = ImageStore::new(device, 1);
         let mut handler = KittyHandler::new(file_options(64, true));
         let mut placements = Vec::new();
 
