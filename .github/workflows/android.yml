@@ -69,7 +69,12 @@ jobs:
         shell: bash
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64'
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name kokuban-ci --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/kokuban-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --name kokuban-ci --path "$ANDROID_AVD_HOME/kokuban-ci.avd" --package 'system-images;android-35;google_apis;x86_64' --device pixel_7
+          "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" list avd
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx kokuban-ci
           sudo chmod 666 /dev/kvm
           mkdir -p target/android-evidence
           "$ANDROID_HOME/emulator/emulator" -avd kokuban-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > target/android-evidence/emulator.log 2>&1 &
