@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Embed the supplied Kokuban icon for the macOS Dock and Linux X11 window.
+- Add a matching Linux desktop launcher for application menus and Wayland icons.
+
 ## v0.1 — 2026-09-06
 
 First public desktop release of Kokuban. The Git tag is `v0.1`; the Cargo package version is `0.1.0`. This is early-stage software with the platform limits below.

@@ -37,7 +37,9 @@ use winit::event::{
 };
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::window::{ImePurpose, Window, WindowId};
+use winit::platform::wayland::WindowAttributesExtWayland;
+use winit::platform::x11::WindowAttributesExtX11;
+use winit::window::{Icon, ImePurpose, Window, WindowId};
 
 const INITIAL_CELL_WIDTH: u32 = 10;
 const INITIAL_CELL_HEIGHT: u32 = 20;
@@ -63,6 +65,41 @@ const MAX_TERMINAL_COLUMNS: u16 = 1024;
 const MAX_TERMINAL_ROWS: u16 = 256;
 
 type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
+
+fn application_icon() -> Option<Icon> {
+    // Keep the X11 property small; the full-resolution PNG stays embedded for macOS.
+    const MAX_EDGE: u32 = 128;
+    const MAX_DECODE_BYTES: usize = 8 * 1024 * 1024;
+    let Some((rgba, width, height)) =
+        crate::renderer::image_decode::decode_png(crate::app_icon::PNG, MAX_DECODE_BYTES)
+    else {
+        log::warn!("Could not decode the application icon");
+        return None;
+    };
+    let longest_edge = width.max(height);
+    let scaled_edge = longest_edge.min(MAX_EDGE);
+    let icon_width =
+        (u64::from(width) * u64::from(scaled_edge) / u64::from(longest_edge)).max(1) as u32;
+    let icon_height =
+        (u64::from(height) * u64::from(scaled_edge) / u64::from(longest_edge)).max(1) as u32;
+    let mut icon_rgba = Vec::with_capacity((icon_width * icon_height * 4) as usize);
+    for y in 0..icon_height {
+        let source_y = ((u64::from(y) * 2 + 1) * u64::from(height)) / (u64::from(icon_height) * 2);
+        for x in 0..icon_width {
+            let source_x =
+                ((u64::from(x) * 2 + 1) * u64::from(width)) / (u64::from(icon_width) * 2);
+            let source = ((source_y * u64::from(width) + source_x) * 4) as usize;
+            icon_rgba.extend_from_slice(&rgba[source..source + 4]);
+        }
+    }
+    match Icon::from_rgba(icon_rgba, icon_width, icon_height) {
+        Ok(icon) => Some(icon),
+        Err(error) => {
+            log::warn!("Could not create the application icon: {error}");
+            None
+        }
+    }
+}
 
 #[derive(Debug)]
 enum LinuxEvent {
@@ -837,8 +874,19 @@ impl LinuxWindow {
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
         let attributes = Window::default_attributes()
             .with_title(WINDOW_TITLE)
+            .with_window_icon(application_icon())
             .with_transparent(false)
             .with_inner_size(self.initial_size);
+        let attributes = WindowAttributesExtWayland::with_name(
+            attributes,
+            crate::app_icon::APP_ID,
+            "kokuban",
+        );
+        let attributes = WindowAttributesExtX11::with_name(
+            attributes,
+            crate::app_icon::APP_ID,
+            "kokuban",
+        );
         let window = Arc::new(
             event_loop
                 .create_window(attributes)

@@ -42,6 +42,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
+            desktop-file-utils \
             ffmpeg \
             fonts-dejavu-core \
             libfontconfig1-dev \
@@ -55,6 +56,7 @@ jobs:
             pkg-config \
             tmux \
             x11-apps \
+            x11-utils \
             x11-xserver-utils \
             xauth \
             xclip \
@@ -154,6 +156,15 @@ jobs:
                 xvfb-run --auto-servernum timeout 10s "$kokuban_binary"
             )
           done
+
+      - name: Verify the embedded Linux application icon
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          desktop-file-validate assets/io.github.guicybercode.kokuban.desktop
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 30s python3 scripts/linux-icon-smoke.py \
+              "$PWD/target/debug/kokuban"
 
       - name: Verify presented Linux images and frame replacement
         if: runner.os == 'Linux'

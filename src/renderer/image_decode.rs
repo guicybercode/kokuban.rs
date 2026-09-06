@@ -80,7 +80,7 @@ pub(super) fn rgba_byte_len(width: u32, height: u32) -> Option<usize> {
     pixel_count(width, height)?.checked_mul(4)
 }
 
-fn decode_png(data: &[u8], max_bytes: usize) -> Option<(Vec<u8>, u32, u32)> {
+pub(crate) fn decode_png(data: &[u8], max_bytes: usize) -> Option<(Vec<u8>, u32, u32)> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(data));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     decoder.set_limits(png::Limits { bytes: max_bytes });

@@ -148,6 +148,14 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
 
+    let icon_data = NSData::with_bytes(crate::app_icon::PNG);
+    if let Some(icon) = NSImage::initWithData(mtm.alloc(), &icon_data) {
+        // SAFETY: The application is accessed on the main thread and the image is non-null.
+        unsafe { app.setApplicationIconImage(Some(&icon)) };
+    } else {
+        log::warn!("Could not load the application icon");
+    }
+
     setup_menu_bar(&app, mtm);
 
     let device = MTLCreateSystemDefaultDevice()

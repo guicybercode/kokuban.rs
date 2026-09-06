@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kokuban
+GenericName=Terminal Emulator
+Comment=Native terminal for shells and SSH
+Exec=kokuban
+Icon=io.github.guicybercode.kokuban
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupWMClass=io.github.guicybercode.kokuban

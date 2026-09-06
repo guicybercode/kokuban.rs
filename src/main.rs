@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app;
+mod app_icon;
 mod config;
 mod graphics;
 mod glyph_atlas;

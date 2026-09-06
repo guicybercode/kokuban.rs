@@ -62,7 +62,8 @@ binary = root / "target" / arguments.target / "release" / "kokuban"
 if not binary.is_file() or not os.access(binary, os.X_OK):
     raise SystemExit(f"built executable is missing: {binary}")
 files = {name: root / name for name in (
-    "LICENSE", "README.md", "SECURITY.md", "ABOUT.md", "CONTRIBUTING.md", "CHANGELOG.md", "kokuban.toml")}
+    "LICENSE", "README.md", "SECURITY.md", "ABOUT.md", "CONTRIBUTING.md", "CHANGELOG.md", "kokuban.toml",
+    "assets/kokuban-icon.png", "assets/io.github.guicybercode.kokuban.desktop", "assets/README.md")}
 files["THIRD_PARTY_LICENSES.txt"] = arguments.notices.resolve()
 documentation = root / "docs"
 if not documentation.is_dir():

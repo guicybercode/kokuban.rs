@@ -125,6 +125,34 @@ allow_file_transfer = false
 - **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
 - **Configuration seems ignored:** launch from the directory containing `kokuban.toml`. v0.1 does not search `~/.config` or accept a `--config` option. Invalid configuration falls back to defaults and logs a warning.
 
+### Application icon (development builds)
+
+Builds from `main` after v0.1 embed the [Kokuban artwork](assets/kokuban-icon.png).
+It appears in the macOS Dock while the application runs and as the Linux X11
+window icon. The published v0.1 binaries predate this addition. A standalone
+macOS executable retains its ordinary Finder file icon.
+
+For a Linux application-menu launcher and Wayland desktop icon, build `main`
+and run the following from the repository root. This installs into your user
+account; `desktop-file-utils` provides `desktop-file-install`:
+
+```sh
+sudo apt install --yes desktop-file-utils
+kokuban_data_dir="${XDG_DATA_HOME:-$HOME/.local/share}"
+install -Dm755 target/release/kokuban "$HOME/.local/bin/kokuban"
+install -Dm644 assets/kokuban-icon.png "$kokuban_data_dir/kokuban/kokuban-icon.png"
+mkdir -p "$kokuban_data_dir/applications"
+desktop-file-install --dir="$kokuban_data_dir/applications" \
+  --set-key=Exec --set-value="\"$HOME/.local/bin/kokuban\"" \
+  --set-key=Path --set-value="$HOME" \
+  --set-icon="$kokuban_data_dir/kokuban/kokuban-icon.png" \
+  assets/io.github.guicybercode.kokuban.desktop
+```
+
+Launch **Kokuban** from the application menu. The launcher starts in your home
+directory, so a `kokuban.toml` there supplies its configuration. Wayland icon
+display depends on the compositor's desktop-entry support.
+
 ### Trying images
 
 Run these commands **inside a Kokuban terminal**, from the repository directory:
