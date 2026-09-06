@@ -37,9 +37,12 @@ Validação local do produtor em 2026-09-05: MP4 H.264 decodificado em 12 quadro
 269176 bytes de protocolo; três testes passaram (fragmentação/reconstrução
 zlib, rejeição de quadros incompletos e decodificação de uma fotografia). O teste
 de foto encontrou e corrigiu um filtro de FPS que descartava seu único quadro.
-Isso prova o produtor, não a reprodução
-no Android. Foto real, vídeo apresentado, atualização/remoção e medidas em
-release ainda precisam de evidência do dispositivo.
+O produtor também foi executado por SSH no emulador Android 15/API 35 x86_64,
+em debug e release de `b9ba8b8`: fotografia, remoção e vídeo passaram nos
+testes de pixels. O MP4 H.264 320×180 a 12 quadros/s apresentou capturas
+correspondentes aos frames decodificados 0, 16, 31 e 46 em release.
+Os [resultados e capturas](../docs/android-evidence/b9ba8b8/results.json)
+identificam o APK e o cenário; não validam automaticamente versões posteriores.
 
 `media-photo.json` identifica a fotografia real AS17-148-22727, da tripulação
 Apollo 17, com crédito NASA Johnson Space Center e hash dos bytes utilizados.
@@ -50,9 +53,12 @@ e as [orientações de uso da NASA](https://www.nasa.gov/nasa-brand-center/image
 
 `scripts/android/media_scenarios.py` também reutiliza a sequência de teste
 Linux para Sixel e animação Kitty nativa, que avança após encerrar o emissor.
-O cenário de vídeo decodifica um MP4 H.264 com movimento sintético, compara a
-região de imagem entre capturas e coleta CPU/PSS e chamadas de apresentação.
-Os resultados ficam dentro do artefato SSH do CI; testes dos coletores não
-substituem a execução desses cenários no dispositivo.
+O cenário de vídeo decodifica um MP4 H.264 com movimento sintético, compara
+capturas com os pixels dos frames decodificados e coleta CPU/PSS e chamadas
+de apresentação. Na amostra release de oito segundos, a PSS do aplicativo
+foi de 49.964 a 63.194 KiB e a CPU média foi de 47,25% de um núcleo.
+As 20,08 chamadas de apresentação por segundo incluem redesenhos do terminal;
+não representam FPS efetivamente exibidos do vídeo. Consulte os
+[dados brutos](../docs/android-evidence/b9ba8b8/video-measurements.json).
 
 Referência: [protocolo gráfico Kitty](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
