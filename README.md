@@ -6,6 +6,8 @@ A native GPU terminal emulator built from scratch in Rust.
 
 Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS and a software rasterizer on Linux. It includes its own VT/ANSI parser, PTY handling, glyph rendering, pane management, and graphics protocol support.
 
+An Ubuntu/Xvfb release run measured a 7.98 MiB executable and 11.93 MiB idle RSS. A short 320×180 video test observed all 72 source frames with 8.75% of one CPU core used by Kokuban. These are bounded CI scenarios, not hardware-independent guarantees; see the [resource measurements and reproduction steps](docs/LINUX_PERFORMANCE.md).
+
 ## Features
 
 - **Native rendering**: Metal GPU renderer on macOS; software rasterizer with winit + softbuffer on Linux

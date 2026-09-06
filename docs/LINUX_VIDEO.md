@@ -20,6 +20,8 @@ Os [dados completos](linux-evidence/c02228d/report.json) e as capturas do [prime
 
 Esses números incluem o custo indireto da observação e **não são um benchmark release**, nem medem scanout ou garantem FPS sustentado para outras resoluções. O teste usa um clipe curto e sem áudio; codecs diferentes, vídeo por SSH, sincronização audiovisual, Wayland e reprodução prolongada exigem validação própria. As dimensões do mpv foram fixadas; o teste não comprova autodetecção de tamanho nem resize/DPI durante vídeo.
 
+Uma [medição posterior em release](LINUX_PERFORMANCE.md), em `29ac690`, repetiu os 72 quadros e controles com 8,75% de um núcleo para o Kokuban e pico amostrado de 28,70 MiB de RSS. Os cenários e as limitações permanecem os mesmos; o relatório separa consumo de terminal e player.
+
 ## Experimentar
 
 Dentro do Kokuban Linux, com mpv instalado:
