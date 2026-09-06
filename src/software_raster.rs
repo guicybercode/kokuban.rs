@@ -2,6 +2,115 @@ use crate::glyph_atlas::GlyphEntry;
 
 const RGB_MASK: u32 = 0x00ff_ffff;
 
+/// Composite a scaled RGBA image with nearest-neighbor sampling. Work is bounded
+/// by the visible destination, even when a client requests a huge rectangle.
+pub(crate) fn draw_image_rgba(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    pixels: &[u8],
+    image_size: (u32, u32),
+    rectangle: (f32, f32, f32, f32),
+) {
+    let (x, y, width, height) = rectangle;
+    let Some(required) = u64::from(image_size.0)
+        .checked_mul(u64::from(image_size.1))
+        .and_then(|count| count.checked_mul(4))
+        .and_then(|count| usize::try_from(count).ok())
+    else {
+        return;
+    };
+    if !buffer_contains_surface(frame.len(), frame_size)
+        || required == 0
+        || pixels.len() < required
+        || ![x, y, width, height].iter().all(|value| value.is_finite())
+        || width <= 0.0
+        || height <= 0.0
+    {
+        return;
+    }
+    // Pixel centers determine coverage and sampling, including negative origins.
+    let left = (f64::from(x) - 0.5)
+        .ceil()
+        .clamp(0.0, f64::from(frame_size.0)) as u32;
+    let top = (f64::from(y) - 0.5)
+        .ceil()
+        .clamp(0.0, f64::from(frame_size.1)) as u32;
+    let right = (f64::from(x) + f64::from(width) - 0.5)
+        .ceil()
+        .clamp(0.0, f64::from(frame_size.0)) as u32;
+    let bottom = (f64::from(y) + f64::from(height) - 0.5)
+        .ceil()
+        .clamp(0.0, f64::from(frame_size.1)) as u32;
+    for destination_y in top..bottom {
+        let source_y = (((f64::from(destination_y) + 0.5 - f64::from(y)) / f64::from(height))
+            * f64::from(image_size.1)) as u32;
+        for destination_x in left..right {
+            let source_x = (((f64::from(destination_x) + 0.5 - f64::from(x)) / f64::from(width))
+                * f64::from(image_size.0)) as u32;
+            let source = (u64::from(source_y.min(image_size.1 - 1)) * u64::from(image_size.0)
+                + u64::from(source_x.min(image_size.0 - 1))) as usize
+                * 4;
+            let destination =
+                destination_y as usize * frame_size.0 as usize + destination_x as usize;
+            let rgb =
+                u32::from_be_bytes([0, pixels[source], pixels[source + 1], pixels[source + 2]]);
+            frame[destination] = blend_rgb(frame[destination], rgb, pixels[source + 3]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::draw_image_rgba;
+
+    #[test]
+    fn scales_and_clips_without_shifting_the_source() {
+        let pixels = [
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ];
+        let mut frame = [0; 6];
+        draw_image_rgba(&mut frame, (3, 2), &pixels, (2, 2), (-1.0, -1.0, 4.0, 4.0));
+        assert_eq!(
+            frame,
+            [0xff0000, 0x00ff00, 0x00ff00, 0x0000ff, 0xffffff, 0xffffff]
+        );
+    }
+
+    #[test]
+    fn alpha_blends_in_softbuffer_channel_order() {
+        let pixels = [255, 0, 0, 128, 255, 255, 255, 0];
+        let mut frame = [0x0000ff; 2];
+        draw_image_rgba(&mut frame, (2, 1), &pixels, (2, 1), (0.0, 0.0, 2.0, 1.0));
+        assert_eq!(frame, [0x80007f, 0x0000ff]);
+    }
+
+    #[test]
+    fn invalid_and_extreme_images_cannot_overrun_the_frame() {
+        let pixels = [255; 4];
+        let mut frame = [0; 2];
+        for rectangle in [(f32::NAN, 0.0, 1.0, 1.0), (0.0, 0.0, -1.0, 1.0)] {
+            draw_image_rgba(&mut frame, (2, 1), &pixels, (1, 1), rectangle);
+            assert_eq!(frame, [0; 2]);
+        }
+        draw_image_rgba(
+            &mut frame,
+            (2, 1),
+            &pixels,
+            (u32::MAX, u32::MAX),
+            (0.0, 0.0, 2.0, 1.0),
+        );
+        assert_eq!(frame, [0; 2]);
+        draw_image_rgba(
+            &mut frame,
+            (2, 1),
+            &pixels,
+            (1, 1),
+            (-1.0, -1.0, f32::MAX, f32::MAX),
+        );
+        assert_eq!(frame, [0xffffff; 2]);
+    }
+}
+
 /// Blend an A8 glyph into a softbuffer frame (`0x00RRGGBB`).
 ///
 /// `destination` is the top-left pixel of the glyph bitmap. Bearings are kept
