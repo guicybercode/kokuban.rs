@@ -159,6 +159,14 @@ jobs:
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout 90s python3 scripts/linux-graphics-smoke.py "$PWD/target/debug/kokuban"
 
+      - name: Verify Linux clipboard and mouse selection
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py \
+              "$PWD/target/debug/kokuban"
+
       - name: Verify Linux SSH and interactive development applications
         if: runner.os == 'Linux'
         shell: bash
