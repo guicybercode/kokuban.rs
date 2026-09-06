@@ -91,6 +91,11 @@ recorded full Android run and runs `ime`, `controls`, or `all` without rebuildin
 Rust. Its evidence records the APK run/commit/hash separately from the checkout
 containing the current test scripts. A pass applies to that APK, not to newer
 application code. The full Android matrix remains the application gate.
+The full run publishes a small APK artifact immediately after its build, lint,
+and native dependency checks, so `source_run` may still be running. The fast
+workflow prefers that artifact, verifies its recorded SHA-256, and falls back to
+the final debug artifact from older runs. Early publication does not imply that
+device tests have passed; their status remains in the full run.
 
 ```sh
 gh workflow run android-input.yml --ref codex/android-native \

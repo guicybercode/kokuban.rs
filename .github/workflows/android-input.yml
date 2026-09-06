@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_run:
-        description: Completed Android run containing the prebuilt x86_64 debug APK
+        description: Android run with a published x86_64 debug APK (may still be running)
         required: true
         type: string
         default: '34003726906'
@@ -58,7 +58,23 @@ jobs:
           case "$INPUT_SUITE" in ime|controls|all) ;; *) echo 'Invalid input suite'; exit 1 ;; esac
           mkdir -p target/android-evidence
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" > target/android-evidence/apk-source-run.json
-          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name android-x86_64-linux-android-debug --dir target/prebuilt-android
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts" > target/android-evidence/apk-source-artifacts.json
+          source_artifact="$(python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          artifacts = json.loads(Path('target/android-evidence/apk-source-artifacts.json').read_text())['artifacts']
+          available = [item for item in artifacts if not item['expired']]
+          early = [item for item in available if re.fullmatch(r'android-x86_64-debug-apk-[0-9]+', item['name'])]
+          if early:
+              print(max(early, key=lambda item: item['created_at'])['name'])
+          elif any(item['name'] == 'android-x86_64-linux-android-debug' for item in available):
+              print('android-x86_64-linux-android-debug')
+          else:
+              raise SystemExit('No published debug APK found in source_run; wait for its APK upload or select a completed run')
+          PY
+          )"
+          export APK_SOURCE_ARTIFACT="$source_artifact"
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "$source_artifact" --dir target/prebuilt-android
           test -f target/prebuilt-android/debug/apk/kokuban.apk
           python3 - <<'PY'
           import hashlib, json, os, subprocess
@@ -70,12 +86,20 @@ jobs:
               'apk_source_run': int(os.environ['SOURCE_RUN']),
               'apk_source_commit': source['head_sha'],
               'apk_source_url': source['html_url'],
+              'apk_source_artifact': os.environ['APK_SOURCE_ARTIFACT'],
+              'source_run_status_at_download': source['status'],
+              'source_run_conclusion_at_download': source['conclusion'],
               'apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
               'apk_bytes': apk.stat().st_size,
               'scripts_checkout_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
               'suite': os.environ['INPUT_SUITE'],
               'scope': 'Current Python input scripts against the recorded prebuilt APK; not a build or validation of the current application sources.',
           }
+          build_provenance = Path('target/prebuilt-android/android-evidence/apk-provenance.json')
+          if build_provenance.exists():
+              result['prebuilt_build_provenance'] = json.loads(build_provenance.read_text())
+              if result['prebuilt_build_provenance']['apk_sha256'] != result['apk_sha256']:
+                  raise SystemExit('Downloaded APK does not match its published build provenance')
           (evidence / 'provenance.json').write_text(json.dumps(result, indent=2) + '\n')
           print(json.dumps(result, indent=2))
           PY

@@ -69,6 +69,46 @@ jobs:
             exit 1
           fi
 
+      - name: Record prebuilt input-test APK provenance
+        if: matrix.target == 'x86_64-linux-android'
+        env:
+          APK_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p target/android-evidence
+          python3 - <<'PY'
+          import hashlib, json, os, subprocess, zipfile
+          from pathlib import Path
+          apk = Path('target/debug/apk/kokuban.apk')
+          result = {
+              'source_run': int(os.environ['GITHUB_RUN_ID']),
+              'source_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+              'source_head_commit': os.environ['APK_SOURCE_HEAD'],
+              'checkout_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'target': 'x86_64-linux-android',
+              'profile': 'debug-opt1',
+              'apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+              'apk_bytes': apk.stat().st_size,
+              'rustc': subprocess.check_output([os.environ['RUSTC'], '--version'], text=True).strip(),
+              'completed_gates': ['APK build and signing verification', '16 KiB ELF alignment', 'Android clippy', 'Android dependency isolation'],
+              'device_validation': 'Not completed when this early artifact was published; inspect the full run for device results.',
+          }
+          with zipfile.ZipFile(apk) as archive:
+              result['native_libraries'] = [{'path': item.filename, 'bytes': item.file_size, 'zip_bytes': item.compress_size}
+                                           for item in archive.infolist() if item.filename.endswith('.so')]
+          Path('target/android-evidence/apk-provenance.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+
+      - name: Publish compiled APK for independent input-script iteration
+        if: matrix.target == 'x86_64-linux-android'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-x86_64-debug-apk-${{ github.run_attempt }}
+          path: |
+            target/debug/apk/kokuban.apk
+            target/android-evidence/apk-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Start Android 35 emulator
         if: matrix.target == 'x86_64-linux-android'
         shell: bash
