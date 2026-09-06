@@ -1,0 +1,152 @@
+{
+  "device": {
+    "model": "sdk_gphone64_x86_64",
+    "manufacturer": "Google",
+    "android": "15",
+    "api": "35",
+    "abi": "x86_64",
+    "fingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys"
+  },
+  "checks": [
+    "unknown host rejected in batch",
+    "changed host rejected before command execution",
+    "verified host and client key execute a remote command",
+    "interactive SSH propagates Android PTY resize",
+    "Neovim edits and saves Rust source through Android SSH",
+    "tmux creates two interactive panes and returns to SSH shell",
+    "fzf filters and selects beta interactively",
+    "edited Rust project compiles and runs remotely; Git sees the edit",
+    "SSH disconnect returns to a usable Android shell"
+  ],
+  "status": "passed",
+  "batch_profile": "debug-opt1",
+  "interactive_profile": "release",
+  "checkpoints": [
+    {
+      "stage": "preparing isolated SSH fixture",
+      "elapsed_seconds": 0.0
+    },
+    {
+      "stage": "ephemeral SSH server listening",
+      "elapsed_seconds": 0.409
+    },
+    {
+      "stage": "host trust rejection and pinned key authentication passed",
+      "elapsed_seconds": 5.517
+    },
+    {
+      "stage": "non-debuggable release upgrade presented a frame",
+      "elapsed_seconds": 9.13
+    },
+    {
+      "stage": "interactive SSH shell accepted a command",
+      "elapsed_seconds": 22.234
+    },
+    {
+      "stage": "remote PTY resize passed",
+      "elapsed_seconds": 49.263
+    },
+    {
+      "stage": "Neovim saved the source edit",
+      "elapsed_seconds": 64.134
+    },
+    {
+      "stage": "tmux pane scenario passed",
+      "elapsed_seconds": 78.17
+    },
+    {
+      "stage": "fzf selected the expected item",
+      "elapsed_seconds": 88.773
+    },
+    {
+      "stage": "remote Rust build and Git edit passed; starting media",
+      "elapsed_seconds": 105.074
+    },
+    {
+      "stage": "media pixel scenarios passed",
+      "elapsed_seconds": 181.981
+    },
+    {
+      "stage": "packaged SSH process exited; checking local shell",
+      "elapsed_seconds": 182.397
+    }
+  ],
+  "verified_host_fingerprint": "256 SHA256:6rHRODw1ciuId++oAXmr3GtIM3g0IbUzrnZ9fnRApBg runner@runnervmejwal (ED25519)",
+  "batch_diagnostics": {
+    "unknown": "ssh: unknown host key for 10.0.2.2:2222 in /data/data/com.kokuban.terminal/files/home/.kokuban-ssh-ci/unknown_hosts; connect interactively after verifying its fingerprint, or install a verified pin",
+    "changed": "ssh: HOST KEY CHANGED for [10.0.2.2]:2222; connection refused. Verify the change through a trusted channel before updating known_hosts",
+    "success": "SSH_ANDROID_OK"
+  },
+  "release_pid": "11373",
+  "remote_pty_sizes": {
+    "before": "25 46",
+    "after": "4 104"
+  },
+  "media": {
+    "photo": {
+      "name": "Earth photographed by the Apollo 17 crew, 1972-12-07",
+      "credit": "NASA Johnson Space Center Gateway to Astronaut Photography of Earth, AS17-148-22727",
+      "source_page": "https://science.nasa.gov/earth/earth-observatory/the-blue-marble-from-apollo-17-1133/",
+      "url": "https://assets.science.nasa.gov/dynamicimage/assets/science/esd/eo/images/imagerecords/1000/1133/AS17-148-22727_lrg.jpg?crop=faces%2Cfocalpoint&fit=clip&h=1881&w=1881",
+      "sha256": "f5e146bade95fb9a2bed3221a9100b0c4efc8d0d175ca6c2346fcd49ea9ea3c4",
+      "bytes": 373379,
+      "usage_reference": "https://www.nasa.gov/nasa-brand-center/images-and-media/"
+    },
+    "checks": [
+      "NASA photograph landmarks match pixels presented by Android",
+      "photograph deletion removes its presented pixels",
+      "shared Sixel decoder presents a red image rectangle",
+      "native Kitty animation advances and composes patches after emitter exits",
+      "Kitty negative z bands respect explicit and default cell backgrounds",
+      "FFmpeg decodes H.264 MP4 over SSH with changing presented Android image pixels"
+    ],
+    "status": "passed",
+    "photo_origin_pixels": [
+      0,
+      136
+    ],
+    "presented_video_frames": [
+      {
+        "sha256": "0e1953278e73c3e08f5cb149d64e42a56b400031abc2af51019ec9015e2e5c5d",
+        "decoded_frame_indices": [
+          11
+        ]
+      },
+      {
+        "sha256": "501b51b1486e499b28016cf20126eee68d242bc5b0adca1733177992b5a57401",
+        "decoded_frame_indices": [
+          30
+        ]
+      },
+      {
+        "sha256": "06b0a9ca9ae02971ddaf6f0864460aa3729474ec3c03820883dc440cee12f60a",
+        "decoded_frame_indices": [
+          47
+        ]
+      },
+      {
+        "sha256": "f27951ed821b88f1f30cf5eccb991949b471a7e69e5adc9e6b4ec0af64a3fcdc",
+        "decoded_frame_indices": [
+          67
+        ]
+      }
+    ],
+    "video_note": "Synthetic motion encoded in a real H.264 file; silent playback. Producer FPS and presentation-call rate are distinct."
+  },
+  "ssh_exit_observed": true,
+  "versions": {
+    "git": "git version 2.55.0",
+    "neovim": "NVIM v0.9.5",
+    "tmux": "tmux 3.4",
+    "fzf": "0.44.1 (debian)",
+    "rust": "rustc 1.94.1 (e408947bf 2026-03-25)"
+  },
+  "local_shell_marker_verified": true,
+  "terminal_removed_private_credentials": true,
+  "cleanup_errors": [],
+  "source_run": 34026733947,
+  "source_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34026733947",
+  "source_head_commit": "8b0abef2b8b06989877a375400eca0235d2bb902",
+  "source_artifact": 9987560732,
+  "apk_provenance": "x86-release-provenance.json"
+}
