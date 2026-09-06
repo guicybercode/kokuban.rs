@@ -33,10 +33,26 @@ python3 tools/kitty-media.py sample.mp4 --width 160 --height 90 --fps 12 --durat
 python3 -m unittest discover -s tools -p 'test_*.py'
 ```
 
-Validação local do produtor em2026-09-05: MP4 H.264 decodificado em12 quadros,
-269176 bytes de protocolo; dois testes passaram (fragmentação/reconstrução
-zlib e rejeição de quadros incompletos). Isso prova o produtor, não a reprodução
+Validação local do produtor em 2026-09-05: MP4 H.264 decodificado em 12 quadros,
+269176 bytes de protocolo; três testes passaram (fragmentação/reconstrução
+zlib, rejeição de quadros incompletos e decodificação de uma fotografia). O teste
+de foto encontrou e corrigiu um filtro de FPS que descartava seu único quadro.
+Isso prova o produtor, não a reprodução
 no Android. Foto real, vídeo apresentado, atualização/remoção e medidas em
 release ainda precisam de evidência do dispositivo.
+
+`media-photo.json` identifica a fotografia real AS17-148-22727, da tripulação
+Apollo 17, com crédito NASA Johnson Space Center e hash dos bytes utilizados.
+A validação baixa a imagem para `target`, compara os pixels enviados com 25
+pontos da captura Android e verifica sua remoção. Consulte a
+[fonte da fotografia](https://science.nasa.gov/earth/earth-observatory/the-blue-marble-from-apollo-17-1133/)
+e as [orientações de uso da NASA](https://www.nasa.gov/nasa-brand-center/images-and-media/).
+
+`scripts/android/media_scenarios.py` também reutiliza a sequência de teste
+Linux para Sixel e animação Kitty nativa, que avança após encerrar o emissor.
+O cenário de vídeo decodifica um MP4 H.264 com movimento sintético, compara a
+região de imagem entre capturas e coleta CPU/PSS e chamadas de apresentação.
+Os resultados ficam dentro do artefato SSH do CI; testes dos coletores não
+substituem a execução desses cenários no dispositivo.
 
 Referência: [protocolo gráfico Kitty](https://sw.kovidgoyal.net/kitty/graphics-protocol/).
