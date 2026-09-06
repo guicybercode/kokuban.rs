@@ -65,6 +65,22 @@ def locate_photo(rgb, size, expected, photo_size=(320, 320)):
     return None
 
 
+def video_frame_hashes(path, width, height, fps, count):
+    """Hash the actual decoded RGBA frames using the producer's conversion."""
+    raw = subprocess.check_output(["ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-an", "-vf",
+        f"fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,format=rgba",
+        "-frames:v", str(count), "-threads", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"])
+    frame_bytes = width * height * 4
+    if len(raw) != frame_bytes * count:
+        raise AssertionError("Reference MP4 decode did not produce the expected frames")
+    hashes = {}
+    for index in range(count):
+        rgba = raw[index * frame_bytes:(index + 1) * frame_bytes]
+        rgb = bytes(channel for offset, channel in enumerate(rgba) if offset % 4 != 3)
+        hashes.setdefault(hashlib.sha256(rgb).hexdigest(), []).append(index)
+    return hashes
+
+
 def run_media_scenarios(device, enter, server_root, output, serial, package):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -125,9 +141,7 @@ def run_media_scenarios(device, enter, server_root, output, serial, package):
             time.sleep(0.2)
         if not photo_done.exists():
             raise AssertionError("Photograph producer did not finish")
-        rgb, size = capture("photo-removed")
-        if locate_photo(rgb, size, expected) is not None:
-            raise AssertionError("Kitty image remains after producer deletion")
+        wait_pixels("photo-removed", lambda rgb, size: locate_photo(rgb, size, expected) is None)
         results["checks"].append("photograph deletion removes its presented pixels")
 
         spec = importlib.util.spec_from_file_location("linux_graphics_fixture", ROOT / "scripts/linux-graphics-smoke.py")
@@ -140,39 +154,50 @@ def run_media_scenarios(device, enter, server_root, output, serial, package):
         initial, start = linux.animation_payloads()
         send_bytes("animation-init", clear + initial)
         wait_pixels("animation-root", lambda rgb, size: rectangle(rgb, size, linux.RED))
-        send_bytes("animation-start", start)
-        wait_pixels("animation-patch", lambda rgb, size: rectangle(rgb, size, linux.GREEN))
-        wait_pixels("animation-composed", lambda rgb, size: rectangle(rgb, size, linux.CYAN))
+        start_file, emitter_done = server_root / "animation-start.kitty", server_root / "animation-emitter.done"
+        start_file.write_bytes(start)
+        remote_script("start-animation", f"cat {shlex.quote(str(start_file))}; touch {shlex.quote(str(emitter_done))}")
+        wait_pixels("animation-patch", lambda rgb, size: emitter_done.exists()
+                    and rectangle(rgb, size, linux.GREEN) and rectangle(rgb, size, linux.RED, 12, 20))
+        wait_pixels("animation-composed", lambda rgb, size: emitter_done.exists()
+                    and rectangle(rgb, size, linux.CYAN) and rectangle(rgb, size, linux.GREEN, 12, 20))
         results["checks"].append("native Kitty animation advances and composes patches after emitter exits")
         send_bytes("animation-delete", clear)
 
         video = server_root / "sample.mp4"
         subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=12",
                         "-t", "15", "-c:v", "libx264", "-threads", "1", "-pix_fmt", "yuv420p", str(video)], check=True)
+        references = video_frame_hashes(video, 320, 180, 12, 180)
+
+        def recognize_video(rgb, size):
+            x, y = origin
+            region = b"".join(rgb[((y + row) * size[0] + x) * 3:((y + row) * size[0] + x + 320) * 3] for row in range(180))
+            digest = hashlib.sha256(region).hexdigest()
+            return {"sha256": digest, "decoded_frame_indices": references[digest]} if digest in references else None
+
         producer_stats = output / "video-producer.json"
         video_done = server_root / "video.done"
         remote_script("video", f"cat {shlex.quote(str(clear_file))}; python3 {producer} {shlex.quote(str(video))} --width 320 --height 180 --fps 12 --duration 15 --hold 0 --stats {shlex.quote(str(producer_stats))}; touch {shlex.quote(str(video_done))}")
-        time.sleep(1)
+        # A real decoded frame is the barrier: blank -> first frame cannot be
+        # counted as playback, and memory sampling starts after presentation.
+        first_video_frame = wait_pixels("video-first-frame", recognize_video)
         with (output / "measurement-output.txt").open("w") as log:
             measurement = subprocess.Popen([sys.executable, str(ROOT / "scripts/android/measure.py"), "--serial", serial,
                 "--package", package, "--scenario", "ssh-mp4-320x180-12fps", "--seconds", "8", "--output", str(output / "measurements")], stdout=log, stderr=subprocess.STDOUT)
-            hashes = []
+            presented = [first_video_frame]
             try:
                 for _ in range(3):
-                    rgb, size = capture("video")
-                    x, y = origin
-                    region = b"".join(rgb[((y + row) * size[0] + x) * 3:((y + row) * size[0] + x + 320) * 3] for row in range(180))
-                    hashes.append(hashlib.sha256(region).hexdigest())
                     time.sleep(0.8)
+                    presented.append(wait_pixels("video", recognize_video))
                 if measurement.wait(timeout=30) != 0:
                     raise AssertionError("Video CPU/PSS collection failed")
             finally:
                 if measurement.poll() is None:
                     measurement.terminate()
                     measurement.wait(timeout=5)
-        if len(set(hashes)) < 2:
+        if len({frame["sha256"] for frame in presented}) < 3:
             raise AssertionError("MP4 decoding did not produce changing pixels in the image region")
-        results["video_region_sha256"] = hashes
+        results["presented_video_frames"] = presented
         deadline = time.monotonic() + 20
         while not video_done.exists() and time.monotonic() < deadline:
             time.sleep(0.2)
