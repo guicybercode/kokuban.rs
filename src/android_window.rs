@@ -1,12 +1,14 @@
 //! Android owns window lifetime and input; terminal state lives independently.
+use crate::android_images::{image_store::ImageStore, AndroidImages};
 use crate::android_runtime::AndroidRuntime;
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::CellFlags;
 use crate::grid::Grid;
 use crate::input::keyboard::{encode_terminal_key, TerminalKey};
+use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
-use crate::software_raster::{draw_glyph_a8, fill_rect};
+use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriter, WriterExit};
@@ -60,10 +62,15 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         background.0, background.1, background.2
     );
     let grid = Arc::new(Mutex::new(grid));
-    // Graphics capabilities stay disabled until shared ingestion is connected.
+    let support = GraphicsSupport {
+        kitty: config.images.kitty_graphics_enabled(),
+        sixel: config.images.sixel_graphics_enabled(),
+    };
+    let mut images = AndroidImages::new(&config.images);
+    let image_store = images.store.clone();
     let pty = Arc::new(
         runtime
-            .spawn_shell(columns, rows, false, false)
+            .spawn_shell(columns, rows, support.kitty, support.sixel)
             .map_err(|e| e.to_string())?,
     );
     log::info!("shell started");
@@ -78,9 +85,11 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
     let proxy = event_loop.create_proxy();
     let exit_proxy = proxy.clone();
     let reader_pending = pending.clone();
-    let reader = TerminalReader::spawn_text(
+    let reader = TerminalReader::spawn_with_graphics(
         pty.clone(),
         grid.clone(),
+        support,
+        move |event, grid| images.process(event, grid),
         move || {
             if !reader_pending.swap(true, Ordering::AcqRel) {
                 let _ = proxy.send_event(Event::Updated);
@@ -104,6 +113,7 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         config,
         colors: TerminalColors::new(foreground, background),
         grid,
+        image_store,
         pty,
         writer: Some(writer),
         reader: Some(reader),
@@ -132,6 +142,7 @@ struct AndroidWindow {
     config: Config,
     colors: TerminalColors,
     grid: Arc<Mutex<Grid>>,
+    image_store: Arc<Mutex<ImageStore>>,
     pty: Arc<Pty>,
     writer: Option<TerminalWriter>,
     reader: Option<TerminalReader>,
@@ -250,7 +261,7 @@ impl AndroidWindow {
         let cell_height = atlas.cell_height.ceil().max(1.0) as u32;
         let columns = (size.width / cell_width).clamp(1, 512) as u16;
         let rows = (size.height.saturating_sub(toolbar_height) / cell_height).clamp(1, 256) as u16;
-        let (cells, cursor) = {
+        let (cells, cursor, images) = {
             let mut grid = self.grid.lock().map_err(|_| "Grid lock poisoned")?;
             if grid.cols() != columns as usize || grid.rows() != rows as usize {
                 // Do not commit new grid dimensions if the PTY resize fails.
@@ -268,7 +279,11 @@ impl AndroidWindow {
                 .collect::<Vec<_>>();
             let cursor = (grid.cursor_visible && grid.scroll_offset == 0)
                 .then_some((grid.cursor_col as u32, grid.cursor_row as u32));
-            (cells, cursor)
+            (
+                cells,
+                cursor,
+                crate::android_images::snapshot(&grid, &self.image_store)?,
+            )
         };
         let surface = self.surface.as_mut().ok_or("Surface unavailable")?;
         if self.surface_size != (size.width, size.height) {
@@ -297,6 +312,22 @@ impl AndroidWindow {
                 rgb(colors.background),
                 255,
             );
+        }
+        for image in images.iter().filter(|image| image.z < 0) {
+            draw_image_rgba(
+                &mut frame,
+                frame_size,
+                &image.pixels,
+                image.size,
+                image.rect,
+            );
+        }
+        for (index, cell) in cells.iter().enumerate() {
+            let x = (index as u32 % columns as u32) * cell_width;
+            let y = (index as u32 / columns as u32) * cell_height;
+            let colors = self
+                .colors
+                .resolve_cell_colors(cell.fg, cell.bg, cell.flags);
             if !cell
                 .flags
                 .intersects(CellFlags::HIDDEN | CellFlags::WIDE_CONT)
@@ -329,6 +360,15 @@ impl AndroidWindow {
                     );
                 }
             }
+        }
+        for image in images.iter().filter(|image| image.z >= 0) {
+            draw_image_rgba(
+                &mut frame,
+                frame_size,
+                &image.pixels,
+                image.size,
+                image.rect,
+            );
         }
         if let Some((col, row)) = cursor {
             fill_rect(
