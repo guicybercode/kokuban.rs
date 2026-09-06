@@ -99,6 +99,11 @@ def write_all(payload: bytes) -> None:
         remaining = remaining[written:]
 
 
+def terminal_size() -> tuple[int, ...]:
+    return struct.unpack(
+        "4H", fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, b"\0" * 8))
+
+
 def barrier(marker: bytes) -> str:
     write_all(b"\x1b[H" + marker + b"\x1b[K\x1b[6n")
     expected = f"\x1b[1;{len(marker) + 1}R".encode()
@@ -137,10 +142,12 @@ def child(directory: Path) -> None:
         wait_for(lambda: (directory / "window-ready").exists(), "visible window")
         write_all(b"\x1b[2J")
         ready = {"reply_hex": barrier(PROMPT), "marker": PROMPT.decode(),
-                 "winsize_rows_cols_pixels": struct.unpack(
-                     "4H", fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, b"\0" * 8))}
+                 "winsize_rows_cols_pixels": terminal_size()}
         record(directory, "ready.json", ready)
         wait_for(lambda: (directory / "output-start").exists(), "output phase")
+        # The shell can run before glyph metrics/window initialization finish.
+        # Observe again after the parent has allowed the real window to settle.
+        settled_size = terminal_size()
         started = time.monotonic()
         write_all(payload)
         written = time.monotonic()
@@ -152,6 +159,7 @@ def child(directory: Path) -> None:
             "write_and_terminal_roundtrip_seconds": acknowledged - started,
             "bytes_per_second_including_terminal_roundtrip": len(payload) / (acknowledged - started),
             "marker": FINAL_MARKER.decode(), "reply_hex": reply,
+            "winsize_rows_cols_pixels": settled_size,
         })
         wait_for(lambda: (directory / "stop").exists(), "clean shutdown")
         record(directory, "child-exit.json", {"status": 0})
@@ -229,6 +237,9 @@ def exercise(binary: Path, directory: Path, report: dict[str, Any]) -> None:
 
         report["phases"]["startup_settle"] = quiet_phase(1)
         report["phases"]["idle"] = quiet_phase(IDLE_SECONDS)
+        geometry = run(["xdotool", "getwindowgeometry", "--shell", window], check=True).stdout.decode()
+        dimensions = dict(line.split("=", 1) for line in geometry.splitlines() if "=" in line)
+        report["window_pixels"] = [int(dimensions["WIDTH"]), int(dimensions["HEIGHT"])]
         samples = [sample()]
         (directory / "output-start").touch()
         deadline = time.monotonic() + 20
@@ -244,6 +255,8 @@ def exercise(binary: Path, directory: Path, report: dict[str, Any]) -> None:
         if (report["output"]["bytes"] != LINES * LINE_BYTES
                 or report["output"]["reply_hex"] != expected_reply):
             raise AssertionError("output length or terminal barrier mismatch")
+        if report["output"]["winsize_rows_cols_pixels"] != [24, 80, *report["window_pixels"]]:
+            raise AssertionError("settled PTY cells/pixels disagree with the real window")
         report["phases"]["output_settle"] = quiet_phase(1)
         report["phases"]["post_output_idle"] = quiet_phase(IDLE_SECONDS)
         (directory / "stop").touch()
