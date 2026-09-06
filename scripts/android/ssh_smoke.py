@@ -180,8 +180,10 @@ printf DONE > "$HOME/.kokuban-ssh-ci/checks.done"
             time.sleep(1)
             enter("nvim --clean src/main.rs")
             time.sleep(2)
-            device.type_text("i//edited-on-android")
-            device.shell("input", "keyevent", "KEYCODE_ENTER")
+            # Open a line above the Rust function. Splitting a // comment with
+            # Enter would trigger Neovim's default automatic comment prefix and
+            # comment out the existing function, invalidating the later build.
+            device.type_text("O//edited-on-android")
             device.shell("input", "keyevent", "KEYCODE_ESCAPE")
             device.screenshot(args.output / "02-neovim-edited.png")
             enter(":wq")
