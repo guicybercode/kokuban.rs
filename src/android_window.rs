@@ -1,4 +1,7 @@
 //! Android owns window lifetime and input; terminal state lives independently.
+#[path = "android_pty_size.rs"]
+mod pty_size;
+
 use crate::android_controls::{
     mask_outside, Control, Rect, ToolbarLayout, TouchContacts, TouchGesture, TouchRegion,
 };
@@ -28,6 +31,7 @@ use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriter, WriterExit};
+use pty_size::{AppliedPtySize, PtySize};
 use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -160,6 +164,7 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         grid,
         image_store,
         pty,
+        applied_pty_size: AppliedPtySize::default(),
         writer: Some(writer),
         reader: Some(reader),
         pending,
@@ -210,6 +215,7 @@ struct AndroidWindow {
     grid: Arc<Mutex<Grid>>,
     image_store: Arc<Mutex<SoftwareGraphics>>,
     pty: Arc<Pty>,
+    applied_pty_size: AppliedPtySize,
     writer: Option<TerminalWriter>,
     reader: Option<TerminalReader>,
     pending: Arc<AtomicBool>,
@@ -545,11 +551,22 @@ impl AndroidWindow {
         let cell_height = atlas.cell_height.ceil().max(1.0) as u32;
         let columns = (view_width / cell_width).clamp(1, 512) as u16;
         let rows = (view_height / cell_height).clamp(1, 256) as u16;
+        let pty_size = PtySize::new(columns, rows, view_width, view_height);
         let (cells, cursor, images, selected, scroll_offset, cancel_selection_drag) = {
             let mut grid = self.grid.lock().map_err(|_| "Grid lock poisoned")?;
+            // Apply physical viewport changes even when the cell count is unchanged.
+            // Keep both the grid and cached dimensions unchanged if the ioctl fails.
+            self.applied_pty_size
+                .apply(pty_size, |size| {
+                    self.pty.resize_with_pixels(
+                        size.columns,
+                        size.rows,
+                        size.pixel_width,
+                        size.pixel_height,
+                    )
+                })
+                .map_err(|e| e.to_string())?;
             if grid.cols() != columns as usize || grid.rows() != rows as usize {
-                // Do not commit new grid dimensions if the PTY resize fails.
-                self.pty.resize(columns, rows).map_err(|e| e.to_string())?;
                 grid.resize(columns as usize, rows as usize);
                 log::info!("terminal resized: {columns}x{rows}");
             }
