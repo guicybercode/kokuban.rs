@@ -136,7 +136,8 @@ cenários ainda não executados.
 | IME real, toque, seleção/clipboard | Necessitam execução com teclado Android real; `adb input text` não prova composição. |
 | SSH/ferramentas | Cliente implementado: 9 testes unitários e 2 testes CLI/servidor no host passaram, incluindo trust, senha sem eco, UTF-8, resize e restauração do terminal. Em Android, passaram rejeição de host desconhecido/alterado, chave pública, sessão interativa e resize remoto 25x46→4x104. Neovim encontrou Esc consumido pelo IME; correção publicada, ainda em revalidação. tmux/fzf/Git/build permanecem pendentes. |
 | Foto/animação/vídeo | Pipeline compartilhado e coleta por pixels implementados. Produtor FFmpeg passou 3 testes, incluindo foto única; testes de reconhecimento de pixels passaram. Apresentação Android e consumo ainda dependem do smoke. |
-| Consumo | PSS, CPU, latência e fluidez ainda sem medições aprovadas em runtime. Tamanho de build não prova baixo consumo. |
+| Consumo release x86_64 | Run [34003348109](https://github.com/guicybercode/kokuban.rs/actions/runs/34003348109), 15 s ociosos após abrir: PSS do app 25.608→29.356 KiB; app+shell 26.519→30.267 KiB; CPU média 0,133% de um núcleo. [Amostras](android-evidence/1b9847b/release-idle.json). |
+| Entrada release x86_64 | Probe de eco com teclas Android injetadas: 64 correlações callback→próximo quadro de saída, mediana 94,35 ms, máximo 144,10 ms; desenho/apresentação média 50,24 ms. [Amostras](android-evidence/1b9847b/release-echo.json). Não mede teclado físico até scanout. |
 
 Ferramentas reproduzíveis:
 
@@ -159,6 +160,11 @@ As primeiras capturas preservadas mostram [shell](android-evidence/cf4525c/shell
 [SSH](android-evidence/cf4525c/ssh.png) e a [falha de Esc no Neovim](android-evidence/cf4525c/neovim-escape-failure.png).
 O [PR #8](https://github.com/guicybercode/kokuban.rs/pull/8) permanece em rascunho
 até os critérios de execução serem comprovados.
+
+A amostra ociosa inclui a estabilização após abrir o app; a PSS cresceu durante
+os 15 segundos. CPU é a do processo Android, não a CPU total do emulador/host.
+O cenário de eco provocou 120 apresentações em 15 segundos e será usado para
+avaliar quadros redundantes. Mídia em release ainda não possui medição aprovada.
 
 Ainda é necessário concluir e demonstrar todos os cenários de
 `SECOND_SESSION_PROMPT.md`: IME real e teclados externos, seleção/clipboard,
