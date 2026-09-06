@@ -58,8 +58,12 @@ entre perfis preservando os dados de teste com a mesma chave local.
   passados somente ao filho. Shell de fallback Android: `/system/bin/sh`.
 - Configuração: `files/config/kokuban/kokuban.toml`; HOME: `files/home`, ambos
   relativos ao armazenamento privado da aplicação, sem depender do cwd da JVM.
-- `src/android_glyph_atlas.rs`: rasterização Rust/fontdue, fontes do sistema,
-  atlas A8 de 1 MiB e até 8192 entradas. Dois fallbacks são carregados sob demanda.
+- `src/android_glyph_atlas.rs`: fonte primária rasterizada por fontdue, fontes
+  do sistema, atlas A8 de 1 MiB e até 8192 entradas. `android_font_fallback.rs`
+  usa ttf-parser e ab_glyph_rasterizer para desenhar somente o glifo solicitado.
+  Dois arquivos de fallback de até 32 MiB cada podem ficar retidos; a evicção
+  precede a leitura da terceira fonte. Outlines CJK não são materializados em
+  conjunto (`f280262`). Os três componentes são Rust.
 - `src/android_images.rs`: seleciona os módulos CPU e delega a `SoftwareGraphics`,
   compartilhado com Linux: decodificação, KittyHandler, posicionamento, ordem de
   imagens, snapshots, cache e animação. Usa `TerminalReader::spawn_with_graphics`
@@ -110,10 +114,13 @@ que o IME não aprenda os textos. A decisão final de privacidade depende do IME
 Os botões têm nós de acessibilidade Android com rótulo, estado e bounds; isso
 não demonstra navegação completa do conteúdo do terminal com TalkBack.
 
-Não redistribuímos fontes do Android. Fontdue ainda não faz shaping de scripts
-complexos nem emoji colorido. CJK pode carregar outlines grandes: o custo real
-precisa ser medido. A fonte geométrica em `fonts/android-test.ttf` foi criada
-para testes e não entra no APK.
+Não redistribuímos fontes do Android. A rota atual ainda não faz shaping de
+scripts complexos nem emoji colorido. O fallback CJK é rasterizado por glifo:
+o teste isolado de uma fonte Noto variável de 32.355.424 bytes registrou pico
+RSS de 33.980.416 bytes, contra 351.191.040 bytes ao expandir todos os outlines
+CFF2. Essa medição no host não representa PSS do app; a carga no Android está
+em validação. As fontes geométricas de [teste](../fonts/README.md) são originais
+e não entram no APK.
 
 O shell de sistema oferece comandos Android/toybox; não constitui um ambiente
 completo de desenvolvimento. O cliente SSH Rust é empacotado no APK e chamado
@@ -132,7 +139,7 @@ mas ainda não foram exercidos pelo teclado virtual Android. Consulte [CLI e lim
 Git, Neovim, tmux, fzf e Rust executam no host SSH; não são binários locais do APK.
 
 O cliente usa russh/Tokio, com ring e rotinas C/assembly transitivas. O atlas é
-Rust/fontdue; o contrato NativeActivity/InputConnection e as APIs do sistema
+Rust, usando fontdue e rasterização de fallback por glifo; o contrato NativeActivity/InputConnection e as APIs do sistema
 exigem FFI. A lógica do terminal e do cliente SSH continua em Rust.
 
 ## Evidência e verificações pendentes
@@ -144,7 +151,7 @@ cenários ainda não executados.
 | --- | --- |
 | Isolamento Git | Worktree irmã, branch própria, commits/push normais sem trailer de coautoria. |
 | PTY/runtime no macOS | 52 testes PTY passaram após `3775e6a`, incluindo ioctl real de pixels; 6 testes runtime também passaram. Cobrem Ctrl-C, SIGWINCH, cwd/env privados e persistência de arquivos. |
-| Atlas | 7 testes determinísticos passaram (A8, baseline, estilos, cache e limites). |
+| Atlas | 11 testes passaram em `f280262`: A8, baseline/descender, curvas TrueType/CFF2, Hangul visível, espaço ideográfico vazio, estilos, cache e limites antes da alocação. Check ARM64 `--locked` também passou. |
 | Regressão compartilhada | 447 testes do binário macOS passaram após integrar imagens em `14972d3`, Rust 1.94.1. |
 | Entrada Rust | 5 testes de IME e 6 do encoder compartilhado passaram em harness; os testes foram integrados ao binário para o CI. |
 | Controles | 7 cenários de dispositivo passaram no APK debug opt1 `b158779`: toolbar, teclas, Esc com IME, seleção/copy/paste, scroll 22→0, mouse SGR e modificadores Ctrl/Shift/Alt. Bytes recebidos pelo PTY coincidem exatamente; entrada injetada pelo Android, sem periférico USB físico. [Resultados](android-evidence/b158779/controls.json), [seleção](android-evidence/b158779/selection-drag.png), [colagem](android-evidence/b158779/clipboard.png). |
