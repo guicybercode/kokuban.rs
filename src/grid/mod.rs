@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::parser::kitty_graphics::KittyCommand;
 use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES};
-use crate::graphics::{ImageId, ImagePlacement};
+use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
 
@@ -574,17 +574,21 @@ impl Grid {
     }
 
     pub fn scroll_up(&mut self, count: usize) {
-        if !self.using_alt_screen && self.scroll_top == 0 {
-            let pushed = count.min(self.rows());
-            for i in 0..pushed {
+        let count = count.min(self.scroll_bottom - self.scroll_top + 1);
+        let save_scrollback = !self.using_alt_screen
+            && self.scroll_top == 0
+            && self.scroll_bottom == self.rows() - 1;
+        if save_scrollback {
+            for i in 0..count {
                 let row_data = self.buffer.extract_row(i);
                 self.scrollback.push_back(row_data);
                 if self.scrollback.len() > self.scrollback_max {
                     self.scrollback.pop_front();
                 }
             }
-            self.total_lines_pushed += pushed;
+            self.total_lines_pushed += count;
         }
+        self.scroll_image_placements(count, true, save_scrollback);
         let template = self.template_cell();
         self.buffer.scroll_up(self.scroll_top, self.scroll_bottom, count, template);
         for row in self.scroll_top..=self.scroll_bottom {
@@ -593,11 +597,54 @@ impl Grid {
     }
 
     pub fn scroll_down(&mut self, count: usize) {
+        let count = count.min(self.scroll_bottom - self.scroll_top + 1);
+        self.scroll_image_placements(count, false, false);
         let template = self.template_cell();
         self.buffer.scroll_down(self.scroll_top, self.scroll_bottom, count, template);
         for row in self.scroll_top..=self.scroll_bottom {
             self.dirty[row] = true;
         }
+    }
+
+    fn scroll_image_placements(&mut self, count: usize, up: bool, save_scrollback: bool) {
+        if count == 0 {
+            return;
+        }
+        let top = self.scroll_top as i64;
+        let end = self.scroll_bottom as i64 + 1;
+        let full_screen = self.scroll_top == 0 && self.scroll_bottom == self.rows() - 1;
+        let oldest_row = if save_scrollback { -(self.scrollback.len() as i64) } else { top };
+        let delta = if up { -(count as i64) } else { count as i64 };
+        let cell_width = f32::from(self.cell_pixel_width);
+        let cell_height = f32::from(self.cell_pixel_height);
+        self.image_placements.retain_mut(|placement| {
+            let (row, _, _, rows) = placement.mode.signed_cell_rect(cell_width, cell_height);
+            let bottom = row.saturating_add(i64::from(rows));
+            if !save_scrollback {
+                // Scrolling a region must leave unrelated history and fixed rows alone.
+                if bottom <= top || row >= end {
+                    return true;
+                }
+                // A single image cannot split around fixed rows. Discard intersecting
+                // placements at margins instead of drawing over the fixed content.
+                // Reverse scrolling also must not resurrect pixels lost above row zero.
+                if (!full_screen && (row < top || bottom > end)) || (!up && row < top) {
+                    return false;
+                }
+            }
+            let moved_row = row.saturating_add(delta);
+            let moved_bottom = bottom.saturating_add(delta);
+            let retained = if save_scrollback || (full_screen && up) {
+                moved_bottom > oldest_row && moved_row < end
+            } else {
+                moved_row >= top && moved_bottom <= end
+            };
+            if retained {
+                let PlacementMode::Inline { row, .. } = &mut placement.mode;
+                *row = moved_row;
+            }
+            retained
+        });
     }
 
     pub fn visible_cell(&self, vis_row: usize, col: usize) -> &Cell {
@@ -778,7 +825,12 @@ impl Grid {
                     self.buffer.clear_row(row, template);
                     self.dirty[row] = true;
                 }
-                self.image_placements.clear();
+                let cell_width = f32::from(self.cell_pixel_width);
+                let cell_height = f32::from(self.cell_pixel_height);
+                self.image_placements.retain(|placement| {
+                    let (row, _, _, rows) = placement.mode.signed_cell_rect(cell_width, cell_height);
+                    row.saturating_add(i64::from(rows)) <= 0
+                });
             }
             3 => {
                 if self.using_alt_screen {
@@ -786,6 +838,12 @@ impl Grid {
                 }
                 let viewport_changed = self.scroll_offset != 0;
                 self.scrollback.clear();
+                let cell_width = f32::from(self.cell_pixel_width);
+                let cell_height = f32::from(self.cell_pixel_height);
+                self.image_placements.retain(|placement| {
+                    let (row, _, _, rows) = placement.mode.signed_cell_rect(cell_width, cell_height);
+                    row.saturating_add(i64::from(rows)) > 0
+                });
                 self.scroll_offset = 0;
                 self.marks.erase_saved_lines(self.total_lines_pushed);
                 self.total_lines_pushed = 0;
@@ -952,6 +1010,146 @@ mod tests {
             .into_iter()
             .map(|placement| placement.image_id)
             .collect()
+    }
+
+    fn inline_at(image_id: u64, row: i64, rows: u32) -> ImagePlacement {
+        let mut placement = image_placement(image_id);
+        let PlacementMode::Inline { row: origin, rows: height, .. } = &mut placement.mode;
+        *origin = row;
+        *height = rows;
+        placement
+    }
+
+    fn image_row(grid: &Grid, image_id: u64) -> Option<i64> {
+        grid.image_placements.iter().find_map(|placement| {
+            let PlacementMode::Inline { row, .. } = placement.mode;
+            (placement.image_id == image_id).then_some(row)
+        })
+    }
+
+    #[test]
+    fn images_follow_newlines_into_bounded_primary_history() {
+        let mut grid = Grid::new(6, 3, 2);
+        grid.image_placements.push(inline_at(1, 1, 2));
+        grid.set_cursor_pos(2, 0);
+
+        for expected in [0, -1, -2, -3] {
+            grid.newline();
+            assert_eq!(image_row(&grid, 1), Some(expected));
+            assert_eq!(grid.cursor_row, 2);
+        }
+        assert_eq!(grid.scrollback_len(), 2);
+        grid.scroll_viewport_up(2);
+        // The final retained image row appears at viewport row zero.
+        assert_eq!(grid.image_placements[0].mode.pixel_rect(8.0, 16.0).1
+            + grid.scroll_offset as f32 * 16.0, -16.0);
+
+        grid.newline();
+        assert!(grid.image_placements.is_empty());
+    }
+
+    #[test]
+    fn partial_region_scroll_preserves_fixed_images_and_discards_crossing_images() {
+        let mut grid = Grid::new(6, 6, 10);
+        grid.image_placements = vec![
+            inline_at(1, 0, 1),
+            inline_at(2, 3, 1),
+            inline_at(3, 1, 1),
+            inline_at(4, 4, 2),
+            inline_at(5, 5, 1),
+        ];
+        grid.set_scroll_region(1, 4);
+        grid.scroll_up(1);
+
+        assert_eq!(image_ids(&grid.image_placements), [1, 2, 5]);
+        assert_eq!(image_row(&grid, 1), Some(0));
+        assert_eq!(image_row(&grid, 2), Some(2));
+        assert_eq!(image_row(&grid, 5), Some(5));
+        assert_eq!(grid.scrollback_len(), 0);
+
+        grid.set_scroll_region(0, 3);
+        grid.scroll_up(usize::MAX);
+        assert_eq!(grid.scrollback_len(), 0);
+        assert_eq!(grid.total_lines_pushed, 0);
+        assert_eq!(image_ids(&grid.image_placements), [5]);
+    }
+
+    #[test]
+    fn alternate_images_scroll_out_without_moving_hidden_primary_images() {
+        let mut grid = Grid::new(6, 4, 10);
+        grid.image_placements.push(inline_at(1, 2, 1));
+        grid.enter_alt_screen();
+        grid.image_placements.push(inline_at(2, 0, 2));
+
+        grid.scroll_up(1);
+        assert_eq!(image_row(&grid, 2), Some(-1));
+        grid.scroll_up(1);
+        assert!(grid.image_placements.is_empty());
+        assert_eq!(grid.scrollback_len(), 0);
+        assert_eq!(image_ids(grid.all_image_placements()), [1]);
+
+        grid.leave_alt_screen();
+        assert_eq!(image_row(&grid, 1), Some(2));
+    }
+
+    #[test]
+    fn scroll_retention_uses_current_native_pixel_height() {
+        let mut grid = Grid::new(6, 6, 0);
+        grid.cell_pixel_height = 10;
+        let mut image = inline_at(1, 0, 1);
+        let PlacementMode::Inline { render_size, .. } = &mut image.mode;
+        *render_size = InlineRenderSize::NativePixels { width: 8, height: 40 };
+        grid.image_placements.push(image);
+
+        grid.scroll_up(3);
+        assert_eq!(image_row(&grid, 1), Some(-3));
+        assert_eq!(grid.image_placements[0].mode.effective_cell_rect(8.0, 10.0), (0, 0, 1, 1));
+        grid.scroll_up(1);
+        assert!(grid.image_placements.is_empty());
+    }
+
+    #[test]
+    fn insert_delete_lines_move_images_and_leave_saved_history_in_place() {
+        let mut grid = Grid::new(6, 5, 10);
+        grid.image_placements = vec![inline_at(1, 0, 1), inline_at(2, 3, 1)];
+        grid.scroll_up(1);
+        assert_eq!(image_row(&grid, 1), Some(-1));
+        grid.set_cursor_pos(1, 0);
+
+        grid.insert_lines(1);
+        assert_eq!(image_row(&grid, 1), Some(-1));
+        assert_eq!(image_row(&grid, 2), Some(3));
+        grid.delete_lines(1);
+        assert_eq!(image_row(&grid, 2), Some(2));
+        grid.scroll_down(3);
+        assert_eq!(image_ids(&grid.image_placements), [1]);
+        assert_eq!(image_row(&grid, 1), Some(-1));
+    }
+
+    #[test]
+    fn erase_screen_and_saved_lines_keep_the_other_image_set() {
+        let mut grid = Grid::new(6, 5, 10);
+        grid.image_placements = vec![inline_at(1, 0, 1), inline_at(2, 3, 1)];
+        grid.scroll_up(1);
+        grid.erase_in_display(2);
+        assert_eq!(image_ids(&grid.image_placements), [1]);
+        grid.image_placements.push(inline_at(3, 1, 1));
+        grid.erase_in_display(3);
+        assert_eq!(image_ids(&grid.image_placements), [3]);
+        assert_eq!(grid.scrollback_len(), 0);
+    }
+
+    #[test]
+    fn zero_and_oversized_scroll_counts_match_image_and_text_movement() {
+        let mut grid = Grid::new(6, 3, 10);
+        grid.image_placements.push(inline_at(1, 2, 1));
+        grid.scroll_up(0);
+        grid.scroll_down(0);
+        assert_eq!(image_row(&grid, 1), Some(2));
+        grid.scroll_up(usize::MAX);
+        assert_eq!(image_row(&grid, 1), Some(-1));
+        assert_eq!(grid.scrollback_len(), 3);
+        assert_eq!(grid.total_lines_pushed, 3);
     }
 
     fn assert_wide_row_valid(grid: &Grid, row: usize) {

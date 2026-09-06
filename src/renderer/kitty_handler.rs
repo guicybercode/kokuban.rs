@@ -1344,7 +1344,7 @@ fn inline_placement_and_advance(
     let (cols, rows) = bounded_inline_dimensions(display_cols, display_rows, grid_cols, grid_rows);
     (
         PlacementMode::Inline {
-            row,
+            row: row as i64,
             col,
             cols,
             rows,
@@ -2118,7 +2118,7 @@ mod tests {
             placement_id,
             client_placement_id: (placement_id != 0).then_some(placement_id),
             mode: PlacementMode::Inline {
-                row,
+                row: row as i64,
                 col,
                 cols,
                 rows,
