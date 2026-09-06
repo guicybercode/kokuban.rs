@@ -81,6 +81,17 @@ def video_frame_hashes(path, width, height, fps, count):
     return hashes
 
 
+def region_color(rgb, size, origin, dimensions, color):
+    """Check a known image footprint, including every pixel and its bounds."""
+    x, y = origin
+    width, height = dimensions
+    if min(x, y) < 0 or min(width, height) <= 0 or x + width > size[0] or y + height > size[1]:
+        return False
+    expected = bytes(color) * width
+    return all(rgb[((y + row) * size[0] + x) * 3:((y + row) * size[0] + x + width) * 3] == expected
+               for row in range(height))
+
+
 def run_media_scenarios(device, enter, server_root, output, serial, package):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -163,6 +174,24 @@ def run_media_scenarios(device, enter, server_root, output, serial, package):
                     and rectangle(rgb, size, linux.CYAN) and rectangle(rgb, size, linux.GREEN, 12, 20))
         results["checks"].append("native Kitty animation advances and composes patches after emitter exits")
         send_bytes("animation-delete", clear)
+
+        # Kitty's lowest z band belongs below explicit cell backgrounds, but
+        # remains visible through default-background cells. Reuse the Linux PNG.
+        dimensions = (linux.WIDTH, linux.HEIGHT)
+        for name, z, visible in [("negative-layer", -1, linux.BLUE),
+                                 ("background-layer", -(2 ** 31), linux.RED)]:
+            payload = linux.payload("kitty", linux.BLUE).replace(
+                b"q=2,C=1;", f"q=2,C=1,z={z};".encode("ascii"), 1)
+            send_bytes(name, clear + b"\x1b[48;2;255;0;0m\x1b[2J" + payload)
+            wait_pixels(name, lambda rgb, size: region_color(rgb, size, origin, dimensions, visible)
+                        and rectangle(rgb, size, linux.YELLOW))
+        # Overwrite cell backgrounds without ED, which would erase placements.
+        send_bytes("background-layer-reveal", b"\x1b[0m\x1b[H" + b" " * 20 + b"\r\n" + b" " * 20
+                   + b"\x1b[10;1H")
+        wait_pixels("background-layer-reveal", lambda rgb, size: region_color(
+            rgb, size, origin, dimensions, linux.BLUE))
+        results["checks"].append("Kitty negative z bands respect explicit and default cell backgrounds")
+        send_bytes("layers-delete", b"\x1b[0m" + clear)
 
         video = server_root / "sample.mp4"
         subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=12",

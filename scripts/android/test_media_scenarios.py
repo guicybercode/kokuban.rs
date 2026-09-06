@@ -1,9 +1,18 @@
 import unittest
 
-from media_scenarios import locate_photo, rectangle
+from media_scenarios import locate_photo, rectangle, region_color
 
 
 class PixelEvidenceTests(unittest.TestCase):
+    def test_known_footprint_checks_every_row_and_bounds(self):
+        red = bytes((255, 0, 0))
+        screen = bytearray(red * 20)
+        self.assertTrue(region_color(screen, (5, 4), (1, 1), (3, 2), (255, 0, 0)))
+        self.assertFalse(region_color(screen, (5, 4), (3, 1), (3, 2), (255, 0, 0)))
+        self.assertFalse(region_color(screen, (5, 4), (-1, 1), (3, 2), (255, 0, 0)))
+        screen[(2 * 5 + 2) * 3] = 0
+        self.assertFalse(region_color(screen, (5, 4), (1, 1), (3, 2), (255, 0, 0)))
+
     def test_rectangle_requires_rows_and_does_not_wrap(self):
         red = bytes((255, 0, 0))
         self.assertTrue(rectangle(red * 20, (5, 4), (255, 0, 0), 3, 3))
