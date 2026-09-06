@@ -3,10 +3,12 @@ use crate::graphics::{
     retain_unreferenced_image_ids, ImagePlacement, InlineRenderSize, PlacementMode,
 };
 use crate::grid::{Grid, TerminalEvent};
+use crate::renderer::image_animation::AnimationUpdate;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 
 const MAX_PLACEMENTS: usize = 4096;
 
@@ -160,6 +162,29 @@ impl SoftwareGraphics {
             (image.z_index, order_id)
         });
         images
+    }
+
+    /// Only visible animations schedule work; static and hidden images stay idle.
+    pub(crate) fn advance_animations(
+        &mut self,
+        grid: &Grid,
+        cell_size: (u16, u16),
+        now: Instant,
+    ) -> AnimationUpdate {
+        let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
+        let viewport_width = grid.cols() as f32 * cell_width;
+        let viewport_height = grid.rows() as f32 * cell_height;
+        let visible: HashSet<_> = grid
+            .image_placements
+            .iter()
+            .filter_map(|placement| {
+                let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
+                let y = y + grid.scroll_offset as f32 * cell_height;
+                (x < viewport_width && y < viewport_height && x + width > 0.0 && y + height > 0.0)
+                    .then_some(placement.image_id)
+            })
+            .collect();
+        self.store.advance_animations(now, &visible)
     }
 }
 
@@ -515,5 +540,227 @@ mod tests {
         assert_eq!(images.len(), 2);
         assert_eq!(images[0].pixels.as_ref(), &[0, 0, 255, 255]);
         assert_eq!(images[1].pixels.as_ref(), &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn numbered_animation_uploads_continue_without_selectors_and_control_is_silent() {
+        use std::time::{Duration, Instant};
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload(
+                "a=T,f=32,s=2,v=1,I=42,C=1",
+                &[255, 0, 0, 255, 255, 0, 0, 255],
+            ),
+        );
+        // The client repeats a=f but omits I and metadata in the continuation.
+        let responses = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=f,f=32,s=1,v=1,I=42,c=1,x=1,z=10000,C=1,m=1;AP8A\x1b\\\x1b_Ga=f,m=0;/w\x1b\\",
+        );
+        assert_eq!(responses, [b"\x1b_Gi=1,I=42,r=2;OK\x1b\\".to_vec()]);
+        assert!(feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=a,I=42,r=1,z=10000,v=2,s=3\x1b\\"
+        )
+        .is_empty());
+        let update = graphics.advance_animations(&grid, (4, 8), Instant::now());
+        assert!(update.next_deadline.is_some());
+        let next = update.next_deadline.unwrap();
+        assert!(graphics.advance_animations(&grid, (4, 8), next).changed);
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[255, 0, 0, 255, 0, 255, 0, 255]
+        );
+        let stopped = graphics.advance_animations(&grid, (4, 8), next + Duration::from_secs(60));
+        assert!(stopped.next_deadline.is_none());
+        assert_eq!(grid.image_placements.len(), 1);
+    }
+
+    #[test]
+    fn frame_composition_and_deletion_update_existing_placements() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload(
+                "a=T,f=32,s=2,v=1,i=7,C=1",
+                &[255, 0, 0, 255, 255, 0, 0, 255],
+            ),
+        );
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=f,f=32,s=2,v=1,i=7", &[0, 255, 0, 255, 0, 0, 255, 255]),
+        );
+        let responses = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=c,i=7,r=2,c=1,X=1,x=0,w=1,h=1,C=1\x1b\\",
+        );
+        assert_eq!(responses, [b"\x1b_Gi=7;OK\x1b\\".to_vec()]);
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[0, 0, 255, 255, 255, 0, 0, 255]
+        );
+        // Root deletion promotes the second canvas without creating a placement.
+        assert!(feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=d,d=f,i=7,r=1\x1b\\"
+        )
+        .is_empty());
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[0, 255, 0, 255, 0, 0, 255, 255]
+        );
+        assert!(feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=d,d=f,i=7\x1b\\"
+        )
+        .is_empty());
+        assert_eq!(grid.image_placements.len(), 1);
+        assert!(feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=d,d=F,i=7\x1b\\"
+        )
+        .is_empty());
+        assert!(grid.image_placements.is_empty());
+        assert_eq!(graphics.store.image_count(), 0);
+    }
+
+    #[test]
+    fn hidden_animation_has_no_deadline_and_catches_up_when_visible() {
+        use std::time::{Duration, Instant};
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255, 0, 0, 255]),
+        );
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=f,f=32,s=1,v=1,i=7,z=10000", &[0, 255, 0, 255]),
+        );
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=a,i=7,r=1,z=10000,s=3,v=2\x1b\\",
+        );
+        grid.scroll_offset = 6;
+        let now = Instant::now() + Duration::from_secs(60);
+        let hidden = graphics.advance_animations(&grid, (4, 8), now);
+        assert!(!hidden.changed);
+        assert!(hidden.next_deadline.is_none());
+        grid.scroll_offset = 0;
+        let visible = graphics.advance_animations(&grid, (4, 8), now);
+        assert!(visible.changed);
+        assert!(visible.next_deadline.is_none());
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[0, 255, 0, 255]
+        );
+    }
+
+    #[test]
+    fn malformed_and_interleaved_frames_preserve_the_existing_image() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,i=7,C=1", &[255, 0, 0, 255]),
+        );
+        let invalid = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=f,f=32,s=1,v=1,i=7,c=99,r=1", &[0, 255, 0, 255]),
+        );
+        // Editing ignores the append-only base selector and returns the edited frame.
+        assert_eq!(invalid, [b"\x1b_Gi=7,r=1;OK\x1b\\".to_vec()]);
+        let invalid = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=f,f=32,s=1,v=1,i=7,r=99", &[0, 0, 255, 255]),
+        );
+        assert!(String::from_utf8_lossy(&invalid[0]).contains("i=7,r=99;ENOENT:"));
+        assert!(feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=f,f=32,s=1,v=1,i=7,m=1;AAAA\x1b\\"
+        )
+        .is_empty());
+        let interleaved = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=t,i=7,m=0;/w==\x1b\\",
+        );
+        assert!(String::from_utf8_lossy(&interleaved[0]).contains("EINVAL:"));
+        let invalid = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=a,i=7,s=9\x1b\\",
+        );
+        assert!(String::from_utf8_lossy(&invalid[0]).contains("EINVAL:"));
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[0, 255, 0, 255]
+        );
+        assert_eq!(grid.image_placements.len(), 1);
+    }
+
+    #[test]
+    fn frame_chunk_errors_keep_the_target_identity_and_pending_quiet_mode() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=1,v=1,I=42,C=1", &[255, 0, 0, 255]),
+        );
+        let errors = feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=f,I=42,f=32,s=1,v=1,m=1;AAAA\x1b\\\x1b_Ga=f,I=43,m=0;/w\x1b\\",
+        );
+        assert_eq!(
+            errors,
+            [b"\x1b_Gi=1,I=42;EINVAL:interleaved transmission I=43\x1b\\".to_vec()]
+        );
+        assert!(feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=f,I=42,q=2,f=32,s=1,v=1,m=1;AAAA\x1b\\\x1b_Ga=f,r=bad,m=0;/w\x1b\\"
+        )
+        .is_empty());
+        assert_eq!(
+            graphics.snapshot(&grid, (4, 8))[0].pixels.as_ref(),
+            &[255, 0, 0, 255]
+        );
     }
 }

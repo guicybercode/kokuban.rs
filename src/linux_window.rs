@@ -23,6 +23,7 @@ use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use thiserror::Error;
 use unicode_width::UnicodeWidthChar;
 use winit::application::ApplicationHandler;
@@ -681,6 +682,7 @@ struct LinuxWindow {
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
+    occluded: bool,
     pointer_route: PointerRouteState<DeviceId>,
     ime_active: bool,
     ime_preedit: Option<ImePreedit>,
@@ -729,6 +731,7 @@ impl LinuxWindow {
             reader_status: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
+            occluded: false,
             pointer_route: PointerRouteState::default(),
             ime_active: false,
             ime_preedit: None,
@@ -1035,6 +1038,37 @@ impl Drop for LinuxWindow {
 }
 
 impl ApplicationHandler<LinuxEvent> for LinuxWindow {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(ControlFlow::Wait);
+        if event_loop.exiting() || self.occluded || self.surface.is_none() {
+            return;
+        }
+        let (Some(window), Some(cell_size)) = (&self.window, self.cell_dimensions) else {
+            return;
+        };
+        let size = window.inner_size();
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+        let result = (|| {
+            // Preserve the PTY reader's grid -> graphics lock order.
+            let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
+            let mut graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
+            Ok::<_, String>(graphics.advance_animations(&grid, cell_size, Instant::now()))
+        })();
+        match result {
+            Ok(update) => {
+                if update.changed {
+                    window.request_redraw();
+                }
+                if let Some(deadline) = update.next_deadline {
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                }
+            }
+            Err(error) => self.fail(event_loop, error),
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -1055,6 +1089,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
         }
 
         match event {
+            WindowEvent::Occluded(occluded) => {
+                self.occluded = occluded;
+                if !occluded {
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
+                }
+            }
             WindowEvent::CloseRequested => {
                 self.request_terminal_shutdown();
                 event_loop.exit();
