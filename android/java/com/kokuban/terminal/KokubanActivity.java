@@ -163,9 +163,12 @@ public final class KokubanActivity extends NativeActivity {
         @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() { return controls; }
 
         @Override public InputConnection onCreateInputConnection(EditorInfo info) {
-            info.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
-            info.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_FLAG_NO_FULLSCREEN
+            // Only the active editor transaction is buffered here. NO_SUGGESTIONS
+            // suppresses real LatinIME composition; MULTI_LINE can enable its legacy
+            // autocorrection even without AUTO_CORRECT. Enter still reaches the
+            // terminal through InputConnection text/key/editor-action callbacks.
+            info.inputType = InputType.TYPE_CLASS_TEXT;
+            info.imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION | EditorInfo.IME_FLAG_NO_FULLSCREEN
                 | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING | EditorInfo.IME_ACTION_NONE;
             info.initialSelStart = 0;
             info.initialSelEnd = 0;
