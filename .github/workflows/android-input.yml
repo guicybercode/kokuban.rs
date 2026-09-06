@@ -132,9 +132,18 @@ jobs:
           PY
           python3 scripts/android/launch.py --serial emulator-5554 --apk target/prebuilt-android/debug/apk/kokuban.apk
 
+      - name: Capture host and device state after emulator launch failure
+        if: ${{ !cancelled() && steps.emulator.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/launch/host-diagnostics
+
       - name: Verify real IME composition
+        id: ime
         if: env.INPUT_SUITE == 'ime' || env.INPUT_SUITE == 'all'
         run: python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
+
+      - name: Capture host and device state after ime failure
+        if: ${{ !cancelled() && steps.ime.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/ime/host-diagnostics
 
       - name: Publish IME evidence immediately
         if: ${{ !cancelled() && steps.emulator.outcome == 'success' && (env.INPUT_SUITE == 'ime' || env.INPUT_SUITE == 'all') }}
@@ -148,8 +157,13 @@ jobs:
           retention-days: 14
 
       - name: Verify controls and injected keyboard and mouse input
+        id: controls
         if: ${{ !cancelled() && steps.emulator.outcome == 'success' && (env.INPUT_SUITE == 'controls' || env.INPUT_SUITE == 'all') }}
         run: python3 scripts/android/controls_smoke.py --serial emulator-5554
+
+      - name: Capture host and device state after controls failure
+        if: ${{ !cancelled() && steps.controls.outcome == 'failure' }}
+        run: bash scripts/android/diagnostics.sh target/android-evidence/controls/host-diagnostics
 
       - name: Publish input results and device diagnostics
         if: always()

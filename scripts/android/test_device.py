@@ -1,6 +1,8 @@
 """ADB input preparation preserves commands while refreshing event timestamps."""
 
 import unittest
+from unittest.mock import patch
+import subprocess
 
 from device import Device
 
@@ -22,6 +24,28 @@ class TextInjectionTests(unittest.TestCase):
         device = Device.__new__(Device)
         with self.assertRaises(ValueError):
             device.type_text("printf %s text")
+
+
+class AdbFailureTests(unittest.TestCase):
+    def test_large_failed_dump_keeps_exit_and_both_ends_readable(self):
+        device = Device.__new__(Device)
+        device.command = ["adb"]
+        result = subprocess.CompletedProcess([], 1, "BEGIN" + "x" * 390000 + "END", "device offline")
+        with patch("device.subprocess.run", return_value=result):
+            with self.assertRaises(RuntimeError) as error:
+                device.adb("shell", "dumpsys input_method")
+        message = str(error.exception)
+        self.assertLess(len(message), 5000)
+        for expected in ("exit 1", "device offline", "BEGIN", "END", "omitted"):
+            self.assertIn(expected, message)
+
+    def test_binary_capture_failure_retains_the_transport_error(self):
+        device = Device.__new__(Device)
+        device.command = ["adb"]
+        result = subprocess.CompletedProcess([], 1, b"", b"error: device offline\n")
+        with patch("device.subprocess.run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "device offline"):
+                device.adb("exec-out", "screencap", "-p", binary=True)
 
 
 if __name__ == "__main__":

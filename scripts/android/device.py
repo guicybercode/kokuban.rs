@@ -9,6 +9,13 @@ import subprocess
 import time
 
 
+def output_summary(output):
+    rendered = repr(output)
+    if len(rendered) <= 4096:
+        return rendered
+    return f"{rendered[:2048]} ... [{len(rendered) - 4096} characters omitted] ... {rendered[-2048:]}"
+
+
 class Device:
     def __init__(self, serial=None):
         sdk = os.environ.get("ANDROID_HOME", os.environ.get("ANDROID_SDK_ROOT", str(Path.home() / "Library/Android/sdk")))
@@ -21,7 +28,8 @@ class Device:
     def adb(self, *args, binary=False, timeout=30, check=True):
         result = subprocess.run(self.command + list(args), capture_output=True, text=not binary, timeout=timeout)
         if check and result.returncode:
-            raise RuntimeError(f"adb command failed: {args!r}: {result.stderr!r} {result.stdout!r}")
+            raise RuntimeError(f"adb command failed (exit {result.returncode}): {args!r}: "
+                               f"stderr={output_summary(result.stderr)} stdout={output_summary(result.stdout)}")
         return result.stdout if binary else result.stdout.strip()
 
     def shell(self, *args, **kwargs):
