@@ -23,7 +23,7 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 - **macOS**: Metal GPU renderer (11.0+)
 - **Linux**: Software rasterizer with X11/Wayland via winit
 
-Android is under development and does not yet have a runnable APK. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md) and [Android session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and required evidence.
+Android APK builds and emulator validation are being developed on the separate `codex/android-native` branch; Android is not yet integrated into `main`. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md), [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md) and [second-session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and evidence.
 
 ## Installation
 
