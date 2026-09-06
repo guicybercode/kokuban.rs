@@ -10,12 +10,12 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 
 - **Native rendering**: Metal GPU renderer on macOS; software rasterizer with winit + softbuffer on Linux
 - **Built-in parser**: VT/ANSI escape sequence parser with support for complex SGR modes (faint, conceal, styled underlines)
-- **Graphics protocols**: Kitty graphics protocol and Sixel image rendering
-- **Pane management**: Split windows vertically or horizontally, navigate with vim-style keybinds
-- **Zoom**: Dynamic font size adjustment per session
-- **Selection**: Mouse-driven text selection with configurable colors
-- **Status bar**: Shows shell, working directory, and pane index
-- **Prompt marks**: Visual indicators for command boundaries with navigation shortcuts
+- **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux includes alpha blending, image layers, and a bounded CPU cache
+- **Pane management (macOS)**: Split windows vertically or horizontally, navigate with vim-style keybinds
+- **Zoom (macOS)**: Dynamic font size adjustment per session
+- **Selection (macOS)**: Mouse-driven text selection with configurable colors
+- **Status bar (macOS)**: Shows shell, working directory, and pane index
+- **Prompt marks (macOS)**: Visual indicators for command boundaries with navigation shortcuts
 - **Configuration**: TOML-based config file with font, color, and keybind customization
 
 ## Platform Support
@@ -23,7 +23,7 @@ Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS a
 - **macOS**: Metal GPU renderer (11.0+)
 - **Linux**: Software rasterizer with X11/Wayland via winit
 
-Windows is not supported. The crate will fail to compile on unsupported platforms.
+Android is under development and does not yet have a runnable APK. Windows is not supported. The crate will fail to compile on unsupported platforms. See the [delivery roadmap](docs/ROADMAP.md) and [Android session prompt](docs/SECOND_SESSION_PROMPT.md) for the remaining work and required evidence.
 
 ## Installation
 
@@ -57,6 +57,35 @@ cargo build --release
 ```
 
 The binary will be created at `target/release/kokuban`.
+
+### Trying images
+
+Run these commands **inside a Kokuban terminal**, from the repository directory:
+
+```bash
+cargo run --example graphics -- kitty
+cargo run --example graphics -- sixel
+cargo run --example graphics -- /path/to/photo.png
+cargo run --example graphics -- stream
+```
+
+The Rust example sends PNG images in Kitty chunks or a Sixel color pattern. `stream` replaces the same image for 120 frames with a requested rate of 30 FPS. This exercises externally supplied frame updates; it is not a benchmark or an implementation of Kitty animation controls. Native Kitty frame/animation/composition commands, general video playback and audio remain unfinished.
+
+Images follow terminal scrolling. Image placements crossing a partial scroll region are discarded to avoid painting over fixed text. The Linux cache limits both decoded bytes and image count (4096); snapshots share pixel buffers, so concurrent upload and rendering can temporarily retain more memory than the cache limit. Configuration applies at startup:
+
+```toml
+[images]
+enabled = true
+max_memory_mb = 64
+kitty_enabled = true
+sixel_enabled = true
+
+[images.kitty]
+max_image_size_mb = 16
+allow_file_transfer = false
+```
+
+These are example limits; defaults remain 256 MiB for the cache and 50 MiB per Kitty upload. `allow_file_transfer = false` keeps transfers in the terminal byte stream, including over SSH. Set `images.enabled = false` to disable both image protocols. Kokuban starts the shell configured through `KOKUBAN_SHELL` or `SHELL`; SSH on Linux runs through the system's `ssh` command in that shell.
 
 ## Configuration
 
@@ -110,7 +139,7 @@ See `kokuban.toml` in the repository root for the complete default configuration
 
 ## Keybinds
 
-Default keybinds use `cmd` on macOS and `Super` (Windows key) on Linux:
+These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux provides terminal keyboard/IME and mouse input and scrollback; it does not yet implement this pane shortcut table.
 
 | Action              | Keybind             |
 |---------------------|---------------------|
@@ -135,7 +164,7 @@ All keybinds are customizable via the configuration file.
 
 ## Development Status
 
-Kokuban is in active development (v0.1.0). Core terminal functionality is stable, but expect changes as features are refined and added.
+Kokuban is in active development (v0.1.0). Compatibility with development applications and Android usability still require implementation and runtime validation. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
 
 ## Project Name
 
