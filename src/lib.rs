@@ -22,6 +22,8 @@ mod parser;
 mod pty;
 mod render_scene;
 mod selection;
+use android_images as renderer;
+mod software_graphics;
 mod software_raster;
 mod terminal_colors;
 mod terminal_decoder;

@@ -2,7 +2,7 @@
 use crate::android_controls::{
     mask_outside, Control, Rect, ToolbarLayout, TouchContacts, TouchGesture, TouchRegion,
 };
-use crate::android_images::{image_store::ImageStore, AndroidImages};
+use crate::android_images::AndroidImages;
 use crate::android_ime::{AccessibleControl, AndroidIme};
 use crate::android_input::{self, ImeEvent, InputModifiers, InputState};
 use crate::android_metrics::FrameMetrics;
@@ -20,6 +20,7 @@ use crate::input::mouse::{
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::selection::{GridPoint, SelectionState};
+use crate::software_graphics::SoftwareGraphics;
 use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
@@ -201,7 +202,7 @@ struct AndroidWindow {
     config: Config,
     colors: TerminalColors,
     grid: Arc<Mutex<Grid>>,
-    image_store: Arc<Mutex<ImageStore>>,
+    image_store: Arc<Mutex<SoftwareGraphics>>,
     pty: Arc<Pty>,
     writer: Option<TerminalWriter>,
     reader: Option<TerminalReader>,
@@ -466,7 +467,10 @@ impl AndroidWindow {
             (
                 cells,
                 cursor,
-                crate::android_images::snapshot(&grid, &self.image_store)?,
+                self.image_store
+                    .lock()
+                    .map_err(|_| "Image store lock poisoned")?
+                    .snapshot(&grid, (cell_width as u16, cell_height as u16)),
                 selected,
             )
         };
@@ -498,17 +502,17 @@ impl AndroidWindow {
                 255,
             );
         }
-        for image in images.iter().filter(|image| image.z < 0) {
+        for image in images.iter().filter(|image| image.z_index < 0) {
             draw_image_rgba(
                 &mut frame,
                 frame_size,
                 &image.pixels,
                 image.size,
                 (
-                    image.rect.0 + left as f32,
-                    image.rect.1 + top as f32,
-                    image.rect.2,
-                    image.rect.3,
+                    image.rectangle.0 + left as f32,
+                    image.rectangle.1 + top as f32,
+                    image.rectangle.2,
+                    image.rectangle.3,
                 ),
             );
         }
@@ -551,17 +555,17 @@ impl AndroidWindow {
                 }
             }
         }
-        for image in images.iter().filter(|image| image.z >= 0) {
+        for image in images.iter().filter(|image| image.z_index >= 0) {
             draw_image_rgba(
                 &mut frame,
                 frame_size,
                 &image.pixels,
                 image.size,
                 (
-                    image.rect.0 + left as f32,
-                    image.rect.1 + top as f32,
-                    image.rect.2,
-                    image.rect.3,
+                    image.rectangle.0 + left as f32,
+                    image.rectangle.1 + top as f32,
+                    image.rectangle.2,
+                    image.rectangle.3,
                 ),
             );
         }
@@ -1320,6 +1324,50 @@ impl Drop for AndroidWindow {
 }
 
 impl ApplicationHandler<Event> for AndroidWindow {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(ControlFlow::Wait);
+        if event_loop.exiting() || self.surface.is_none() {
+            return;
+        }
+        let Some(window) = &self.window else {
+            return;
+        };
+        let size = window.inner_size();
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+        let update = (|| -> Result<_, String> {
+            // Same grid -> graphics lock order as the PTY reader. Only visible
+            // animations schedule work; suspension drops the surface above.
+            let grid = self.grid.lock().map_err(|_| "Grid lock poisoned")?;
+            let mut graphics = self
+                .image_store
+                .lock()
+                .map_err(|_| "Image store lock poisoned")?;
+            Ok(graphics.advance_animations(
+                &grid,
+                (grid.cell_pixel_width, grid.cell_pixel_height),
+                Instant::now(),
+            ))
+        })();
+        match update {
+            Ok(update) => {
+                if update.changed {
+                    window.request_redraw();
+                }
+                if let Some(deadline) = update.next_deadline {
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+                }
+            }
+            Err(error) => {
+                log::error!("Animation failed: {error}");
+                let _ = self.ime.show_error(&error);
+                self.error = Some(error);
+                event_loop.exit();
+            }
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         log::info!("resumed");
         if self.surface.is_some() {

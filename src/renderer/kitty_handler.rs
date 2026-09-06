@@ -335,7 +335,7 @@ impl KittyHandler {
     }
 
     /// The protocol orders equal-z images by client ID, independently of cache allocation.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     pub(crate) fn image_client_ids(&self) -> impl Iterator<Item = (ImageId, KittyImageId)> + '_ {
         self.client_images.image_client_ids()
     }
