@@ -8,6 +8,7 @@ mod android_controls;
 mod android_images;
 mod android_ime;
 mod android_input;
+mod android_metrics;
 mod android_runtime;
 mod android_window;
 mod config;

@@ -5,6 +5,7 @@ use crate::android_controls::{
 use crate::android_images::{image_store::ImageStore, AndroidImages};
 use crate::android_ime::AndroidIme;
 use crate::android_input::{self, ImeEvent, InputModifiers, InputState};
+use crate::android_metrics::FrameMetrics;
 use crate::android_runtime::AndroidRuntime;
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
@@ -27,6 +28,7 @@ use softbuffer::{Context, Surface};
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{
     DeviceId, ElementState, Ime, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
@@ -72,6 +74,12 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
     } else {
         log::warn!("Packaged SSH executable is unavailable in this APK");
     }
+    let metrics = FrameMetrics::new(
+        runtime
+            .config_path()
+            .with_file_name("trace-frames")
+            .exists(),
+    );
     let columns = config.window.columns.clamp(1, 512);
     let rows = config.window.rows.clamp(1, 256);
     let mut grid = Grid::new(
@@ -150,6 +158,7 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         writer: Some(writer),
         reader: Some(reader),
         pending,
+        metrics,
         modifiers: ModifiersState::empty(),
         control: false,
         keyboard: false,
@@ -194,6 +203,7 @@ struct AndroidWindow {
     writer: Option<TerminalWriter>,
     reader: Option<TerminalReader>,
     pending: Arc<AtomicBool>,
+    metrics: FrameMetrics,
     modifiers: ModifiersState,
     control: bool,
     keyboard: bool,
@@ -258,6 +268,7 @@ impl AndroidWindow {
                 self.error = Some(format!("Input queue: {error}"));
                 log::error!("{}", self.error.as_deref().unwrap_or("Input failed"));
             } else {
+                self.metrics.input();
                 self.selection.clear();
                 if let Ok(mut grid) = self.grid.lock() {
                     grid.scroll_to_bottom();
@@ -369,6 +380,7 @@ impl AndroidWindow {
     }
 
     fn draw(&mut self) -> Result<(), String> {
+        let render_started = Instant::now();
         self.pending.store(false, Ordering::Release);
         let Some(window) = &self.window else {
             return Ok(());
@@ -709,6 +721,7 @@ impl AndroidWindow {
         }
         window.pre_present_notify();
         frame.present().map_err(|e| e.to_string())?;
+        self.metrics.presented(render_started);
         if !self.first_frame {
             log::info!("first frame presented");
             self.first_frame = true;
@@ -1278,6 +1291,7 @@ impl ApplicationHandler<Event> for AndroidWindow {
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         log::info!("suspended");
         self.focus_changed(false);
+        self.metrics.suspend();
         self.surface = None;
         self.context = None;
         self.touch = None;
@@ -1291,6 +1305,7 @@ impl ApplicationHandler<Event> for AndroidWindow {
         match event {
             Event::Input(event) => self.input_event(event),
             Event::Updated => {
+                self.metrics.output();
                 self.pending.store(false, Ordering::Release);
                 self.redraw();
             }
