@@ -164,6 +164,19 @@ def main():
         state = device.shell("dumpsys", "input_method")
         return "mInputShown=true" in state or "isInputViewShown=true" in state
 
+    def verify_text(path, expected, label):
+        # Device.shell strips text output; use bytes so an accidental space or
+        # extra line cannot make an inexact committed transaction pass.
+        def read():
+            return device.adb("exec-out", "run-as", package, "cat", path, binary=True, check=False)
+        expected_bytes = expected.encode("utf-8")
+        eventually(read, expected_bytes, 45)
+        actual = read()
+        (args.output / f"{label}-pty.bin").write_bytes(actual)
+        if actual != expected_bytes:
+            raise AssertionError(f"{label}: PTY result changed after verification")
+        results[f"{label}_utf8_hex"] = actual.hex()
+
     def hangul_memory(stage):
         memory = device.shell("dumpsys", "meminfo", process)
         (args.output / f"hangul-meminfo-{stage}.txt").write_text(memory + "\n")
@@ -303,7 +316,7 @@ def main():
         tap("backspace", ["delete", "backspace"])
         device.screenshot(args.output / "composed-before-enter.png")
         tap("enter", ["enter", "return", "new line", "done"])
-        eventually(lambda: device.shell("run-as", package, "cat", marker, check=False), "café", 45)
+        verify_text(marker, "café", "latin")
         results["checks"].append("real IME taps, accent popup, Backspace and Enter produce café via PTY")
         results["utf8_result"] = "café"
         device.screenshot(args.output / "result.png")
@@ -332,7 +345,7 @@ def main():
             tap("hangul-a", ["ㅏ", "아"])
             device.screenshot(args.output / "hangul-before-enter.png")
             tap("hangul-enter", ["Enter", "Return", "New line", "Done", "입력"])
-            eventually(lambda: device.shell("run-as", package, "cat", cjk_marker, check=False), "가", 45)
+            verify_text(cjk_marker, "가", "hangul")
             hangul_memory("after")
             memory = results["hangul_memory"]
             if memory["pss_before_kib"] is not None and memory["pss_after_kib"] is not None:
