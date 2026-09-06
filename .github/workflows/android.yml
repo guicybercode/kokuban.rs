@@ -97,9 +97,27 @@ jobs:
         if: matrix.target == 'x86_64-linux-android'
         run: python3 scripts/android/ime_smoke.py --serial emulator-5554 --require-preedit
 
+      - name: Publish IME diagnostics before longer SSH scenarios
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-ime-${{ github.run_attempt }}
+          path: target/android-evidence/ime/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Verify controls clipboard scroll and injected keyboard and mouse input
         if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
         run: python3 scripts/android/controls_smoke.py --serial emulator-5554 --output target/android-evidence/controls
+
+      - name: Publish control diagnostics before longer SSH scenarios
+        if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-controls-${{ github.run_attempt }}
+          path: target/android-evidence/controls/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify SSH trust and interactive development applications
         if: ${{ !cancelled() && matrix.target == 'x86_64-linux-android' && steps.lifecycle.outcome == 'success' }}
