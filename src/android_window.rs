@@ -1,11 +1,13 @@
 //! Android owns window lifetime and input; terminal state lives independently.
 use crate::android_images::{image_store::ImageStore, AndroidImages};
+use crate::android_ime::AndroidIme;
+use crate::android_input::{self, ImeEvent, InputModifiers, InputState};
 use crate::android_runtime::AndroidRuntime;
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::CellFlags;
 use crate::grid::Grid;
-use crate::input::keyboard::{encode_terminal_key, TerminalKey};
+use crate::input::keyboard::TerminalKey;
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
@@ -27,6 +29,7 @@ use winit::window::{Window, WindowId};
 enum Event {
     Updated,
     Finished(Option<String>),
+    Input(ImeEvent),
 }
 
 pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
@@ -44,6 +47,10 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     event_loop.set_control_flow(ControlFlow::Wait);
+    let input_proxy = event_loop.create_proxy();
+    let ime = AndroidIme::new(app.clone(), move |event| {
+        let _ = input_proxy.send_event(Event::Input(event));
+    })?;
     let columns = config.window.columns.clamp(1, 512);
     let rows = config.window.rows.clamp(1, 256);
     let mut grid = Grid::new(
@@ -110,6 +117,9 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         window: None,
         atlas: None,
         app,
+        ime,
+        input: InputState::default(),
+        viewport: None,
         config,
         colors: TerminalColors::new(foreground, background),
         grid,
@@ -139,6 +149,9 @@ struct AndroidWindow {
     window: Option<Arc<Window>>,
     atlas: Option<GlyphAtlas>,
     app: AndroidApp,
+    ime: AndroidIme,
+    input: InputState,
+    viewport: Option<[u32; 4]>,
     config: Config,
     colors: TerminalColors,
     grid: Arc<Mutex<Grid>>,
@@ -199,40 +212,95 @@ impl AndroidWindow {
         self.redraw();
     }
 
+    fn input_modifiers(&self) -> InputModifiers {
+        InputModifiers::new(
+            self.modifiers.shift_key(),
+            self.modifiers.alt_key(),
+            self.control || self.modifiers.control_key(),
+        )
+    }
+
     fn key(&mut self, key: TerminalKey) {
         let application = self
             .grid
             .lock()
             .map(|g| g.application_cursor_keys)
             .unwrap_or(false);
-        if let Some(bytes) = encode_terminal_key(key, application) {
+        let bytes = android_input::encode_key(key, application, self.input_modifiers());
+        if !bytes.is_empty() {
+            self.control = false;
             self.send(bytes);
         }
     }
 
     fn text(&mut self, text: &str) {
-        if text.len() > crate::terminal_writer::TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM {
-            log::warn!("Ignoring oversized text input ({} bytes)", text.len());
-            return;
-        }
-        let mut bytes = text.as_bytes().to_vec();
-        if self.control || self.modifiers.control_key() {
-            if bytes.len() == 1 {
-                bytes[0] = match bytes[0] {
-                    b'@'..=b'_' | b'a'..=b'z' => bytes[0] & 0x1f,
-                    b' ' => 0,
-                    b'?' => 127,
-                    _ => return,
-                };
-            } else {
-                return;
-            }
+        let bytes = android_input::encode_text(text, self.input_modifiers());
+        if !bytes.is_empty() {
             self.control = false;
+            self.send(bytes);
         }
-        if self.modifiers.alt_key() {
-            bytes.insert(0, 0x1b);
+    }
+
+    fn input_event(&mut self, event: ImeEvent) {
+        match &event {
+            ImeEvent::Viewport {
+                left,
+                top,
+                right,
+                bottom,
+                keyboard,
+            } => {
+                self.viewport = Some([*left, *top, *right, *bottom]);
+                self.keyboard = *keyboard;
+            }
+            ImeEvent::Clipboard(text) => {
+                let bracketed = self.grid.lock().map(|g| g.bracketed_paste).unwrap_or(false);
+                if text.len() + 12 <= crate::terminal_writer::TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM
+                {
+                    let mut bytes = Vec::with_capacity(text.len() + 12);
+                    if bracketed {
+                        bytes.extend_from_slice(b"\x1b[200~");
+                    }
+                    bytes.extend_from_slice(text.as_bytes());
+                    if bracketed {
+                        bytes.extend_from_slice(b"\x1b[201~");
+                    }
+                    self.send(bytes);
+                }
+            }
+            _ => {
+                let application = self
+                    .grid
+                    .lock()
+                    .map(|g| g.application_cursor_keys)
+                    .unwrap_or(false);
+                let bytes = self
+                    .input
+                    .handle(&event, application, self.input_modifiers());
+                if !bytes.is_empty() {
+                    self.control = false;
+                    self.send(bytes);
+                }
+            }
         }
-        self.send(bytes);
+        self.redraw();
+    }
+
+    fn content_bounds(&self, width: u32, height: u32) -> [u32; 4] {
+        let rect = self.app.content_rect();
+        let [left, top, right, bottom] = self.viewport.unwrap_or([
+            rect.left.max(0) as u32,
+            rect.top.max(0) as u32,
+            rect.right.max(0) as u32,
+            rect.bottom.max(0) as u32,
+        ]);
+        let right = right.min(width);
+        let bottom = bottom.min(height);
+        if left < right && top < bottom {
+            [left, top, right, bottom]
+        } else {
+            [0, 0, width, height]
+        }
     }
 
     fn toolbar_height(&self) -> u32 {
@@ -255,12 +323,15 @@ impl AndroidWindow {
         if u64::from(size.width) * u64::from(size.height) > 16_777_216 {
             return Err("Android surface exceeds the 16 megapixel memory budget".into());
         }
-        let toolbar_height = self.toolbar_height().min(size.height);
+        let [left, top, right, bottom] = self.content_bounds(size.width, size.height);
+        let view_width = right - left;
+        let view_height = bottom - top;
+        let toolbar_height = self.toolbar_height().min(view_height);
         let atlas = self.atlas.as_mut().ok_or("Font atlas unavailable")?;
         let cell_width = atlas.cell_width.ceil().max(1.0) as u32;
         let cell_height = atlas.cell_height.ceil().max(1.0) as u32;
-        let columns = (size.width / cell_width).clamp(1, 512) as u16;
-        let rows = (size.height.saturating_sub(toolbar_height) / cell_height).clamp(1, 256) as u16;
+        let columns = (view_width / cell_width).clamp(1, 512) as u16;
+        let rows = (view_height.saturating_sub(toolbar_height) / cell_height).clamp(1, 256) as u16;
         let (cells, cursor, images) = {
             let mut grid = self.grid.lock().map_err(|_| "Grid lock poisoned")?;
             if grid.cols() != columns as usize || grid.rows() != rows as usize {
@@ -299,8 +370,8 @@ impl AndroidWindow {
         let frame_size = (size.width, size.height);
         frame.fill(rgb(self.colors.default_background()));
         for (index, cell) in cells.iter().enumerate() {
-            let x = (index as u32 % columns as u32) * cell_width;
-            let y = (index as u32 / columns as u32) * cell_height;
+            let x = left + (index as u32 % columns as u32) * cell_width;
+            let y = top + (index as u32 / columns as u32) * cell_height;
             let colors = self
                 .colors
                 .resolve_cell_colors(cell.fg, cell.bg, cell.flags);
@@ -319,12 +390,17 @@ impl AndroidWindow {
                 frame_size,
                 &image.pixels,
                 image.size,
-                image.rect,
+                (
+                    image.rect.0 + left as f32,
+                    image.rect.1 + top as f32,
+                    image.rect.2,
+                    image.rect.3,
+                ),
             );
         }
         for (index, cell) in cells.iter().enumerate() {
-            let x = (index as u32 % columns as u32) * cell_width;
-            let y = (index as u32 / columns as u32) * cell_height;
+            let x = left + (index as u32 % columns as u32) * cell_width;
+            let y = top + (index as u32 / columns as u32) * cell_height;
             let colors = self
                 .colors
                 .resolve_cell_colors(cell.fg, cell.bg, cell.flags);
@@ -367,41 +443,91 @@ impl AndroidWindow {
                 frame_size,
                 &image.pixels,
                 image.size,
-                image.rect,
+                (
+                    image.rect.0 + left as f32,
+                    image.rect.1 + top as f32,
+                    image.rect.2,
+                    image.rect.3,
+                ),
             );
         }
         if let Some((col, row)) = cursor {
+            let mut preedit_col = col;
+            for c in self.input.preedit().chars().take(columns as usize) {
+                if preedit_col >= u32::from(columns) {
+                    break;
+                }
+                let glyph = atlas.get_or_insert(GlyphKey {
+                    c,
+                    bold: false,
+                    italic: false,
+                });
+                let x = left + preedit_col * cell_width;
+                let y = top + row * cell_height;
+                let width = unicode_width::UnicodeWidthChar::width(c)
+                    .unwrap_or(1)
+                    .max(1) as u32;
+                fill_rect(
+                    &mut frame,
+                    frame_size,
+                    (x as i32, y as i32),
+                    (width * cell_width, cell_height),
+                    0x272d32,
+                    255,
+                );
+                draw_glyph_a8(
+                    &mut frame,
+                    frame_size,
+                    &atlas.pixels,
+                    (atlas.width, atlas.height),
+                    glyph,
+                    (
+                        x as i32 + glyph.bearing_x,
+                        y as i32 + atlas.ascent.round() as i32 + glyph.bearing_y,
+                    ),
+                    0xffffff,
+                );
+                fill_rect(
+                    &mut frame,
+                    frame_size,
+                    (x as i32, (y + cell_height - 2) as i32),
+                    (width * cell_width, 2),
+                    0x6cd4a0,
+                    255,
+                );
+                preedit_col += width;
+            }
             fill_rect(
                 &mut frame,
                 frame_size,
                 (
-                    (col * cell_width) as i32,
-                    ((row + 1) * cell_height - 2) as i32,
+                    (left + col * cell_width) as i32,
+                    (top + (row + 1) * cell_height - 2) as i32,
                 ),
                 (cell_width, 2),
                 0xffffff,
                 255,
             );
         }
-        let toolbar_y = size.height - toolbar_height;
+        let toolbar_y = bottom - toolbar_height;
         // Seven 48 dp targets on normal phones; terminal retains the rest.
         for (index, label) in ["Esc", "Tab", "Ctrl", "<", "v", "^", ">"]
             .iter()
             .enumerate()
         {
-            let x0 = size.width * index as u32 / 7;
-            let x1 = size.width * (index as u32 + 1) / 7;
+            let x0 = left + view_width * index as u32 / 7;
+            let x1 = left + view_width * (index as u32 + 1) / 7;
             let selected = self.control && index == 2;
             fill_rect(
                 &mut frame,
                 frame_size,
                 (x0 as i32, toolbar_y as i32),
-                (x1 - x0 - 1, toolbar_height),
+                ((x1 - x0).saturating_sub(1), toolbar_height),
                 if selected { 0x7d3434 } else { 0x272d32 },
                 255,
             );
             let text_width = label.len() as u32 * cell_width;
-            let left = x0 + (x1 - x0).saturating_sub(text_width) / 2;
+            let text_left = x0 + (x1 - x0).saturating_sub(text_width) / 2;
             for (i, c) in label.chars().enumerate() {
                 let glyph = atlas.get_or_insert(GlyphKey {
                     c,
@@ -415,7 +541,7 @@ impl AndroidWindow {
                     (atlas.width, atlas.height),
                     glyph,
                     (
-                        (left + i as u32 * cell_width) as i32 + glyph.bearing_x,
+                        (text_left + i as u32 * cell_width) as i32 + glyph.bearing_x,
                         (toolbar_y + toolbar_height.saturating_sub(cell_height) / 2) as i32
                             + atlas.ascent.round() as i32
                             + glyph.bearing_y,
@@ -438,8 +564,16 @@ impl AndroidWindow {
             return;
         };
         let size = window.inner_size();
-        if y >= f64::from(size.height.saturating_sub(self.toolbar_height())) {
-            match ((x.max(0.0) as u32).saturating_mul(7) / size.width.max(1)).min(6) {
+        let [left, top, right, bottom] = self.content_bounds(size.width, size.height);
+        if x < f64::from(left)
+            || x >= f64::from(right)
+            || y < f64::from(top)
+            || y >= f64::from(bottom)
+        {
+            return;
+        }
+        if y >= f64::from(bottom.saturating_sub(self.toolbar_height())) {
+            match ((x as u32 - left).saturating_mul(7) / (right - left).max(1)).min(6) {
                 0 => self.key(TerminalKey::Escape),
                 1 => self.key(TerminalKey::Tab),
                 2 => {
@@ -453,7 +587,9 @@ impl AndroidWindow {
             }
         } else {
             self.keyboard = !self.keyboard;
-            window.set_ime_allowed(self.keyboard);
+            if let Err(error) = self.ime.set_visible(self.keyboard) {
+                log::error!("{error}");
+            }
         }
     }
 }
@@ -497,6 +633,7 @@ impl ApplicationHandler<Event> for AndroidWindow {
         })();
         if let Err(error) = result {
             log::error!("Could not resume terminal: {error}");
+            let _ = self.ime.show_error(&error);
             self.error = Some(error);
             event_loop.exit();
         }
@@ -510,10 +647,12 @@ impl ApplicationHandler<Event> for AndroidWindow {
         self.modifiers = ModifiersState::empty();
         self.keyboard = false;
         self.surface_size = (0, 0);
+        self.viewport = None;
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
+            Event::Input(event) => self.input_event(event),
             Event::Updated => {
                 self.pending.store(false, Ordering::Release);
                 self.redraw();
@@ -534,6 +673,7 @@ impl ApplicationHandler<Event> for AndroidWindow {
             WindowEvent::RedrawRequested => {
                 if let Err(error) = self.draw() {
                     log::error!("Presentation failed: {error}");
+                    let _ = self.ime.show_error(&error);
                     self.error = Some(error);
                     event_loop.exit();
                 }

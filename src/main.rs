@@ -11,6 +11,8 @@ mod glyph_atlas;
 mod android_runtime;
 #[cfg(all(test, not(target_os = "android")))]
 mod android_glyph_atlas;
+#[cfg(test)]
+mod android_input;
 mod grid;
 mod input;
 mod layout;

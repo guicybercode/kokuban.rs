@@ -5,6 +5,8 @@
 #![allow(dead_code)]
 
 mod android_images;
+mod android_ime;
+mod android_input;
 mod android_runtime;
 mod android_window;
 mod config;

@@ -824,6 +824,7 @@ dependencies = [
  "flate2",
  "font-kit",
  "fontdue",
+ "jni",
  "log",
  "nix",
  "objc2 0.6.4",

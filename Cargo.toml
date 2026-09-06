@@ -31,6 +31,7 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "
 softbuffer = { version = "0.4.8", default-features = false }
 fontdue = { version = "=0.9.3", default-features = false, features = ["std", "simd"] }
 android_logger = "0.15"
+jni = "=0.22.4"
 
 [package.metadata.android]
 package = "com.kokuban.terminal"
@@ -43,11 +44,13 @@ min_sdk_version = 26
 target_sdk_version = 35
 
 [package.metadata.android.application]
+has_code = true
 label = "Kokuban"
 theme = "@android:style/Theme.Material.NoActionBar"
 extract_native_libs = true
 
 [package.metadata.android.application.activity]
+name = "com.kokuban.terminal.KokubanActivity"
 config_changes = "orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|keyboard|navigation"
 launch_mode = "singleTop"
 exported = true
