@@ -17,13 +17,13 @@ portável. As adaptações Android foram concluídas em commits separados:
 
 Testes Rust cobrem evicção/limpeza, limites UTF-8, paste com controles,
 respostas obsoletas e saturação da fila, além de resize somente em pixels.
-O APK integrado `b158779` passou lifecycle, sete cenários de controles e
-clipboard, aplicações SSH e seis cenários de mídia em debug/release,
-incluindo as camadas negativas. As [evidências e medições](android-evidence/b158779/README.md)
-registram perfis, hashes e limites. O teste estrito de resize remoto passou
-em debug e release `c41bc56` após descartar uma leitura debug vazia. A composição
-intermediária passou com Gboard real no fast `34008178897`, mas revelou glifos
-CFF2 vazios; a correção visual exige novo APK. Periféricos USB físicos não foram testados.
+O APK integrado `8b0abef` passou toda a matriz Android: lifecycle, composição
+real Gboard com bytes exatos, sete cenários de controles/clipboard, SSH com
+resize estrito e seis cenários de mídia em debug/release. As [evidências e
+medições](android-evidence/8b0abef/README.md) registram perfis, hashes e limites.
+A correção `f280262` confirmou glifos CFF2 visíveis por rasterização sob demanda,
+com PSS medida durante a primeira composição. A regressão passou 622 testes
+Linux e 524 macOS. Periféricos USB físicos não foram testados.
 
 A auditoria abaixo fica preservada como referência do contrato original.
 

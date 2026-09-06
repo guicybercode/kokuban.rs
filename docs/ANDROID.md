@@ -6,8 +6,9 @@ foram integrados por merges normais em `14972d3` e `4ea2588`; `3775e6a`
 incorporou a base Linux `385a91c`, com seleção/clipboard, dimensões físicas
 do PTY e descarte de desenhos de imagens opacas que cobrem outras imagens.
 O merge `5638fab` incorporou a documentação Linux de `46e74fb`. Nenhuma alteração da worktree
-Linux foi descartada. Esta entrega ainda está em validação: APK gerado não
-significa Android pronto.
+Linux foi descartada. A matriz Android de `8b0abef` passou integralmente no
+emulador Android 15/API 35 x86_64, incluindo IME real, controles, SSH, mídia e
+medições release. O build ARM64 também passou. [APK, evidências e limites](android-evidence/8b0abef/README.md).
 
 ## Build e instalação
 
@@ -117,9 +118,10 @@ não demonstra navegação completa do conteúdo do terminal com TalkBack.
 Não redistribuímos fontes do Android. A rota atual ainda não faz shaping de
 scripts complexos nem emoji colorido. O fallback CJK é rasterizado por glifo:
 o teste isolado de uma fonte Noto variável de 32.355.424 bytes registrou pico
-RSS de 33.980.416 bytes, contra 351.191.040 bytes ao expandir todos os outlines
-CFF2. Essa medição no host não representa PSS do app; a carga no Android está
-em validação. As fontes geométricas de [teste](../fonts/README.md) são originais
+RSS de 34.062.336 bytes, contra 351.305.728 bytes ao expandir todos os outlines
+CFF2. Essa medição no host não representa PSS do app. No emulador, a primeira
+composição Hangul em debug opt1 registrou PSS de 40.834→85.084 KiB; são dois
+snapshots do processo, sem isolar a alocação da fonte. As fontes geométricas de [teste](../fonts/README.md) são originais
 e não entram no APK.
 
 O shell de sistema oferece comandos Android/toybox; não constitui um ambiente
@@ -142,31 +144,28 @@ O cliente usa russh/Tokio, com ring e rotinas C/assembly transitivas. O atlas é
 Rust, usando fontdue e rasterização de fallback por glifo; o contrato NativeActivity/InputConnection e as APIs do sistema
 exigem FFI. A lógica do terminal e do cliente SSH continua em Rust.
 
-## Evidência e verificações pendentes
+## Evidência da versão validada
 
-Medições/resultados abaixo têm escopo específico; não extrapolam para os
-cenários ainda não executados.
+O [run Android 34026733947](https://github.com/guicybercode/kokuban.rs/actions/runs/34026733947)
+passou com o código `8b0abef`. Proveniências, SHA256, resultados, bytes brutos,
+capturas e amostras estão em [android-evidence/8b0abef](android-evidence/8b0abef/README.md).
+Os resultados identificam o perfil e a ABI; não extrapolam para todo dispositivo.
 
 | Evidência | Resultado observado |
 | --- | --- |
-| Isolamento Git | Worktree irmã, branch própria, commits/push normais sem trailer de coautoria. |
-| PTY/runtime no macOS | 52 testes PTY passaram após `3775e6a`, incluindo ioctl real de pixels; 6 testes runtime também passaram. Cobrem Ctrl-C, SIGWINCH, cwd/env privados e persistência de arquivos. |
-| Atlas | 11 testes passaram em `f280262`: A8, baseline/descender, curvas TrueType/CFF2, Hangul visível, espaço ideográfico vazio, estilos, cache e limites antes da alocação. Check ARM64 `--locked` também passou. |
-| Regressão compartilhada | 447 testes do binário macOS passaram após integrar imagens em `14972d3`, Rust 1.94.1. |
-| Entrada Rust | 5 testes de IME e 6 do encoder compartilhado passaram em harness; os testes foram integrados ao binário para o CI. |
-| Controles | 7 cenários de dispositivo passaram no APK debug opt1 `b158779`: toolbar, teclas, Esc com IME, seleção/copy/paste, scroll 22→0, mouse SGR e modificadores Ctrl/Shift/Alt. Bytes recebidos pelo PTY coincidem exatamente; entrada injetada pelo Android, sem periférico USB físico. [Resultados](android-evidence/b158779/controls.json), [seleção](android-evidence/b158779/selection-drag.png), [colagem](android-evidence/b158779/clipboard.png). |
-| Amostra anterior ARM64 debug opt1 | Build com SSH, dex e os dois ELF de 16 KiB passou. APK local: 5.640.685 bytes; lib terminal: 3.608.736 bytes; lib SSH: 6.099.768 bytes. Esse perfil não é release. |
-| APK inicial ARM64 | Build e assinatura executados localmente com SDK35/NDK27.1/Rust1.94.1. |
-| APK com ponte IME | Build completo em `0b0e8a4`: launcher KokubanActivity, hasCode=true, classes.dex de 12.656 bytes, lib debug sem símbolos de 7.490.768 bytes; assinaturas v2/v3 e zipalign16 passaram. |
-| Release CI ARM64 | Build de `b158779` passou: APK 2.580.973 bytes (2,46 MiB); lib terminal 2.921.336 bytes; SSH 3.182.048 bytes. [Proveniência e SHA256](android-evidence/b158779/arm64-release-provenance.json), run [34006719596](https://github.com/guicybercode/kokuban.rs/actions/runs/34006719596). Execução do dispositivo usa x86_64. |
-| AVD local `ygo` | Presente, Android35 ARM64. Inicialização terminou com falta de espaço; variante read-only também falhou. O emulador exige pelo menos 5 GB livres. Nenhuma execução local comprovada. |
-| Instalação/shell/lifecycle CI x86_64 | Passou novamente em `b158779`: comando por PTY, mesma sessão após Home/retomada e quatro rotações reais; Android15/API35 no emulador Pixel7 x86_64. [Evidência preservada](android-evidence/b158779/lifecycle.json). |
-| IME real | Gboard 14.2.09 passou `café` por toque/seletor de acento, Backspace/Enter, ocultação/reabertura e a transação Hangul `ㄱ`+`ㅏ`→`가`: dois preedits não vazios, texto recebido pelo PTY e restauração do layout English. [Resultado no APK b158779 com scripts 1bdb18d](android-evidence/b158779/ime-results.json). O glifo CFF2 ficou vazio; a correção visual e o coletor posterior de bytes exatos precisam de nova execução. |
-| SSH/ferramentas | Cliente: 9 testes unitários e 2 testes CLI/servidor no host passaram. Android passou trust, chave pública, Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1, desconexão e retorno ao shell local. O teste corrigido de resize passou em debug e release `c41bc56`: 25x46→4x104. [Resultados e perfis](android-evidence/c41bc56/README.md). |
-| Foto/animação/vídeo | Seis cenários passaram em debug e release `b158779`: foto NASA com 25 pontos coincidentes e remoção, Sixel, patches de animação nativa após emissor terminar, camadas Kitty negativas e MP4 H.264 silencioso com pixels de frames decodificados distintos. [Resultados](android-evidence/b158779/release-media.json), [camada atrás do fundo](android-evidence/b158779/background-layer.png), [fundo padrão revelando imagem](android-evidence/b158779/background-layer-reveal.png), [vídeo](android-evidence/b158779/video.png). |
-| Consumo release x86_64 | `b158779`, 15 s ociosos após 3 s de espera: PSS do app 25.586→29.712 KiB; app+shell 26.517→30.643 KiB; CPU média 0,2% de um núcleo, zero novos quadros. [Amostras](android-evidence/b158779/release-idle.json). APK x86_64 2.732.519 bytes; [proveniência](android-evidence/b158779/x86-release-provenance.json). |
-| Vídeo release x86_64 | `b158779`, amostra de 8 s, MP4 320×180@12, SSH e IME visível: PSS do app 55.875→53.352 KiB; CPU média app 54,66%, árvore 55,54% de um núcleo. Chamadas de apresentação 18,01 Hz, desenho/apresentação média 42,94 ms; não é medida de FPS de vídeo efetivamente exibido. [Dados](android-evidence/b158779/video-measurements.json). |
-| Entrada release x86_64 | `b158779`, dez comandos de eco com teclas Android injetadas em 15 s: 77 quadros, 74 correlações callback→próximo quadro de saída, mediana 41,08 ms, p95 81,88 ms; desenho/apresentação média 42,61 ms. [Amostras](android-evidence/b158779/release-echo.json). Não mede teclado físico até scanout. |
+| Integração e regressão | Worktree própria, merges e pushes normais sem coautoria do Codex. 622 testes Linux e 524 macOS passaram, além de check, Clippy, isolamento e cenários Linux de janela, gráficos, clipboard, mpv e SSH. [CI](android-evidence/8b0abef/desktop-ci.json). |
+| Atlas e PTY | 11 testes de fontes cobrem A8, baseline/descender, TrueType/CFF2, Hangul, espaços, curvas e limites. O CI inclui os testes de PTY, runtime, seleção, paste e entrada; 52 testes PTY reais já tinham passado no harness após a integração compartilhada. |
+| APK release ARM64 | 2.609.645 bytes (2,49 MiB); biblioteca terminal 2.973.248 bytes, SSH 3.182.048 bytes. Assinatura, dex e alinhamento ELF de 16 KiB verificados. [Download e SHA256](android-evidence/8b0abef/README.md#apks). Execução do dispositivo usa x86_64. |
+| Instalação/shell/lifecycle | Sete verificações passaram: comando por PTY, mesma sessão após Home/retomada, quatro rotações e comando posterior. [Resultados](android-evidence/8b0abef/lifecycle.json). |
+| IME real | Gboard 14.2.09 passou toque, acento, Backspace, Enter, ocultação/reabertura e composição Hangul. Bytes exatos: `café` = `636166c3a9`, `가` = `eab080`; dois preedits não vazios, dois commits no estágio Hangul, English restaurado. [Resultados](android-evidence/8b0abef/ime.json), [preedit ㄱ](android-evidence/8b0abef/hangul-preedit.png), [가 após Enter](android-evidence/8b0abef/hangul-committed.png). |
+| Controles | Sete cenários passaram com bytes exatos: toolbar, teclas especiais, Esc com IME, seleção/copy/paste, scroll, mouse SGR e Ctrl/Shift/Alt. [Resultados](android-evidence/8b0abef/controls.json), [seleção](android-evidence/8b0abef/selection.png), [clipboard](android-evidence/8b0abef/clipboard.png). Entrada externa injetada pelo Android; sem periférico USB físico. |
+| SSH e ferramentas | Debug e release passaram trust, chave pública, resize estrito 25x46→4x104, Neovim 0.9.5, tmux 3.4, fzf 0.44.1, Git 2.55.0, build/run Rust 1.94.1 e retorno ao shell local. [Resultados e perfis](android-evidence/8b0abef/release-ssh.json). O cliente também tem 9 testes unitários e 2 testes CLI/servidor no host. |
+| Foto/animação/vídeo | Seis cenários passaram em debug e release: foto NASA e remoção, Sixel, animação nativa após o emissor encerrar, camadas Kitty negativas e H.264 silencioso por SSH com frames decodificados distintos. [Resultados](android-evidence/8b0abef/release-media.json), [foto](android-evidence/8b0abef/photo.png), [vídeo](android-evidence/8b0abef/video.png). |
+| Repouso release x86_64 | APK 2.765.287 bytes. Em 15 s após 3 s de espera: PSS app 26.181→30.313 KiB; app+shell 27.117→31.249 KiB; CPU 0,2% de um núcleo, zero novos quadros. [Amostras](android-evidence/8b0abef/release-idle.json). |
+| Entrada release x86_64 | Dez comandos de eco em 15 s: 78 quadros, 74 correlações callback→próximo quadro de saída, mediana 40,38 ms, p95 78,49 ms; desenho/apresentação médio 43,60 ms. [Amostras](android-evidence/8b0abef/release-echo.json). Não mede teclado físico até scanout. |
+| Vídeo release x86_64 | Amostra de 8 s, 320×180@12, SSH e IME visível: PSS app 41.338→34.077 KiB; CPU app 56%, árvore 57,125% de um núcleo; desenho/apresentação médio 41,88 ms, 18,43 chamadas/s. [Amostras](android-evidence/8b0abef/video-measurements.json). Chamadas de apresentação não equivalem a FPS exibido. |
+| Primeira carga CJK | Debug opt1, mesmo processo: PSS 40.834→85.084 KiB (39,88→83,09 MiB). O custo é sob demanda; não está representado pelo repouso ASCII. [Snapshots e escopo](android-evidence/8b0abef/ime.json). |
+| AVD local | `ygo`, Android35 ARM64, falhou por falta de espaço, inclusive read-only. A execução comprovada veio do CI x86_64; não houve validação local ou em telefone ARM64. |
 
 Ferramentas reproduzíveis:
 
@@ -185,32 +184,23 @@ controlado de eco; saída não relacionada pode contaminá-la. Chamadas de
 apresentação não equivalem a scanout físico. Evidências
 locais vão para `target/android-evidence`, sem credenciais ou dados privados.
 Leia também `scripts/android/README.md` e a [rota de mídia](../tools/README.md).
-As primeiras capturas preservadas mostram [shell](android-evidence/cf4525c/shell.png),
-[SSH](android-evidence/cf4525c/ssh.png) e a [falha inicial de Esc no Neovim](android-evidence/cf4525c/neovim-escape-failure.png).
-A execução posterior mostra [Neovim corrigido](android-evidence/b9ba8b8/neovim.png)
-e [duas panes tmux](android-evidence/b9ba8b8/tmux.png).
-O [PR #8](https://github.com/guicybercode/kokuban.rs/pull/8) permanece em rascunho
-até os critérios de execução serem comprovados.
+As capturas atuais mostram [Neovim](android-evidence/8b0abef/neovim.png),
+[duas panes tmux](android-evidence/8b0abef/tmux.png) e os glifos CJK corrigidos.
+O [PR #8](https://github.com/guicybercode/kokuban.rs/pull/8) reúne a implementação
+para revisão e integração na `main`.
 
-A amostra ociosa inclui a estabilização após abrir o app; a PSS cresceu durante
-os 15 segundos. CPU é a do processo Android, não a CPU total do emulador/host.
-O cenário de eco provocou 77 apresentações para dez comandos em 15 segundos.
-A amostra de vídeo inclui cliente SSH e coleta de screenshots; seu escopo e
-perfil estão registrados separadamente. Quantidade de comandos e runners
-diferem das amostras anteriores, portanto esses números não demonstram uma
-melhora causal de latência. Os [dados e limites da medição](android-evidence/b158779/README.md)
-preservam o contexto e a fórmula do percentil.
+As medições são curtas e em emulador. O repouso inclui estabilização após
+abrir o app; vídeo inclui SSH e screenshots. Não atribuímos diferenças entre
+runners a uma única alteração. O [relatório](android-evidence/8b0abef/README.md)
+registra dados, fórmula do percentil e escopo. Resultados anteriores ficam
+preservados como histórico, incluindo o resize debug descartado em `b158779`
+e a correção de glifos CFF2 em `f280262`.
 
-O fluxo de composição intermediária passou com Gboard real. A pendência de
-entrada é validar o glifo CFF2 corrigido e os bytes exatos no novo APK.
-Controles, seleção/clipboard, caminhos de teclado/mouse, lifecycle, aplicações
-e mídia passaram no APK integrado `b158779`. A nova medição release inclui a
-redução de redesenhos `48099f6` e a janela de coleta corrigida `dbc5e47`.
-O teste de resize remoto corrigido `5b1fa95` passou em debug e release
-`c41bc56`, com publicação atômica e dimensões válidas. A composição Hangul
-revelou glifos CFF2 vazios no fallback; a correção de fonte exige um novo APK
-e nova validação visual.
-Não considerar este documento uma declaração de entrega final.
+Permanecem limitações de produto/ambiente: fontes sem shaping complexo ou
+emoji colorido, vídeo silencioso, ferramentas de desenvolvimento no host SSH,
+acessibilidade limitada aos controles, ausência de teste com periférico USB
+físico e de medições prolongadas/bateria em telefone real. A validação de
+IME é específica ao Gboard testado, não uma certificação de todos os teclados.
 
 Referências primárias: [winit Android](https://docs.rs/winit/latest/winit/platform/android/),
 [android-activity](https://github.com/rust-mobile/android-activity),
