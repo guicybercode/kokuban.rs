@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""Exercise an installed Latin IME by touch, including its accent popup.
+
+ASCII adb keys only prepare a shell `read`. The tested text, Backspace and Enter
+come from taps on the actual keyboard. Screenshots, UI XML, callback counts and
+the shell's UTF-8 result are retained; preedit is claimed only if observed.
+Requires an installed debuggable Kokuban APK and an English Latin keyboard.
+"""
+
+import argparse
+import json
+from pathlib import Path
+import re
+import shlex
+import time
+import xml.etree.ElementTree as ET
+
+from device import Device
+from smoke import eventually
+
+
+def node_bounds(node):
+    match = re.fullmatch(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]", node.get("bounds", ""))
+    if not match:
+        raise ValueError(f"Invalid UI bounds: {node.get('bounds')!r}")
+    left, top, right, bottom = map(int, match.groups())
+    if right <= left or bottom <= top:
+        raise ValueError("UI node has no touchable area")
+    return left, top, right, bottom
+
+
+def find_node(root, labels, package):
+    wanted = {label.casefold() for label in labels}
+    candidates = []
+    for node in root.iter("node"):
+        if node.get("package") != package or node.get("enabled", "true") != "true":
+            continue
+        values = {node.get("text", "").casefold(), node.get("content-desc", "").casefold()}
+        if not values.intersection(wanted):
+            continue
+        try:
+            left, top, right, bottom = node_bounds(node)
+            candidates.append(((right - left) * (bottom - top), node))
+        except ValueError:
+            continue
+    if not candidates:
+        raise LookupError(f"Keyboard/control node {sorted(wanted)!r} not found in {package}")
+    return min(candidates, key=lambda item: item[0])[1]
+
+
+def center(node):
+    left, top, right, bottom = node_bounds(node)
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def callback_counts(log):
+    return {
+        operation: len(re.findall(rf"ime callback operation={operation} nonempty=true", log))
+        for operation in ("preedit", "commit")
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--serial")
+    parser.add_argument("--package", default="com.kokuban.terminal")
+    parser.add_argument("--ime", help="Installed input-method component; defaults to the device's current IME")
+    parser.add_argument("--require-preedit", action="store_true", help="Fail if the IME only commits text without composing transactions")
+    parser.add_argument("--output", type=Path, default=Path("target/android-evidence/ime"))
+    args = parser.parse_args()
+    args.output.mkdir(parents=True, exist_ok=True)
+    device = Device(args.serial)
+    device.wait_boot()
+    package = args.package
+    component = device.shell("cmd", "package", "resolve-activity", "--brief", package).splitlines()[-1]
+    if not component.startswith(package + "/"):
+        raise RuntimeError(f"No Kokuban launcher: {component}")
+    original = {
+        ("secure", "default_input_method"): device.shell("settings", "get", "secure", "default_input_method"),
+        ("secure", "show_ime_with_hard_keyboard"): device.shell("settings", "get", "secure", "show_ime_with_hard_keyboard"),
+        ("system", "accelerometer_rotation"): device.shell("settings", "get", "system", "accelerometer_rotation"),
+        ("system", "user_rotation"): device.shell("settings", "get", "system", "user_rotation"),
+    }
+    ime = args.ime or original[("secure", "default_input_method")]
+    if "/" not in ime:
+        raise RuntimeError(f"No default IME is installed: {ime}")
+    ime_package = ime.split("/", 1)[0]
+    private = device.shell("run-as", package, "pwd")
+    marker = f"{private}/files/ime-smoke-result.txt"
+    trace = "files/config/kokuban/trace-frames"
+    had_trace = device.shell("run-as", package, "sh", "-c", f"test -f {trace} && echo yes", check=False) == "yes"
+    results = {"device": device.details(), "ime": ime, "checks": [], "status": "failed"}
+    start_time = device.shell("date", "+%m-%d %H:%M:%S.000")
+    capture_index = 0
+    held_pointer = None
+
+    def dump(label):
+        nonlocal capture_index
+        capture_index += 1
+        remote = "/sdcard/kokuban-ime-ui.xml"
+        device.shell("uiautomator", "dump", "--compressed", remote, timeout=30)
+        xml = device.shell("cat", remote)
+        (args.output / f"{capture_index:02d}-{label}.xml").write_text(xml + "\n")
+        return ET.fromstring(xml)
+
+    def tap(label, alternatives, owner=ime_package):
+        root = dump(label)
+        x, y = center(find_node(root, alternatives, owner))
+        device.shell("input", "tap", str(x), str(y))
+        return root
+
+    def ime_visible():
+        state = device.shell("dumpsys", "input_method")
+        return "mInputShown=true" in state or "isInputViewShown=true" in state
+
+    try:
+        device.shell("settings", "put", "secure", "show_ime_with_hard_keyboard", "1")
+        device.shell("settings", "put", "system", "accelerometer_rotation", "0")
+        device.shell("settings", "put", "system", "user_rotation", "0")
+        if args.ime:
+            device.shell("ime", "set", ime)
+        device.shell("run-as", package, "mkdir", "-p", "files/config/kokuban")
+        device.shell("run-as", package, "touch", trace)
+        device.shell("run-as", package, "rm", "-f", marker)
+        device.shell("am", "force-stop", package)
+        device.shell("am", "start", "-W", "-n", component)
+        process = device.pid(package)
+        eventually(lambda: "first frame presented" in device.adb("logcat", "-d", "--pid", process), True, 45)
+
+        controls = dump("controls")
+        density = device.shell("wm", "density")
+        densities = re.findall(r"density:\s*(\d+)", density)
+        if not densities:
+            raise AssertionError(f"Cannot determine Android density: {density}")
+        scale = int(densities[-1]) / 160
+        buttons = [node for node in controls.iter("node")
+                   if node.get("package") == package and node.get("class") == "android.widget.Button"]
+        if len(buttons) < 6:
+            raise AssertionError("Native accessibility toolbar nodes were not exposed")
+        for node in buttons:
+            left, top, right, bottom = node_bounds(node)
+            if min(right - left, bottom - top) + 1 < 48 * scale:
+                raise AssertionError(f"Toolbar target smaller than 48dp: {node.attrib}")
+        results["checks"].append("native accessible control bounds are at least 48dp")
+
+        command = f'printf READY > {shlex.quote(marker)}; IFS= read -r K; printf "$K" > {shlex.quote(marker)}'
+        device.type_text(command)
+        device.shell("input", "keyevent", "KEYCODE_ENTER")
+        eventually(lambda: device.shell("run-as", package, "cat", marker, check=False), "READY", 45)
+        tap("open-keyboard", ["Show or hide keyboard"], package)
+        eventually(ime_visible, True, 30)
+        device.screenshot(args.output / "keyboard-open.png")
+
+        for letter in "caf":
+            tap(f"key-{letter}", [letter])
+        root = dump("accent-start")
+        x, y = center(find_node(root, ["e"], ime_package))
+        held_pointer = (x, y)
+        device.shell("input", "motionevent", "DOWN", str(x), str(y))
+        time.sleep(0.8)
+        device.screenshot(args.output / "accent-popup.png")
+        popup = dump("accent-popup")
+        accent_x, accent_y = center(find_node(popup, ["é", "e acute", "e with acute"], ime_package))
+        device.shell("input", "motionevent", "MOVE", str(accent_x), str(accent_y))
+        device.shell("input", "motionevent", "UP", str(accent_x), str(accent_y))
+        held_pointer = None
+        tap("key-to-delete", ["x"])
+        tap("backspace", ["delete", "backspace"])
+        device.screenshot(args.output / "composed-before-enter.png")
+        tap("enter", ["enter", "return", "new line", "done"])
+        eventually(lambda: device.shell("run-as", package, "cat", marker, check=False), "café", 45)
+        results["checks"].append("real IME taps, accent popup, Backspace and Enter produce café via PTY")
+        results["utf8_result"] = "café"
+        device.screenshot(args.output / "result.png")
+
+        tap("hide-keyboard", ["Show or hide keyboard"], package)
+        eventually(ime_visible, False, 30)
+        device.screenshot(args.output / "keyboard-hidden.png")
+        tap("reopen-keyboard", ["Show or hide keyboard"], package)
+        eventually(ime_visible, True, 30)
+        results["checks"].append("explicit keyboard control hides and reopens the IME")
+        logs = device.adb("logcat", "-d", "--pid", process, "-T", start_time, check=False)
+        counts = callback_counts(logs)
+        results["ime_callbacks"] = counts
+        results["composition"] = "preedit and commit observed" if counts["preedit"] and counts["commit"] else "intermediate preedit not observed"
+        if counts["commit"] == 0:
+            raise AssertionError("Text arrived without a committed IME transaction")
+        if args.require_preedit and counts["preedit"] == 0:
+            raise AssertionError("This IME did not exercise setComposingText; composition remains unverified")
+        results["status"] = "passed"
+    except Exception as error:
+        results["error"] = str(error)
+        raise
+    finally:
+        if held_pointer:
+            device.shell("input", "motionevent", "UP", str(held_pointer[0]), str(held_pointer[1]), check=False)
+        if results["status"] != "passed":
+            device.screenshot(args.output / "failure.png")
+            try:
+                dump("failure")
+            except Exception as error:
+                results["capture_error"] = str(error)
+        for (namespace, key), value in original.items():
+            if key == "default_input_method" and value != "null":
+                device.shell("ime", "set", value, check=False)
+            elif value == "null":
+                device.shell("settings", "delete", namespace, key, check=False)
+            else:
+                device.shell("settings", "put", namespace, key, value, check=False)
+        if not had_trace:
+            device.shell("run-as", package, "rm", "-f", trace, check=False)
+        device.shell("rm", "-f", "/sdcard/kokuban-ime-ui.xml", check=False)
+        (args.output / "logcat.txt").write_text(device.adb("logcat", "-d", "-T", start_time, check=False))
+        (args.output / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

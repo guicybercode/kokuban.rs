@@ -5,6 +5,7 @@ use jni::refs::Global;
 use jni::sys::{jboolean, jint};
 use jni::{jni_sig, jni_str, EnvUnowned, JValue, JavaVM};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use winit::platform::android::activity::AndroidApp;
 
@@ -19,6 +20,7 @@ static SUBSCRIPTION: Mutex<Subscription> = Mutex::new(Subscription {
     generation: 0,
     listener: None,
 });
+static TRACE_INPUT: AtomicBool = AtomicBool::new(false);
 
 pub(crate) struct AndroidIme {
     app: AndroidApp,
@@ -40,6 +42,11 @@ impl AndroidIme {
         app: AndroidApp,
         callback: impl Fn(ImeEvent) + Send + Sync + 'static,
     ) -> Result<Self, String> {
+        TRACE_INPUT.store(
+            app.internal_data_path()
+                .is_some_and(|path| path.join("config/kokuban/trace-frames").exists()),
+            Ordering::Relaxed,
+        );
         let generation = {
             let mut subscription = SUBSCRIPTION
                 .lock()
@@ -190,6 +197,7 @@ impl Drop for AndroidIme {
         if let Ok(mut subscription) = SUBSCRIPTION.lock() {
             if subscription.generation == self.generation {
                 subscription.listener = None;
+                TRACE_INPUT.store(false, Ordering::Relaxed);
             }
         }
     }
@@ -212,6 +220,18 @@ pub extern "system" fn Java_com_kokuban_terminal_KokubanActivity_nativeText<'loc
     env.with_env(|env| -> jni::errors::Result<()> {
         let text = text.try_to_string(env)?;
         if text.len() <= MAX_IME_BYTES {
+            if TRACE_INPUT.load(Ordering::Relaxed) {
+                let operation = match kind {
+                    0 => "commit",
+                    1 => "preedit",
+                    2 => "finish",
+                    _ => "unknown",
+                };
+                log::info!(
+                    "ime callback operation={operation} nonempty={}",
+                    !text.is_empty()
+                );
+            }
             match kind {
                 0 => emit(ImeEvent::Commit(text)),
                 1 => emit(ImeEvent::Preedit(text)),
