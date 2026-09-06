@@ -1,0 +1,88 @@
+name: Linux release resource measurements
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust 1.94.1
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          rustc --version
+
+      - name: Install Linux display and video dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            binutils \
+            ffmpeg \
+            fonts-dejavu-core \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libxkbcommon-x11-0 \
+            mpv \
+            pkg-config \
+            x11-apps \
+            x11-xserver-utils \
+            xauth \
+            xdotool \
+            xvfb
+
+      - name: Build locked release binary and record build inputs
+        id: build
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-release-evidence"
+          mkdir -p "$evidence_directory"
+          cargo build --release --locked
+          cargo tree --locked > "$evidence_directory/cargo-tree.txt"
+          cp Cargo.toml Cargo.lock "$evidence_directory/"
+          rustc --version --verbose > "$evidence_directory/rustc.txt"
+          dpkg-query -W ffmpeg mpv xvfb xdotool fonts-dejavu-core \
+            > "$evidence_directory/system-packages.txt"
+
+      - name: Measure idle, finite PTY output and post-output settling
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 60s python3 scripts/linux-resource-smoke.py \
+              "$PWD/target/release/kokuban" \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-release-evidence/resources"
+
+      - name: Measure released mpv Kitty playback separately
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 90s python3 scripts/linux-video-smoke.py \
+              "$PWD/target/release/kokuban" --build-profile release \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-release-evidence/video"
+
+      - name: Upload measurements and bounded evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-release-resource-measurements
+          path: ${{ runner.temp }}/kokuban-release-evidence
+          if-no-files-found: ignore
+          retention-days: 7
