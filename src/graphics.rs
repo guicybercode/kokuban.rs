@@ -196,7 +196,8 @@ pub(crate) fn retain_unreferenced_image_ids<'a>(
 #[derive(Debug, Clone)]
 pub enum PlacementMode {
     Inline {
-        row: usize,
+        /// Signed screen row; negative origins retain images in scrollback.
+        row: i64,
         col: usize,
         /// Grid-bounded cell footprint used for cursor movement and cell sizing.
         cols: u32,
@@ -396,6 +397,22 @@ impl PlacementMode {
         cell_width: f32,
         cell_height: f32,
     ) -> (usize, usize, u32, u32) {
+        let (row, col, cols, rows) = self.signed_cell_rect(cell_width, cell_height);
+        let hidden_rows = row.saturating_neg().max(0) as u64;
+        (
+            usize::try_from(row.max(0)).unwrap_or(usize::MAX),
+            col,
+            cols,
+            rows.saturating_sub(u32::try_from(hidden_rows).unwrap_or(u32::MAX)),
+        )
+    }
+
+    /// Unclipped footprint for scrolling; history rows must keep their origin.
+    pub(crate) fn signed_cell_rect(
+        &self,
+        cell_width: f32,
+        cell_height: f32,
+    ) -> (i64, usize, u32, u32) {
         match self {
             Self::Inline {
                 row,
@@ -544,6 +561,26 @@ mod tests {
         ImagePlacement, InlineRenderSize, KittyPlacementLayout, PlacementMode,
     };
     use std::collections::HashSet;
+
+    #[test]
+    fn scrolled_image_keeps_negative_pixel_origin_and_clips_cell_hit_testing() {
+        let mut placement = PlacementMode::Inline {
+            row: -2,
+            col: 1,
+            cols: 2,
+            rows: 3,
+            x_offset: 0,
+            y_offset: 5,
+            render_size: InlineRenderSize::CellAnchored,
+        };
+        assert_eq!(placement.pixel_rect(10.0, 20.0), (10.0, -35.0, 20.0, 55.0));
+        assert_eq!(placement.effective_cell_rect(10.0, 20.0), (0, 1, 2, 1));
+        assert_eq!(placement.signed_cell_rect(10.0, 20.0), (-2, 1, 2, 3));
+
+        let PlacementMode::Inline { row, .. } = &mut placement;
+        *row = -3;
+        assert_eq!(placement.effective_cell_rect(10.0, 20.0), (0, 1, 2, 0));
+    }
 
     #[test]
     fn inline_pixel_rect_tracks_cell_size_and_preserves_offsets() {

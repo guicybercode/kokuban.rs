@@ -16,7 +16,7 @@ Crie uma worktree irmã em `../kokuban.rs-android-native` com branch `codex/andr
 
 Coordene alterações em `src/main.rs`, `Cargo.toml`, `Cargo.lock`, `src/pty/unix.rs`, `src/glyph_atlas.rs` e arquivos compartilhados antes de refatorações grandes. Prefira módulos Android específicos e interfaces pequenas. Não copie o terminal inteiro para criar uma implementação divergente. Se as sessões não tiverem um canal direto, registre contratos e alterações necessárias em `docs/ANDROID.md`, mantenha commits fáceis de integrar e abra um PR de rascunho; continue todo o trabalho independente enquanto a integração é resolvida.
 
-Faça commits pequenos e coerentes, rode as verificações adequadas e dê push de cada commit para `origin/codex/android-native`. Use push normal; nunca force push nem descarte alterações alheias. O usuário já autorizou esses pushes. Não comite credenciais, arquivos de assinatura privados ou artefatos locais de SDK. Entregue os hashes e o resultado das verificações. A integração final precisa preservar as mudanças Linux e passar pelas verificações das plataformas existentes.
+Faça commits pequenos e coerentes, rode as verificações adequadas e dê push de cada commit para `origin/codex/android-native`. Use push normal; nunca force push nem descarte alterações alheias. O usuário já autorizou esses pushes e pediu commits sem Codex como coautor: não adicione trailers `Co-authored-by` para Codex nem atribuições automáticas de IA. Não comite credenciais, arquivos de assinatura privados ou artefatos locais de SDK. Entregue os hashes e o resultado das verificações. A integração final precisa preservar as mudanças Linux e passar pelas verificações das plataformas existentes.
 
 ## Evidência inicial a revalidar
 

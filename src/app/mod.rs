@@ -126,7 +126,7 @@ where
             placement_id: 0,
             client_placement_id: None,
             mode: PlacementMode::Inline {
-                row: cursor.0,
+                row: cursor.0 as i64,
                 col: cursor.1,
                 cols: display_cols,
                 rows: display_rows,
@@ -814,10 +814,29 @@ mod tests {
                 ..
             } => {
                 assert_eq!((row, col), (1, 2));
-                assert_ne!((row, col), (grid.cursor_row, grid.cursor_col));
+                assert_ne!((row, col), (grid.cursor_row as i64, grid.cursor_col));
                 assert_eq!((cols, rows), (1, 1));
             }
         }
+    }
+
+    #[test]
+    fn sixel_at_bottom_scrolls_its_placement_with_cursor_advance() {
+        let mut grid = Grid::new(12, 4, 10);
+        grid.set_cursor_pos(2, 1);
+        let image = SixelImage {
+            width: 8,
+            height: 32,
+            pixels: vec![0; 8 * 32 * 4],
+        };
+
+        process_sixel_event(&mut grid, &image, (2, 1), (8.0, 16.0), |_| Some(9));
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (3, 1));
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.image_placements[0].mode.pixel_rect(8.0, 16.0), (8.0, 16.0, 8.0, 32.0));
+        grid.newline();
+        assert_eq!(grid.image_placements[0].mode.pixel_rect(8.0, 16.0), (8.0, 0.0, 8.0, 32.0));
     }
 
     #[test]
