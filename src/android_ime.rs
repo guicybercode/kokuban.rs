@@ -25,6 +25,16 @@ pub(crate) struct AndroidIme {
     generation: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AccessibleControl {
+    pub id: i32,
+    pub label: &'static str,
+    pub bounds: [u32; 4],
+    pub selected: bool,
+    pub enabled: bool,
+    pub toggle: bool,
+}
+
 impl AndroidIme {
     pub(crate) fn new(
         app: AndroidApp,
@@ -96,6 +106,47 @@ impl AndroidIme {
                 jni_str!("showError"),
                 jni_sig!((java.lang.String) -> void),
                 &[JValue::Object(value.as_ref())],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn update_controls(&self, controls: &[AccessibleControl]) -> Result<(), String> {
+        if controls.len() > 32 {
+            return Err("Too many accessibility controls".into());
+        }
+        self.with_activity(|env, activity| {
+            let labels = env.new_object_array(
+                controls.len() as i32,
+                jni_str!("java/lang/String"),
+                JObject::null(),
+            )?;
+            let mut data = Vec::with_capacity(controls.len() * 8);
+            for (index, control) in controls.iter().enumerate() {
+                let label = JString::from_str(env, control.label)?;
+                labels.set_element(env, index, &label)?;
+                data.push(control.id);
+                data.extend(
+                    control
+                        .bounds
+                        .map(|coordinate| coordinate.min(i32::MAX as u32) as i32),
+                );
+                data.extend([
+                    i32::from(control.selected),
+                    i32::from(control.enabled),
+                    i32::from(control.toggle),
+                ]);
+            }
+            let bounds = env.new_int_array(data.len())?;
+            bounds.set_region(env, 0, &data)?;
+            env.call_method(
+                activity,
+                jni_str!("updateControls"),
+                jni_sig!("([Ljava/lang/String;[I)V"),
+                &[
+                    JValue::Object(labels.as_ref()),
+                    JValue::Object(bounds.as_ref()),
+                ],
             )?;
             Ok(())
         })
@@ -245,6 +296,20 @@ pub extern "system" fn Java_com_kokuban_terminal_KokubanActivity_nativeClipboard
         if text.len() <= MAX_IME_BYTES {
             emit(ImeEvent::Clipboard(text));
         }
+        Ok(())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_kokuban_terminal_KokubanActivity_nativeControl<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    id: jint,
+    action: jint,
+) {
+    env.with_env(|_| -> jni::errors::Result<()> {
+        emit(ImeEvent::Control { id, action });
         Ok(())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>();

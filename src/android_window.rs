@@ -1,9 +1,9 @@
 //! Android owns window lifetime and input; terminal state lives independently.
 use crate::android_controls::{
-    mask_outside, Control, Rect, ToolbarLayout, TouchGesture, TouchRegion,
+    mask_outside, Control, Rect, ToolbarLayout, TouchContacts, TouchGesture, TouchRegion,
 };
 use crate::android_images::{image_store::ImageStore, AndroidImages};
-use crate::android_ime::AndroidIme;
+use crate::android_ime::{AccessibleControl, AndroidIme};
 use crate::android_input::{self, ImeEvent, InputModifiers, InputState};
 use crate::android_metrics::FrameMetrics;
 use crate::android_runtime::AndroidRuntime;
@@ -163,6 +163,9 @@ pub(crate) fn launch(app: AndroidApp) -> Result<(), String> {
         control: false,
         keyboard: false,
         touch: None,
+        touch_contacts: TouchContacts::default(),
+        accessible_controls: Vec::new(),
+        accessible_focus: None,
         toolbar_page: 0,
         selecting: false,
         selection: SelectionState::default(),
@@ -208,6 +211,9 @@ struct AndroidWindow {
     control: bool,
     keyboard: bool,
     touch: Option<TouchGesture>,
+    touch_contacts: TouchContacts,
+    accessible_controls: Vec<AccessibleControl>,
+    accessible_focus: Option<Control>,
     toolbar_page: usize,
     selecting: bool,
     selection: SelectionState,
@@ -309,6 +315,16 @@ impl AndroidWindow {
 
     fn input_event(&mut self, event: ImeEvent) {
         match &event {
+            ImeEvent::Control { id, action } => {
+                if let Some(control) = Control::from_id(*id) {
+                    match action {
+                        0 => self.activate_control(control),
+                        1 => self.accessible_focus = Some(control),
+                        2 if self.accessible_focus == Some(control) => self.accessible_focus = None,
+                        _ => {}
+                    }
+                }
+            }
             ImeEvent::Viewport {
                 left,
                 top,
@@ -691,6 +707,26 @@ impl AndroidWindow {
                 );
             }
             let label = button.control.label();
+            if self.accessible_focus == Some(button.control) {
+                for (origin, size) in [
+                    ((rect.left, rect.top), (rect.width(), 3)),
+                    (
+                        (rect.left, rect.bottom.saturating_sub(3)),
+                        (rect.width(), 3),
+                    ),
+                    ((rect.left, rect.top), (3, rect.height())),
+                    ((rect.right.saturating_sub(3), rect.top), (3, rect.height())),
+                ] {
+                    fill_rect(
+                        &mut frame,
+                        frame_size,
+                        (origin.0 as i32, origin.1 as i32),
+                        size,
+                        0xffffff,
+                        255,
+                    );
+                }
+            }
             let text_width = label.len() as u32 * toolbar_cell_width;
             let text_left = rect.left + rect.width().saturating_sub(text_width) / 2;
             for (index, c) in label
@@ -722,6 +758,37 @@ impl AndroidWindow {
         window.pre_present_notify();
         frame.present().map_err(|e| e.to_string())?;
         self.metrics.presented(render_started);
+        let accessible_controls = controls
+            .buttons
+            .iter()
+            .map(|button| AccessibleControl {
+                id: button.control as i32,
+                label: button.control.accessibility_label(),
+                bounds: [
+                    button.rect.left,
+                    button.rect.top,
+                    button.rect.right,
+                    button.rect.bottom,
+                ],
+                selected: match button.control {
+                    Control::Control => self.control,
+                    Control::Keyboard => self.keyboard,
+                    Control::Select => self.selecting,
+                    _ => false,
+                },
+                enabled: button.control != Control::Copy || self.selection.is_active(),
+                toggle: matches!(
+                    button.control,
+                    Control::Control | Control::Keyboard | Control::Select
+                ),
+            })
+            .collect::<Vec<_>>();
+        if accessible_controls != self.accessible_controls {
+            match self.ime.update_controls(&accessible_controls) {
+                Ok(()) => self.accessible_controls = accessible_controls,
+                Err(error) => log::warn!("Accessibility controls: {error}"),
+            }
+        }
         if !self.first_frame {
             log::info!("first frame presented");
             self.first_frame = true;
@@ -823,6 +890,16 @@ impl AndroidWindow {
     }
 
     fn touch_event(&mut self, id: u64, phase: TouchPhase, x: f64, y: f64) {
+        let accepted = match phase {
+            TouchPhase::Started => self.touch_contacts.begin(id),
+            TouchPhase::Ended | TouchPhase::Cancelled => self.touch_contacts.end(id),
+            TouchPhase::Moved => true,
+        };
+        if !accepted {
+            self.touch = None;
+            self.redraw();
+            return;
+        }
         let Some(layout) = self.controls() else {
             return;
         };
@@ -879,7 +956,7 @@ impl AndroidWindow {
                 let Some(mut gesture) = self.touch.take() else {
                     return;
                 };
-                gesture.move_to(x, y, 8.0 * scale, line_height);
+                let lines = gesture.move_to(x, y, 8.0 * scale, line_height);
                 if let Some(control) = gesture.released_control(&layout, x, y) {
                     self.activate_control(control);
                 } else if matches!(gesture.region, TouchRegion::Terminal) {
@@ -887,6 +964,8 @@ impl AndroidWindow {
                         if let Some(point) = self.selection_point(x, y) {
                             self.selection.update(point);
                         }
+                    } else if lines != 0 {
+                        self.scroll(lines, x, y);
                     } else if !gesture.dragged && layout.terminal.contains(x, y) {
                         self.keyboard = true;
                         self.platform_error(self.ime.set_visible(true));
@@ -1211,6 +1290,7 @@ impl AndroidWindow {
         self.focused = Some(focused);
         if !focused {
             self.touch = None;
+            self.touch_contacts.clear();
             self.mouse_press = None;
             self.mouse_click_origin = None;
             self.mouse_position = None;
@@ -1332,6 +1412,7 @@ impl ApplicationHandler<Event> for AndroidWindow {
             }
             WindowEvent::Resized(_) => {
                 self.touch = None;
+                self.touch_contacts.clear();
                 if matches!(self.mouse_press, Some((_, MouseAction::Toolbar(_)))) {
                     self.mouse_press = None;
                 }

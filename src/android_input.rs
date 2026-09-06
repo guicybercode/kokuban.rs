@@ -29,6 +29,11 @@ pub(crate) enum ImeEvent {
         keyboard: bool,
     },
     Clipboard(String),
+    /// Native accessibility actions: 0 activate, 1 focus, 2 clear focus.
+    Control {
+        id: i32,
+        action: i32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -102,7 +107,9 @@ impl InputState {
                 key_modifiers.control |= modifiers.control;
                 encode_android_key(*code, *unicode, application_cursor_keys, key_modifiers)
             }
-            ImeEvent::Viewport { .. } | ImeEvent::Clipboard(_) => Vec::new(),
+            ImeEvent::Viewport { .. } | ImeEvent::Clipboard(_) | ImeEvent::Control { .. } => {
+                Vec::new()
+            }
         }
     }
 }

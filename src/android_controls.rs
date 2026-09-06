@@ -1,4 +1,34 @@
 //! Phone toolbar geometry and pointer gestures, independent of the Android runtime.
+use std::collections::HashSet;
+
+/// Once a gesture has multiple contacts, none may turn into a tap on release.
+#[derive(Default)]
+pub(crate) struct TouchContacts {
+    active: HashSet<u64>,
+    blocked: bool,
+}
+
+impl TouchContacts {
+    pub(crate) fn begin(&mut self, id: u64) -> bool {
+        if !self.active.insert(id) {
+            return false;
+        }
+        self.blocked |= self.active.len() > 1;
+        !self.blocked
+    }
+    pub(crate) fn end(&mut self, id: u64) -> bool {
+        let removed = self.active.remove(&id);
+        let accepted = removed && !self.blocked;
+        if self.active.is_empty() {
+            self.blocked = false;
+        }
+        accepted
+    }
+    pub(crate) fn clear(&mut self) {
+        self.active.clear();
+        self.blocked = false;
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Rect {
     pub left: u32,
@@ -285,6 +315,22 @@ pub(crate) fn mask_outside(frame: &mut [u32], size: (u32, u32), clip: Rect, colo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn multi_touch_cannot_start_a_late_tap_before_every_contact_is_lifted() {
+        let mut contacts = TouchContacts::default();
+        assert!(contacts.begin(1));
+        assert!(!contacts.begin(2));
+        assert!(!contacts.begin(3));
+        assert!(!contacts.end(1));
+        assert!(!contacts.end(2));
+        assert!(!contacts.begin(4));
+        assert!(!contacts.end(3));
+        assert!(!contacts.end(4));
+        assert!(contacts.begin(5));
+        assert!(contacts.end(5));
+        assert!(!contacts.end(5));
+    }
 
     #[test]
     fn phone_targets_stay_at_least_48dp_and_all_controls_are_reachable() {
