@@ -52,7 +52,14 @@ pub struct AnimationUpdate {
 
 pub(crate) struct AnimationFrame {
     pub pixels: Arc<[u8]>,
+    opaque: bool,
     gap: Duration,
+}
+
+/// Inspect a prepared RGBA canvas once when its contents change. Snapshots and
+/// animation ticks use the cached result instead of walking every pixel again.
+pub(crate) fn pixels_are_opaque(pixels: &[u8]) -> bool {
+    pixels.chunks_exact(4).all(|pixel| pixel[3] == u8::MAX)
 }
 
 /// Stored separately from static images, so an ordinary image needs no frame
@@ -72,6 +79,7 @@ impl Animation {
     pub fn new(root: Arc<[u8]>, now: Instant) -> Self {
         Self {
             frames: vec![AnimationFrame {
+                opaque: pixels_are_opaque(&root),
                 pixels: root,
                 gap: Duration::ZERO,
             }],
@@ -91,6 +99,10 @@ impl Animation {
 
     pub fn active_pixels(&self) -> &Arc<[u8]> {
         &self.frames[self.displayed].pixels
+    }
+
+    pub fn active_opaque(&self) -> bool {
+        self.frames[self.displayed].opaque
     }
 
     fn index(&self, frame: u32) -> Result<usize, AnimationError> {
@@ -156,6 +168,7 @@ impl Animation {
         Ok((
             index,
             AnimationFrame {
+                opaque: pixels_are_opaque(&canvas),
                 pixels: Arc::from(canvas),
                 gap: specified_gap(params.gap_ms).unwrap_or(old_gap),
             },
@@ -289,6 +302,7 @@ impl Animation {
 
     pub fn commit_composition(&mut self, index: usize, pixels: Arc<[u8]>, now: Instant) {
         self.advance(now);
+        self.frames[index].opaque = pixels_are_opaque(&pixels);
         self.frames[index].pixels = pixels;
     }
 
@@ -553,6 +567,7 @@ mod tests {
             .enumerate()
             .map(|(index, gap)| AnimationFrame {
                 pixels: Arc::from([index as u8, 0, 0, 255]),
+                opaque: true,
                 gap: Duration::from_millis(*gap),
             })
             .collect();

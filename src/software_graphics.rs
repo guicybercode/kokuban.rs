@@ -11,6 +11,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 const MAX_PLACEMENTS: usize = 4096;
+// Snapshot culling uses bounded metadata and at most this many rectangle tests
+// per placement, even for a screen containing thousands of unrelated images.
+const MAX_OCCLUDERS: usize = 64;
 
 pub(crate) struct SoftwareGraphics {
     store: ImageStore,
@@ -23,6 +26,83 @@ pub(crate) struct ImageSnapshot {
     pub(crate) rectangle: (f32, f32, f32, f32),
     pub(crate) z_index: i32,
     image_id: u64,
+    opaque: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PixelCoverage {
+    left: u32,
+    top: u32,
+    right: u32,
+    bottom: u32,
+}
+
+impl PixelCoverage {
+    fn from_rectangle(rectangle: (f32, f32, f32, f32)) -> Option<Self> {
+        let (x, y, width, height) = rectangle;
+        if ![x, y, width, height].iter().all(|value| value.is_finite())
+            || width <= 0.0
+            || height <= 0.0
+        {
+            return None;
+        }
+        // Match software_raster's pixel-center coverage, computing far edges
+        // in f64 so large f32 origins do not absorb a small positive extent.
+        // Do not clip to grid dimensions: the surface can contain additional
+        // partial-cell pixels. Containment here holds for every u32 surface.
+        let edge = |value: f64| (value - 0.5).ceil().clamp(0.0, f64::from(u32::MAX)) as u32;
+        let coverage = Self {
+            left: edge(f64::from(x)),
+            top: edge(f64::from(y)),
+            right: edge(f64::from(x) + f64::from(width)),
+            bottom: edge(f64::from(y) + f64::from(height)),
+        };
+        (coverage.left < coverage.right && coverage.top < coverage.bottom).then_some(coverage)
+    }
+
+    fn contains(self, other: Self) -> bool {
+        self.left <= other.left
+            && self.top <= other.top
+            && self.right >= other.right
+            && self.bottom >= other.bottom
+    }
+}
+
+#[derive(Default)]
+struct Occluders {
+    rectangles: Vec<PixelCoverage>,
+}
+
+impl Occluders {
+    fn covers(&self, rectangle: PixelCoverage) -> bool {
+        self.rectangles
+            .iter()
+            .any(|occluder| occluder.contains(rectangle))
+    }
+
+    fn add(&mut self, rectangle: PixelCoverage) {
+        if self.rectangles.len() < MAX_OCCLUDERS {
+            self.rectangles.push(rectangle);
+        }
+    }
+}
+
+fn cull_covered_images(images: &mut Vec<ImageSnapshot>) {
+    let mut occluders = Occluders::default();
+    images.reverse();
+    images.retain(|image| {
+        let Some(coverage) = PixelCoverage::from_rectangle(image.rectangle) else {
+            return true;
+        };
+        if occluders.covers(coverage) {
+            return false;
+        }
+        if image.opaque {
+            occluders.add(coverage);
+        }
+        true
+    });
+    images.reverse();
 }
 
 impl SoftwareGraphics {
@@ -151,6 +231,7 @@ impl SoftwareGraphics {
                     rectangle: (x, y, width, height),
                     z_index: placement.z_index,
                     image_id: placement.image_id,
+                    opaque: stored.opaque,
                 })
             })
             .collect();
@@ -161,6 +242,12 @@ impl SoftwareGraphics {
                 .unwrap_or(image.image_id);
             (image.z_index, order_id)
         });
+        // The three image/text drawing groups preserve this image order. A
+        // later fully opaque canvas replaces all earlier contributions under
+        // its coverage, including across a text/background drawing boundary.
+        // Remove only redundant draw work, retaining cache and placements so
+        // deleting/editing the covering image reveals previous content again.
+        cull_covered_images(&mut images);
         images
     }
 
@@ -190,13 +277,17 @@ impl SoftwareGraphics {
 
 #[cfg(test)]
 mod tests {
-    use super::{SoftwareGraphics, MAX_PLACEMENTS};
+    use super::{
+        cull_covered_images, ImageSnapshot, Occluders, PixelCoverage, SoftwareGraphics,
+        MAX_OCCLUDERS, MAX_PLACEMENTS,
+    };
     use crate::config::ImagesConfig;
     use crate::grid::Grid;
     use crate::parser::ansi::GraphicsSupport;
     use crate::software_raster::draw_image_rgba;
     use crate::terminal_decoder::TerminalDecoder;
     use base64::Engine;
+    use std::sync::Arc;
 
     fn fixture(config: ImagesConfig) -> (TerminalDecoder, SoftwareGraphics, Grid) {
         let decoder = TerminalDecoder::new(GraphicsSupport {
@@ -537,9 +628,307 @@ mod tests {
         }
         let images = graphics.snapshot(&grid, (4, 8));
 
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].pixels.as_ref(), &[255, 0, 0, 255]);
+        assert_eq!(graphics.store.image_count(), 2);
+        // Culling cannot erase protocol-owned data. Removing the high client
+        // ID must reveal the most recently transmitted lower-ID canvas.
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=d,d=I,i=20\x1b\\",
+        );
+        let revealed = graphics.snapshot(&grid, (4, 8));
+        assert_eq!(revealed.len(), 1);
+        assert_eq!(revealed[0].pixels.as_ref(), &[0, 0, 255, 255]);
+    }
+
+    fn image_snapshot(
+        id: u64,
+        pixel: [u8; 4],
+        rectangle: (f32, f32, f32, f32),
+        z: i32,
+    ) -> ImageSnapshot {
+        ImageSnapshot {
+            pixels: Arc::from(pixel),
+            size: (1, 1),
+            rectangle,
+            z_index: z,
+            image_id: id,
+            opaque: pixel[3] == 255,
+        }
+    }
+
+    fn render_layers(images: &[ImageSnapshot], size: (u32, u32)) -> Vec<u32> {
+        let mut frame = vec![0x102030; size.0 as usize * size.1 as usize];
+        for image in images.iter().filter(|image| image.z_index < i32::MIN / 2) {
+            draw_image_rgba(&mut frame, size, &image.pixels, image.size, image.rectangle);
+        }
+        // Non-default cell backgrounds sit between the lowest two image groups.
+        for (index, pixel) in frame.iter_mut().enumerate() {
+            if index % 3 == 0 {
+                *pixel = 0x405060;
+            }
+        }
+        for image in images
+            .iter()
+            .filter(|image| (i32::MIN / 2..0).contains(&image.z_index))
+        {
+            draw_image_rgba(&mut frame, size, &image.pixels, image.size, image.rectangle);
+        }
+        // Foreground glyph pixels sit between ordinary negative and positive z.
+        for (index, pixel) in frame.iter_mut().enumerate() {
+            if index % 5 == 0 {
+                *pixel = 0xaabbcc;
+            }
+        }
+        for image in images.iter().filter(|image| image.z_index >= 0) {
+            draw_image_rgba(&mut frame, size, &image.pixels, image.size, image.rectangle);
+        }
+        frame
+    }
+
+    #[test]
+    fn anonymous_opaque_video_frames_reduce_draws_without_deleting_images() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        let mut first_frame = None;
+        for frame in 1..=100u8 {
+            let pixels = [frame, 20, 30, 255, 40, frame, 60, 255];
+            feed(
+                &mut decoder,
+                &mut graphics,
+                &mut grid,
+                &upload("a=T,f=32,s=2,v=1,C=1,q=2", &pixels),
+            );
+            let snapshot = graphics.snapshot(&grid, (4, 8));
+            assert_eq!(
+                snapshot.len(),
+                1,
+                "only the newest complete video frame needs drawing"
+            );
+            assert_eq!(snapshot[0].pixels.as_ref(), &pixels);
+            if first_frame.is_none() {
+                first_frame = Some(Arc::clone(&snapshot[0].pixels));
+            }
+        }
+        assert_eq!(grid.image_placements.len(), 100);
+        assert_eq!(graphics.store.image_count(), 100);
+        assert_eq!(
+            first_frame.unwrap().as_ref(),
+            &[1, 20, 30, 255, 40, 1, 60, 255]
+        );
+        let last_id = grid.image_placements.last().unwrap().image_id;
+        let client_id = graphics
+            .kitty
+            .image_client_ids()
+            .find(|(id, _)| *id == last_id)
+            .unwrap()
+            .1;
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            format!("\x1b_Ga=d,d=i,i={client_id}\x1b\\").as_bytes(),
+        );
+        let revealed = graphics.snapshot(&grid, (4, 8));
+        assert_eq!(revealed.len(), 1);
+        assert_eq!(
+            revealed[0].pixels.as_ref(),
+            &[99, 20, 30, 255, 40, 99, 60, 255]
+        );
+        assert_eq!(
+            graphics.store.image_count(),
+            100,
+            "lowercase deletion preserves cache data"
+        );
+    }
+
+    #[test]
+    fn pixel_center_coverage_culls_only_pixels_the_later_image_actually_draws() {
+        for (rectangle, expected_images) in [
+            ((0.25, 0.0, 1.3, 1.0), 1),
+            ((0.501, 0.0, 1.499, 1.0), 2),
+            ((0.0, 0.501, 2.0, 1.0), 2),
+            ((-2.0, -1.0, 4.0, 2.0), 1),
+        ] {
+            let mut images = vec![
+                image_snapshot(1, [0, 0, 255, 255], (0.0, 0.0, 2.0, 1.0), 0),
+                image_snapshot(2, [255, 0, 0, 255], rectangle, 0),
+            ];
+            let before = render_layers(&images, (4, 3));
+            cull_covered_images(&mut images);
+            assert_eq!(images.len(), expected_images, "coverage {rectangle:?}");
+            assert_eq!(render_layers(&images, (4, 3)), before);
+        }
+    }
+
+    #[test]
+    fn transparent_partial_and_nonoverlapping_images_never_hide_required_draws() {
+        for (pixel, rectangle) in [
+            ([255, 0, 0, 128], (0.0, 0.0, 2.0, 2.0)),
+            ([255, 0, 0, 0], (0.0, 0.0, 2.0, 2.0)),
+            ([255, 0, 0, 255], (0.0, 0.0, 1.0, 2.0)),
+            ([255, 0, 0, 255], (2.0, 0.0, 2.0, 2.0)),
+        ] {
+            let mut images = vec![
+                image_snapshot(1, [0, 0, 255, 255], (0.0, 0.0, 2.0, 2.0), 0),
+                image_snapshot(2, pixel, rectangle, 0),
+            ];
+            let before = render_layers(&images, (4, 3));
+            cull_covered_images(&mut images);
+            assert_eq!(images.len(), 2);
+            assert_eq!(render_layers(&images, (4, 3)), before);
+        }
+    }
+
+    #[test]
+    fn culling_keeps_scaled_source_sampling_unchanged_after_negative_origin_clipping() {
+        let mut covering = image_snapshot(2, [255; 4], (-1.0, -1.0, 4.0, 4.0), 0);
+        covering.size = (2, 2);
+        covering.pixels = Arc::from([
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ]);
+        let mut images = vec![
+            image_snapshot(1, [10, 20, 30, 255], (0.0, 0.0, 3.0, 3.0), 0),
+            covering,
+        ];
+        let before = render_layers(&images, (3, 3));
+        cull_covered_images(&mut images);
+        assert_eq!(images.len(), 1);
+        let after = render_layers(&images, (3, 3));
+        assert_eq!(after, before);
+        assert_eq!(
+            (after[0], after[2], after[6], after[8]),
+            (0xff0000, 0x00ff00, 0x0000ff, 0xffffff)
+        );
+    }
+
+    #[test]
+    fn integer_coverage_preserves_small_extents_at_large_float_origins() {
+        assert_eq!(
+            PixelCoverage::from_rectangle((16_777_216.0, 0.0, 1.0, 1.0)),
+            Some(PixelCoverage {
+                left: 16_777_216,
+                top: 0,
+                right: 16_777_217,
+                bottom: 1
+            })
+        );
+        for rectangle in [
+            (f32::NAN, 0.0, 1.0, 1.0),
+            (0.0, 0.0, f32::INFINITY, 1.0),
+            (0.0, 0.0, -1.0, 1.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ] {
+            assert_eq!(PixelCoverage::from_rectangle(rectangle), None);
+        }
+    }
+
+    #[test]
+    fn culling_respects_all_image_and_text_layers() {
+        let layers = [i32::MIN, i32::MIN / 2 - 1, i32::MIN / 2, -1, 0, 1];
+        for (index, lower) in layers.iter().copied().enumerate() {
+            for upper in layers[index..].iter().copied() {
+                let mut images = vec![
+                    image_snapshot(1, [0, 0, 255, 180], (-1.0, -1.0, 4.0, 4.0), lower),
+                    image_snapshot(2, [255, 0, 0, 255], (0.0, 0.0, 3.0, 3.0), upper),
+                ];
+                let before = render_layers(&images, (4, 4));
+                cull_covered_images(&mut images);
+                assert_eq!(images.len(), 1, "layers {lower}/{upper}");
+                assert_eq!(render_layers(&images, (4, 4)), before);
+            }
+        }
+    }
+
+    #[test]
+    fn culling_does_not_clip_away_pixels_in_a_partial_cell_surface_margin() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        grid.resize(2, 1);
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=10,v=1,i=1,C=1", &[0, 0, 255, 255].repeat(10)),
+        );
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=T,f=32,s=8,v=1,i=2,C=1", &[255, 0, 0, 255].repeat(8)),
+        );
+        let images = graphics.snapshot(&grid, (4, 8));
         assert_eq!(images.len(), 2);
-        assert_eq!(images[0].pixels.as_ref(), &[0, 0, 255, 255]);
-        assert_eq!(images[1].pixels.as_ref(), &[255, 0, 0, 255]);
+        let mut frame = vec![0; 10 * 8];
+        for image in &images {
+            draw_image_rgba(
+                &mut frame,
+                (10, 8),
+                &image.pixels,
+                image.size,
+                image.rectangle,
+            );
+        }
+        assert_eq!(
+            &frame[..10],
+            &[
+                0xff0000, 0xff0000, 0xff0000, 0xff0000, 0xff0000, 0xff0000, 0xff0000, 0xff0000,
+                0x0000ff, 0x0000ff
+            ]
+        );
+    }
+
+    #[test]
+    fn bounded_occluders_keep_thousands_of_nonoverlapping_images() {
+        let mut images: Vec<_> = (0..MAX_PLACEMENTS)
+            .map(|index| image_snapshot(index as u64, [255; 4], (index as f32, 0.0, 1.0, 1.0), 0))
+            .collect();
+        cull_covered_images(&mut images);
+        assert_eq!(images.len(), MAX_PLACEMENTS);
+        let mut occluders = Occluders::default();
+        for image in &images {
+            occluders.add(PixelCoverage::from_rectangle(image.rectangle).unwrap());
+        }
+        assert_eq!(occluders.rectangles.len(), MAX_OCCLUDERS);
+        assert!(occluders.rectangles.capacity() <= MAX_OCCLUDERS * 2);
+    }
+
+    #[test]
+    fn animation_transparency_restores_the_covered_image_on_frame_selection() {
+        let (mut decoder, mut graphics, mut grid) = fixture(ImagesConfig::default());
+        for (id, pixel) in [(1, [0, 0, 255, 255]), (2, [255, 0, 0, 255])] {
+            feed(
+                &mut decoder,
+                &mut graphics,
+                &mut grid,
+                &upload(&format!("a=T,f=32,s=1,v=1,i={id},c=2,r=1,C=1"), &pixel),
+            );
+        }
+        assert_eq!(graphics.snapshot(&grid, (4, 8)).len(), 1);
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            &upload("a=f,f=32,s=1,v=1,i=2", &[0, 255, 0, 128]),
+        );
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=a,i=2,c=2\x1b\\",
+        );
+        let transparent = graphics.snapshot(&grid, (4, 8));
+        assert_eq!(transparent.len(), 2);
+        let rendered = render_layers(&transparent, (8, 8));
+        assert_eq!(rendered[1], 0x00807f);
+        feed(
+            &mut decoder,
+            &mut graphics,
+            &mut grid,
+            b"\x1b_Ga=a,i=2,c=1\x1b\\",
+        );
+        assert_eq!(graphics.snapshot(&grid, (4, 8)).len(), 1);
     }
 
     #[test]
