@@ -1,0 +1,253 @@
+{
+  "files": {
+    "pathfinder-LICENSE-APACHE.txt": {
+      "url": "https://raw.githubusercontent.com/servo/pathfinder/974bc994159beee2f8bd959ddc9771519af3f729/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    "pathfinder-LICENSE-MIT.txt": {
+      "url": "https://raw.githubusercontent.com/servo/pathfinder/974bc994159beee2f8bd959ddc9771519af3f729/LICENSE-MIT",
+      "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720"
+    },
+    "Apache-2.0.txt": {
+      "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "MIT-terms.txt": {
+      "url": "https://opensource.org/license/mit",
+      "sha256": "bdb702484619a7ca460441494930fa963852f63631c98f351ffdef73354209e6"
+    },
+    "objc2-b4167b582b2f-LICENSE.md": {
+      "url": "https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md",
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+    },
+    "objc2-8852b424193c-LICENSE.md": {
+      "url": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md",
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+    },
+    "objc2-7b1abfd750a2-LICENSE.md": {
+      "url": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+    },
+    "objc2-8d214f547736-LICENSE.md": {
+      "url": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md",
+      "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+    }
+  },
+  "packages": [
+    {
+      "name": "block2",
+      "version": "0.6.2",
+      "license": "MIT",
+      "vcs_commit": "b4167b582b2f75f9a1be75495c41b765344fd03c",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-b4167b582b2f-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "dispatch2",
+      "version": "0.3.1",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "8852b424193ca41602281b3d7540d7c8ed51e49a",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-8852b424193c-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2",
+      "version": "0.6.4",
+      "license": "MIT",
+      "vcs_commit": "8852b424193ca41602281b3d7540d7c8ed51e49a",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-8852b424193c-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-app-kit",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-cloud-kit",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-core-data",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-core-foundation",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-core-graphics",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-core-image",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-core-text",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-core-video",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-encode",
+      "version": "4.1.0",
+      "license": "MIT",
+      "vcs_commit": "8d214f5477365ffcbcbb7de058c86ed9a518efb7",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-8d214f547736-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-foundation",
+      "version": "0.3.2",
+      "license": "MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-io-surface",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-metal",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "objc2-quartz-core",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "vcs_commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+      "selected_license": "MIT",
+      "files": [
+        "objc2-7b1abfd750a2-LICENSE.md",
+        "MIT-terms.txt"
+      ],
+      "reason": "Exact upstream LICENSE.md explicitly offers MIT and links to OSI. MIT-terms.txt reproduces those terms only, without inventing copyright holders or filling the generic template. Preserve upstream SDK caveat."
+    },
+    {
+      "name": "pathfinder_geometry",
+      "version": "0.5.1",
+      "license": "MIT/Apache-2.0",
+      "vcs_commit": "a5e98fac00f433fe2ff4b2135383d82491b8bfc5",
+      "selected_license": "Apache-2.0",
+      "files": [
+        "Apache-2.0.txt"
+      ],
+      "reason": "Published src/lib.rs explicitly references Apache-2.0 and MIT. The geometry VCS commit is unavailable upstream; its explicit Apache URL supplies the canonical terms. SIMD texts are from its exact VCS commit."
+    },
+    {
+      "name": "pathfinder_simd",
+      "version": "0.5.5",
+      "license": "MIT OR Apache-2.0",
+      "vcs_commit": "974bc994159beee2f8bd959ddc9771519af3f729",
+      "selected_license": "Apache-2.0",
+      "files": [
+        "pathfinder-LICENSE-APACHE.txt",
+        "pathfinder-LICENSE-MIT.txt"
+      ],
+      "reason": "Published src/lib.rs explicitly references Apache-2.0 and MIT. The geometry VCS commit is unavailable upstream; its explicit Apache URL supplies the canonical terms. SIMD texts are from its exact VCS commit."
+    }
+  ]
+}
