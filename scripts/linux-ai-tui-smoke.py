@@ -35,6 +35,21 @@ def plain(data):
     return re.sub(r'\x1b[ -/]*[@-Z\\-_]', '', text)
 
 
+def prompt_ready(client, text):
+    normalized = ''.join(text.split()).lower()
+    if client == 'claude':
+        # Observed Claude 2.1.261 plan-mode footer differs from Codex's hint.
+        return ('compat-fixture' in normalized and 'apiusagebilling' in normalized
+                and 'planmodeon(shift+tabtocycle)' in normalized)
+    return 'forshortcuts' in normalized and 'compat-fixture' in normalized
+
+
+def codex_resize_frame(data):
+    """Require the CLI's resize repaint, not just the outer SSH SIGWINCH."""
+    marker = data.find(b'COMPAT_BEGIN')
+    return marker >= 0 and data.find(b'\x1b[?2026l', marker) >= 0
+
+
 def child(client, directory, endpoint):
     os.chdir(directory)
     apps.record(directory, 'remote-process.json', apps.process_identity(os.getpid()))
@@ -78,10 +93,26 @@ def inspect_presented_text(directory, window, phase, markers, forbidden, process
     finally:
         apps.run(['xdotool', 'keyup', 'Shift'])
     apps.key('ctrl+shift+c')
+    last_clipboard = {}
     def selected():
-        value = apps.run(['xclip', '-selection', 'clipboard', '-out'], check=False).stdout.decode(errors='replace')
+        result = apps.run(['xclip', '-selection', 'clipboard', '-out'], check=False)
+        if len(result.stdout) > 2 * 1024 * 1024:
+            raise AssertionError('clipboard exceeds fixture limit')
+        value = result.stdout.decode(errors='replace')
+        last_clipboard.update(status=result.returncode, stderr=result.stderr.decode(errors='replace')[:2000],
+                              text=value, utf8_hex=result.stdout.hex(), geometry=[width, height], pty_size=size)
         return value if all(value.count(item) == 1 for item in markers) and not any(item in value for item in forbidden) else None
-    copied = apps.wait_for('presented ' + phase + ' text copied from the terminal', selected, processes)
+    try:
+        copied = apps.wait_for('presented ' + phase + ' text copied from the terminal', selected, processes)
+    except BaseException:
+        # Collect before the HTTP context exits and releases the final chunk.
+        try:
+            apps.screenshot(window, directory / (phase + '-failure.png'))
+        except Exception as error:
+            last_clipboard['screenshot_error'] = str(error)
+        raise
+    finally:
+        apps.record(directory, phase + '-clipboard.json', last_clipboard)
     (directory / (phase + '.txt')).write_text(copied)
     # A Shift-click collapses selection without sending Escape (which would
     # interrupt a still-running CLI response) or typing into the prompt.
@@ -170,7 +201,7 @@ def exercise(binary, client, artifacts):
                                     apps.key(*movement)
                                 apps.key('Return')
                                 return False
-                        return 'forshortcuts' in normalized and 'compat-fixture' in normalized
+                        return prompt_ready(client, normalized)
                     apps.wait_for('interactive CLI prompt after fixture onboarding', ready, processes, timeout=20)
                     report['onboarding_dialogs'] = sorted(dialogs)
                     checkpoint('interactive prompt ready')
@@ -191,8 +222,12 @@ def exercise(binary, client, artifacts):
                     geometry = apps.run(['xdotool', 'getwindowgeometry', '--shell', window]).stdout.decode()
                     fields = dict(line.split('=', 1) for line in geometry.splitlines() if '=' in line)
                     cw, ch = int(fields['WIDTH']) // 100, int(fields['HEIGHT']) // 30
+                    before_resize_output = transcript.stat().st_size
                     apps.run(['xdotool', 'windowsize', '--sync', window, str(cw * 88), str(ch * 26)])
                     apps.wait_for('remote PTY resize during incomplete stream', lambda: apps.read_json(work / 'resize.json') == [88, 26], processes)
+                    if client == 'codex':
+                        apps.wait_for('Codex emits its completed resize repaint',
+                                      lambda: codex_resize_frame(transcript.read_bytes()[before_resize_output:]), processes)
                     report['partial_resized'] = inspect_presented_text(work, window, 'partial-resized', ['COMPAT_BEGIN'], ['COMPAT_END'], processes)
                     checkpoint('partial response presented after resize')
                     endpoint.release.set()
@@ -240,6 +275,11 @@ def exercise(binary, client, artifacts):
                 path = work / name
                 if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
                     shutil.copyfile(path, artifacts / name)
+            for phase in ('partial', 'partial-resized', 'complete'):
+                for suffix in ('-clipboard.json', '-failure.png'):
+                    path = work / (phase + suffix)
+                    if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
+                        shutil.copyfile(path, artifacts / path.name)
             for name in ('terminal.log', 'sshd.log'):
                 if (directory / name).exists():
                     shutil.copyfile(directory / name, artifacts / name)
