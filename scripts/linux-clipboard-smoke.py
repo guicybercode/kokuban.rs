@@ -132,6 +132,7 @@ class ClipboardSmoke:
         self.stage = "starting"
         self.current_phase = None
         self.geometry = {}
+        self.grid_size = {}
         self.expected_clipboard = None
         self.last_clipboard = None
         self.last_clipboard_bytes = b""
@@ -160,7 +161,11 @@ class ClipboardSmoke:
                     return status
             return None
 
-        return self.wait(ready, f"{name} mode acknowledgment")
+        status = self.wait(ready, f"{name} mode acknowledgment")
+        self.grid_size = status
+        if self.window:
+            self.refresh_geometry()
+        return status
 
     def locate_window(self, size: dict) -> None:
         def search():
@@ -172,14 +177,21 @@ class ClipboardSmoke:
 
         self.window = self.wait(search, "Kokuban X11 window")[0]
         xdo("windowfocus", "--sync", self.window)
+        self.grid_size = size
+        self.refresh_geometry()
+
+    def refresh_geometry(self) -> None:
+        # The mapped window initially uses estimated metrics. Font loading can
+        # resize it without changing the PTY's columns/rows, so each gesture
+        # must use the current physical size instead of the startup snapshot.
         geometry = dict(line.split("=", 1) for line in xdo(
             "getwindowgeometry", "--shell", self.window
         ).decode().splitlines() if "=" in line)
         self.geometry = geometry
-        self.cell_width = int(geometry["WIDTH"]) / size["columns"]
-        self.cell_height = int(geometry["HEIGHT"]) / size["rows"]
+        self.cell_width = int(geometry["WIDTH"]) / self.grid_size["columns"]
+        self.cell_height = int(geometry["HEIGHT"]) / self.grid_size["rows"]
         if self.cell_width < 2 or self.cell_height < 2:
-            raise AssertionError(f"invalid terminal cell geometry: {geometry}, {size}")
+            raise AssertionError(f"invalid terminal cell geometry: {geometry}, {self.grid_size}")
 
     def clipboard(self) -> bytes:
         try:
@@ -234,6 +246,7 @@ class ClipboardSmoke:
                 str(int((row + 0.5) * self.cell_height)))
 
     def drag(self, columns: int, shift: bool = False) -> None:
+        self.refresh_geometry()
         if shift:
             xdo("keydown", "Shift_L")
         try:
@@ -271,6 +284,7 @@ class ClipboardSmoke:
     def copy_selection(self, expected: bytes, shift: bool = False) -> None:
         self.expected_clipboard = expected
         self.stage = "capture before selection"
+        self.refresh_geometry()
         before = self.row_pixels()
         self.stage = "drag selection"
         self.drag(len(expected), shift)
