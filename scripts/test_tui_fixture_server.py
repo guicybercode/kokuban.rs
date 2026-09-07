@@ -2,13 +2,15 @@
 
 import http.client
 import json
+import os
 from pathlib import Path
 import queue
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
-from tui_fixture_server import FINAL, PARTIAL, Fixture
+from tui_fixture_server import FINAL, PARTIAL, Fixture, cli_invocation
 
 
 REQUEST_LIMIT = 2 * 1024 * 1024
@@ -177,6 +179,15 @@ class FixtureHTTPTests(unittest.TestCase):
                     ]
                     cases.extend((kind, {field: [{'role': 'user', 'content': [{'type': kind, 'text': marker}]}]}, True)
                                  for kind in ('text', 'input_text'))
+                    for label, texts, expected in (
+                            ('Claude date reminder and exact input', ['<system-reminder>Current date context</system-reminder>', marker], True),
+                            ('reminder alone is not keyboard input', ['<system-reminder>' + marker + '</system-reminder>'], False),
+                            ('additional user text is rejected', ['unexpected extra text', marker], False),
+                            ('two input blocks are rejected', [marker, marker], False),
+                            ('input whitespace is not trimmed', ['<system-reminder>date</system-reminder>', marker + '\n'], False),
+                            ('partial reminder wrapper is not context', ['<system-reminder>date</system-reminder>extra', marker], False)):
+                        cases.append((label, {field: [{'role': 'user', 'content': [
+                            {'type': 'text', 'text': value} for value in texts]}]}, expected))
                     for label, content, expected in cases:
                         with self.subTest(protocol=protocol, case=label):
                             body = {'model': 'compat-fixture', 'stream': False,
@@ -308,6 +319,25 @@ class FixtureHTTPTests(unittest.TestCase):
             finally:
                 if connection is not None:
                     connection.close()
+
+
+class FixtureStateTests(unittest.TestCase):
+    def test_claude_state_trusts_only_fixture_and_uses_only_dummy_key(self):
+        with tempfile.TemporaryDirectory(prefix='kokuban-client-state-test-') as temporary:
+            directory = Path(temporary).resolve()
+            with mock.patch('shutil.which', return_value='/fixture/bin/claude'), mock.patch.dict(
+                    os.environ, {'ANTHROPIC_API_KEY': 'must-not-be-inherited',
+                                 'CLAUDE_CODE_OAUTH_TOKEN': 'must-not-be-inherited'}):
+                command, environment = cli_invocation('claude', directory, 'http://127.0.0.1:1234')
+            state = directory / 'client-state'
+            config = json.loads((state / '.claude.json').read_text())
+            self.assertEqual(config['projects'], {str(directory): {'hasTrustDialogAccepted': True}})
+            self.assertEqual(environment['CLAUDE_CONFIG_DIR'], str(state))
+            self.assertEqual(environment['ANTHROPIC_API_KEY'], 'compat-fixture-no-real-credentials')
+            self.assertNotIn('CLAUDE_CODE_OAUTH_TOKEN', environment)
+            self.assertNotIn('--dangerously-skip-permissions', command)
+            self.assertNotIn('must-not-be-inherited', json.dumps(config))
+            self.assertEqual(sorted(p.name for p in state.iterdir()), ['.claude.json', 'settings.json'])
 
 
 if __name__ == '__main__':

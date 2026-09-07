@@ -23,10 +23,16 @@ def has_keyboard_prompt(body, path):
         if content == 'compat-input-42':
             return True
         if isinstance(content, list):
-            text = ''.join(part.get('text', '') for part in content
-                           if isinstance(part, dict) and part.get('type') in ('text', 'input_text')
-                           and isinstance(part.get('text'), str))
-            if text == 'compat-input-42':
+            if any(not isinstance(part, dict) or part.get('type') not in ('text', 'input_text')
+                   or not isinstance(part.get('text'), str) for part in content):
+                continue
+            # Claude 2.1.261 prepends a separate date/context reminder to the
+            # user message. Ignore only whole reminder blocks; the typed block
+            # must still match exactly once, without trimming or extra text.
+            text = [part['text'] for part in content
+                    if not (part['text'].strip().startswith('<system-reminder>')
+                            and part['text'].strip().endswith('</system-reminder>'))]
+            if text == ['compat-input-42']:
                 return True
     return False
 
@@ -246,6 +252,17 @@ def cli_invocation(client, directory, base_url):
         for key, value in overrides.items():
             args.extend(['-c', key + '=' + value])
     elif client == 'claude':
+        # Fresh disposable state, verified against native Claude 2.1.261. Trust
+        # applies only to this generated directory, and the sole approved key
+        # suffix belongs to the dummy value below. No user config is read and
+        # no global permission bypass is enabled. This smoke tests the real
+        # TUI after onboarding, not the onboarding dialog's timing guard.
+        (state / '.claude.json').write_text(json.dumps({
+            'hasCompletedOnboarding': True, 'lastOnboardingVersion': '2.1.261',
+            'customApiKeyResponses': {'approved': ['-no-real-credentials'], 'rejected': []},
+            'projects': {str(directory): {'hasTrustDialogAccepted': True}},
+        }))
+        (state / 'settings.json').write_text(json.dumps({'theme': 'dark'}))
         environment.update(CLAUDE_CONFIG_DIR=str(state), ANTHROPIC_BASE_URL=base_url,
                            ANTHROPIC_API_KEY='compat-fixture-no-real-credentials',
                            DISABLE_AUTOUPDATER='1', DISABLE_TELEMETRY='1', DISABLE_ERROR_REPORTING='1')
