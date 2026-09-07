@@ -18,15 +18,25 @@ class ClientObservationTests(unittest.TestCase):
         self.assertFalse(smoke.prompt_ready('codex', observed))
 
     def test_codex_prompt_still_requires_its_interactive_footer(self):
-        self.assertTrue(smoke.prompt_ready('codex', 'compat-fixture low\n? for shortcuts'))
+        self.assertTrue(smoke.prompt_ready('codex', 'model: compat-fixture low /model to change\n› Ask Codex to do anything'))
         self.assertFalse(smoke.prompt_ready('codex', 'compat-fixture: starting'))
+        # Actual early PTY log contains the configured model in script's
+        # COMMAND header before the initial loading screen is ready.
+        self.assertFalse(smoke.prompt_ready('codex', 'COMMAND="model=compat-fixture"\nmodel: loading /model to change\n› Ask Codex to do anything\n? for shortcuts'))
+
+    def test_onboarding_waits_for_latest_selected_option_in_real_update_fragments(self):
+        yes = '\x1b[?2026h\x1b[38;2;177;185;249m❯\x1b[4GYes, I trust this folder\x1b[39m\x1b[?2026l'.encode()
+        no = '\x1b[?2026h\x1b[38;2;177;185;249m❯\x1b[4GNo, exit\x1b[39m\x1b[?2026l'.encode()
+        self.assertTrue(smoke.option_selected(yes, 'Yes, I trust this folder', 'No, exit'))
+        self.assertFalse(smoke.option_selected(no, 'Yes, I trust this folder', 'No, exit'))
+        self.assertFalse(smoke.option_selected(yes + no, 'Yes, I trust this folder', 'No, exit'))
 
     def test_resize_requires_marker_followed_by_completed_sync_frame(self):
         marker = b'\x1b[?2026h\x1b[22mCOMPAT_BEGIN\x1b[39m'
-        self.assertFalse(smoke.codex_resize_frame(marker))
-        self.assertFalse(smoke.codex_resize_frame(b'\x1b[?2026l' + marker))
-        self.assertFalse(smoke.codex_resize_frame(b'\x1b[?2026h\x1b[?2026l'))
-        self.assertTrue(smoke.codex_resize_frame(marker + b'\x1b[?2026l'))
+        self.assertFalse(smoke.cli_resize_frame(marker))
+        self.assertFalse(smoke.cli_resize_frame(b'\x1b[?2026l' + marker))
+        self.assertFalse(smoke.cli_resize_frame(b'\x1b[?2026h\x1b[?2026l'))
+        self.assertTrue(smoke.cli_resize_frame(marker + b'\x1b[?2026l'))
 
 
 if __name__ == '__main__':

@@ -41,13 +41,30 @@ def prompt_ready(client, text):
         # Observed Claude 2.1.261 plan-mode footer differs from Codex's hint.
         return ('compat-fixture' in normalized and 'apiusagebilling' in normalized
                 and 'planmodeon(shift+tabtocycle)' in normalized)
-    return 'forshortcuts' in normalized and 'compat-fixture' in normalized
+    # The script header already mentions the configured model; require the
+    # rendered model field to leave its initial "loading" state instead.
+    return ('model:compat-fixturelow/modeltochange' in normalized
+            and 'askcodextodoanything' in normalized)
 
 
-def codex_resize_frame(data):
+def cli_resize_frame(data):
     """Require the CLI's resize repaint, not just the outer SSH SIGWINCH."""
     marker = data.find(b'COMPAT_BEGIN')
     return marker >= 0 and data.find(b'\x1b[?2026l', marker) >= 0
+
+
+def option_selected(data, label, other):
+    normalized = ''.join(plain(data).split()).lower()
+    selected = normalized.rfind('❯' + ''.join(label.split()).lower())
+    unselected = normalized.rfind('❯' + ''.join(other.split()).lower())
+    return selected >= 0 and selected > unselected and b'\x1b[?2026l' in data
+
+
+def type_cli_text(value):
+    # Real key events at a human cadence. Codex 0.153.4 intentionally treats
+    # rapid bursts as paste and suppresses Enter-as-submit for 120 ms:
+    # github.com/openai/codex/blob/rust-v0.153.4/codex-rs/tui/src/bottom_pane/paste_burst.rs
+    apps.run(['xdotool', 'type', '--clearmodifiers', '--delay', '150', '--', value])
 
 
 def child(client, directory, endpoint):
@@ -63,7 +80,9 @@ def child(client, directory, endpoint):
     # util-linux script provides a transparent real PTY and a bounded-by-time
     # output observer. Input still originates at the terminal window via SSH.
     result = subprocess.run(['script', '--quiet', '--return', '--flush', '--command', shlex.join(args),
-                             '--log-out', str(directory / 'tui-output.bin')], env=environment, timeout=80)
+                             '--log-out', str(directory / 'tui-output.bin'),
+                             '--log-in', str(directory / 'tui-input.bin'),
+                             '--log-timing', str(directory / 'tui-timing.log')], env=environment, timeout=80)
     restored = before == termios.tcgetattr(0)
     apps.record(directory, 'client-exit.json', {'status': result.returncode, 'termios_restored': restored})
     if result.returncode or not restored:
@@ -192,13 +211,19 @@ def exercise(binary, client, artifacts):
                     dialogs = set()
                     def ready():
                         normalized = ''.join(text().split()).lower()
-                        choices = [('choosethetextstyle', ()), ('doyouwanttousethisapikey?', ('Up',)),
-                                   ('securitynotes:', ()), ('yes,itrustthisfolder', ('Down',))]
-                        for marker, movement in choices:
+                        choices = [('choosethetextstyle', (), '', ''),
+                                   ('doyouwanttousethisapikey?', ('Up',), 'Yes', 'No (recommended)'),
+                                   ('securitynotes:', (), '', ''),
+                                   ('yes,itrustthisfolder', ('Down',), 'Yes, I trust this folder', 'No, exit')]
+                        for marker, movement, selected_label, other_label in choices:
                             if marker in normalized and marker not in dialogs:
                                 dialogs.add(marker)
                                 if movement:
+                                    before_choice = transcript.stat().st_size
                                     apps.key(*movement)
+                                    apps.wait_for('CLI renders selected onboarding option ' + selected_label,
+                                                  lambda: option_selected(transcript.read_bytes()[before_choice:],
+                                                                          selected_label, other_label), processes)
                                 apps.key('Return')
                                 return False
                         return prompt_ready(client, normalized)
@@ -207,9 +232,12 @@ def exercise(binary, client, artifacts):
                     checkpoint('interactive prompt ready')
                     apps.screenshot(window, work / 'startup.png')
                     # Correct a character through real key events before Enter.
-                    apps.type_text('compat-input-4x')
+                    type_cli_text('compat-input-4x')
                     apps.key('BackSpace')
-                    apps.type_text('2')
+                    type_cli_text('2')
+                    report['edited_input'] = inspect_presented_text(
+                        work, window, 'edited-input', ['compat-input-42'], ['compat-input-4x', 'COMPAT_BEGIN'], processes)
+                    report['typing_interval_ms'] = 150
                     apps.key('Return')
                     apps.wait_for('user prompt reaches local streaming endpoint', endpoint.partial.is_set, processes)
                     if not endpoint.requests or not endpoint.requests[0]['prompt_received']:
@@ -225,9 +253,8 @@ def exercise(binary, client, artifacts):
                     before_resize_output = transcript.stat().st_size
                     apps.run(['xdotool', 'windowsize', '--sync', window, str(cw * 88), str(ch * 26)])
                     apps.wait_for('remote PTY resize during incomplete stream', lambda: apps.read_json(work / 'resize.json') == [88, 26], processes)
-                    if client == 'codex':
-                        apps.wait_for('Codex emits its completed resize repaint',
-                                      lambda: codex_resize_frame(transcript.read_bytes()[before_resize_output:]), processes)
+                    apps.wait_for(client + ' emits its completed resize repaint',
+                                  lambda: cli_resize_frame(transcript.read_bytes()[before_resize_output:]), processes)
                     report['partial_resized'] = inspect_presented_text(work, window, 'partial-resized', ['COMPAT_BEGIN'], ['COMPAT_END'], processes)
                     checkpoint('partial response presented after resize')
                     endpoint.release.set()
@@ -238,7 +265,7 @@ def exercise(binary, client, artifacts):
                                         'requests': len(endpoint.requests), 'output_marker_counts': {x: text().count(x) for x in ('COMPAT_BEGIN', 'COMPAT_END')}}
                     if len(endpoint.requests) != 1 or endpoint.errors:
                         raise AssertionError('unexpected repeated model request or local endpoint error')
-                    apps.type_text('/exit')
+                    type_cli_text('/exit')
                     apps.key('Return')
                     report['exit'] = apps.wait_for('normal CLI exit', lambda: apps.read_json(work / 'client-exit.json'), processes)
                     apps.wait_for('ordinary terminal after CLI exit', lambda: apps.read_json(work / 'post-exit-ready.json'), processes)
@@ -271,11 +298,11 @@ def exercise(binary, client, artifacts):
                     cleanup_errors.append(description + ': ' + str(error))
             # Explicit safe outputs: never upload client state, SSH keys, or request headers.
             for name in ('endpoint.json', 'client-start.json', 'client-exit.json', 'resize.json', 'post-exit.json',
-                         'tui-output.bin', 'partial.txt', 'partial-resized.txt', 'complete.txt', 'startup.png', 'partial.png', 'partial-resized.png', 'complete.png', 'exited.png', 'failure.png'):
+                         'tui-output.bin', 'tui-input.bin', 'tui-timing.log', 'edited-input.txt', 'edited-input.png', 'partial.txt', 'partial-resized.txt', 'complete.txt', 'startup.png', 'partial.png', 'partial-resized.png', 'complete.png', 'exited.png', 'failure.png'):
                 path = work / name
                 if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
                     shutil.copyfile(path, artifacts / name)
-            for phase in ('partial', 'partial-resized', 'complete'):
+            for phase in ('edited-input', 'partial', 'partial-resized', 'complete'):
                 for suffix in ('-clipboard.json', '-failure.png'):
                     path = work / (phase + suffix)
                     if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
