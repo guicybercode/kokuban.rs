@@ -84,3 +84,23 @@ release. Os resultados e medições foram preservados posteriormente em
 integração**. IME real, controles/clipboard e periféricos físicos permaneciam
 sem aprovação documentada na auditoria. APK gerado e testes anteriores não
 constituem conclusão da entrega Android.
+
+## Contratos novos na comparação de terminais (PR #10)
+
+Esta seção registra requisitos para uma futura integração; os testes desktop
+da PR #10 não validam o adaptador Android da PR #8.
+
+- O parser compartilhado passa a reconhecer e consultar o modo 2026.
+  O adaptador precisa verificar `Grid::synchronized_output_active()` sob o lock
+  da grade antes de montar qualquer snapshot, incluindo redraw por IME, resize
+  e timer de imagem. O `TerminalReader` expira a pausa mesmo sem novos bytes;
+  a notificação resultante precisa solicitar apresentação. Testar também
+  timeout após pausa/resume de lifecycle, reset durante pausa e resize.
+- `Cell` passa a ser `Clone`, com uma cauda Unicode compartilhada. Snapshots
+  devem clonar a célula completa; cópia usa `chars()` e desenho pode usar
+  `normalized_chars()` para composição NFC. Não reduzir novamente o texto a
+  `cell.c`: isso reintroduz perda de acentos. O atlas Android tem seu próprio
+  caminho de fontes e exige teste de pixels para texto composto/decomposto.
+- Preservar as métricas e cores do adaptador após RIS; DECSTR reinicia modos
+  de saída sem apagar tela/histórico. Executar `clear` real sobre SSH no APK,
+  além das sequências sintéticas e dos testes do núcleo compartilhado.

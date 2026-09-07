@@ -16,7 +16,8 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
-use crate::selection::GridPoint;
+use crate::renderer::pane_scene::image_intersects_content;
+use crate::selection::{point_from_viewport, GridPoint};
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
@@ -29,6 +30,7 @@ use objc2_metal::*;
 use objc2_quartz_core::*;
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -584,6 +586,7 @@ define_class!(
                     if let Some(state) = state.as_mut() {
                         let mut tree = state.pane_tree.lock().unwrap();
                         if let Some(pane) = tree.focused_pane_mut() {
+                            pane.sync_selection();
                             if pane.selection.is_active() {
                                 let text = pane.selection.get_text(&pane.grid);
                                 pane.selection.clear();
@@ -842,6 +845,7 @@ define_class!(
                                 let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
                                 if let Some((_id, point)) = grid_pt {
                                     if let Some(pane) = tree.pane_mut(pane_id) {
+                                        pane.sync_selection();
                                         pane.selection.start(point);
                                     }
                                 }
@@ -883,6 +887,7 @@ define_class!(
                             let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
                             if let Some((_id, point)) = grid_pt {
                                 if let Some(pane) = tree.focused_pane_mut() {
+                                    pane.sync_selection();
                                     pane.selection.update(point);
                                 }
                             }
@@ -1487,30 +1492,9 @@ fn pixel_to_grid_point(
     cell_w: f32,
     cell_h: f32,
 ) -> Option<(PaneId, GridPoint)> {
-    let loc = event.locationInWindow();
-    let scale = state.scale_factor;
-
-    let size = state.metal_layer.drawableSize();
-    let view_h = size.height as f32 / scale;
-
-    let px = loc.x as f32 * scale;
-    let py = (view_h - loc.y as f32) * scale;
-
-    let pane_id = tree.pane_at(px, py).unwrap_or(tree.focused);
+    let (pane_id, col, vis_row) = pixel_to_cell(event, state, tree, cell_w, cell_h)?;
     let pane = tree.pane(pane_id)?;
-    let rect = pane.rect;
-
-    let local_x = px - rect.x;
-    let local_y = py - rect.y;
-
-    let col = (local_x / cell_w) as usize;
-    let vis_row = (local_y / cell_h) as usize;
-
-    let sb_len = pane.grid.scrollback_len();
-    let scroll_offset = pane.grid.scroll_offset;
-    let abs_row = sb_len as i64 - scroll_offset as i64 + vis_row as i64;
-
-    Some((pane_id, GridPoint { row: abs_row, col }))
+    Some((pane_id, point_from_viewport(&pane.grid, vis_row, col)))
 }
 
 fn copy_to_clipboard(text: &str) {
@@ -1628,6 +1612,32 @@ fn bracketed_paste_len(payload_len: usize) -> Option<usize> {
         .checked_add(BRACKETED_PASTE_END.len())
 }
 
+/// Consume the current request before reading the grid. Later producer updates
+/// belong to the next frame and must never be cleared by this one.
+struct FrameRedraw<'a> {
+    dirty: &'a AtomicBool,
+    retry: bool,
+}
+
+impl<'a> FrameRedraw<'a> {
+    fn begin(dirty: &'a AtomicBool) -> Self {
+        dirty.swap(false, Ordering::Relaxed);
+        Self { dirty, retry: true }
+    }
+
+    fn finish(mut self, still_animating: bool) {
+        self.retry = still_animating;
+    }
+}
+
+impl Drop for FrameRedraw<'_> {
+    fn drop(&mut self) {
+        if self.retry {
+            self.dirty.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 fn render_frame() {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -1636,6 +1646,9 @@ fn render_frame() {
             None => return,
         };
 
+        // Forced AppKit draws also consume pending updates and retry if the
+        // drawable is temporarily unavailable.
+        let redraw = FrameRedraw::begin(state.dirty.as_ref());
         let size = state.metal_layer.drawableSize();
         let drawable = match state.metal_layer.nextDrawable() {
             Some(d) => d,
@@ -1645,7 +1658,7 @@ fn render_frame() {
 
         // Lock atlas FIRST (canonical order: atlas → tree → image_store)
         let mut atlas = state.atlas.lock().unwrap();
-        let tree = state.pane_tree.lock().unwrap();
+        let mut tree = state.pane_tree.lock().unwrap();
 
         let viewport = PixelRect {
             x: 0.0,
@@ -1654,6 +1667,12 @@ fn render_frame() {
             height: size.height as f32,
         };
         let (layouts, dividers) = tree.layout_info(viewport);
+
+        for (id, _) in &layouts {
+            if let Some(pane) = tree.pane_mut(*id) {
+                pane.sync_selection();
+            }
+        }
 
         let focused_id = tree.focused;
         let mut pane_render_data: Vec<PaneRenderData> = Vec::new();
@@ -1675,6 +1694,7 @@ fn render_frame() {
                     Vec::new()
                 };
                 pane_render_data.push(PaneRenderData {
+                    id: *id,
                     grid: &pane.grid,
                     rect: *rect,
                     selection: sel,
@@ -1708,11 +1728,11 @@ fn render_frame() {
         });
 
         let img_store = state.image_store.lock().unwrap();
-        state.renderer.draw_frame(
+        let presented = state.renderer.draw_frame(
             &pane_render_data,
             &dividers,
             &mut atlas,
-            ProtocolObject::from_ref(&*drawable),
+            Some(ProtocolObject::from_ref(&*drawable)),
             &texture,
             size.width as f32,
             size.height as f32,
@@ -1732,15 +1752,46 @@ fn render_frame() {
 
         // Keep rendering during fade-in animation
         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
-        if still_animating {
-            state.dirty.store(true, Ordering::Relaxed);
-        } else {
-            state.dirty.store(false, Ordering::Relaxed);
+        if presented {
+            redraw.finish(still_animating);
         }
     });
 }
 
 pub fn render_if_dirty(dirty: &AtomicBool) {
+    // The timer runs without PTY output: both synchronized-update expiration and
+    // a visible Kitty animation can request their next frame independently.
+    VIEW_STATE.with(|state| {
+        if let Some(state) = state.borrow().as_ref() {
+            // Keep the reader's canonical atlas → tree → image_store lock order.
+            let Ok(atlas) = state.atlas.try_lock() else { return };
+            if let Ok(mut tree) = state.pane_tree.try_lock() {
+                let now = std::time::Instant::now();
+                let mut visible_images = HashSet::new();
+                for id in tree.pane_ids() {
+                    if let Some(pane) = tree.pane_mut(id) {
+                        if pane.grid.expire_synchronized_output(now) {
+                            dirty.store(true, Ordering::Relaxed);
+                        }
+                        let content_size = [pane.rect.width,
+                            (pane.rect.height - state.status_bar_height).max(0.0)];
+                        for placement in &pane.grid.image_placements {
+                            if image_intersects_content(&placement.mode,
+                                [atlas.cell_width, atlas.cell_height], content_size)
+                            {
+                                visible_images.insert(placement.image_id);
+                            }
+                        }
+                    }
+                }
+                if let Ok(mut store) = state.image_store.try_lock() {
+                    if store.advance_animations(now, &visible_images).changed {
+                        dirty.store(true, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+    });
     if dirty.load(Ordering::Relaxed) {
         render_frame();
     }
@@ -1914,7 +1965,7 @@ mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
         dispatch_pane_focus_transition_with, dispatch_window_focus_transition_with,
-        focus_report_bytes,
+        focus_report_bytes, FrameRedraw,
         mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
         sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
         MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
@@ -1933,8 +1984,60 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Barrier, Mutex};
     use std::thread;
+
+    #[test]
+    fn frame_completion_preserves_output_arriving_after_grid_snapshot() {
+        let dirty = Arc::new(AtomicBool::new(true));
+        let grid_released = Arc::new(Barrier::new(2));
+        let output_arrived = Arc::new(Barrier::new(2));
+        let reader = {
+            let dirty = Arc::clone(&dirty);
+            let grid_released = Arc::clone(&grid_released);
+            let output_arrived = Arc::clone(&output_arrived);
+            thread::spawn(move || {
+                grid_released.wait();
+                dirty.store(true, Ordering::Relaxed);
+                output_arrived.wait();
+            })
+        };
+
+        let frame = FrameRedraw::begin(&dirty);
+        assert!(!dirty.load(Ordering::Relaxed));
+        grid_released.wait();
+        output_arrived.wait();
+        frame.finish(false);
+        reader.join().unwrap();
+
+        assert!(dirty.load(Ordering::Relaxed));
+        FrameRedraw::begin(&dirty).finish(false);
+        assert!(!dirty.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn missing_drawable_retries_even_when_appkit_forces_a_clean_frame() {
+        for initially_dirty in [false, true] {
+            let dirty = AtomicBool::new(initially_dirty);
+            let frame = FrameRedraw::begin(&dirty);
+            assert!(!dirty.load(Ordering::Relaxed));
+            // An early return before finish corresponds to nextDrawable = None.
+            drop(frame);
+            assert!(dirty.load(Ordering::Relaxed));
+            FrameRedraw::begin(&dirty).finish(false);
+            assert!(!dirty.load(Ordering::Relaxed));
+        }
+    }
+
+    #[test]
+    fn dialog_fade_requests_frames_until_the_final_frame() {
+        let dirty = AtomicBool::new(true);
+        for still_animating in [true, true, false] {
+            assert!(dirty.load(Ordering::Relaxed));
+            FrameRedraw::begin(&dirty).finish(still_animating);
+            assert_eq!(dirty.load(Ordering::Relaxed), still_animating);
+        }
+    }
 
     #[derive(Clone, Copy)]
     struct FocusTarget {

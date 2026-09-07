@@ -6,6 +6,7 @@ use buffer::Buffer;
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use marks::MarkIndex;
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthChar;
 
 use crate::parser::kitty_graphics::KittyCommand;
@@ -13,6 +14,7 @@ use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
+const SYNCHRONIZED_OUTPUT_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
@@ -29,8 +31,9 @@ pub(crate) enum TerminalEvent {
     },
 }
 
-const DEFAULT_CELL: Cell = Cell {
+static DEFAULT_CELL: Cell = Cell {
     c: ' ',
+    tail: None,
     fg: Color::Default,
     bg: Color::Default,
     flags: CellFlags::empty(),
@@ -127,6 +130,7 @@ pub struct Grid {
     pub focus_events: bool,
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
+    synchronized_output_deadline: Option<Instant>,
     pub charset: CharSet,
     // Underline state (current SGR)
     pub underline_style: UnderlineStyle,
@@ -194,6 +198,7 @@ impl Grid {
             focus_events: false,
             cursor_style: CursorStyle::default(),
             insert_mode: false,
+            synchronized_output_deadline: None,
             charset: CharSet::Ascii,
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
@@ -233,6 +238,40 @@ impl Grid {
     pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
     pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
 
+    pub(crate) fn synchronized_output_active(&self) -> bool {
+        self.synchronized_output_deadline.is_some_and(|deadline| Instant::now() < deadline)
+    }
+
+    pub(crate) fn synchronized_output_deadline(&self) -> Option<Instant> {
+        self.synchronized_output_deadline
+    }
+
+    pub(crate) fn set_synchronized_output(&mut self, enabled: bool) {
+        self.set_synchronized_output_at(enabled, Instant::now());
+    }
+
+    pub(crate) fn set_synchronized_output_at(&mut self, enabled: bool, now: Instant) {
+        if enabled {
+            // Repeated BSU is idempotent. A broken producer cannot postpone
+            // recovery forever by sending BSU without ESU.
+            if self.synchronized_output_deadline.is_none_or(|deadline| now >= deadline) {
+                self.synchronized_output_deadline = Some(now + SYNCHRONIZED_OUTPUT_TIMEOUT);
+            }
+        } else if self.synchronized_output_deadline.take().is_some() {
+            self.mark_all_dirty();
+        }
+    }
+
+    pub(crate) fn expire_synchronized_output(&mut self, now: Instant) -> bool {
+        if self.synchronized_output_deadline.is_some_and(|deadline| now >= deadline) {
+            self.synchronized_output_deadline = None;
+            self.mark_all_dirty();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Iterate every placement reference for cache retention, including a hidden primary screen.
     pub(crate) fn all_image_placements(&self) -> impl Iterator<Item = &ImagePlacement> {
         self.image_placements.iter().chain(
@@ -269,6 +308,12 @@ impl Grid {
         let alternate_scroll = self.alternate_scroll;
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
         reset.alternate_scroll = alternate_scroll;
+        // Renderer metrics and configured colors describe the terminal, not
+        // application state. Keep query responses accurate after `reset`.
+        reset.cell_pixel_width = self.cell_pixel_width;
+        reset.cell_pixel_height = self.cell_pixel_height;
+        reset.default_fg_hex = std::mem::take(&mut self.default_fg_hex);
+        reset.default_bg_hex = std::mem::take(&mut self.default_bg_hex);
         reset.selection_revision = self.selection_revision.wrapping_add(1);
         reset.screen_revision = self.screen_revision.wrapping_add(1);
         // RIS clears the title, but consumers still need a monotonic change signal.
@@ -276,6 +321,30 @@ impl Grid {
             .title_revision
             .wrapping_add(u64::from(!self.title.is_empty()));
         *self = reset;
+    }
+
+    /// DECSTR resets the modes used by subsequent output without erasing the
+    /// screen/history or moving the current cursor (xterm soft-reset behavior).
+    pub(crate) fn soft_reset(&mut self) {
+        self.set_synchronized_output(false);
+        self.cancel_pending_wrap();
+        self.saved_cursor_row = 0;
+        self.saved_cursor_col = 0;
+        self.saved_wrap_pending = false;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows() - 1;
+        self.fg = Color::Default;
+        self.bg = Color::Default;
+        self.flags = CellFlags::empty();
+        self.underline_style = UnderlineStyle::None;
+        self.underline_color = Color::Default;
+        self.cursor_visible = true;
+        self.cursor_style = CursorStyle::default();
+        self.application_cursor_keys = false;
+        self.auto_wrap = true;
+        self.insert_mode = false;
+        self.charset = CharSet::Ascii;
+        self.mark_all_dirty();
     }
 
     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
@@ -316,6 +385,7 @@ impl Grid {
     pub fn template_cell(&self) -> Cell {
         Cell {
             c: ' ',
+            tail: None,
             fg: self.fg,
             bg: self.bg,
             flags: CellFlags::empty(),
@@ -401,6 +471,25 @@ impl Grid {
         let char_width = c.width().unwrap_or(1);
         let cols = self.cols();
 
+        // Combining scalars belong to the preceding printed cell and must not
+        // consume delayed wrap or replace a wide glyph's continuation. At the
+        // left margin, attach to the current cell without moving the cursor.
+        if char_width == 0 {
+            let mut col = if self.is_wrap_pending() {
+                self.cursor_col.min(cols - 1)
+            } else {
+                self.cursor_col.saturating_sub(1).min(cols - 1)
+            };
+            if col > 0
+                && self.buffer.cell(self.cursor_row, col).flags.contains(CellFlags::WIDE_CONT)
+            {
+                col -= 1;
+            }
+            self.buffer.cell_mut(self.cursor_row, col).push_combining(c);
+            self.dirty[self.cursor_row] = true;
+            return;
+        }
+
         // Under stable dimensions `cursor_col == cols` is the delayed-wrap
         // sentinel. `wrap_pending` keeps the LCF independent from the physical
         // column when a resize moves the right margin before the next print.
@@ -445,7 +534,7 @@ impl Grid {
             let cols = self.cols();
             let shift = char_width;
             for c_idx in (col + shift..cols).rev() {
-                let src = *self.buffer.cell(row, c_idx - shift);
+                let src = self.buffer.cell(row, c_idx - shift).clone();
                 *self.buffer.cell_mut(row, c_idx) = src;
             }
         } else {
@@ -456,7 +545,7 @@ impl Grid {
         }
 
         let cell = self.buffer.cell_mut(row, col);
-        cell.c = c;
+        cell.set_char(c);
         cell.fg = self.fg;
         cell.bg = self.bg;
         cell.flags = self.flags;
@@ -469,7 +558,7 @@ impl Grid {
             // Set continuation cell
             if col + 1 < self.cols() {
                 let cont = self.buffer.cell_mut(row, col + 1);
-                cont.c = '\0';
+                cont.set_char('\0');
                 cont.fg = self.fg;
                 cont.bg = self.bg;
                 cont.flags = CellFlags::WIDE_CONT;
@@ -500,7 +589,7 @@ impl Grid {
             let cell = self.buffer.cell(row, col);
             if cell.flags.contains(CellFlags::WIDE_CONT) && col > 0 {
                 let prev = self.buffer.cell_mut(row, col - 1);
-                prev.c = ' ';
+                prev.set_char(' ');
                 prev.flags.remove(CellFlags::WIDE);
             }
         }
@@ -510,7 +599,7 @@ impl Grid {
             let cell = self.buffer.cell(row, c);
             if cell.flags.contains(CellFlags::WIDE) && c + 1 < self.cols() {
                 let cont = self.buffer.cell_mut(row, c + 1);
-                cont.c = ' ';
+                cont.set_char(' ');
                 cont.flags.remove(CellFlags::WIDE_CONT);
             }
         }
@@ -529,14 +618,14 @@ impl Grid {
             let orphaned_continuation = flags.contains(CellFlags::WIDE_CONT)
                 && (col == 0 || !cells[col - 1].flags.contains(CellFlags::WIDE));
             if orphaned_leader || orphaned_continuation {
-                cells[col] = template;
+                cells[col] = template.clone();
             }
         }
     }
 
     fn repair_wide_buffer(buffer: &mut Buffer, template: Cell) {
         for row in 0..buffer.rows() {
-            Self::repair_wide_buffer_row(buffer, row, template);
+            Self::repair_wide_buffer_row(buffer, row, template.clone());
         }
     }
 
@@ -771,7 +860,7 @@ impl Grid {
         for destination in col..cols {
             let source = destination.saturating_add(count);
             let cell = if source < cols {
-                *self.buffer.cell(row, source)
+                self.buffer.cell(row, source).clone()
             } else {
                 self.template_cell()
             };
@@ -793,7 +882,7 @@ impl Grid {
         self.clear_wide_overlap(row, col, 0);
         for destination in (col..cols).rev() {
             let cell = if destination >= col + count {
-                *self.buffer.cell(row, destination - count)
+                self.buffer.cell(row, destination - count).clone()
             } else {
                 self.template_cell()
             };
@@ -812,7 +901,7 @@ impl Grid {
         self.clear_wide_overlap(row, start, end - start);
         let template = self.template_cell();
         for col in start..end {
-            *self.buffer.cell_mut(row, col) = template;
+            *self.buffer.cell_mut(row, col) = template.clone();
         }
         self.repair_wide_row(row);
         self.dirty[row] = true;
@@ -825,7 +914,7 @@ impl Grid {
                 self.cancel_pending_wrap();
                 self.erase_in_line(0);
                 for row in self.cursor_row + 1..self.rows() {
-                    self.buffer.clear_row(row, template);
+                    self.buffer.clear_row(row, template.clone());
                     self.dirty[row] = true;
                 }
             }
@@ -833,7 +922,7 @@ impl Grid {
                 self.cancel_pending_wrap();
                 self.erase_in_line(1);
                 for row in 0..self.cursor_row {
-                    self.buffer.clear_row(row, template);
+                    self.buffer.clear_row(row, template.clone());
                     self.dirty[row] = true;
                 }
             }
@@ -841,7 +930,7 @@ impl Grid {
                 self.cancel_pending_wrap();
                 self.selection_revision = self.selection_revision.wrapping_add(1);
                 for row in 0..self.rows() {
-                    self.buffer.clear_row(row, template);
+                    self.buffer.clear_row(row, template.clone());
                     self.dirty[row] = true;
                 }
                 let cell_width = f32::from(self.cell_pixel_width);
@@ -969,7 +1058,7 @@ impl Grid {
         let alt_cursor_col = self.alt_cursor.1.min(old_max_col).min(cols - 1);
         self.buffer.resize(cols, rows);
         let template = self.template_cell();
-        Self::repair_wide_buffer(&mut self.buffer, template);
+        Self::repair_wide_buffer(&mut self.buffer, template.clone());
         if let Some(ref mut alt) = self.alt_buffer {
             alt.resize(cols, rows);
             Self::repair_wide_buffer(alt, template);
@@ -1001,6 +1090,25 @@ mod tests {
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
+
+    #[test]
+    fn synchronized_output_has_a_bounded_idempotent_deadline() {
+        let now = std::time::Instant::now();
+        let mut grid = Grid::new(8, 4, 10);
+        grid.set_synchronized_output_at(true, now);
+        let deadline = now + super::SYNCHRONIZED_OUTPUT_TIMEOUT;
+        grid.set_synchronized_output_at(true, now + std::time::Duration::from_millis(50));
+        assert_eq!(grid.synchronized_output_deadline(), Some(deadline));
+        assert!(!grid.expire_synchronized_output(deadline - std::time::Duration::from_nanos(1)));
+        grid.clear_dirty();
+        assert!(grid.expire_synchronized_output(deadline));
+        assert!(grid.is_any_dirty());
+        assert!(!grid.expire_synchronized_output(deadline));
+        grid.set_synchronized_output_at(true, deadline);
+        assert_eq!(grid.synchronized_output_deadline(), Some(deadline + super::SYNCHRONIZED_OUTPUT_TIMEOUT));
+        grid.set_synchronized_output(false);
+        assert_eq!(grid.synchronized_output_deadline(), None);
+    }
 
     #[test]
     fn selection_and_paste_revisions_distinguish_repaint_from_screen_changes() {
@@ -1800,23 +1908,185 @@ mod tests {
     }
 
     #[test]
-    fn zero_width_writes_clear_both_halves_of_an_overlapped_wide_character() {
-        for column in [0, 1] {
+    fn combining_scalars_preserve_a_wide_leader_at_the_cursor() {
+        for column in [0, 1, 2] {
             let mut grid = Grid::new(4, 1, 0);
-            grid.put_char('日');
+            let mut parser = crate::parser::ansi::Utf8Parser::new();
+            parser.feed("日".as_bytes(), &mut grid);
             grid.set_cursor_pos(0, column);
+            parser.feed("\u{301}".as_bytes(), &mut grid);
 
-            grid.put_char('\u{301}');
-
-            assert_eq!(grid.buffer.cell(0, column).c, '\u{301}');
+            assert_eq!(
+                grid.buffer.cell(0, 0).chars().collect::<String>(),
+                "日\u{301}"
+            );
             assert_wide_row_valid(&grid, 0);
-            assert!(!grid.buffer.cell(0, 0).flags.contains(CellFlags::WIDE));
-            assert!(!grid
-                .buffer
-                .cell(0, 1)
-                .flags
-                .contains(CellFlags::WIDE_CONT));
+            assert!(grid.buffer.cell(0, 0).flags.contains(CellFlags::WIDE));
+            assert!(grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE_CONT));
+            assert_eq!(grid.cursor_col, column);
         }
+    }
+
+    #[test]
+    fn parsed_combining_text_survives_the_next_character_and_utf8_chunks() {
+        let mut grid = Grid::new(4, 2, 2);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        for byte in "e\u{301}X".as_bytes() {
+            parser.feed(&[*byte], &mut grid);
+        }
+        let accented = grid.buffer.cell(0, 0);
+        assert_eq!(accented.chars().collect::<String>(), "e\u{301}");
+        assert_eq!(accented.normalized_chars().collect::<String>(), "é");
+        assert_eq!(grid.buffer.cell(0, 1).c, 'X');
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
+        assert!(grid.buffer.cell(0, 1).tail.is_none());
+    }
+
+    #[test]
+    fn excessive_combining_input_is_bounded_and_normal_output_recovers() {
+        let mut grid = Grid::new(1, 1, 0);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        parser.feed(b"x", &mut grid);
+        let cursor = (grid.cursor_row, grid.cursor_col);
+        for _ in 0..10_000 {
+            parser.feed("\u{301}".as_bytes(), &mut grid);
+        }
+        assert_eq!(
+            grid.buffer.cell(0, 0).text_len(),
+            1 + super::cell::MAX_COMBINING_BYTES
+        );
+        assert_eq!((grid.cursor_row, grid.cursor_col), cursor);
+        assert!(grid.is_wrap_pending());
+        parser.feed("e\u{301}".as_bytes(), &mut grid);
+        assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(), "e\u{301}");
+        parser.feed(b"\x1b[2J", &mut grid);
+        assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(), " ");
+    }
+
+    #[test]
+    fn combining_at_the_margin_preserves_delayed_wrap_and_wide_cells() {
+        for (width, text, leader) in [(2, "ae", 1), (3, "a日", 1)] {
+            let mut grid = Grid::new(width, 2, 2);
+            let mut parser = crate::parser::ansi::Utf8Parser::new();
+            parser.feed(text.as_bytes(), &mut grid);
+            parser.feed("\u{301}".as_bytes(), &mut grid);
+            assert!(grid.is_wrap_pending());
+            assert_eq!(grid.cursor_row, 0);
+            assert_eq!(
+                grid.buffer
+                    .cell(0, leader)
+                    .tail
+                    .as_deref()
+                    .map(String::as_str),
+                Some("\u{301}")
+            );
+            assert_wide_row_valid(&grid, 0);
+            parser.feed(b"X", &mut grid);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+            assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+            assert_eq!(
+                grid.buffer
+                    .cell(0, leader)
+                    .tail
+                    .as_deref()
+                    .map(String::as_str),
+                Some("\u{301}")
+            );
+        }
+    }
+
+    #[test]
+    fn combining_after_a_resize_stays_at_the_pending_wrap_cell() {
+        let mut grid = Grid::new(2, 2, 2);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        parser.feed(b"ae", &mut grid);
+        grid.resize(4, 2);
+        parser.feed("\u{301}".as_bytes(), &mut grid);
+        assert_eq!(
+            grid.buffer.cell(0, 1).chars().collect::<String>(),
+            "e\u{301}"
+        );
+        assert_eq!(grid.buffer.cell(0, 2).c, ' ');
+        assert!(grid.is_wrap_pending());
+        parser.feed(b"X", &mut grid);
+        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+    }
+
+    #[test]
+    fn combining_tail_follows_resize_insert_delete_and_scrollback() {
+        let mut grid = Grid::new(4, 2, 2);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        parser.feed("e\u{301}X".as_bytes(), &mut grid);
+        grid.resize(6, 3);
+        assert_eq!(
+            grid.buffer.cell(0, 0).chars().collect::<String>(),
+            "e\u{301}"
+        );
+        parser.feed(b"\x1b[1G\x1b[@", &mut grid);
+        assert_eq!(
+            grid.buffer.cell(0, 1).chars().collect::<String>(),
+            "e\u{301}"
+        );
+        parser.feed(b"\x1b[P", &mut grid);
+        assert_eq!(
+            grid.buffer.cell(0, 0).chars().collect::<String>(),
+            "e\u{301}"
+        );
+        parser.feed(b"\x1b[4hZ\x1b[4l", &mut grid);
+        assert_eq!(
+            grid.buffer.cell(0, 1).chars().collect::<String>(),
+            "e\u{301}"
+        );
+        parser.feed(b"\x1b[S", &mut grid);
+        assert_eq!(
+            grid.scrollback_cell_data(0, 1).chars().collect::<String>(),
+            "e\u{301}"
+        );
+        grid.scroll_viewport_up(1);
+        assert_eq!(
+            grid.visible_cell(0, 1).chars().collect::<String>(),
+            "e\u{301}"
+        );
+    }
+
+    #[test]
+    fn replacing_or_erasing_cells_clears_combining_tails() {
+        for replacement in [b"X".as_slice(), b"\x1b[X", b"\x1b[2K", b"\x1b[2J"] {
+            let mut grid = Grid::new(4, 2, 2);
+            let mut parser = crate::parser::ansi::Utf8Parser::new();
+            parser.feed("e\u{301}日\u{302}".as_bytes(), &mut grid);
+            parser.feed(b"\x1b[1G", &mut grid);
+            parser.feed(replacement, &mut grid);
+            assert!(grid.buffer.cell(0, 0).tail.is_none());
+            parser.feed(b"\x1b[3GX", &mut grid);
+            assert!(
+                grid.buffer.cell(0, 1).tail.is_none(),
+                "wide leader cleared through continuation"
+            );
+            assert_wide_row_valid(&grid, 0);
+        }
+    }
+
+    #[test]
+    fn cloned_cells_keep_their_original_combining_text_after_live_updates() {
+        let mut grid = Grid::new(4, 1, 0);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        parser.feed("e\u{301}".as_bytes(), &mut grid);
+        let snapshot = grid.buffer.extract_row(0);
+        assert!(std::sync::Arc::ptr_eq(
+            snapshot[0].tail.as_ref().unwrap(),
+            grid.buffer.cell(0, 0).tail.as_ref().unwrap()
+        ));
+        parser.feed("\u{302}".as_bytes(), &mut grid);
+        assert_eq!(snapshot[0].chars().collect::<String>(), "e\u{301}");
+        assert_eq!(
+            grid.buffer.cell(0, 0).chars().collect::<String>(),
+            "e\u{301}\u{302}"
+        );
+        assert!(!std::sync::Arc::ptr_eq(
+            snapshot[0].tail.as_ref().unwrap(),
+            grid.buffer.cell(0, 0).tail.as_ref().unwrap()
+        ));
     }
 
     #[test]

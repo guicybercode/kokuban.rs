@@ -2,9 +2,11 @@ use super::box_drawing;
 use super::braille;
 use super::brush::BrushRenderer;
 use super::image_store::ImageStore;
+use super::pane_scene::{
+    append_translated, content_clip, image_intersects_content, PaneScene, PaneSceneCache, SceneImage,
+};
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
-use crate::graphics::ImageId;
 use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
@@ -16,8 +18,40 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::*;
 
+type MetalTexture = Retained<ProtocolObject<dyn MTLTexture>>;
+
+struct SceneDrawCall {
+    vertex_start: usize,
+    vertex_count: usize,
+    texture: MetalTexture,
+    clip: [usize; 4],
+}
+
+struct FrameBuffers {
+    vertices: Retained<ProtocolObject<dyn MTLBuffer>>,
+    uniforms: Retained<ProtocolObject<dyn MTLBuffer>>,
+    submission: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
+}
+
+impl FrameBuffers {
+    fn is_available(&self) -> bool {
+        self.submission.as_ref().is_none_or(|submission| {
+            matches!(submission.status(), MTLCommandBufferStatus::Completed | MTLCommandBufferStatus::Error)
+        })
+    }
+}
+
 fn white_pixel_uv(atlas_width: u32, atlas_height: u32) -> (f32, f32) {
     (0.5 / atlas_width as f32, 0.5 / atlas_height as f32)
+}
+
+fn status_cwd_suffix(cwd: &str, max_chars: usize) -> &str {
+    if max_chars == 0 {
+        return "";
+    }
+    let start = cwd.char_indices().rev().nth(max_chars - 1)
+        .map_or(0, |(index, _)| index);
+    &cwd[start..]
 }
 
 fn cell_content_is_visible(flags: CellFlags) -> bool {
@@ -44,12 +78,12 @@ pub struct MetalRenderer {
     command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     image_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    vertex_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    uniform_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
+    frames: [FrameBuffers; 3],
     atlas_texture: Retained<ProtocolObject<dyn MTLTexture>>,
     sampler_state: Retained<ProtocolObject<dyn MTLSamplerState>>,
     pub brush: BrushRenderer,
     colors: TerminalColors,
+    pane_scenes: PaneSceneCache<MetalTexture>,
 }
 
 impl MetalRenderer {
@@ -147,15 +181,14 @@ impl MetalRenderer {
                 .newRenderPipelineStateWithDescriptor_error(&image_pipeline_desc)
                 .expect("Failed to create image render pipeline state");
 
-            let max_vertices = 200 * 100 * 12;
-            let buffer_size = max_vertices * std::mem::size_of::<Vertex>();
-            let vertex_buffer = device
-                .newBufferWithLength_options(buffer_size, MTLResourceOptions::StorageModeShared)
-                .expect("Failed to create vertex buffer");
-
-            let uniform_buffer = device
-                .newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
-                .expect("Failed to create uniform buffer");
+            let frames = std::array::from_fn(|_| FrameBuffers {
+                vertices: device.newBufferWithLength_options(
+                    std::mem::size_of::<Vertex>(), MTLResourceOptions::StorageModeShared,
+                ).expect("Failed to create frame vertex buffer"),
+                uniforms: device.newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
+                    .expect("Failed to create frame uniform buffer"),
+                submission: None,
+            });
 
             let tex_desc = MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 MTLPixelFormat::R8Unorm,
@@ -184,12 +217,12 @@ impl MetalRenderer {
                 command_queue,
                 pipeline_state,
                 image_pipeline_state,
-                vertex_buffer,
-                uniform_buffer,
+                frames,
                 atlas_texture,
                 sampler_state,
                 brush,
                 colors: TerminalColors::new(default_fg, default_bg),
+                pane_scenes: PaneSceneCache::default(),
             }
         }
     }
@@ -283,10 +316,10 @@ impl MetalRenderer {
                     continue;
                 }
 
-                if cell.c != ' ' && cell.c != '\0' {
+                for character in cell.normalized_chars().filter(|c| *c != ' ' && *c != '\0') {
                     let cw = cell_w * render_width;
                     // Box drawing: geometric lines
-                    if let Some(segs) = box_drawing::box_drawing_lines(cell.c, cw, cell_h) {
+                    if let Some(segs) = box_drawing::box_drawing_lines(character, cw, cell_h) {
                         for (lx0, ly0, lx1, ly1) in segs {
                             let is_horiz = (ly0 - ly1).abs() < 0.01;
                             let half = line_thickness / 2.0;
@@ -302,9 +335,9 @@ impl MetalRenderer {
                             vertices.push(Vertex::new(rx1, ry1, white_u, white_v, fg_packed, fg_packed));
                             vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
                         }
-                    } else if braille::is_braille(cell.c) {
+                    } else if braille::is_braille(character) {
                         // Braille: render dots
-                        let dots = braille::braille_dots(cell.c);
+                        let dots = braille::braille_dots(character);
                         let dot_r = cell_w / 6.0;
                         let col_spacing = cw / 2.0;
                         let row_spacing = cell_h / 4.0;
@@ -320,8 +353,16 @@ impl MetalRenderer {
                         }
                     } else {
                         // Normal glyph from atlas
-                        let key = GlyphKey { c: cell.c, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
+                        let key = GlyphKey { c: character, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
                         let glyph = atlas.get_or_insert(key);
+                        // Remaining combining marks overlay the base glyph. A
+                        // transparent foreground-colored background avoids
+                        // erasing it in the glyph quad's uncovered pixels.
+                        let glyph_bg = if unicode_width::UnicodeWidthChar::width(character) == Some(0) {
+                            fg_packed & 0xFFFFFF00
+                        } else {
+                            bg_packed
+                        };
                         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
                             let gx0 = x0 + glyph.bearing_x as f32;
                             let gy0 = y0 + atlas.ascent + glyph.bearing_y as f32;
@@ -329,12 +370,12 @@ impl MetalRenderer {
                             let gy1 = gy0 + glyph.pixel_h as f32;
                             let (u0, v0, u1, v1) =
                                 glyph_uv_bounds(atlas.width, atlas.height, &glyph);
-                            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, glyph_bg));
+                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, glyph_bg));
                         }
                     }
                 }
@@ -488,8 +529,8 @@ impl MetalRenderer {
             }
             // Truncate cwd if too long
             let max_cwd_chars = ((rect.width - cursor_x + rect.x - cell_w * 4.0) / cell_w) as usize;
-            let cwd_display = if pane.cwd.len() > max_cwd_chars && max_cwd_chars > 3 {
-                &pane.cwd[pane.cwd.len() - max_cwd_chars..]
+            let cwd_display = if max_cwd_chars > 3 {
+                status_cwd_suffix(pane.cwd, max_cwd_chars)
             } else {
                 pane.cwd
             };
@@ -598,12 +639,80 @@ impl MetalRenderer {
         vertices
     }
 
+    fn build_pane_images(
+        pane: &PaneRenderData,
+        atlas: &GlyphAtlas,
+        status_bar_height: f32,
+        image_store: Option<&ImageStore>,
+    ) -> Vec<SceneImage<MetalTexture>> {
+        let mut images = Vec::new();
+        let Some(store) = image_store else { return images };
+        let rect = pane.rect;
+        let grid_height = (rect.height - status_bar_height).max(0.0);
+        for placement in &pane.grid.image_placements {
+            let Some(image) = store.get(placement.image_id) else { continue };
+            if !image_intersects_content(&placement.mode,
+                [atlas.cell_width, atlas.cell_height], [rect.width, grid_height])
+            {
+                continue;
+            }
+            let (placement_x, placement_y, w, h) =
+                placement.mode.pixel_rect(atlas.cell_width, atlas.cell_height);
+            let x0 = rect.x + placement_x;
+            let y0 = rect.y + placement_y;
+            let x1 = (x0 + w).min(rect.x + rect.width);
+            let y1 = (y0 + h).min(rect.y + grid_height);
+            let u0 = if x0 < rect.x { (rect.x - x0) / w } else { 0.0 };
+            let v0 = if y0 < rect.y { (rect.y - y0) / h } else { 0.0 };
+            let u1 = (x1 - x0) / w;
+            let v1 = (y1 - y0) / h;
+            let x0 = x0.max(rect.x);
+            let y0 = y0.max(rect.y);
+            let white = u32::MAX;
+            images.push(SceneImage {
+                vertices: [
+                    Vertex::new(x0, y0, u0, v0, white, white),
+                    Vertex::new(x1, y0, u1, v0, white, white),
+                    Vertex::new(x0, y1, u0, v1, white, white),
+                    Vertex::new(x1, y0, u1, v0, white, white),
+                    Vertex::new(x1, y1, u1, v1, white, white),
+                    Vertex::new(x0, y1, u0, v1, white, white),
+                ],
+                texture: image.texture.clone(),
+            });
+        }
+        images
+    }
+
+    fn upload_atlas(&mut self, atlas: &mut GlyphAtlas) {
+        let descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::R8Unorm, atlas.width as usize, atlas.height as usize, false,
+            )
+        };
+        descriptor.setUsage(MTLTextureUsage::ShaderRead);
+        let texture = self.device.newTextureWithDescriptor(&descriptor)
+            .expect("Failed to create updated glyph atlas texture");
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize { width: atlas.width as usize, height: atlas.height as usize, depth: 1 },
+        };
+        let bytes = std::ptr::NonNull::new(atlas.pixels.as_ptr() as *mut std::ffi::c_void).unwrap();
+        unsafe {
+            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                region, 0, bytes, atlas.width as usize,
+            );
+        }
+        self.atlas_texture = texture;
+        atlas.dirty = false;
+    }
+
     pub fn draw_frame(
         &mut self,
         panes: &[PaneRenderData],
         dividers: &[DividerInfo],
         atlas: &mut GlyphAtlas,
-        drawable: &ProtocolObject<dyn MTLDrawable>,
+        drawable: Option<&ProtocolObject<dyn MTLDrawable>>,
         texture: &ProtocolObject<dyn MTLTexture>,
         viewport_width: f32,
         viewport_height: f32,
@@ -615,143 +724,111 @@ impl MetalRenderer {
         prompt_indicator_color: Option<(u8, u8, u8)>,
         image_store: Option<&ImageStore>,
         confirm_overlay: Option<&ConfirmOverlayInfo>,
-    ) {
-        // Build pane content + status bar vertices (use atlas texture)
-        let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
-        for pane in panes {
-            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, status_bar_height, prompt_indicator_color, &mut content_vertices);
-            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut content_vertices);
+    ) -> bool {
+        // Reuse a slot only after Metal has stopped reading both its vertex and
+        // viewport buffers. A busy GPU retries on the next UI timer tick.
+        let Some(frame_index) = self.frames.iter().position(FrameBuffers::is_available) else {
+            return false;
+        };
+        // Cache only complete visible scenes. Frozen panes never build from the
+        // live grid, even when AppKit requests a forced draw or another pane moves.
+        let mut scenes = std::mem::take(&mut self.pane_scenes);
+        scenes.retain(|id| panes.iter().any(|pane| pane.id == id));
+        let frozen: Vec<bool> = panes.iter()
+            .map(|pane| pane.grid.synchronized_output_active())
+            .collect();
+        let mut chrome_vertices = Vec::new();
+        for (pane, &synchronized) in panes.iter().zip(&frozen) {
+            scenes.update_with(pane.id, synchronized, || {
+                let mut content = Vec::new();
+                self.build_pane_vertices(pane, atlas, selection_fg, selection_bg,
+                    status_bar_height, prompt_indicator_color, &mut content);
+                PaneScene {
+                    origin: [pane.rect.x, pane.rect.y],
+                    content,
+                    atlas_texture: self.atlas_texture.clone(),
+                    images: Self::build_pane_images(pane, atlas, status_bar_height, image_store),
+                }
+            });
+            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut chrome_vertices);
         }
 
-        // Build divider vertices (use brush texture)
         let default_bg = self.colors.default_background();
         let bg_packed = Self::pack_color(default_bg.0, default_bg.1, default_bg.2, 255);
-        let mut divider_vertices: Vec<Vertex> = Vec::new();
+        let mut divider_vertices = Vec::new();
         for div in dividers {
             divider_vertices.extend(self.build_divider_vertices(div, bg_packed, chrome));
         }
-
-        // Build image quad vertices for each pane
-        struct ImageDrawCall {
-            vertex_start: usize,
-            vertex_count: usize,
-            image_id: ImageId,
-        }
-        let mut image_vertices: Vec<Vertex> = Vec::new();
-        let mut image_draw_calls: Vec<ImageDrawCall> = Vec::new();
-
-        if let Some(store) = image_store {
-            let cell_w = atlas.cell_width;
-            let cell_h = atlas.cell_height;
-            let white = 0xFFFFFFFFu32; // dummy, unused by image shader
-
-            for pane in panes {
-                let rect = pane.rect;
-                let grid_height = rect.height - status_bar_height;
-
-                for placement in &pane.grid.image_placements {
-                    if store.get(placement.image_id).is_none() {
-                        continue;
-                    }
-
-                    let (placement_x, placement_y, w, h) =
-                        placement.mode.pixel_rect(cell_w, cell_h);
-                    let x0 = rect.x + placement_x;
-                    let y0 = rect.y + placement_y;
-
-                    // Clip to pane bounds
-                    if y0 + h <= rect.y || y0 >= rect.y + grid_height {
-                        continue;
-                    }
-                    if x0 + w <= rect.x || x0 >= rect.x + rect.width {
-                        continue;
-                    }
-
-                    let x1 = (x0 + w).min(rect.x + rect.width);
-                    let y1 = (y0 + h).min(rect.y + grid_height);
-
-                    // Compute UV coordinates (clipped)
-                    let u0 = if x0 < rect.x { (rect.x - x0) / w } else { 0.0 };
-                    let v0 = if y0 < rect.y { (rect.y - y0) / h } else { 0.0 };
-                    let u1 = (x1 - x0) / w;
-                    let v1 = (y1 - y0) / h;
-                    let x0 = x0.max(rect.x);
-                    let y0 = y0.max(rect.y);
-
-                    let start = image_vertices.len();
-                    image_vertices.push(Vertex::new(x0, y0, u0, v0, white, white));
-                    image_vertices.push(Vertex::new(x1, y0, u1, v0, white, white));
-                    image_vertices.push(Vertex::new(x0, y1, u0, v1, white, white));
-                    image_vertices.push(Vertex::new(x1, y0, u1, v0, white, white));
-                    image_vertices.push(Vertex::new(x1, y1, u1, v1, white, white));
-                    image_vertices.push(Vertex::new(x0, y1, u0, v1, white, white));
-
-                    image_draw_calls.push(ImageDrawCall {
-                        vertex_start: start,
-                        vertex_count: 6,
-                        image_id: placement.image_id,
-                    });
-                }
-            }
-        }
-
-        // Build confirm overlay vertices (uses atlas texture, drawn last)
-        let mut overlay_vertices: Vec<Vertex> = Vec::new();
+        let mut overlay_vertices = Vec::new();
         if let Some(overlay) = confirm_overlay {
             self.build_confirm_overlay(overlay, atlas, chrome, &mut overlay_vertices);
         }
 
-        // Combine ALL vertices into single buffer: content, dividers, images, overlay
-        let content_count = content_vertices.len();
-        let divider_count = divider_vertices.len();
-        let image_base_offset = content_count + divider_count;
-        let overlay_offset = image_base_offset + image_vertices.len();
-        let overlay_count = overlay_vertices.len();
-
-        let mut all_vertices = content_vertices;
-        all_vertices.extend(divider_vertices);
-        all_vertices.extend(image_vertices);
-        all_vertices.extend(overlay_vertices);
-
-        if all_vertices.is_empty() {
-            return;
+        // Atlas handles in cached scenes and submitted GPU work must remain
+        // immutable, including across font zoom and backing-scale changes.
+        if atlas.dirty {
+            self.upload_atlas(atlas);
+        }
+        for (pane, &synchronized) in panes.iter().zip(&frozen) {
+            if !synchronized {
+                if let Some(scene) = scenes.get_mut(pane.id) {
+                    scene.atlas_texture = self.atlas_texture.clone();
+                }
+            }
         }
 
+        let mut all_vertices = Vec::new();
+        let mut content_draw_calls = Vec::new();
+        let mut image_draw_calls = Vec::new();
+        let viewport = [viewport_width, viewport_height];
+        for pane in panes {
+            let Some(scene) = scenes.get(pane.id) else { continue };
+            let Some(clip) = content_clip(pane.rect, status_bar_height, viewport) else { continue };
+            let start = all_vertices.len();
+            append_translated(&mut all_vertices, &scene.content, scene.origin, pane.rect);
+            content_draw_calls.push(SceneDrawCall {
+                vertex_start: start,
+                vertex_count: scene.content.len(),
+                texture: scene.atlas_texture.clone(),
+                clip,
+            });
+            for image in &scene.images {
+                let start = all_vertices.len();
+                append_translated(&mut all_vertices, &image.vertices, scene.origin, pane.rect);
+                image_draw_calls.push(SceneDrawCall {
+                    vertex_start: start,
+                    vertex_count: image.vertices.len(),
+                    texture: image.texture.clone(),
+                    clip,
+                });
+            }
+        }
+        self.pane_scenes = scenes;
+        let chrome_offset = all_vertices.len();
+        let chrome_count = chrome_vertices.len();
+        all_vertices.extend(chrome_vertices);
+        let divider_offset = all_vertices.len();
+        let divider_count = divider_vertices.len();
+        all_vertices.extend(divider_vertices);
+        let overlay_offset = all_vertices.len();
+        let overlay_count = overlay_vertices.len();
+        all_vertices.extend(overlay_vertices);
+
         unsafe {
+            let frame = &mut self.frames[frame_index];
             let needed = all_vertices.len() * std::mem::size_of::<Vertex>();
-            if needed > self.vertex_buffer.length() {
-                self.vertex_buffer = self
+            if needed > frame.vertices.length() {
+                frame.vertices = self
                     .device
                     .newBufferWithLength_options(needed * 2, MTLResourceOptions::StorageModeShared)
                     .expect("Failed to resize vertex buffer");
             }
 
-            let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
+            let ptr = frame.vertices.contents().as_ptr() as *mut Vertex;
             std::ptr::copy_nonoverlapping(all_vertices.as_ptr(), ptr, all_vertices.len());
 
-            let ptr = self.uniform_buffer.contents().as_ptr() as *mut [f32; 2];
+            let ptr = frame.uniforms.contents().as_ptr() as *mut [f32; 2];
             *ptr = [viewport_width, viewport_height];
-
-            if atlas.dirty {
-                let region = MTLRegion {
-                    origin: MTLOrigin { x: 0, y: 0, z: 0 },
-                    size: MTLSize {
-                        width: atlas.width as usize,
-                        height: atlas.height as usize,
-                        depth: 1,
-                    },
-                };
-                let bytes_ptr =
-                    std::ptr::NonNull::new(atlas.pixels.as_ptr() as *mut std::ffi::c_void).unwrap();
-                self.atlas_texture
-                    .replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                        region,
-                        0,
-                        bytes_ptr,
-                        atlas.width as usize,
-                    );
-                atlas.dirty = false;
-            }
 
             let command_buffer = self
                 .command_queue
@@ -779,35 +856,43 @@ impl MetalRenderer {
                 .expect("Failed to create render encoder");
 
             encoder.setRenderPipelineState(&self.pipeline_state);
-            encoder.setVertexBuffer_offset_atIndex(Some(&self.vertex_buffer), 0, 0);
-            encoder.setVertexBuffer_offset_atIndex(Some(&self.uniform_buffer), 0, 1);
+            encoder.setVertexBuffer_offset_atIndex(Some(&frame.vertices), 0, 0);
+            encoder.setVertexBuffer_offset_atIndex(Some(&frame.uniforms), 0, 1);
             encoder.setFragmentSamplerState_atIndex(Some(&self.sampler_state), 0);
 
-            // Draw pane content + status bars with atlas texture
-            if content_count > 0 {
-                encoder.setFragmentTexture_atIndex(Some(&self.atlas_texture), 0);
+            for call in &content_draw_calls {
+                if call.vertex_count == 0 { continue; }
+                encoder.setScissorRect(MTLScissorRect {
+                    x: call.clip[0], y: call.clip[1], width: call.clip[2], height: call.clip[3],
+                });
+                encoder.setFragmentTexture_atIndex(Some(&call.texture), 0);
                 encoder.drawPrimitives_vertexStart_vertexCount(
-                    MTLPrimitiveType::Triangle,
-                    0,
-                    content_count,
+                    MTLPrimitiveType::Triangle, call.vertex_start, call.vertex_count,
                 );
             }
 
-            // Draw images with image pipeline (after text, so they overlay)
-            if !image_draw_calls.is_empty() {
-                if let Some(store) = image_store {
-                    encoder.setRenderPipelineState(&self.image_pipeline_state);
-                    for call in &image_draw_calls {
-                        if let Some(img) = store.get(call.image_id) {
-                            encoder.setFragmentTexture_atIndex(Some(&img.texture), 0);
-                            encoder.drawPrimitives_vertexStart_vertexCount(
-                                MTLPrimitiveType::Triangle,
-                                image_base_offset + call.vertex_start,
-                                call.vertex_count,
-                            );
-                        }
-                    }
-                }
+            // Image handles come from the presented scene, not the live store:
+            // deletion or animation uploads during BSU cannot leak into this frame.
+            encoder.setRenderPipelineState(&self.image_pipeline_state);
+            for call in &image_draw_calls {
+                encoder.setScissorRect(MTLScissorRect {
+                    x: call.clip[0], y: call.clip[1], width: call.clip[2], height: call.clip[3],
+                });
+                encoder.setFragmentTexture_atIndex(Some(&call.texture), 0);
+                encoder.drawPrimitives_vertexStart_vertexCount(
+                    MTLPrimitiveType::Triangle, call.vertex_start, call.vertex_count,
+                );
+            }
+
+            encoder.setScissorRect(MTLScissorRect {
+                x: 0, y: 0, width: viewport_width as usize, height: viewport_height as usize,
+            });
+            encoder.setRenderPipelineState(&self.pipeline_state);
+            if chrome_count > 0 {
+                encoder.setFragmentTexture_atIndex(Some(&self.atlas_texture), 0);
+                encoder.drawPrimitives_vertexStart_vertexCount(
+                    MTLPrimitiveType::Triangle, chrome_offset, chrome_count,
+                );
             }
 
             // Draw dividers with brush texture
@@ -816,7 +901,7 @@ impl MetalRenderer {
                 encoder.setFragmentTexture_atIndex(Some(&self.brush.texture), 0);
                 encoder.drawPrimitives_vertexStart_vertexCount(
                     MTLPrimitiveType::Triangle,
-                    content_count,
+                    divider_offset,
                     divider_count,
                 );
             }
@@ -834,9 +919,13 @@ impl MetalRenderer {
 
             encoder.endEncoding();
 
-            command_buffer.presentDrawable(drawable);
+            if let Some(drawable) = drawable {
+                command_buffer.presentDrawable(drawable);
+            }
+            frame.submission = Some(command_buffer.clone());
             command_buffer.commit();
         }
+        true
     }
 
     fn build_confirm_overlay(
@@ -1005,12 +1094,230 @@ impl MetalRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{cell_content_is_visible, glyph_uv_bounds, white_pixel_uv, MetalRenderer};
+    use super::{
+        cell_content_is_visible, glyph_uv_bounds, status_cwd_suffix, white_pixel_uv, MetalRenderer,
+    };
     use crate::glyph_atlas::GlyphEntry;
-    use crate::grid::cell::CellFlags;
+    use crate::grid::cell::{CellFlags, Color};
+    use crate::grid::Grid;
+    use crate::glyph_atlas::GlyphAtlas;
+    use crate::layout::PixelRect;
+    use crate::render_scene::{ChromeColors, PaneRenderData};
+    use objc2::rc::Retained;
+    use objc2::runtime::ProtocolObject;
+    use objc2_metal::*;
 
     fn assert_close(actual: f32, expected: f32) {
         assert!((actual - expected).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn status_cwd_truncation_keeps_utf8_boundaries_during_resize() {
+        for cwd in ["/tmp/café", "/日本語/端末", "/tmp/🦊/café", "short", ""] {
+            let characters: Vec<char> = cwd.chars().collect();
+            for limit in 0..=characters.len() + 2 {
+                let expected: String = characters.iter()
+                    .skip(characters.len().saturating_sub(limit)).collect();
+                assert_eq!(status_cwd_suffix(cwd, limit), expected);
+            }
+        }
+    }
+
+    fn test_target(renderer: &MetalRenderer, width: usize, height: usize) -> super::MetalTexture {
+        let descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::BGRA8Unorm, width, height, false,
+            )
+        };
+        descriptor.setUsage(MTLTextureUsage::RenderTarget | MTLTextureUsage::ShaderRead);
+        descriptor.setStorageMode(MTLStorageMode::Shared);
+        renderer.device.newTextureWithDescriptor(&descriptor).unwrap()
+    }
+
+    fn test_draw(
+        renderer: &mut MetalRenderer,
+        atlas: &mut GlyphAtlas,
+        grid: &Grid,
+        texture: &ProtocolObject<dyn MTLTexture>,
+    ) -> bool {
+        let pane = PaneRenderData {
+            id: 1,
+            grid,
+            rect: PixelRect { x: 0.0, y: 0.0, width: texture.width() as f32, height: texture.height() as f32 },
+            selection: None,
+            is_focused: false,
+            pane_index: 0,
+            cwd: "",
+            prompt_mark_rows: Vec::new(),
+            show_cursor: false,
+        };
+        let chrome = ChromeColors {
+            sumi_dark: (0, 0, 0), sumi_medium: (0, 0, 0), sumi_light: (0, 0, 0),
+            sumi_ghost: (0, 0, 0), hanko_red: (0, 0, 0), hanko_dim: (0, 0, 0),
+        };
+        renderer.draw_frame(&[pane], &[], atlas, None, texture,
+            texture.width() as f32, texture.height() as f32, 1.0,
+            (255, 255, 255), (0, 0, 0), &chrome, 0.0, None, None, None)
+    }
+
+    fn paint_test_grid(grid: &mut Grid, background: (u8, u8, u8)) {
+        for row in 0..grid.rows() {
+            for column in 0..grid.cols() {
+                grid.buffer.cell_mut(row, column).bg = Color::Rgb(background.0, background.1, background.2);
+            }
+        }
+    }
+
+    fn test_pixel(texture: &ProtocolObject<dyn MTLTexture>, x: usize, y: usize) -> [u8; 4] {
+        let mut bytes = [0u8; 4];
+        unsafe {
+            texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                std::ptr::NonNull::new(bytes.as_mut_ptr().cast()).unwrap(), 4,
+                MTLRegion { origin: MTLOrigin { x, y, z: 0 }, size: MTLSize { width: 1, height: 1, depth: 1 } },
+                0,
+            );
+        }
+        bytes
+    }
+
+    fn test_region(texture: &ProtocolObject<dyn MTLTexture>, width: usize, height: usize) -> Vec<u8> {
+        let mut bytes = vec![0; width * height * 4];
+        unsafe {
+            texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                std::ptr::NonNull::new(bytes.as_mut_ptr().cast()).unwrap(), width * 4,
+                MTLRegion { origin: MTLOrigin { x: 0, y: 0, z: 0 }, size: MTLSize { width, height, depth: 1 } },
+                0,
+            );
+        }
+        bytes
+    }
+
+    fn finish_test_frames(renderer: &MetalRenderer) {
+        for frame in &renderer.frames {
+            if let Some(submission) = &frame.submission {
+                submission.waitUntilCompleted();
+                assert_eq!(submission.status(), MTLCommandBufferStatus::Completed);
+            }
+        }
+    }
+
+    #[test]
+    fn metal_in_flight_frames_keep_distinct_vertices_and_viewports_until_gpu_completion() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let mut renderer = MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let mut atlas = GlyphAtlas::new("Menlo", 12.0, 1.0).unwrap();
+        let mut grid = Grid::new(8, 4, 0);
+        let sample_x = (atlas.cell_width * grid.cols() as f32 - 2.0) as usize;
+
+        // Hold the real GPU queue so all three submitted frames remain in flight.
+        // Release on unwind too, so a failed assertion cannot leave the GPU waiting.
+        struct ReleaseEvent(Retained<ProtocolObject<dyn MTLSharedEvent>>);
+        impl Drop for ReleaseEvent {
+            fn drop(&mut self) { self.0.setSignaledValue(1); }
+        }
+        let event = ReleaseEvent(renderer.device.newSharedEvent().unwrap());
+        let gate = renderer.command_queue.commandBuffer().unwrap();
+        gate.encodeWaitForEvent_value(ProtocolObject::from_ref(&*event.0), 1);
+        gate.commit();
+
+        let colors = [(200, 10, 20), (10, 200, 20), (10, 20, 200)];
+        let mut targets = Vec::new();
+        for (index, color) in colors.into_iter().enumerate() {
+            paint_test_grid(&mut grid, color);
+            let texture = test_target(&renderer, 96 + index * 32, 96);
+            assert!(test_draw(&mut renderer, &mut atlas, &grid, &texture));
+            targets.push(texture);
+        }
+        assert!(renderer.frames.iter().all(|frame| !frame.is_available()));
+        let previous = renderer.pane_scenes.get(1).unwrap().content[0].bg_color;
+        paint_test_grid(&mut grid, (255, 255, 255));
+        let rejected = test_target(&renderer, 256, 128);
+        assert!(!test_draw(&mut renderer, &mut atlas, &grid, &rejected));
+        assert_eq!(renderer.pane_scenes.get(1).unwrap().content[0].bg_color, previous);
+
+        drop(event);
+        finish_test_frames(&renderer);
+        for (texture, (r, g, b)) in targets.iter().zip(colors) {
+            assert_eq!(test_pixel(texture, sample_x, 2), [b, g, r, 255]);
+        }
+        assert!(test_draw(&mut renderer, &mut atlas, &grid, &rejected));
+        finish_test_frames(&renderer);
+        assert_eq!(test_pixel(&rejected, sample_x, 2), [255; 4]);
+    }
+
+    #[test]
+    fn metal_synchronized_scene_keeps_previous_pixels_through_resize_until_release() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let mut renderer = MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let mut atlas = GlyphAtlas::new("Menlo", 12.0, 1.0).unwrap();
+        let mut grid = Grid::new(8, 4, 0);
+        paint_test_grid(&mut grid, (200, 10, 20));
+        grid.buffer.cell_mut(0, 0).set_char('A');
+        let glyph_region = [atlas.cell_width.ceil() as usize, atlas.cell_height.ceil() as usize];
+        let first = test_target(&renderer, 128, 96);
+        assert!(test_draw(&mut renderer, &mut atlas, &grid, &first));
+        finish_test_frames(&renderer);
+        let glyph_pixels = test_region(&first, glyph_region[0], glyph_region[1]);
+        assert!(glyph_pixels.chunks_exact(4).any(|pixel| pixel != [20, 10, 200, 255]));
+        assert_eq!(test_pixel(&first, 40, 2), [20, 10, 200, 255]);
+
+        grid.set_synchronized_output_at(true, std::time::Instant::now() + std::time::Duration::from_secs(60));
+        paint_test_grid(&mut grid, (10, 200, 20));
+        atlas.clear_and_resize(18.0).unwrap();
+        let resized = test_target(&renderer, 96, 96);
+        assert!(test_draw(&mut renderer, &mut atlas, &grid, &resized));
+        finish_test_frames(&renderer);
+        assert_eq!(test_region(&resized, glyph_region[0], glyph_region[1]), glyph_pixels);
+        assert_eq!(test_pixel(&resized, 40, 2), [20, 10, 200, 255]);
+
+        grid.set_synchronized_output(false);
+        assert!(test_draw(&mut renderer, &mut atlas, &grid, &resized));
+        finish_test_frames(&renderer);
+        assert_eq!(test_pixel(&resized, 40, 2), [20, 200, 10, 255]);
+    }
+
+    #[test]
+    fn metal_composed_and_decomposed_accents_render_identical_pixels() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let mut renderer = MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let mut atlas = GlyphAtlas::new("Menlo", 16.0, 1.0).unwrap();
+        for (composed, decomposed) in [("éãç", "e\u{301}a\u{303}c\u{327}"), ("ÁÇÑ", "A\u{301}C\u{327}N\u{303}")] {
+            let mut frames = Vec::new();
+            for text in [composed, decomposed] {
+                let mut grid = Grid::new(8, 4, 0);
+                for character in text.chars() { grid.put_char(character); }
+                let texture = test_target(&renderer, 128, 96);
+                assert!(test_draw(&mut renderer, &mut atlas, &grid, &texture));
+                finish_test_frames(&renderer);
+                frames.push(test_region(&texture, 128, 64));
+                let stored: String = (0..3).flat_map(|col| grid.visible_cell(0, col).chars()).collect();
+                assert_eq!(stored, text, "drawing must preserve the original copied text");
+            }
+            assert!(frames[0].chunks_exact(4).any(|pixel| pixel[..3] != [0, 0, 0]));
+            assert_eq!(frames[0], frames[1]);
+        }
+    }
+
+    #[test]
+    fn metal_uncomposed_mark_overlays_without_erasing_the_base_glyph() {
+        let Some(device) = MTLCreateSystemDefaultDevice() else { return };
+        let mut renderer = MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let mut atlas = GlyphAtlas::new("Menlo", 16.0, 1.0).unwrap();
+        let mut frames = Vec::new();
+        for text in ["  x", "  x\u{301}"] {
+            let mut grid = Grid::new(8, 4, 0);
+            for character in text.chars() { grid.put_char(character); }
+            let texture = test_target(&renderer, 128, 96);
+            assert!(test_draw(&mut renderer, &mut atlas, &grid, &texture));
+            finish_test_frames(&renderer);
+            frames.push(test_region(&texture, 128, 64));
+        }
+        assert_ne!(frames[0], frames[1], "the uncomposed accent must be visible");
+        for (base, combined) in frames[0].chunks_exact(4).zip(frames[1].chunks_exact(4)) {
+            for channel in 0..3 {
+                assert!(combined[channel] >= base[channel], "the accent must not erase base pixels");
+            }
+        }
     }
 
     #[test]

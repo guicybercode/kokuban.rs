@@ -40,7 +40,7 @@ impl Buffer {
     pub fn clear_row(&mut self, row: usize, template: Cell) {
         let start = row * self.cols;
         for i in start..start + self.cols {
-            self.cells[i] = template;
+            self.cells[i] = template.clone();
         }
     }
 
@@ -51,10 +51,10 @@ impl Buffer {
                 let src_start = (row + count) * self.cols;
                 let dst_start = row * self.cols;
                 for col in 0..self.cols {
-                    self.cells[dst_start + col] = self.cells[src_start + col];
+                    self.cells[dst_start + col] = self.cells[src_start + col].clone();
                 }
             } else {
-                self.clear_row(row, template);
+                self.clear_row(row, template.clone());
             }
         }
     }
@@ -66,10 +66,10 @@ impl Buffer {
                 let src_start = (row - count) * self.cols;
                 let dst_start = row * self.cols;
                 for col in 0..self.cols {
-                    self.cells[dst_start + col] = self.cells[src_start + col];
+                    self.cells[dst_start + col] = self.cells[src_start + col].clone();
                 }
             } else {
-                self.clear_row(row, template);
+                self.clear_row(row, template.clone());
             }
         }
     }
@@ -85,7 +85,7 @@ impl Buffer {
         let copy_cols = self.cols.min(new_cols);
         for row in 0..copy_rows {
             for col in 0..copy_cols {
-                new_cells[row * new_cols + col] = self.cells[row * self.cols + col];
+                new_cells[row * new_cols + col] = self.cells[row * self.cols + col].clone();
             }
         }
         self.cells = new_cells;

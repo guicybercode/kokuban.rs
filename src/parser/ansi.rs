@@ -639,7 +639,8 @@ impl Parser {
         let namespace = self.intermediates.as_slice();
         match namespace {
             [] => {}
-            [b'?'] if matches!(final_byte, b'h' | b'l') => {}
+            [b'?'] if matches!(final_byte, b'h' | b'l' | b'n') => {}
+            [b'?', b'$'] if final_byte == b'p' => {}
             [b'>'] if matches!(final_byte, b'c' | b'q') => {}
             [b' '] if final_byte == b'q' => {}
             [b'!'] if final_byte == b'p' => {}
@@ -656,6 +657,30 @@ impl Parser {
         let has_space = matches!(namespace, [b' ']);
 
         match final_byte {
+            b'p' if namespace == [b'!'] => grid.soft_reset(),
+            // DECRQM: report only implemented modes; unknown is distinct from reset.
+            b'p' if namespace == [b'?', b'$'] => {
+                for &mode in params {
+                    let enabled = match mode {
+                        1 => Some(grid.application_cursor_keys),
+                        7 => Some(grid.auto_wrap),
+                        25 => Some(grid.cursor_visible),
+                        47 | 1047 | 1049 => Some(grid.using_alt_screen),
+                        1000 => Some(grid.mouse_tracking == MouseTracking::Normal),
+                        1002 => Some(grid.mouse_tracking == MouseTracking::ButtonEvent),
+                        1003 => Some(grid.mouse_tracking == MouseTracking::AnyEvent),
+                        1004 => Some(grid.focus_events),
+                        1006 => Some(grid.mouse_encoding == MouseEncoding::Sgr),
+                        1007 => Some(grid.alternate_scroll),
+                        2004 => Some(grid.bracketed_paste),
+                        2026 => Some(grid.synchronized_output_active()),
+                        _ => None,
+                    };
+                    let status = enabled.map_or(0, |enabled| if enabled { 1 } else { 2 });
+                    grid.queue_response(format!("\x1b[?{mode};{status}$y").into_bytes());
+                }
+            }
+
             // DECSCUSR — cursor shape (CSI Ps SP q)
             b'q' if has_space => {
                 let ps = params.first().copied().unwrap_or(0);
@@ -732,10 +757,13 @@ impl Parser {
             // Device status report
             b'n' => {
                 let ps = params.first().copied().unwrap_or(0);
-                if ps == 6 {
+                if ps == 5 && !has_question {
+                    grid.queue_response(b"\x1b[0n".to_vec());
+                } else if ps == 6 {
                     // Cursor position report
                     let cursor_col = grid.screen_cursor_col().unwrap_or(grid.cols() - 1);
-                    let resp = format!("\x1b[{};{}R", grid.cursor_row + 1, cursor_col + 1);
+                    let private = if has_question { "?" } else { "" };
+                    let resp = format!("\x1b[{private}{};{}R", grid.cursor_row + 1, cursor_col + 1);
                     grid.queue_response(resp.into_bytes());
                 }
             }
@@ -802,6 +830,7 @@ impl Parser {
                             1006 => { grid.mouse_encoding = if set { MouseEncoding::Sgr } else { MouseEncoding::Default }; }
                             1007 => { grid.alternate_scroll = set; }
                             2004 => { grid.bracketed_paste = set; }
+                            2026 => { grid.set_synchronized_output(set); }
                             _ => { log::trace!("Ignoring DEC private mode {param}"); }
                         }
                     }
@@ -1114,6 +1143,123 @@ mod tests {
 
     fn limited_parser(osc: usize, apc: usize, dcs: usize) -> Utf8Parser {
         Utf8Parser::with_control_string_limits(ControlStringLimits { osc, apc, dcs })
+    }
+
+    #[test]
+    fn responds_to_standard_status_and_private_cursor_probes() {
+        let stream = b"\x1b[3;5H\x1b[5n\x1b[?6n\x1b[6n\x1b[?5n";
+        for split in 0..=stream.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            parser.feed(&stream[..split], &mut grid);
+            parser.feed(&stream[split..], &mut grid);
+            let responses: Vec<_> = grid.drain_terminal_events().into_iter().map(|event| {
+                let TerminalEvent::Response(bytes) = event else { panic!("expected response") };
+                bytes
+            }).collect();
+            assert_eq!(responses, [b"\x1b[0n".to_vec(), b"\x1b[?3;5R".to_vec(), b"\x1b[3;5R".to_vec()]);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (2, 4));
+        }
+    }
+
+    #[test]
+    fn synchronized_output_and_mode_queries_survive_every_read_boundary() {
+        let stream = b"\x1b[?2026$p\x1b[?2026h\x1b[2JNEW\x1b[?2026$p\x1b[6n\x1b[?2026l\x1b[?2026$p\x1b[?9999$p";
+        for split in 0..=stream.len() {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            parser.feed(&stream[..split], &mut grid);
+            parser.feed(&stream[split..], &mut grid);
+            assert!(!grid.synchronized_output_active());
+            assert_eq!(row_prefix(&grid, 3), "NEW");
+            let responses: Vec<_> = grid.drain_terminal_events().into_iter().map(|event| {
+                let TerminalEvent::Response(bytes) = event else { panic!("expected response") };
+                bytes
+            }).collect();
+            assert_eq!(responses, [
+                b"\x1b[?2026;2$y".to_vec(), b"\x1b[?2026;1$y".to_vec(),
+                b"\x1b[1;4R".to_vec(), b"\x1b[?2026;2$y".to_vec(), b"\x1b[?9999;0$y".to_vec(),
+            ], "split {split}");
+        }
+    }
+
+    #[test]
+    fn synchronized_output_reset_end_and_restart_are_applied_in_order() {
+        for reset in [b"\x1bc".as_slice(), b"\x1b[!p", b"\x1b[?2026l"] {
+            let mut parser = Utf8Parser::new();
+            let mut grid = grid();
+            for byte in b"\x1b[?2026hPARTIAL\x1b[?2026h" {
+                parser.feed(&[*byte], &mut grid);
+            }
+            assert!(grid.synchronized_output_active());
+            assert_eq!(row_prefix(&grid, 7), "PARTIAL");
+            parser.feed(reset, &mut grid);
+            assert_eq!(grid.synchronized_output_deadline(), None);
+            parser.feed(b"\x1b[?2026h\x1b[?2026l\x1b[?2026h", &mut grid);
+            assert!(grid.synchronized_output_active());
+        }
+    }
+
+    #[test]
+    fn hard_reset_preserves_renderer_metrics_and_configured_color_responses() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        grid.cell_pixel_width = 11;
+        grid.cell_pixel_height = 23;
+        grid.default_fg_hex = "aabbcc".into();
+        grid.default_bg_hex = "123456".into();
+        let queries = b"\x1b[16t\x1b[14t\x1b]10;?\x1b\\\x1b]11;?\x1b\\";
+        let responses = |grid: &mut Grid| -> Vec<Vec<u8>> {
+            grid.drain_terminal_events().into_iter().map(|event| {
+                let TerminalEvent::Response(bytes) = event else { panic!("expected response") };
+                bytes
+            }).collect()
+        };
+
+        parser.feed(queries, &mut grid);
+        let before = responses(&mut grid);
+        assert_eq!(before.len(), 4);
+        assert_eq!(before[0], b"\x1b[6;23;11t");
+        parser.feed(b"old\x1b[31m\x1bc", &mut grid);
+        assert_eq!(grid.buffer.cell(0, 0).c, ' ');
+        assert_eq!(grid.fg, Color::Default);
+        for byte in queries {
+            parser.feed(&[*byte], &mut grid);
+        }
+        assert_eq!(responses(&mut grid), before);
+    }
+
+    #[test]
+    fn soft_reset_restores_output_modes_without_erasing_or_moving_cursor() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"history\r\nline\r\nline\r\nline\r\nprimary", &mut grid);
+        parser.feed(b"\x1b[?1049hKEEP\x1b[2;4r\x1b[3;7H\x1b7", &mut grid);
+        parser.feed(b"\x1b[31;44;1;4m\x1b[58;5;2m\x1b[?25l\x1b[?1h\x1b[?7l\x1b[4h\x1b(0\x1b[6 q", &mut grid);
+        let before = screen_text(&grid);
+        let history_len = grid.scrollback_len();
+        let revision = grid.selection_revision();
+        for byte in b"\x1b[!p" {
+            parser.feed(&[*byte], &mut grid);
+        }
+        assert_eq!(screen_text(&grid), before);
+        assert_eq!(grid.scrollback_len(), history_len);
+        assert_eq!(grid.selection_revision(), revision);
+        assert!(grid.using_alt_screen);
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 6));
+        assert_eq!((grid.scroll_top, grid.scroll_bottom), (0, 3));
+        assert!(grid.cursor_visible && grid.auto_wrap);
+        assert!(!grid.application_cursor_keys && !grid.insert_mode);
+        assert_eq!(grid.cursor_style.shape, CursorShape::Block);
+        assert!(grid.cursor_style.blinking);
+        assert_eq!(grid.fg, Color::Default);
+        assert_eq!(grid.bg, Color::Default);
+        assert!(grid.flags.is_empty());
+        assert_eq!(grid.underline_style, UnderlineStyle::None);
+        assert_eq!(grid.underline_color, Color::Default);
+        parser.feed(b"q\x1b8X", &mut grid);
+        assert_eq!(grid.buffer.cell(2, 6).c, 'q');
+        assert_eq!(grid.buffer.cell(0, 0).c, 'X');
     }
 
     fn drain_kitty_commands(grid: &mut Grid) -> Vec<KittyCommand> {
@@ -1783,7 +1929,7 @@ mod tests {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
 
-        parser.feed(b"\x1b[?31mA\x1b[>4hB\x1b[?6nC", &mut grid);
+        parser.feed(b"\x1b[?31mA\x1b[>4hB\x1b[?5nC", &mut grid);
 
         assert_eq!(row_prefix(&grid, 4), "ABC ");
         assert_eq!(grid.fg, Color::Default);
@@ -1794,7 +1940,7 @@ mod tests {
 
     #[test]
     fn malformed_intermediate_parameters_are_ignored_across_read_boundaries() {
-        const STREAM: &[u8] = b"A\x1b[!31mB\x1b[ 1qC\x1b[!pD";
+        const STREAM: &[u8] = b"A\x1b[!31mB\x1b[ 1qC\x1b[!31pD";
 
         for split in 0..=STREAM.len() {
             let mut parser = Utf8Parser::new();

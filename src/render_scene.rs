@@ -1,8 +1,9 @@
 use crate::grid::Grid;
-use crate::layout::PixelRect;
+use crate::layout::{PaneId, PixelRect};
 use crate::selection::SelectionState;
 
 pub struct PaneRenderData<'a> {
+    pub id: PaneId,
     pub grid: &'a Grid,
     pub rect: PixelRect,
     pub selection: Option<&'a SelectionState>,

@@ -63,6 +63,15 @@ jobs:
             xdotool \
             xvfb
 
+      - name: Test real clear fixture and pixel evidence
+        run: python3 -m unittest discover -s scripts -p test_linux_clear_fixture.py
+
+      - name: Test local Responses and Messages streaming fixture
+        run: python3 -m unittest discover -s scripts -p test_tui_fixture_server.py
+
+      - name: Test pinned CLI prompt and resize observations
+        run: python3 -m unittest discover -s scripts -p test_linux_ai_tui_smoke.py
+
       - name: Check all targets
         run: cargo check --locked --all-targets
 
@@ -100,6 +109,7 @@ jobs:
           fi
 
       - name: Verify clean Linux display failure
+        id: linux_build
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -173,13 +183,39 @@ jobs:
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout 90s python3 scripts/linux-graphics-smoke.py "$PWD/target/debug/kokuban"
 
+      - name: Verify synchronized Linux presentation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 30s python3 scripts/linux-sync-smoke.py \
+              "$PWD/target/debug/kokuban" --artifacts target/linux-sync-smoke
+
+      - name: Upload synchronized presentation evidence
+        if: ${{ always() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-sync-smoke
+          path: target/linux-sync-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify Linux clipboard and mouse selection
         if: runner.os == 'Linux'
         shell: bash
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py \
-              "$PWD/target/debug/kokuban"
+              "$PWD/target/debug/kokuban" --artifacts target/linux-clipboard-smoke
+
+      - name: Upload Linux clipboard diagnostics
+        if: ${{ always() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-clipboard-smoke
+          path: target/linux-clipboard-smoke
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify real mpv Kitty video and pause under Xvfb
         if: runner.os == 'Linux'
@@ -214,5 +250,65 @@ jobs:
         with:
           name: linux-apps-smoke
           path: ${{ runner.temp }}/kokuban-apps-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Install Node for pinned interactive CLIs
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.linux_build.outcome == 'success' }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install exact Claude Code and Codex fixture clients
+        id: ai_clients
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.linux_build.outcome == 'success' }}
+        shell: bash
+        run: |
+          cli_directory="$RUNNER_TEMP/kokuban-fixture-clients"
+          mkdir -p "$cli_directory" target/linux-ai-tui/packages
+          npm install --prefix "$cli_directory" --save-exact --ignore-scripts \
+            --no-audit --no-fund --registry=https://registry.npmjs.org \
+            @openai/codex@0.153.4 @anthropic-ai/claude-code@2.1.261
+          # This package's installer links the exact platform binary already
+          # fetched by npm; other lifecycle scripts remain disabled.
+          node "$cli_directory/node_modules/@anthropic-ai/claude-code/install.cjs"
+          cli_bin="$cli_directory/node_modules/.bin"
+          echo "$cli_bin" >> "$GITHUB_PATH"
+          [[ "$("$cli_bin/codex" --version)" == "codex-cli 0.153.4" ]]
+          [[ "$("$cli_bin/claude" --version)" == "2.1.261 (Claude Code)" ]]
+          cp "$cli_directory/package-lock.json" target/linux-ai-tui/packages/package-lock.json
+          {
+            node --version
+            npm --version
+            "$cli_bin/codex" --version
+            "$cli_bin/claude" --version
+            git rev-parse HEAD
+            sha256sum target/debug/kokuban
+          } > target/linux-ai-tui/packages/versions.txt
+
+      - name: Verify real Codex TUI with localhost streaming over SSH
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.ai_clients.outcome == 'success' }}
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24 -noreset" \
+            timeout --kill-after=5s 120s python3 scripts/linux-ai-tui-smoke.py \
+              "$PWD/target/debug/kokuban" --client codex \
+              --artifacts target/linux-ai-tui/codex
+
+      - name: Verify real Claude Code TUI with localhost streaming over SSH
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.ai_clients.outcome == 'success' }}
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24 -noreset" \
+            timeout --kill-after=5s 120s python3 scripts/linux-ai-tui-smoke.py \
+              "$PWD/target/debug/kokuban" --client claude \
+              --artifacts target/linux-ai-tui/claude
+
+      - name: Upload real CLI terminal evidence
+        if: ${{ always() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-ai-tui
+          path: target/linux-ai-tui
           if-no-files-found: ignore
           retention-days: 7

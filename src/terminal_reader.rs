@@ -6,7 +6,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const READ_BUFFER_SIZE: usize = 4096;
@@ -205,6 +205,16 @@ where
             return ReaderExit::Shutdown;
         }
 
+        // Wake presentation on timeout even if the application never writes
+        // another byte. Queries and graphics still parse normally during BSU.
+        let expired = match grid.lock() {
+            Ok(mut grid) => grid.expire_synchronized_output(Instant::now()),
+            Err(_) => return ReaderExit::GridPoisoned,
+        };
+        if expired {
+            on_update();
+        }
+
         match io.wait_readable(POLL_INTERVAL) {
             Ok(false) => continue,
             Ok(true) => {}
@@ -213,7 +223,16 @@ where
 
         let (changed, exit) =
             read_ready_batch(io, grid, shutdown, decoder, on_graphics, &mut buffer);
-        if changed {
+        let mut ended_sync = false;
+        if exit.is_some() {
+            // A producer that exits mid-frame cannot send ESU. Publish its
+            // final state before the frontend handles EOF.
+            if let Ok(mut grid) = grid.lock() {
+                ended_sync = grid.synchronized_output_deadline().is_some();
+                grid.set_synchronized_output(false);
+            }
+        }
+        if changed || ended_sync {
             on_update();
         }
         if let Some(exit) = exit {
@@ -508,6 +527,48 @@ mod tests {
 
     fn grid() -> Arc<Mutex<Grid>> {
         Arc::new(Mutex::new(Grid::new(80, 8, 32)))
+    }
+
+    #[test]
+    fn synchronization_timeout_notifies_without_any_further_pty_bytes() {
+        let grid = grid();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let fake = FakeIo::new(vec![WaitAction::TimeoutAndShutdown(shutdown.clone())], vec![]);
+        grid.lock().unwrap().set_synchronized_output_at(
+            true, std::time::Instant::now() - Duration::from_secs(2),
+        );
+        let mut updates = 0;
+        let exit = run_reader(&fake, &grid, &shutdown, &mut text_decoder(), &mut || {
+            assert_eq!(grid.lock().unwrap().synchronized_output_deadline(), None);
+            updates += 1;
+        });
+        assert!(matches!(exit, ReaderExit::Shutdown));
+        assert_eq!(updates, 1);
+        assert_eq!(fake.read_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn synchronization_keeps_responses_live_and_releases_on_eof() {
+        let grid = grid();
+        let checked_grid = grid.clone();
+        let fake = FakeIo::new(vec![WaitAction::Ready], vec![
+            ReadAction::Data(b"\x1b[?2026hPART\x1b[?2026$pFINAL".to_vec()),
+            ReadAction::Eof,
+        ]).with_write_check(Arc::new(move |bytes| {
+            assert_eq!(bytes, b"\x1b[?2026;1$y");
+            let grid = checked_grid.lock().unwrap();
+            assert!(grid.synchronized_output_active());
+            assert_eq!(grid.cursor_col, 4);
+        }));
+        let mut updates = 0;
+        let exit = run_reader(&fake, &grid, &AtomicBool::new(false), &mut text_decoder(), &mut || {
+            let grid = grid.lock().unwrap();
+            assert!(!grid.synchronized_output_active());
+            assert_eq!(grid.cursor_col, 9);
+            updates += 1;
+        });
+        assert!(matches!(exit, ReaderExit::Eof));
+        assert_eq!(updates, 1);
     }
 
     fn run_reader<I: ReaderIo, U: FnMut()>(
@@ -1145,7 +1206,9 @@ mod tests {
         );
 
         assert!(matches!(exit, ReaderExit::GridPoisoned));
-        assert_eq!(updates, 1);
+        // The timeout check detects poisoning before consuming PTY input.
+        assert_eq!(updates, 0);
+        assert_eq!(fake.read_calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
