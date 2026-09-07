@@ -4,6 +4,8 @@
 This is a terminal compatibility test, not a model-quality or paid-service test.
 Only fixture state and dummy credentials are passed to clients. No upstream
 requests are made by the HTTP fixture; plugins and external integrations are off.
+Claude starts from fresh, preconfigured onboarding/trust state for the generated
+fixture directory; user configuration and credentials are never copied.
 """
 
 import argparse
@@ -19,7 +21,6 @@ import subprocess
 import sys
 import tempfile
 import termios
-import time
 
 from tui_fixture_server import Fixture, cli_invocation
 from linux_clear_fixture import Capture
@@ -52,22 +53,6 @@ def cli_resize_frame(data):
     """Require the CLI's resize repaint, not just the outer SSH SIGWINCH."""
     marker = data.find(b'COMPAT_BEGIN')
     return marker >= 0 and data.find(b'\x1b[?2026l', marker) >= 0
-
-
-def option_selected(data, label, other):
-    normalized = ''.join(plain(data).split()).lower()
-    selected = normalized.rfind('❯' + ''.join(label.split()).lower())
-    unselected = normalized.rfind('❯' + ''.join(other.split()).lower())
-    return selected >= 0 and selected > unselected and b'\x1b[?2026l' in data
-
-
-def stable_option(data, label, other, state, now):
-    if not option_selected(data, label, other):
-        state['since'] = None
-        return False
-    if state.get('since') is None:
-        state['since'] = now
-    return now - state['since'] >= 0.25
 
 
 def type_cli_text(value):
@@ -218,30 +203,9 @@ def exercise(binary, client, artifacts):
                         if transcript.stat().st_size > 2 * 1024 * 1024:
                             raise AssertionError('TUI trace exceeded 2 MiB fixture limit')
                         return plain(transcript.read_bytes())
-                    dialogs = set()
-                    def ready():
-                        normalized = ''.join(text().split()).lower()
-                        choices = [('choosethetextstyle', (), '', ''),
-                                   ('doyouwanttousethisapikey?', ('Up',), 'Yes', 'No (recommended)'),
-                                   ('securitynotes:', (), '', ''),
-                                   ('yes,itrustthisfolder', ('Down',), 'Yes, I trust this folder', 'No, exit')]
-                        for marker, movement, selected_label, other_label in choices:
-                            if marker in normalized and marker not in dialogs:
-                                dialogs.add(marker)
-                                if movement:
-                                    before_choice = transcript.stat().st_size
-                                    apps.key(*movement)
-                                    choice_state = {}
-                                    apps.wait_for('CLI selected onboarding option remains rendered for 250 ms: ' + selected_label,
-                                                  lambda: stable_option(transcript.read_bytes()[before_choice:],
-                                                                         selected_label, other_label, choice_state,
-                                                                         time.monotonic()), processes)
-                                    apps.screenshot(window, work / ('onboarding-' + marker.replace('?', '') + '.png'))
-                                apps.key('Return')
-                                return False
-                        return prompt_ready(client, normalized)
-                    apps.wait_for('interactive CLI prompt after fixture onboarding', ready, processes, timeout=20)
-                    report['onboarding_dialogs'] = sorted(dialogs)
+                    apps.wait_for('interactive CLI prompt with fresh fixture state',
+                                  lambda: prompt_ready(client, text()), processes, timeout=20)
+                    report['client_state'] = 'fresh fixture directory; onboarding/trust preconfigured; no user credentials'
                     checkpoint('interactive prompt ready')
                     apps.screenshot(window, work / 'startup.png')
                     # Correct a character through real key events before Enter.
@@ -320,10 +284,6 @@ def exercise(binary, client, artifacts):
                     path = work / (phase + suffix)
                     if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
                         shutil.copyfile(path, artifacts / path.name)
-            for name in ('onboarding-doyouwanttousethisapikey.png', 'onboarding-yes,itrustthisfolder.png'):
-                path = work / name
-                if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
-                    shutil.copyfile(path, artifacts / name)
             for name in ('terminal.log', 'sshd.log'):
                 if (directory / name).exists():
                     shutil.copyfile(directory / name, artifacts / name)
