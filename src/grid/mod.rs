@@ -1943,6 +1943,27 @@ mod tests {
     }
 
     #[test]
+    fn excessive_combining_input_is_bounded_and_normal_output_recovers() {
+        let mut grid = Grid::new(1, 1, 0);
+        let mut parser = crate::parser::ansi::Utf8Parser::new();
+        parser.feed(b"x", &mut grid);
+        let cursor = (grid.cursor_row, grid.cursor_col);
+        for _ in 0..10_000 {
+            parser.feed("\u{301}".as_bytes(), &mut grid);
+        }
+        assert_eq!(
+            grid.buffer.cell(0, 0).text_len(),
+            1 + super::cell::MAX_COMBINING_BYTES
+        );
+        assert_eq!((grid.cursor_row, grid.cursor_col), cursor);
+        assert!(grid.is_wrap_pending());
+        parser.feed("e\u{301}".as_bytes(), &mut grid);
+        assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(), "e\u{301}");
+        parser.feed(b"\x1b[2J", &mut grid);
+        assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(), " ");
+    }
+
+    #[test]
     fn combining_at_the_margin_preserves_delayed_wrap_and_wide_cells() {
         for (width, text, leader) in [(2, "ae", 1), (3, "a日", 1)] {
             let mut grid = Grid::new(width, 2, 2);
