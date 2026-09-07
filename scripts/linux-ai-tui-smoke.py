@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import termios
+import time
 
 from tui_fixture_server import Fixture, cli_invocation
 from linux_clear_fixture import Capture
@@ -58,6 +59,15 @@ def option_selected(data, label, other):
     selected = normalized.rfind('❯' + ''.join(label.split()).lower())
     unselected = normalized.rfind('❯' + ''.join(other.split()).lower())
     return selected >= 0 and selected > unselected and b'\x1b[?2026l' in data
+
+
+def stable_option(data, label, other, state, now):
+    if not option_selected(data, label, other):
+        state['since'] = None
+        return False
+    if state.get('since') is None:
+        state['since'] = now
+    return now - state['since'] >= 0.25
 
 
 def type_cli_text(value):
@@ -221,9 +231,12 @@ def exercise(binary, client, artifacts):
                                 if movement:
                                     before_choice = transcript.stat().st_size
                                     apps.key(*movement)
-                                    apps.wait_for('CLI renders selected onboarding option ' + selected_label,
-                                                  lambda: option_selected(transcript.read_bytes()[before_choice:],
-                                                                          selected_label, other_label), processes)
+                                    choice_state = {}
+                                    apps.wait_for('CLI selected onboarding option remains rendered for 250 ms: ' + selected_label,
+                                                  lambda: stable_option(transcript.read_bytes()[before_choice:],
+                                                                         selected_label, other_label, choice_state,
+                                                                         time.monotonic()), processes)
+                                    apps.screenshot(window, work / ('onboarding-' + marker.replace('?', '') + '.png'))
                                 apps.key('Return')
                                 return False
                         return prompt_ready(client, normalized)
@@ -307,6 +320,10 @@ def exercise(binary, client, artifacts):
                     path = work / (phase + suffix)
                     if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
                         shutil.copyfile(path, artifacts / path.name)
+            for name in ('onboarding-doyouwanttousethisapikey.png', 'onboarding-yes,itrustthisfolder.png'):
+                path = work / name
+                if path.is_file() and path.stat().st_size <= 2 * 1024 * 1024:
+                    shutil.copyfile(path, artifacts / name)
             for name in ('terminal.log', 'sshd.log'):
                 if (directory / name).exists():
                     shutil.copyfile(directory / name, artifacts / name)

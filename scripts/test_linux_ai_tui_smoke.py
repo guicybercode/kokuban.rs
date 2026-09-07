@@ -31,6 +31,18 @@ class ClientObservationTests(unittest.TestCase):
         self.assertFalse(smoke.option_selected(no, 'Yes, I trust this folder', 'No, exit'))
         self.assertFalse(smoke.option_selected(yes + no, 'Yes, I trust this folder', 'No, exit'))
 
+    def test_transient_selected_option_does_not_confirm_before_it_stays_selected(self):
+        yes = '❯Yes, I trust this folder\x1b[?2026l'.encode()
+        no = '❯No, exit\x1b[?2026l'.encode()
+        state = {}
+        args = ('Yes, I trust this folder', 'No, exit', state)
+        self.assertFalse(smoke.stable_option(yes, *args, 1.0))
+        self.assertFalse(smoke.stable_option(yes, *args, 1.035))
+        self.assertFalse(smoke.stable_option(no, *args, 1.2))
+        self.assertFalse(smoke.stable_option(yes, *args, 1.3))
+        self.assertFalse(smoke.stable_option(yes, *args, 1.54))
+        self.assertTrue(smoke.stable_option(yes, *args, 1.56))
+
     def test_resize_requires_marker_followed_by_completed_sync_frame(self):
         marker = b'\x1b[?2026h\x1b[22mCOMPAT_BEGIN\x1b[39m'
         self.assertFalse(smoke.cli_resize_frame(marker))
