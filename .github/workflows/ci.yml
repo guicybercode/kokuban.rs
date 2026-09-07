@@ -69,6 +69,9 @@ jobs:
       - name: Test local Responses and Messages streaming fixture
         run: python3 -m unittest discover -s scripts -p test_tui_fixture_server.py
 
+      - name: Test pinned CLI prompt and resize observations
+        run: python3 -m unittest discover -s scripts -p test_linux_ai_tui_smoke.py
+
       - name: Check all targets
         run: cargo check --locked --all-targets
 
@@ -203,7 +206,16 @@ jobs:
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py \
-              "$PWD/target/debug/kokuban"
+              "$PWD/target/debug/kokuban" --artifacts target/linux-clipboard-smoke
+
+      - name: Upload Linux clipboard diagnostics
+        if: ${{ always() && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-clipboard-smoke
+          path: target/linux-clipboard-smoke
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify real mpv Kitty video and pause under Xvfb
         if: runner.os == 'Linux'
