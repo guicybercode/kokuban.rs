@@ -106,7 +106,7 @@ To work on the development version, clone `main` instead; see [CONTRIBUTING.md](
 KOKUBAN_SHELL=/bin/bash ./target/release/kokuban
 ```
 
-Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It reads `kokuban.toml` from the directory where you launch it. For Linux, a minimal file can select the installed font:
+Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It reads `kokuban.toml` from the directory where you launch it. Development builds also search the user configuration directory described below. For Linux, a minimal file can select the installed font:
 
 ```toml
 [font]
@@ -117,13 +117,30 @@ size = 14.0
 allow_file_transfer = false
 ```
 
+### Omarchy and Linux commands (development builds)
+
+Build `main` to use Omarchy's terminal launcher, working-directory inheritance,
+and commands opened directly in the terminal:
+
+```sh
+kokuban --working-directory="$HOME" -e nvim
+kokuban --app-id=org.omarchy.btop -e btop
+kokuban --help
+```
+
+See [Omarchy installation and bindings](docs/OMARCHY.md) to register Kokuban with
+`xdg-terminal-exec`. Command arguments after `-e` are passed unchanged; use
+`sh -c` explicitly for pipelines or shell expansion. CI checks command launching
+under X11 and headless Weston/Wayland; Hyprland integration still needs an
+on-device run.
+
 ### Troubleshooting startup
 
 - **No Linux display:** start it inside an X11 or Wayland desktop session. A headless SSH session without a display cannot open the window. X11 has automated runtime coverage; Wayland remains less validated.
 - **Missing Linux library:** install the runtime packages above. Libraries opened dynamically may not appear in `ldd` output.
 - **Missing font:** install `fonts-dejavu-core` on Linux and use the font configuration above. macOS includes Menlo.
 - **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
-- **Configuration seems ignored:** launch from the directory containing `kokuban.toml`. v0.1 does not search `~/.config` or accept a `--config` option. Invalid configuration falls back to defaults and logs a warning.
+- **Configuration seems ignored:** a local `kokuban.toml` takes priority. Builds from `main` also read `${XDG_CONFIG_HOME:-$HOME/.config}/kokuban/kokuban.toml`; published v0.1 binaries only read the local file. Invalid configuration falls back to defaults and logs a warning.
 
 ### Application icon (development builds)
 
@@ -185,7 +202,13 @@ These are example limits; defaults remain 256 MiB for the cache and 50 MiB per K
 
 ## Configuration
 
-Kokuban reads only `kokuban.toml` in the current working directory. It does not search `~/.config` or `XDG_CONFIG_HOME` in v0.1. Missing, unreadable or invalid configuration falls back to defaults; parse/read errors are logged. Review local configuration before launching from an unfamiliar directory.
+Development builds read `kokuban.toml` in the launch directory first, then
+`$XDG_CONFIG_HOME/kokuban/kokuban.toml`, or `$HOME/.config/kokuban/kokuban.toml`
+when `XDG_CONFIG_HOME` is unset, empty, or relative. The first existing file wins;
+files are not merged. Configuration is loaded before the CLI working directory
+is applied. Published v0.1 binaries only read the local file. Missing, unreadable
+or invalid configuration falls back to defaults; parse/read errors are logged.
+Review local configuration before launching from an unfamiliar directory.
 
 Example configuration:
 
