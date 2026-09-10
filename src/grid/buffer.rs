@@ -74,7 +74,7 @@ impl Buffer {
         self.metadata[row] = RowMetadata::default();
         let start = row * self.cols;
         for i in start..start + self.cols {
-            self.cells[i] = template;
+            self.cells[i] = template.clone();
         }
     }
 
@@ -88,7 +88,7 @@ impl Buffer {
         let shift = count * self.cols;
         self.metadata.copy_within(top + count..bottom + 1, top);
         self.metadata[bottom + 1 - count..bottom + 1].fill(RowMetadata::default());
-        self.cells.copy_within(start + shift..end, start);
+        self.cells[start..end].rotate_left(shift);
         self.cells[end - shift..end].fill(template);
     }
 
@@ -102,7 +102,7 @@ impl Buffer {
         let shift = count * self.cols;
         self.metadata.copy_within(top..bottom + 1 - count, top + count);
         self.metadata[top..top + count].fill(RowMetadata::default());
-        self.cells.copy_within(start..end - shift, start + shift);
+        self.cells[start..end].rotate_right(shift);
         self.cells[start..start + shift].fill(template);
     }
 
@@ -117,7 +117,7 @@ impl Buffer {
         let copy_cols = self.cols.min(new_cols);
         for row in 0..copy_rows {
             for col in 0..copy_cols {
-                new_cells[row * new_cols + col] = self.cells[row * self.cols + col];
+                new_cells[row * new_cols + col] = self.cells[row * self.cols + col].clone();
             }
         }
         self.metadata.resize(new_rows, RowMetadata::default());
@@ -137,6 +137,7 @@ mod tests {
     fn scrolling_preserves_cells_outside_the_region_and_fills_exposed_rows() {
         let template = Cell {
             c: ' ',
+            grapheme: None,
             fg: Color::Rgb(12, 34, 56),
             bg: Color::Indexed(7),
             flags: CellFlags::ITALIC,
@@ -154,6 +155,7 @@ mod tests {
                                     for col in 0..cols {
                                         *buffer.cell_mut(row, col) = Cell {
                                             c: char::from(b'A' + (row * cols + col) as u8),
+                                            grapheme: None,
                                             fg: Color::Indexed(row as u8),
                                             bg: Color::Indexed(col as u8),
                                             flags: CellFlags::BOLD,
@@ -165,22 +167,22 @@ mod tests {
                                 let before: Vec<_> =
                                     (0..rows).map(|row| buffer.extract_row(row)).collect();
                                 if up {
-                                    buffer.scroll_up(top, bottom, count, template);
+                                    buffer.scroll_up(top, bottom, count, template.clone());
                                 } else {
-                                    buffer.scroll_down(top, bottom, count, template);
+                                    buffer.scroll_down(top, bottom, count, template.clone());
                                 }
                                 let shift = count.min(bottom - top + 1) as isize;
                                 for row in 0..rows {
                                     for col in 0..cols {
                                         let source = row as isize + if up { shift } else { -shift };
                                         let expected = if row < top || row > bottom {
-                                            before[row][col]
+                                            before[row][col].clone()
                                         } else if source >= top as isize
                                             && source <= bottom as isize
                                         {
-                                            before[source as usize][col]
+                                            before[source as usize][col].clone()
                                         } else {
-                                            template
+                                            template.clone()
                                         };
                                         let actual = buffer.cell(row, col);
                                         assert_eq!(

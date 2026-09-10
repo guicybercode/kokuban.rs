@@ -1,4 +1,6 @@
 use bitflags::bitflags;
+use std::{borrow::Cow, sync::Arc};
+use unicode_width::UnicodeWidthStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -31,9 +33,10 @@ pub enum UnderlineStyle {
     Dashed,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Cell {
     pub c: char,
+    pub grapheme: Option<Arc<str>>,
     pub fg: Color,
     pub bg: Color,
     pub flags: CellFlags,
@@ -41,10 +44,25 @@ pub struct Cell {
     pub underline_color: Color,
 }
 
+impl Cell {
+    pub fn text(&self) -> Cow<'_, str> {
+        match &self.grapheme {
+            Some(text) => Cow::Borrowed(text),
+            None => Cow::Owned(self.c.to_string()),
+        }
+    }
+
+    /// Natural terminal width, even when a one-column grid squeezes the glyph.
+    pub fn display_width(&self) -> usize {
+        self.text().width().clamp(1, 2)
+    }
+}
+
 impl Default for Cell {
     fn default() -> Self {
         Self {
             c: ' ',
+            grapheme: None,
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),

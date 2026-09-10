@@ -2888,7 +2888,7 @@ fn snapshot_locked_grid(grid: &Grid) -> GridSnapshot {
 
     for row in 0..rows {
         for column in 0..columns {
-            cells.push(*grid.visible_cell(row, column));
+            cells.push(grid.visible_cell(row, column).clone());
         }
     }
 
@@ -7940,7 +7940,7 @@ mod tests {
         };
         let reversed = Cell {
             flags: CellFlags::BOLD | CellFlags::REVERSE,
-            ..normal
+            ..normal.clone()
         };
 
         assert_eq!(

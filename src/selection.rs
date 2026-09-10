@@ -188,8 +188,9 @@ impl SelectionState {
                 if cell.flags.contains(CellFlags::WIDE_CONT) || cell.c == '\0' {
                     continue;
                 }
-                check_text_budget(&text, cell.c.len_utf8(), max_bytes)?;
-                text.push(cell.c);
+                let grapheme = cell.text();
+                check_text_budget(&text, grapheme.len(), max_bytes)?;
+                text.push_str(&grapheme);
             }
             if row != last && !grid.retained_row_wrapped(row) {
                 check_text_budget(&text, 1, max_bytes)?;
@@ -502,12 +503,10 @@ mod tests {
     }
 
     #[test]
-    fn copy_preserves_stored_combining_scalars_and_nonbreaking_spaces() {
+    fn copy_preserves_combining_graphemes_and_nonbreaking_spaces() {
         let mut grid = Grid::new(5, 1, 10);
-        // Cell currently stores only one scalar. Exercise copying available
-        // data without claiming recovery of marks already lost by put_char.
-        for (col, character) in ['e', '\u{301}', '\u{a0}', ' ', ' '].into_iter().enumerate() {
-            grid.buffer.cell_mut(0, col).c = character;
+        for character in "e\u{301}\u{a0}".chars() {
+            grid.put_char(character);
         }
         let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 4 });
         assert_eq!(
@@ -518,6 +517,22 @@ mod tests {
             selection.get_text_with_limit(&grid, 4),
             Err(SelectionTextError::TooLarge)
         );
+    }
+
+    #[test]
+    fn copy_never_splits_a_compound_emoji_or_combining_cluster() {
+        for grapheme in ["e\u{301}", "👩🏽‍💻", "🇧🇷", "1\u{fe0f}\u{20e3}", " \u{301}"] {
+            let mut grid = Grid::new(8, 2, 10);
+            for character in grapheme.chars() {
+                grid.put_char(character);
+            }
+            for col in 0..grid.cursor_col {
+                let selection = selected(GridPoint { row: 0, col }, GridPoint { row: 0, col });
+                assert_eq!(selection.get_text(&grid), grapheme);
+                assert_eq!(selection.get_text_with_limit(&grid, grapheme.len()), Ok(grapheme.to_owned()));
+                assert_eq!(selection.get_text_with_limit(&grid, grapheme.len() - 1), Err(SelectionTextError::TooLarge));
+            }
+        }
     }
 
     #[test]
