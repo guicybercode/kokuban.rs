@@ -390,6 +390,54 @@ impl Grid {
         true
     }
 
+    /// Write a run of printable ASCII, updating cursor and damage once per row.
+    pub(crate) fn put_ascii(&mut self, mut text: &[u8]) {
+        debug_assert!(text.iter().all(|byte| matches!(byte, b' '..=b'~')));
+        if self.charset != CharSet::Ascii || self.insert_mode {
+            for &byte in text {
+                self.put_char(char::from(byte));
+            }
+            return;
+        }
+
+        let cols = self.cols();
+        let template = Cell {
+            c: ' ',
+            fg: self.fg,
+            bg: self.bg,
+            flags: self.flags & !(CellFlags::WIDE | CellFlags::WIDE_CONT),
+            underline_style: self.underline_style,
+            underline_color: self.underline_color,
+        };
+        while !text.is_empty() {
+            // Let the regular writer consume delayed wrap, including a wrap
+            // preserved across resize and overwrites with DECAWM disabled.
+            if self.is_wrap_pending() || self.cursor_col >= cols {
+                self.put_char(char::from(text[0]));
+                text = &text[1..];
+                continue;
+            }
+
+            let row = self.cursor_row;
+            let col = self.cursor_col;
+            let count = text.len().min(cols - col);
+            // Interior cells are all replaced. Only the run's boundaries can
+            // leave half of an existing wide character outside the write.
+            self.clear_wide_overlap(row, col, 1);
+            if count > 1 {
+                self.clear_wide_overlap(row, col + count - 1, 1);
+            }
+            let cells = &mut self.buffer.row_mut(row)[col..col + count];
+            for (cell, &byte) in cells.iter_mut().zip(&text[..count]) {
+                *cell = Cell { c: char::from(byte), ..template };
+            }
+            self.dirty[row] = true;
+            self.cursor_col += count;
+            self.wrap_pending = self.cursor_col >= cols;
+            text = &text[count..];
+        }
+    }
+
     /// Place a character at the cursor, handling wide chars and DEC charset.
     pub fn put_char(&mut self, c: char) {
         let c = if self.charset == CharSet::DecSpecial {
@@ -1001,6 +1049,62 @@ mod tests {
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
+
+    #[test]
+    fn ascii_batches_preserve_delayed_wrap_across_resize_and_wide_overwrites() {
+        for auto_wrap in [false, true] {
+            for new_cols in [2, 4, 8] {
+                for col in 0..=4 {
+                    let setup = || {
+                        let mut grid = Grid::new(4, 3, 8);
+                        for c in "日本日本日本".chars() {
+                            grid.put_char(c);
+                        }
+                        grid.cursor_col = col;
+                        grid.set_auto_wrap(auto_wrap);
+                        grid.resize(new_cols, 3);
+                        grid.clear_dirty();
+                        grid
+                    };
+                    let mut batched = setup();
+                    let mut scalar = setup();
+                    let text = b"ABCDEFGHIJKLMN";
+                    batched.put_ascii(text);
+                    for &byte in text {
+                        scalar.put_char(char::from(byte));
+                    }
+                    assert_eq!(format!("{batched:?}"), format!("{scalar:?}"),
+                        "auto_wrap={auto_wrap}, new_cols={new_cols}, col={col}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ascii_batches_repair_wide_pairs_at_both_ends_of_each_run() {
+        for col in 0..8 {
+            for count in 0..=16 {
+                let setup = || {
+                    let mut grid = Grid::new(8, 3, 8);
+                    for c in "日本語日本語日本語日本語".chars() {
+                        grid.put_char(c);
+                    }
+                    grid.set_cursor_pos(0, col);
+                    grid.clear_dirty();
+                    grid
+                };
+                let mut batched = setup();
+                let mut scalar = setup();
+                let text = &b"abcdefghijklmnop"[..count];
+                batched.put_ascii(text);
+                for &byte in text {
+                    scalar.put_char(char::from(byte));
+                }
+                assert_eq!(format!("{batched:?}"), format!("{scalar:?}"),
+                    "col={col}, count={count}");
+            }
+        }
+    }
 
     #[test]
     fn selection_and_paste_revisions_distinguish_repaint_from_screen_changes() {

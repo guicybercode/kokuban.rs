@@ -1026,10 +1026,24 @@ impl Utf8Parser {
     pub(crate) fn feed_until_terminal_event(&mut self, input: &[u8], grid: &mut Grid) -> usize {
         debug_assert!(!grid.has_pending_terminal_events());
 
-        for (index, &byte) in input.iter().enumerate() {
-            self.feed_byte(byte, grid);
+        let mut index = 0;
+        while index < input.len() {
+            if self.parser.state == State::Ground && self.utf8_expected == 0 {
+                let printable = input[index..]
+                    .iter()
+                    .position(|byte| !matches!(byte, b' '..=b'~'))
+                    .unwrap_or(input.len() - index);
+                if printable != 0 {
+                    grid.put_ascii(&input[index..index + printable]);
+                    index += printable;
+                    continue;
+                }
+            }
+
+            self.feed_byte(input[index], grid);
+            index += 1;
             if grid.has_pending_terminal_events() {
-                return index + 1;
+                return index;
             }
         }
 
@@ -1094,6 +1108,57 @@ mod tests {
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
+    }
+
+    #[test]
+    fn ascii_batches_match_scalar_decoding_across_modes_and_read_boundaries() {
+        let input = [
+            b"abcdefghijklmnopqrstuvwxyz 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\r\n".as_slice(),
+            "日本語 café λ\x1b[1;2HASCII over wide characters\r\n".as_bytes(),
+            b"\x1b[1;3;4;38;2;12;34;56;48;5;7mstyled text\x1b[0m\x1b[6n",
+            b"\x1b(0lqqqk xjm\x1b(BASCII again\r\n",
+            b"\x1b[4h\x1b[1;1Hinsert this text\x1b[4l\x1b[6n",
+            b"\x1b[?7lno wrap through the margin\x1b[?7hwrap again\r\n",
+            b"\x1b[2;3rscroll region\r\nline two\r\nline three\x1b[r",
+            b"\x1b[?1049halternate screen\r\nmore text\x1b[?1049lprimary\x1b[6n",
+            b"\x1b]2;title with ASCII\x1b\\text\x1bPq~\x1b\\after sixel",
+            b"\x1b_Ga=d,d=c\x1b\\after kitty\x1b[6n\xff\xe6ASCII\xf0\x9fASCII",
+            b"\x1b[2J\x1b[3Jafter erase\x1bcafter reset\x1b[6n",
+        ].concat();
+        for cols in [1, 2, 7, 40] {
+            for chunk_size in [1, 2, 3, 7, 16, input.len()] {
+                let mut batched = Utf8Parser::new();
+                let mut scalar = Utf8Parser::new();
+                let mut actual = Grid::new(cols, 4, 8);
+                let mut expected = Grid::new(cols, 4, 8);
+                for chunk in input.chunks(chunk_size) {
+                    let mut remaining = chunk;
+                    while !remaining.is_empty() {
+                        actual.clear_dirty();
+                        expected.clear_dirty();
+                        let consumed = batched.feed_until_terminal_event(remaining, &mut actual);
+                        let mut scalar_consumed = 0;
+                        for &byte in remaining {
+                            scalar.feed_byte(byte, &mut expected);
+                            scalar_consumed += 1;
+                            if expected.has_pending_terminal_events() {
+                                break;
+                            }
+                        }
+                        assert_eq!(consumed, scalar_consumed);
+                        // Debug covers screen/history cells, cursor, damage, modes,
+                        // revisions and ordered events, including graphics snapshots.
+                        assert_eq!(format!("{actual:?}"), format!("{expected:?}"),
+                            "cols={cols}, chunk_size={chunk_size}, remaining={remaining:?}");
+                        assert_eq!(batched.parser.state, scalar.parser.state);
+                        assert_eq!(batched.utf8_expected, scalar.utf8_expected);
+                        actual.drain_terminal_events();
+                        expected.drain_terminal_events();
+                        remaining = &remaining[consumed..];
+                    }
+                }
+            }
+        }
     }
 
     fn screen_text(grid: &Grid) -> Vec<String> {
