@@ -114,6 +114,7 @@ pub struct Grid {
     pub saved_cursor_col: usize,
     wrap_pending: bool,
     saved_wrap_pending: bool,
+    saved_cursor_retained_row: Option<usize>,
     pub scroll_top: usize,
     pub scroll_bottom: usize,
     pub fg: Color,
@@ -191,6 +192,7 @@ impl Grid {
             saved_cursor_col: 0,
             wrap_pending: false,
             saved_wrap_pending: false,
+            saved_cursor_retained_row: None,
             scroll_top: 0,
             scroll_bottom: rows.saturating_sub(1),
             fg: Color::Default,
@@ -798,6 +800,7 @@ impl Grid {
                     || self.scrollback_cells > self.scrollback_cell_budget
                 {
                     if let Some(evicted) = self.scrollback.pop_front() {
+                        self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(1));
                         self.scrollback_cells -= evicted.len();
                         if self.scrollback_metadata.pop_front().is_some_and(|row| !row.wrapped) {
                             self.scrollback_hard_lines -= 1;
@@ -925,10 +928,11 @@ impl Grid {
         );
         self.alt_wrap_pending = self.is_wrap_pending();
         self.saved_primary_saved_cursor = Some(ReflowCursor {
-            row: self.saved_cursor_row, col: self.saved_cursor_col, pending: self.saved_wrap_pending,
+            row: self.saved_cursor_row, col: self.saved_cursor_col, pending: self.saved_wrap_pending, retained_row: self.saved_cursor_retained_row,
         });
         self.saved_cursor_row = 0;
         self.saved_cursor_col = 0;
+        self.saved_cursor_retained_row = None;
         self.saved_wrap_pending = false;
         let cols = self.cols();
         let rows = self.rows();
@@ -973,6 +977,7 @@ impl Grid {
             self.saved_cursor_row = cursor.row;
             self.saved_cursor_col = cursor.col;
             self.saved_wrap_pending = cursor.pending;
+            self.saved_cursor_retained_row = cursor.retained_row;
         }
         self.using_alt_screen = false;
         self.cursor_row = self.alt_cursor.0.min(self.rows().saturating_sub(1));
@@ -1115,6 +1120,7 @@ impl Grid {
                 }
                 let viewport_changed = self.scroll_offset != 0;
                 self.selection_revision = self.selection_revision.wrapping_add(1);
+                self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(self.scrollback.len()));
                 self.scrollback.clear();
                 self.scrollback_metadata.clear();
                 self.scrollback_hard_lines = 0;
@@ -1201,15 +1207,53 @@ impl Grid {
     }
 
     pub fn save_cursor(&mut self) {
+        self.saved_cursor_retained_row = None;
         self.saved_cursor_row = self.cursor_row;
         self.saved_cursor_col = self.screen_cursor_col().unwrap_or(self.cols() - 1);
         self.saved_wrap_pending = self.is_wrap_pending();
     }
 
     pub fn restore_cursor(&mut self) {
+        if let Some(row) = self.saved_cursor_retained_row.take() {
+            self.reveal_saved_cursor(row);
+        }
         self.cursor_row = self.saved_cursor_row.min(self.rows().saturating_sub(1));
         self.cursor_col = self.saved_cursor_col.min(self.cols() - 1);
         self.wrap_pending = self.saved_wrap_pending;
+    }
+
+    /// Bring an offscreen saved text position back into the editable screen.
+    /// The displaced viewport remains retained, just as it does during resize.
+    fn reveal_saved_cursor(&mut self, retained_row: usize) {
+        let old_history = self.scrollback.len();
+        let rows = self.rows();
+        let cols = self.cols();
+        let mut retained: Vec<_> = self.scrollback.drain(..).zip(self.scrollback_metadata.drain(..))
+            .map(|(cells, metadata)| RetainedRow { cells, metadata }).collect();
+        retained.extend((0..rows).map(|row| RetainedRow {
+            cells: self.buffer.extract_row(row), metadata: self.buffer.row_metadata(row),
+        }));
+        retained.append(&mut self.resize_tail);
+        let retained_row = retained_row.min(retained.len() - 1);
+        let start = retained_row.min(retained.len().saturating_sub(rows));
+        for row in retained.drain(..start) {
+            self.scrollback.push_back(row.cells);
+            self.scrollback_metadata.push_back(row.metadata);
+        }
+        if retained.len() > rows { self.resize_tail = retained.split_off(rows); }
+        retained.resize_with(rows, || RetainedRow::blank(cols));
+        self.buffer = Buffer::from_retained_rows(cols, &retained);
+        self.saved_cursor_row = retained_row - start;
+        self.total_lines_pushed = self.total_lines_pushed.saturating_sub(old_history) + start;
+        self.recount_history();
+        self.scrollback_cell_budget = self.scrollback_cell_budget.max(self.scrollback_cells);
+        self.scroll_offset = 0;
+        self.selection_revision = self.selection_revision.wrapping_add(1);
+        for placement in &mut self.image_placements {
+            let PlacementMode::Inline { row, .. } = &mut placement.mode;
+            *row += old_history as i64 - start as i64;
+        }
+        self.mark_all_dirty();
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
@@ -1218,8 +1262,8 @@ impl Grid {
         self.selection_revision = self.selection_revision.wrapping_add(1);
         let old_cols = self.cols();
         let mut cursors = [
-            ReflowCursor { row: self.cursor_row, col: self.cursor_col.min(old_cols - 1), pending: self.is_wrap_pending() },
-            ReflowCursor { row: self.saved_cursor_row.min(self.rows() - 1), col: self.saved_cursor_col.min(old_cols - 1), pending: self.saved_wrap_pending },
+            ReflowCursor { row: self.cursor_row, col: self.cursor_col.min(old_cols - 1), pending: self.is_wrap_pending(), retained_row: None },
+            ReflowCursor { row: self.saved_cursor_row.min(self.rows() - 1), col: self.saved_cursor_col.min(old_cols - 1), pending: self.saved_wrap_pending, retained_row: self.saved_cursor_retained_row },
         ];
         let old_history = self.scrollback.len();
         Self::resize_screen(&mut self.buffer, &mut self.scrollback,
@@ -1235,12 +1279,13 @@ impl Grid {
         self.saved_cursor_row = cursors[1].row;
         self.saved_cursor_col = cursors[1].col;
         self.saved_wrap_pending = cursors[1].pending;
+        self.saved_cursor_retained_row = cursors[1].retained_row;
         if let (Some(primary), Some(history)) =
             (self.alt_buffer.as_mut(), self.saved_primary_history.as_mut())
         {
             let mut cursor = [
-                ReflowCursor { row: self.alt_cursor.0, col: self.alt_cursor.1, pending: self.alt_wrap_pending },
-                self.saved_primary_saved_cursor.unwrap_or(ReflowCursor { row: 0, col: 0, pending: false }),
+                ReflowCursor { row: self.alt_cursor.0, col: self.alt_cursor.1, pending: self.alt_wrap_pending, retained_row: None },
+                self.saved_primary_saved_cursor.unwrap_or(ReflowCursor { row: 0, col: 0, pending: false, retained_row: None }),
             ];
             let old_history = history.cells.len();
             Self::resize_screen(primary, &mut history.cells, &mut history.metadata, &mut history.tail, &mut cursor, cols, rows);
@@ -1277,7 +1322,7 @@ impl Grid {
             cells: buffer.extract_row(row), metadata: buffer.row_metadata(row),
         }));
         source.append(tail);
-        for cursor in cursors.iter_mut() { cursor.row += old_history; }
+        for cursor in cursors.iter_mut() { cursor.row = cursor.retained_row.take().unwrap_or(cursor.row + old_history); }
         let last_cursor_row = cursors.iter().map(|cursor| cursor.row).max().unwrap_or(0);
         while source.len() > last_cursor_row + 1 && source.last().is_some_and(|row| row.metadata.len == 0) {
             source.pop();
@@ -1288,7 +1333,11 @@ impl Grid {
         // after the viewport rather than moving the cursor into history.
         let screen_start = reflowed.len().saturating_sub(rows).min(result.cursors[0].row);
         for (cursor, mapped) in cursors.iter_mut().zip(result.cursors) {
-            *cursor = ReflowCursor { row: mapped.row.saturating_sub(screen_start), ..mapped };
+            *cursor = ReflowCursor {
+                row: mapped.row.saturating_sub(screen_start).min(rows - 1),
+                retained_row: (!(screen_start..screen_start + rows).contains(&mapped.row)).then_some(mapped.row),
+                ..mapped
+            };
         }
         for row in reflowed.drain(..screen_start) {
             history.push_back(row.cells);

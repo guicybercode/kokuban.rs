@@ -497,3 +497,51 @@ fn newline_reveals_retained_screen_overflow_before_creating_a_blank_row() {
     grid.resize(16, 4);
     assert_eq!(copied_content(&grid), "top\nXiddle\nbottom");
 }
+
+#[test]
+fn restoring_a_saved_cursor_in_history_edits_its_original_logical_position() {
+    for grow_before_restore in [false, true] {
+        let mut grid = Grid::new(12, 6, 32);
+        let mut decoder = decoder();
+        feed(&mut decoder, &mut grid, b"saved\x1b7\x1b[5;1Hbottom");
+        grid.resize(4, 1);
+        assert!(grid.scrollback_len() > 0);
+        assert_eq!(copied_content(&grid), "saved\n\n\n\nbottom");
+        if grow_before_restore {
+            grid.resize(12, 6);
+        }
+
+        feed(&mut decoder, &mut grid, b"\x1b8Z");
+        assert_eq!(
+            copied_content(&grid),
+            "savedZ\n\n\n\nbottom",
+            "grow_before_restore={grow_before_restore}",
+        );
+        grid.resize(16, 8);
+        assert_eq!(copied_content(&grid), "savedZ\n\n\n\nbottom");
+    }
+}
+
+#[test]
+fn restoring_a_saved_cursor_below_the_viewport_reveals_and_edits_its_retained_row() {
+    for grow_before_restore in [false, true] {
+        let mut grid = Grid::new(12, 6, 32);
+        let mut decoder = decoder();
+        feed(&mut decoder, &mut grid, b"top\x1b[5;1Hsaved\x1b7\x1b[H");
+        grid.resize(4, 1);
+        assert!(grid.retained_rows() > grid.scrollback_len() + grid.rows());
+        assert_eq!(copied_content(&grid), "top\n\n\n\nsaved");
+        if grow_before_restore {
+            grid.resize(12, 6);
+        }
+
+        feed(&mut decoder, &mut grid, b"\x1b8Z");
+        assert_eq!(
+            copied_content(&grid),
+            "top\n\n\n\nsavedZ",
+            "grow_before_restore={grow_before_restore}",
+        );
+        grid.resize(16, 8);
+        assert_eq!(copied_content(&grid), "top\n\n\n\nsavedZ");
+    }
+}

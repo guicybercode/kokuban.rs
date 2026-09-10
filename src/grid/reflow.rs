@@ -17,6 +17,7 @@ pub(crate) struct Cursor {
     pub row: usize,
     pub col: usize,
     pub pending: bool,
+    pub retained_row: Option<usize>,
 }
 
 pub(crate) struct Reflow {
@@ -28,7 +29,7 @@ pub(crate) struct Reflow {
 /// Soft-wide-wrap padding and continuation cells are layout, not content.
 pub(crate) fn reflow(source: &[RetainedRow], cols: usize, cursors: &[Cursor]) -> Reflow {
     let mut rows = vec![RetainedRow::blank(cols)];
-    let mut mapped = vec![Cursor { row: 0, col: 0, pending: false }; cursors.len()];
+    let mut mapped = vec![Cursor { row: 0, col: 0, pending: false, retained_row: None }; cursors.len()];
     let mut out_row = 0;
     let mut out_col = 0;
     for (source_row, row) in source.iter().enumerate() {
@@ -89,7 +90,7 @@ pub(crate) fn reflow(source: &[RetainedRow], cols: usize, cursors: &[Cursor]) ->
         for (index, cursor) in cursors.iter().enumerate().filter(|(_, cursor)| cursor.row == source_row) {
             let col = if cursor.pending { (cursor.col + 1).min(old_cols) } else { cursor.col.min(old_cols) };
             let (row, col) = positions[col];
-            mapped[index] = Cursor { row, col: col.min(cols - 1), pending: col == cols };
+            mapped[index] = Cursor { row, col: col.min(cols - 1), pending: col == cols, retained_row: None };
         }
         if !row.metadata.wrapped && source_row + 1 < source.len() {
             rows.push(RetainedRow::blank(cols));
