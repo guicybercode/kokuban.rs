@@ -2,6 +2,85 @@
 
 O workflow manual `Linux release resource measurements` compila com Rust 1.94.1 e `cargo build --release --locked`, sem strip ou LTO adicionais. Ele registra manifesto, lockfile, árvore Cargo, versões de pacotes, dependências ELF, tamanho/hash do binário e hardware do runner. O perfil de release mantém `debug=0`.
 
+## Otimizações e medição pareada de 2026-09-10
+
+Entre `7e0e9e2` e `da14f90`, o processamento passou a agrupar ASCII imprimível,
+rolar índices de linhas em vez de copiar todas as células e desenhar fatias de
+pixels já validadas. O renderer Linux agora mantém até quatro snapshots para
+identificar o conteúdo dos buffers do softbuffer e repinta a faixa alterada.
+Imagens, IME, mudanças de tamanho/fonte e buffers desconhecidos usam desenho
+integral. A apresentação continua completa, inclusive para exposição X11.
+
+Na mesma VM Linux arm64 do Colima, sobre macOS/Apple M4, foram executadas
+cinco amostras de cada binário em release com Rust 1.94.1, Debian 12 e Xvfb.
+A ordem alternou entre anterior/atual e atual/anterior. Cada execução usou o
+cenário de 2,5 MiB, 80×24 células, 720×408 pixels e 10.000 linhas de histórico
+descrito abaixo, incluindo a resposta DSR final. Não havia outros benchmarks
+ou compilações desta tarefa durante as amostras; o host não é uma máquina de
+benchmark dedicada.
+
+| Medida | Anterior `7e0e9e2` | Atual `da14f90` |
+| --- | ---: | ---: |
+| Vazão mediana, MiB/s | 27,68 | 55,39 |
+| Intervalo mínimo–máximo, MiB/s | 23,87–37,08 | 42,42–64,55 |
+| CPU mediana no intervalo amostrado de saída | 0,10 s | 0,05 s |
+| RSS mediano após saída | 27.860 KiB | 28.564 KiB |
+| CPU mediana em cinco segundos de repouso após saída | 0,01 s | 0,01 s |
+| Executável release | 8.707.392 bytes | 9.301.352 bytes |
+
+A mediana de vazão aumentou **2,00× neste cenário**. O intervalo de CPU é o
+intervalo amostrado pelo observador, maior que a escrita/DSR cronometrada pelo
+filho. No repouso inicial foram observados 0,01 s antes e 0,02 s depois; a
+granularidade dos ticks não permite interpretar essa diferença pequena como
+um resultado preciso de consumo ocioso. RSS e tamanho do binário aumentaram;
+o intervalo de revisões também inclui a substituição da arte do ícone. Estas
+medidas não isolam o efeito de cada commit, nem comprovam menor memória.
+
+O [manifesto do ensaio](linux-evidence/2026-09-10-performance/manifest.json),
+os [resultados resumidos](linux-evidence/2026-09-10-performance/summary.json)
+e os dez JSONs `01-baseline.json` a `05-candidate.json` no mesmo diretório
+preservam todas as amostras, ambiente, hashes e dependências dos binários.
+O executável anterior tem SHA-256
+`3b1af01d2e2fbfe5def3c52088b10dada46c8c9ec4d0a010709306275573fe9e`;
+o atual, `28d8033a4cff1921a58e9d88f1a2561a0333149842911eec330841497dba5e0d`.
+
+Uma medição separada do cálculo de danos e rasterização de 120×40 células,
+cinco amostras de 300 alternâncias, passou de 0,3482 para 0,1067 ms medianos
+quando somente uma linha muda. Quando toda a tela muda, ficou em
+0,3473/0,3520 ms. Cada resultado final foi comparado pixel a pixel com um desenho
+integral. O [log](linux-evidence/2026-09-10-performance/frame-repaint.txt) e o
+teste ignorado permitem repetir essa medição, que exclui snapshot, PTY e
+apresentação:
+
+```sh
+cargo test --release --locked --bin kokuban benchmark_frame_repaint -- --ignored --nocapture
+cargo run --release --locked --example terminal-throughput -- 16 5
+python3 scripts/benchmark-software-raster.py --baseline 7e0e9e2
+```
+
+Os testes locais passaram em Linux (605 testes do executável e 187 do exemplo)
+e macOS (507 e 187), além do Clippy. O benchmark de frame fica ignorado na suíte
+normal. Passaram também imagens Kitty/Sixel, animação sintética, clipboard,
+SSH, Neovim, fzf, tmux e lançamento nativo Wayland com Weston. O mpv 0.35.1
+da VM não oferece `--vo=kitty`, mas o
+[workflow release de `e142905`](https://github.com/guicybercode/kokuban.rs/actions/runs/34533009622)
+passou com mpv 0.37: os 72 IDs de quadro foram observados, sem capturas ativas
+inválidas, com pausa, retomada e encerramento corretos. O
+[CI completo Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34532945439)
+também passou. A execução release x86_64 registrou 69,85 MiB/s em AMD EPYC 9V74;
+esse runner é diferente do usado na medição de setembro de 2026 abaixo e não
+permite atribuir uma razão de ganho entre as duas execuções de CI. Evidências:
+[recursos de CI](linux-evidence/2026-09-10-performance/ci-resources.json) e
+[vídeo de CI](linux-evidence/2026-09-10-performance/ci-video.json).
+
+O [comparador entre terminais](TERMINAL_COMPARISON.md) executou três amostras de
+desenvolvimento em Kokuban, Alacritty 0.11 e Kitty 0.26.5 sob X11 e três amostras
+de Kokuban sob Wayland. Ele detectou tamanhos em pixels diferentes e registra
+que fidelidade visual não foi verificada, incluindo as limitações atuais de
+caracteres combinantes e fallback de fonte. Esses testes não estabelecem
+superioridade sobre Ghostty, Alacritty ou Kitty. Ainda é necessário executar a
+comparação completa nas versões atuais, com GPU/monitor reais e Omarchy/Hyprland.
+
 ## Resultado de 2026-09-05
 
 O código `29ac690`, publicado na `main`, passou na [medição release](https://github.com/guicybercode/kokuban.rs/actions/runs/34005940902) e no [CI completo Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005916270), com **582 testes Linux e 484 macOS**. Ambiente: Ubuntu 24.04 x86_64, kernel `6.17.0-1022-azure`, runner com quatro CPUs lógicas AMD EPYC 7763, cerca de 16 GiB de RAM e Xvfb.
