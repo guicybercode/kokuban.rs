@@ -1653,7 +1653,7 @@ mod tests {
     }
 
     #[test]
-    fn horizontal_tab_moves_the_physical_cursor_after_grow_without_clearing_wrap() {
+    fn horizontal_tab_uses_the_reflowed_cursor_after_growing() {
         let mut parser = Utf8Parser::new();
         let mut grid = Grid::new(3, 2, 0);
         parser.feed(b"abc", &mut grid);
@@ -1662,15 +1662,15 @@ mod tests {
         parser.feed(b"\t\x1b[6n", &mut grid);
 
         assert_eq!(grid.cursor_col, 8);
-        assert!(grid.is_wrap_pending());
+        assert!(!grid.is_wrap_pending());
         assert!(matches!(
             grid.drain_terminal_events().as_slice(),
             [TerminalEvent::Response(response)] if response == b"\x1b[1;9R"
         ));
 
         parser.feed(b"X", &mut grid);
-        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
-        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 9));
+        assert_eq!(grid.buffer.cell(0, 8).c, 'X');
     }
 
     #[test]

@@ -1152,7 +1152,7 @@ impl LinuxWindow {
                     col: 0,
                 });
                 self.selection.update(GridPoint {
-                    row: (grid.scrollback_len() + grid.rows() - 1) as i64,
+                    row: (grid.retained_rows() - 1) as i64,
                     col: grid.cols() - 1,
                 });
                 if let Some(window) = &self.window {
@@ -4870,7 +4870,7 @@ mod tests {
     }
 
     #[test]
-    fn ime_preedit_uses_pending_wrap_with_the_physical_cursor_after_resize() {
+    fn ime_preedit_uses_the_reflowed_cursor_after_growing() {
         let resized_snapshot = |auto_wrap| {
             let mut grid = Grid::new(3, 2, 0);
             for character in ['a', 'b', 'c'] {
@@ -4882,8 +4882,8 @@ mod tests {
         };
 
         let wrapping = resized_snapshot(true);
-        assert_eq!(wrapping.input_cursor, (0, 2));
-        assert!(wrapping.wrap_pending);
+        assert_eq!(wrapping.input_cursor, (0, 3));
+        assert!(!wrapping.wrap_pending);
         let wrapping_layout =
             layout_ime_preedit_for_snapshot(&accepted_preedit("X", None), &wrapping);
         assert_eq!(
@@ -4892,12 +4892,12 @@ mod tests {
                 .iter()
                 .map(|glyph| (glyph.character, glyph.row, glyph.column))
                 .collect::<Vec<_>>(),
-            [('X', 1, 0)]
+            [('X', 0, 3)]
         );
 
         let overwriting = resized_snapshot(false);
-        assert_eq!(overwriting.input_cursor, (0, 2));
-        assert!(overwriting.wrap_pending);
+        assert_eq!(overwriting.input_cursor, (0, 3));
+        assert!(!overwriting.wrap_pending);
         let overwriting_layout =
             layout_ime_preedit_for_snapshot(&accepted_preedit("X", None), &overwriting);
         assert_eq!(
@@ -4906,7 +4906,7 @@ mod tests {
                 .iter()
                 .map(|glyph| (glyph.character, glyph.row, glyph.column))
                 .collect::<Vec<_>>(),
-            [('X', 0, 2)]
+            [('X', 0, 3)]
         );
     }
 

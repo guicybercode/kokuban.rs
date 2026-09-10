@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 use std::{borrow::Cow, sync::Arc};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -54,7 +54,10 @@ impl Cell {
 
     /// Natural terminal width, even when a one-column grid squeezes the glyph.
     pub fn display_width(&self) -> usize {
-        self.text().width().clamp(1, 2)
+        match self.grapheme.as_deref() {
+            Some(text) => text.width(),
+            None => self.c.width().unwrap_or(1),
+        }.clamp(1, 2)
     }
 }
 

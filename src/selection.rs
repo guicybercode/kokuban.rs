@@ -159,7 +159,7 @@ impl SelectionState {
             Some(pair) => pair,
             None => return Ok(String::new()),
         };
-        let retained_rows = grid.scrollback_len().saturating_add(grid.rows());
+        let retained_rows = grid.retained_rows();
         let last_row = row_as_i64(retained_rows - 1);
         if end.row < 0 || start.row > last_row {
             return Ok(String::new());
@@ -188,9 +188,13 @@ impl SelectionState {
                 if cell.flags.contains(CellFlags::WIDE_CONT) || cell.c == '\0' {
                     continue;
                 }
-                let grapheme = cell.text();
-                check_text_budget(&text, grapheme.len(), max_bytes)?;
-                text.push_str(&grapheme);
+                if let Some(grapheme) = cell.grapheme.as_deref() {
+                    check_text_budget(&text, grapheme.len(), max_bytes)?;
+                    text.push_str(grapheme);
+                } else {
+                    check_text_budget(&text, cell.c.len_utf8(), max_bytes)?;
+                    text.push(cell.c);
+                }
             }
             if row != last && !grid.retained_row_wrapped(row) {
                 check_text_budget(&text, 1, max_bytes)?;
@@ -212,11 +216,7 @@ fn viewport_row(grid: &Grid, vis_row: usize) -> usize {
 }
 
 fn retained_cell(grid: &Grid, row: usize, col: usize) -> &crate::grid::cell::Cell {
-    if row < grid.scrollback_len() {
-        grid.scrollback_cell_data(row, col)
-    } else {
-        grid.buffer.cell(row - grid.scrollback_len(), col)
-    }
+    grid.retained_cell_data(row, col)
 }
 
 fn wide_leader(grid: &Grid, row: usize, col: usize) -> usize {
@@ -321,23 +321,19 @@ mod tests {
     }
 
     #[test]
-    fn copy_uses_the_visible_scrollback_projection_across_resize() {
-        let mut grid = Grid::new(4, 2, 10);
-        grid.set_cursor_pos(0, 2);
+    fn copy_preserves_wide_history_at_every_resized_width() {
+        let mut grid = Grid::new(4, 1, 10);
+        grid.put_ascii(b"ab");
         grid.put_char('日');
-        grid.scroll_up(1);
-
-        let mut selection = SelectionState::default();
-        selection.start(GridPoint { row: 0, col: 2 });
-        selection.update(GridPoint { row: 0, col: 2 });
-
-        grid.resize(3, 2);
-        assert_eq!(selection.get_text(&grid), "");
-
-        grid.resize(4, 2);
-        selection.update(GridPoint { row: 0, col: 3 });
-        assert_eq!(selection.get_text(&grid), "日");
-        assert!(!selection.get_text(&grid).contains('\0'));
+        grid.put_ascii(b"c");
+        for cols in [4, 3, 1, 4] {
+            grid.resize(cols, 1);
+            let selection = selected(
+                GridPoint { row: 0, col: 0 },
+                GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+            );
+            assert_eq!(selection.get_text(&grid), "ab日c", "width={cols}");
+        }
     }
 
     #[test]

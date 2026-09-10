@@ -111,21 +111,15 @@ impl Buffer {
         self.cells[start..start + self.cols].to_vec()
     }
 
-    pub fn resize(&mut self, new_cols: usize, new_rows: usize) {
-        let mut new_cells = vec![Cell::default(); new_cols * new_rows];
-        let copy_rows = self.rows.min(new_rows);
-        let copy_cols = self.cols.min(new_cols);
-        for row in 0..copy_rows {
-            for col in 0..copy_cols {
-                new_cells[row * new_cols + col] = self.cells[row * self.cols + col].clone();
-            }
+    pub(crate) fn from_retained_rows(cols: usize, rows: &[super::reflow::RetainedRow]) -> Self {
+        let mut buffer = Self::new(cols, rows.len());
+        for (index, row) in rows.iter().enumerate() {
+            buffer.row_mut(index).clone_from_slice(&row.cells);
+            buffer.metadata[index] = row.metadata;
         }
-        self.metadata.resize(new_rows, RowMetadata::default());
-        for metadata in &mut self.metadata { metadata.len = metadata.len.min(new_cols); }
-        self.cells = new_cells;
-        self.cols = new_cols;
-        self.rows = new_rows;
+        buffer
     }
+
 }
 
 #[cfg(test)]
