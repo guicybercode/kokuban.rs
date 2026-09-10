@@ -24,6 +24,8 @@ flate2 = "1"
 base64 = "0.22"
 font-kit = "0.14"
 pathfinder_geometry = "0.5"
+unicode-segmentation = "1.12"
+rustybuzz = "0.20"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
