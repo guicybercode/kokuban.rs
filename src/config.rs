@@ -309,23 +309,51 @@ impl Default for ResizeConfig {
 
 impl Config {
     pub fn load() -> Self {
-        let path = PathBuf::from("kokuban.toml");
-        if path.exists() {
-            match std::fs::read_to_string(&path) {
-                Ok(contents) => match toml::from_str(&contents) {
-                    Ok(config) => {
-                        log::info!("Loaded config from kokuban.toml");
-                        return config;
-                    }
-                    Err(e) => log::warn!("Failed to parse kokuban.toml: {e}"),
-                },
-                Err(e) => log::warn!("Failed to read kokuban.toml: {e}"),
+        Self::load_paths(config_paths(
+            std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
+            std::env::var_os("HOME").map(PathBuf::from),
+        ))
+    }
+
+    fn load_paths(paths: impl IntoIterator<Item = PathBuf>) -> Self {
+        for path in paths {
+            let contents = match std::fs::read_to_string(&path) {
+                Ok(contents) => contents,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    log::warn!("Failed to read {}: {error}", path.display());
+                    return Self::default();
+                }
+            };
+            match toml::from_str(&contents) {
+                Ok(config) => {
+                    log::info!("Loaded config from {}", path.display());
+                    return config;
+                }
+                Err(error) => {
+                    log::warn!("Failed to parse {}: {error}", path.display());
+                    return Self::default();
+                }
             }
-        } else {
-            log::info!("No kokuban.toml found, using defaults");
         }
+        log::info!("No kokuban.toml found, using defaults");
         Self::default()
     }
+}
+
+fn config_paths(xdg_config_home: Option<PathBuf>, home: Option<PathBuf>) -> Vec<PathBuf> {
+    // Keep project-local configuration first for existing development setups.
+    let mut paths = vec![PathBuf::from("kokuban.toml")];
+    let directory = xdg_config_home
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            home.filter(|path| path.is_absolute())
+                .map(|path| path.join(".config"))
+        });
+    if let Some(directory) = directory {
+        paths.push(directory.join("kokuban/kokuban.toml"));
+    }
+    paths
 }
 
 impl ColorConfig {
@@ -344,7 +372,64 @@ impl ColorConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::ImagesConfig;
+    use super::{config_paths, Config, ImagesConfig};
+    use std::path::PathBuf;
+
+    #[test]
+    fn user_configuration_paths_follow_xdg_and_preserve_local_priority() {
+        assert_eq!(
+            config_paths(Some("/custom/config".into()), Some("/home/test".into())),
+            [
+                PathBuf::from("kokuban.toml"),
+                "/custom/config/kokuban/kokuban.toml".into()
+            ]
+        );
+        for invalid_xdg in [None, Some(PathBuf::new()), Some("relative".into())] {
+            assert_eq!(
+                config_paths(invalid_xdg, Some("/home/test".into())),
+                [
+                    PathBuf::from("kokuban.toml"),
+                    "/home/test/.config/kokuban/kokuban.toml".into()
+                ]
+            );
+        }
+        assert_eq!(config_paths(None, None), [PathBuf::from("kokuban.toml")]);
+    }
+
+    #[test]
+    fn loads_first_existing_configuration_without_merging_or_hiding_parse_errors() {
+        let directory = std::env::temp_dir().join(format!(
+            "kokuban-config-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let local = directory.join("local.toml");
+        let user = directory.join("user.toml");
+        std::fs::write(&user, "[window]\ncolumns = 93\n").unwrap();
+        assert_eq!(
+            Config::load_paths([local.clone(), user.clone()])
+                .window
+                .columns,
+            93
+        );
+        std::fs::write(&local, "[window]\ncolumns = 71\n").unwrap();
+        assert_eq!(
+            Config::load_paths([local.clone(), user.clone()])
+                .window
+                .columns,
+            71
+        );
+        std::fs::write(&local, "invalid toml [").unwrap();
+        assert_eq!(
+            Config::load_paths([local, user]).window.columns,
+            Config::default().window.columns
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn graphics_protocols_honor_master_and_specific_switches() {
