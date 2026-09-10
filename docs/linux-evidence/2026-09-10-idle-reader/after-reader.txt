@@ -1,0 +1,7 @@
+3965  1789077327.119972 prctl(PR_SET_NAME, "terminal-reader"...) = 0
+3965  1789077327.120972 ppoll([{fd=8, events=POLLIN}, {fd=10, events=POLLIN}], 2, NULL, NULL, 0 <unfinished ...>
+3965  1789077327.215477 <... ppoll resumed>) = 1 ([{fd=8, revents=POLLIN}])
+3965  1789077327.215794 ppoll([{fd=8, events=POLLIN}, {fd=10, events=POLLIN}], 2, NULL, NULL, 0 <unfinished ...>
+3965  1789077330.245349 <... ppoll resumed>) = 1 ([{fd=8, revents=POLLHUP}])
+3965  1789077330.245584 --- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=3962, si_uid=0, si_status=0, si_utime=4 /* 0.04 s */, si_stime=2 /* 0.02 s */} ---
+3965  1789077330.246423 +++ exited with 0 +++

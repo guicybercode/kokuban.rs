@@ -137,8 +137,9 @@ O ambiente foi Docker em uma VM Colima sobre macOS/Apple M4, com renderização
 por software e outros testes/compilações em andamento. Os tempos foram
 preservados para auditoria do comparador, **não como evidência de desempenho**.
 Ambos os relatórios detectaram a diferença de geometria e mantiveram
-`ranking: null` e `rendering_equivalence_verified: false`. As limitações Unicode
-descritas acima permanecem.
+`ranking: null` e `rendering_equivalence_verified: false`. Esses relatórios
+preservam as limitações Unicode da revisão `da14f90`, anterior ao suporte a
+grafemas e fallback descrito acima.
 
 Evidências: [relatório X11](linux-evidence/2026-09-10-modern-terminals/x11.json),
 [relatório Wayland](linux-evidence/2026-09-10-modern-terminals/wayland.json),

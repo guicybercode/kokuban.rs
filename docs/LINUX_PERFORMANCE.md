@@ -87,6 +87,34 @@ Ghostty, em X11 e Wayland. Os detalhes e limitações estão na
 Ainda é necessário executar a comparação nas versões usadas no Omarchy,
 com GPU/monitor reais e Hyprland.
 
+## Espera ociosa do leitor em `b5952ce`
+
+O leitor de PTY deixou de consultar a cada 25 ms se deveria encerrar. Ele agora
+espera indefinidamente por saída/EOF do PTY ou pelo fechamento de escrita de um
+socket de cancelamento. O encerramento acorda a espera mesmo quando solicitado
+antes de ela começar. A mudança acrescenta dois descritores de socket por leitor
+ativo; a escrita de respostas e os lotes de processamento mantêm seu comportamento.
+
+Um rastreamento Linux arm64 com `strace`, Xvfb e a mesma aplicação filha fez uma
+consulta DSR, ficou três segundos sem saída e encerrou. Contando apenas a thread
+`terminal-reader` ao longo de cada rastreamento completo, incluindo inicialização,
+houve **109 retornos por timeout antes e zero depois**. No executável novo, a
+espera usa timeout nulo e retorna quando o PTY recebe dados ou EOF. Isso confirma
+a remoção do temporizador; uma execução instrumentada não mede economia de CPU
+ou bateria, nem os despertares das outras threads.
+
+Os testes da revisão combinada, incluindo as melhorias de preservação de texto,
+passaram em Linux (653 do executável e 194 do exemplo; um benchmark ignorado)
+e macOS (555 e 194), além de `check` e Clippy com `--all-targets`.
+Os casos incluem cancelamento antes/durante a espera, shutdown repetido, drop,
+descritores CLOEXEC, EOF, interrupções e ordem das respostas. O executável release
+também concluiu o lançamento nativo Wayland e o encerramento do filho.
+
+Evidências: [resumo e hashes](linux-evidence/2026-09-10-idle-reader/summary.json),
+[thread anterior](linux-evidence/2026-09-10-idle-reader/before-reader.txt),
+[thread atual](linux-evidence/2026-09-10-idle-reader/after-reader.txt) e
+[lançamento Wayland](linux-evidence/2026-09-10-idle-reader/wayland-launch.json).
+
 ## Resultado de 2026-09-05
 
 O código `29ac690`, publicado na `main`, passou na [medição release](https://github.com/guicybercode/kokuban.rs/actions/runs/34005940902) e no [CI completo Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/34005916270), com **582 testes Linux e 484 macOS**. Ambiente: Ubuntu 24.04 x86_64, kernel `6.17.0-1022-azure`, runner com quatro CPUs lógicas AMD EPYC 7763, cerca de 16 GiB de RAM e Xvfb.
