@@ -8,3 +8,7 @@ Icon=io.github.guicybercode.kokuban
 Terminal=false
 Categories=System;TerminalEmulator;
 StartupWMClass=io.github.guicybercode.kokuban
+X-TerminalArgExec=-e
+X-TerminalArgAppId=--app-id=
+X-TerminalArgTitle=--title=
+X-TerminalArgDir=--working-directory=
