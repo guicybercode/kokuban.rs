@@ -272,7 +272,7 @@ Linux supports these clipboard and selection actions:
 
 Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
 
-The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy currently inserts line breaks between physical terminal rows; soft-wrap reconstruction and OSC 52 remote clipboard commands remain pending. See [Linux application validation](docs/LINUX_APPS.md).
+The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](docs/TERMINAL_TEXT.md) and [Linux application validation](docs/LINUX_APPS.md). OSC 52 remote clipboard commands remain pending.
 
 These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux provides terminal keyboard/IME and mouse input and scrollback; it does not yet implement this pane shortcut table.
 
@@ -299,7 +299,7 @@ The pane, resize, zoom and prompt-navigation bindings in the macOS table are con
 
 ## Development Status
 
-Kokuban v0.1 (Cargo version 0.1.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation and short mpv playback. Complete Unicode graphemes, soft-wrap reconstruction, OSC 52, broad Wayland coverage, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
+Kokuban v0.1 (Cargo version 0.1.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation and short mpv playback. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52, broad Wayland coverage, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
 
 ## Project Name
 
