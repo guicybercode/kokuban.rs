@@ -6,7 +6,7 @@ use nix::sys::signal::{kill, killpg, Signal};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::{fork, getpgrp, pipe, tcgetpgrp, ForkResult, Pid};
 use std::ffi::{CString, OsStr, OsString};
-use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -195,6 +195,22 @@ impl Pty {
         )
     }
 
+    /// Block until PTY output/EOF or cancellation, without periodic wakeups.
+    /// Cancellation readiness takes precedence and returns `false`.
+    pub(crate) fn wait_readable_or_cancelled(
+        &self,
+        cancellation: BorrowedFd<'_>,
+    ) -> std::io::Result<bool> {
+        wait_readable_or_cancelled_with(|timeout| {
+            let mut poll_fds = [
+                PollFd::new(self.master().as_fd(), PollFlags::POLLIN),
+                PollFd::new(cancellation, PollFlags::POLLIN),
+            ];
+            poll(&mut poll_fds, timeout)?;
+            Ok([poll_fds[0].revents(), poll_fds[1].revents()])
+        })
+    }
+
     pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
         loop {
             match nix::unistd::read(self.master().as_raw_fd(), buf) {
@@ -355,6 +371,26 @@ where
 enum ReadPollResult {
     TimedOut,
     Events(Option<PollFlags>),
+}
+
+fn wait_readable_or_cancelled_with<P>(mut poll_once: P) -> std::io::Result<bool>
+where
+    P: FnMut(PollTimeout) -> nix::Result<[Option<PollFlags>; 2]>,
+{
+    loop {
+        match poll_once(PollTimeout::NONE) {
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(error) => return Err(error.into()),
+            Ok([read_events, cancellation_events]) => {
+                if cancellation_events != Some(PollFlags::empty()) {
+                    classify_readable_events(cancellation_events)?;
+                    return Ok(false);
+                }
+                classify_readable_events(read_events)?;
+                return Ok(true);
+            }
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -951,8 +987,8 @@ mod tests {
         child_environment, child_stage_name, child_startup_status_with, classify_child_wait,
         classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
         poll_timeout_for, resize_with_ioctl, resolve_command, select_shell, set_cloexec,
-        terminate_and_reap_with, wait_for_child_reap_with, wait_readable_with,
-        write_all_cancellable_with, write_all_with, write_child_stage_with,
+        terminate_and_reap_with, wait_for_child_reap_with, wait_readable_or_cancelled_with,
+        wait_readable_with, write_all_cancellable_with, write_all_with, write_child_stage_with,
         CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
@@ -964,7 +1000,9 @@ mod tests {
     use nix::unistd::Pid;
     use std::cell::{Cell, RefCell};
     use std::ffi::{CString, OsString};
-    use std::os::fd::AsRawFd;
+    use std::net::Shutdown;
+    use std::os::fd::{AsFd, AsRawFd};
+    use std::os::unix::net::UnixStream;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Arc, Barrier, Mutex, TryLockError};
@@ -2059,6 +2097,115 @@ mod tests {
     }
 
     #[test]
+    fn cancellable_readiness_wait_has_no_timeout_even_after_interrupts() {
+        let mut calls = 0;
+        let readable = wait_readable_or_cancelled_with(|timeout| {
+            assert_eq!(timeout, PollTimeout::NONE);
+            calls += 1;
+            match calls {
+                1 | 2 => Err(nix::errno::Errno::EINTR),
+                _ => Ok([Some(PollFlags::POLLIN), Some(PollFlags::empty())]),
+            }
+        })
+        .unwrap();
+        assert!(readable);
+        assert_eq!(calls, 3);
+    }
+
+    #[test]
+    fn cancellable_readiness_prioritizes_shutdown_and_preserves_eof_and_errors() {
+        for flag in [PollFlags::POLLIN, PollFlags::POLLHUP, PollFlags::POLLERR] {
+            assert!(!wait_readable_or_cancelled_with(|_| {
+                Ok([Some(PollFlags::POLLIN), Some(flag)])
+            })
+            .unwrap());
+            assert!(wait_readable_or_cancelled_with(|_| {
+                Ok([Some(flag), Some(PollFlags::empty())])
+            })
+            .unwrap());
+        }
+
+        let native_error =
+            wait_readable_or_cancelled_with(|_| Err(nix::errno::Errno::EIO)).unwrap_err();
+        assert_eq!(native_error.raw_os_error(), Some(libc::EIO));
+        for events in [
+            [Some(PollFlags::POLLNVAL), Some(PollFlags::empty())],
+            [Some(PollFlags::empty()), Some(PollFlags::POLLNVAL)],
+        ] {
+            let error = wait_readable_or_cancelled_with(|_| Ok(events)).unwrap_err();
+            assert_eq!(error.raw_os_error(), Some(libc::EBADF));
+        }
+        for events in [
+            [None, Some(PollFlags::empty())],
+            [Some(PollFlags::empty()), None],
+            [Some(PollFlags::empty()), Some(PollFlags::empty())],
+        ] {
+            let error = wait_readable_or_cancelled_with(|_| Ok(events)).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn socket_shutdown_wakes_a_silent_pty_without_output_or_child_exit() {
+        let program = CString::new("/bin/sh").unwrap();
+        let argv = ["sh", "-c", "printf '__KOKUBAN_IDLE__'; read line"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap());
+        assert_eq!(read_until(&pty, b"__KOKUBAN_IDLE__"), b"__KOKUBAN_IDLE__");
+        let (signal, cancellation) = UnixStream::pair().unwrap();
+        for stream in [&signal, &cancellation] {
+            let flags = fcntl(stream.as_raw_fd(), FcntlArg::F_GETFD).unwrap();
+            assert!(FdFlag::from_bits_truncate(flags).contains(FdFlag::FD_CLOEXEC));
+        }
+        let worker_pty = pty.clone();
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            entered_tx.send(()).unwrap();
+            result_tx
+                .send(worker_pty.wait_readable_or_cancelled(cancellation.as_fd()))
+                .unwrap();
+        });
+
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            result_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        signal.shutdown(Shutdown::Write).unwrap();
+        assert!(!result_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap());
+        worker.join().unwrap();
+        assert!(matches!(
+            waitpid(pty.child_pid, Some(WaitPidFlag::WNOHANG)),
+            Ok(WaitStatus::StillAlive)
+        ));
+    }
+
+    #[test]
+    fn shutdown_before_poll_is_not_lost_even_when_pty_output_is_ready() {
+        let program = CString::new("/bin/sh").unwrap();
+        let argv = ["sh", "-c", "printf '__KOKUBAN_READY__'; read line"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let (signal, cancellation) = UnixStream::pair().unwrap();
+
+        assert!(pty.wait_readable(Duration::from_secs(2)).unwrap());
+        signal.shutdown(Shutdown::Write).unwrap();
+        assert!(!pty
+            .wait_readable_or_cancelled(cancellation.as_fd())
+            .unwrap());
+        // Cancellation must not consume pending child output.
+        assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
+    }
+
+    #[test]
     fn wait_readable_reports_pending_output() {
         let program = CString::new("/bin/sh").unwrap();
         let argv = ["sh", "-c", "printf '__KOKUBAN_READABLE__'; sleep 1"]
@@ -2069,6 +2216,10 @@ mod tests {
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         assert!(pty.wait_readable(Duration::ZERO).unwrap());
+        let (_signal, cancellation) = UnixStream::pair().unwrap();
+        assert!(pty
+            .wait_readable_or_cancelled(cancellation.as_fd())
+            .unwrap());
         assert_eq!(
             read_until(&pty, b"__KOKUBAN_READABLE__"),
             b"__KOKUBAN_READABLE__"
@@ -2085,6 +2236,10 @@ mod tests {
         let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
+        let (_signal, cancellation) = UnixStream::pair().unwrap();
+        assert!(pty
+            .wait_readable_or_cancelled(cancellation.as_fd())
+            .unwrap());
         assert_eq!(pty.read(&mut [0; 1]).unwrap(), 0);
     }
 

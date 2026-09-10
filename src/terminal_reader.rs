@@ -3,17 +3,18 @@ use crate::parser::ansi::GraphicsSupport;
 use crate::pty::{CancellableWriteOutcome, Pty};
 use crate::terminal_decoder::TerminalDecoder;
 use std::io;
+use std::net::Shutdown;
+use std::os::fd::{AsFd, BorrowedFd};
+use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
-const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const READ_BUFFER_SIZE: usize = 4096;
 const MAX_READS_PER_BATCH: usize = 16;
 
 trait ReaderIo: Send + Sync + 'static {
-    fn wait_readable(&self, timeout: Duration) -> io::Result<bool>;
+    fn wait_readable(&self, cancellation: BorrowedFd<'_>) -> io::Result<bool>;
     fn read(&self, buffer: &mut [u8]) -> io::Result<usize>;
     fn write_all_cancellable(
         &self,
@@ -23,8 +24,8 @@ trait ReaderIo: Send + Sync + 'static {
 }
 
 impl ReaderIo for Pty {
-    fn wait_readable(&self, timeout: Duration) -> io::Result<bool> {
-        Pty::wait_readable(self, timeout)
+    fn wait_readable(&self, cancellation: BorrowedFd<'_>) -> io::Result<bool> {
+        Pty::wait_readable_or_cancelled(self, cancellation)
     }
 
     fn read(&self, buffer: &mut [u8]) -> io::Result<usize> {
@@ -55,6 +56,7 @@ pub(crate) enum ReaderExit {
 /// Handle for a single background PTY reader.
 pub(crate) struct TerminalReader {
     shutdown: Arc<AtomicBool>,
+    shutdown_signal: UnixStream,
     handle: Option<JoinHandle<ReaderExit>>,
 }
 
@@ -144,6 +146,7 @@ impl TerminalReader {
     {
         let shutdown = Arc::new(AtomicBool::new(false));
         let worker_shutdown = shutdown.clone();
+        let (shutdown_signal, cancellation) = UnixStream::pair()?;
         let handle = thread::Builder::new()
             .name("terminal-reader".to_string())
             .spawn(move || {
@@ -152,6 +155,7 @@ impl TerminalReader {
                     io.as_ref(),
                     grid.as_ref(),
                     worker_shutdown.as_ref(),
+                    cancellation.as_fd(),
                     &mut decoder,
                     &mut on_graphics,
                     &mut on_update,
@@ -162,12 +166,17 @@ impl TerminalReader {
 
         Ok(Self {
             shutdown,
+            shutdown_signal,
             handle: Some(handle),
         })
     }
 
     pub(crate) fn request_shutdown(&self) {
         self.shutdown.store(true, Ordering::Release);
+        // EOF persistently wakes poll, including shutdown racing with entry to
+        // the wait. No writes, buffer capacity, or blocking locks are involved.
+        // A disconnected socket means the worker has already exited.
+        let _ = self.shutdown_signal.shutdown(Shutdown::Write);
     }
 
     pub(crate) fn shutdown_and_join(mut self) -> thread::Result<ReaderExit> {
@@ -189,6 +198,7 @@ fn run_reader<I, G, U>(
     io: &I,
     grid: &Mutex<Grid>,
     shutdown: &AtomicBool,
+    cancellation: BorrowedFd<'_>,
     decoder: &mut TerminalDecoder,
     on_graphics: &mut G,
     on_update: &mut U,
@@ -205,8 +215,8 @@ where
             return ReaderExit::Shutdown;
         }
 
-        match io.wait_readable(POLL_INTERVAL) {
-            Ok(false) => continue,
+        match io.wait_readable(cancellation) {
+            Ok(false) => return ReaderExit::Shutdown,
             Ok(true) => {}
             Err(error) => return ReaderExit::WaitFailed(error),
         }
@@ -313,18 +323,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        run_reader as run_reader_with_graphics, ReaderExit, ReaderIo, TerminalReader,
-        MAX_READS_PER_BATCH, POLL_INTERVAL,
-    };
+    use super::{ReaderExit, ReaderIo, TerminalReader, MAX_READS_PER_BATCH};
     use crate::grid::cell::Color;
     use crate::grid::{Grid, TerminalEvent};
     use crate::parser::ansi::GraphicsSupport;
     use crate::pty::CancellableWriteOutcome;
     use crate::terminal_decoder::TerminalDecoder;
     use nix::libc;
+    use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
     use std::collections::VecDeque;
     use std::io;
+    use std::os::fd::{AsFd, BorrowedFd};
+    use std::os::unix::net::UnixStream;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
@@ -360,9 +370,8 @@ mod tests {
 
     enum WaitAction {
         Ready,
-        Timeout,
-        TimeoutAndShutdown(Arc<AtomicBool>),
-        BlockedTimeout(Arc<BlockingGate>),
+        Cancelled,
+        WaitForCancellation(mpsc::SyncSender<()>),
         Error(i32),
     }
 
@@ -429,18 +438,21 @@ mod tests {
     }
 
     impl ReaderIo for FakeIo {
-        fn wait_readable(&self, timeout: Duration) -> io::Result<bool> {
-            assert_eq!(timeout, POLL_INTERVAL);
+        fn wait_readable(&self, cancellation: BorrowedFd<'_>) -> io::Result<bool> {
             self.wait_calls.fetch_add(1, Ordering::Relaxed);
             match self.waits.lock().unwrap().pop_front() {
                 Some(WaitAction::Ready) => Ok(true),
-                Some(WaitAction::Timeout) => Ok(false),
-                Some(WaitAction::TimeoutAndShutdown(shutdown)) => {
-                    shutdown.store(true, Ordering::Release);
-                    Ok(false)
-                }
-                Some(WaitAction::BlockedTimeout(gate)) => {
-                    gate.wait();
+                Some(WaitAction::Cancelled) => Ok(false),
+                Some(WaitAction::WaitForCancellation(entered)) => {
+                    let mut fds = [PollFd::new(cancellation, PollFlags::POLLIN)];
+                    entered.send(()).unwrap();
+                    loop {
+                        match poll(&mut fds, PollTimeout::NONE) {
+                            Err(nix::errno::Errno::EINTR) => continue,
+                            Ok(1) => break,
+                            result => panic!("cancellation wait failed: {result:?}"),
+                        }
+                    }
                     Ok(false)
                 }
                 Some(WaitAction::Error(error)) => Err(io::Error::from_raw_os_error(error)),
@@ -523,6 +535,31 @@ mod tests {
             shutdown,
             decoder,
             &mut |_, _| Err(ReaderExit::UnexpectedProtocolEvent),
+            on_update,
+        )
+    }
+
+    fn run_reader_with_graphics<I, G, U>(
+        io: &I,
+        grid: &Mutex<Grid>,
+        shutdown: &AtomicBool,
+        decoder: &mut TerminalDecoder,
+        on_graphics: &mut G,
+        on_update: &mut U,
+    ) -> ReaderExit
+    where
+        I: ReaderIo,
+        G: FnMut(TerminalEvent, &mut Grid) -> Result<Option<Vec<u8>>, ReaderExit>,
+        U: FnMut(),
+    {
+        let (_signal, cancellation) = UnixStream::pair().unwrap();
+        super::run_reader(
+            io,
+            grid,
+            shutdown,
+            cancellation.as_fd(),
+            decoder,
+            on_graphics,
             on_update,
         )
     }
@@ -921,15 +958,9 @@ mod tests {
     }
 
     #[test]
-    fn timeout_observes_shutdown_without_reading() {
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let fake = FakeIo::new(
-            vec![
-                WaitAction::Timeout,
-                WaitAction::TimeoutAndShutdown(shutdown.clone()),
-            ],
-            Vec::new(),
-        );
+    fn cancelled_wait_exits_without_reading() {
+        let shutdown = AtomicBool::new(false);
+        let fake = FakeIo::new(vec![WaitAction::Cancelled], Vec::new());
         let mut decoder = text_decoder();
         let mut updates = 0;
 
@@ -939,7 +970,7 @@ mod tests {
 
         assert!(matches!(exit, ReaderExit::Shutdown));
         assert_eq!(updates, 0);
-        assert_eq!(fake.wait_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(fake.wait_calls.load(Ordering::Relaxed), 1);
         assert_eq!(fake.read_calls.load(Ordering::Relaxed), 0);
     }
 
@@ -997,9 +1028,9 @@ mod tests {
 
     #[test]
     fn drop_requests_shutdown_for_a_waiting_reader() {
-        let (wait_gate, entered_wait, release_wait) = blocking_gate();
+        let (entered_tx, entered_wait) = mpsc::sync_channel(1);
         let fake = Arc::new(FakeIo::new(
-            vec![WaitAction::BlockedTimeout(wait_gate)],
+            vec![WaitAction::WaitForCancellation(entered_tx)],
             Vec::new(),
         ));
         let (exited_tx, exited_rx) = mpsc::sync_channel(1);
@@ -1011,7 +1042,7 @@ mod tests {
                 kitty: false,
                 sixel: false,
             },
-            || panic!("a timeout-only reader must not emit an update"),
+            || panic!("an idle reader must not emit an update"),
             move |exit| {
                 exited_tx
                     .send(matches!(exit, ReaderExit::Shutdown))
@@ -1024,19 +1055,59 @@ mod tests {
             .recv_timeout(Duration::from_secs(2))
             .expect("reader did not reach the blocked wait");
         drop(reader);
-        release_wait.send(()).unwrap();
 
         assert!(exited_rx.recv_timeout(Duration::from_secs(2)).unwrap());
     }
 
     #[test]
-    fn would_block_and_timeout_do_not_emit_false_updates() {
-        let shutdown = Arc::new(AtomicBool::new(false));
+    fn idle_reader_stays_asleep_until_shutdown_and_joins() {
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let fake = Arc::new(FakeIo::new(
+            vec![WaitAction::WaitForCancellation(entered_tx)],
+            Vec::new(),
+        ));
+        let (exited_tx, exited_rx) = mpsc::sync_channel(1);
+        let reader = TerminalReader::spawn_with_io(
+            fake.clone(),
+            grid(),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            || panic!("an idle reader must not emit an update"),
+            move |exit| {
+                exited_tx
+                    .send(matches!(exit, ReaderExit::Shutdown))
+                    .unwrap();
+            },
+        )
+        .unwrap();
+
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            exited_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        assert_eq!(fake.wait_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(fake.read_calls.load(Ordering::Relaxed), 0);
+
+        // Repeated shutdown does not queue bytes or require the worker to drain
+        // a pipe. This also exercises the request immediately before join.
+        reader.request_shutdown();
+        reader.request_shutdown();
+        assert!(exited_rx.recv_timeout(Duration::from_secs(2)).unwrap());
+        assert!(matches!(
+            reader.shutdown_and_join().unwrap(),
+            ReaderExit::Shutdown
+        ));
+        assert_eq!(Arc::strong_count(&fake), 1);
+    }
+
+    #[test]
+    fn would_block_and_cancellation_do_not_emit_false_updates() {
+        let shutdown = AtomicBool::new(false);
         let fake = FakeIo::new(
-            vec![
-                WaitAction::Ready,
-                WaitAction::TimeoutAndShutdown(shutdown.clone()),
-            ],
+            vec![WaitAction::Ready, WaitAction::Cancelled],
             vec![ReadAction::WouldBlock],
         );
         let mut decoder = text_decoder();
