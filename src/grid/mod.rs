@@ -2,7 +2,7 @@ pub mod buffer;
 pub mod cell;
 pub mod marks;
 
-use buffer::Buffer;
+use buffer::{Buffer, RowMetadata};
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use marks::MarkIndex;
 use std::collections::VecDeque;
@@ -109,6 +109,7 @@ pub struct Grid {
     pub dirty: Vec<bool>,
     // Scrollback
     scrollback: VecDeque<Vec<Cell>>,
+    scrollback_metadata: VecDeque<RowMetadata>,
     scrollback_max: usize,
     pub scroll_offset: usize,
     // Alternate screen
@@ -178,6 +179,7 @@ impl Grid {
             flags: CellFlags::empty(),
             dirty: vec![true; rows],
             scrollback: VecDeque::new(),
+            scrollback_metadata: VecDeque::new(),
             scrollback_max,
             scroll_offset: 0,
             alt_buffer: None,
@@ -229,6 +231,31 @@ impl Grid {
         self.cursor_col = self.cursor_col.min(self.cols() - 1);
     }
     pub fn scrollback_len(&self) -> usize { self.scrollback.len() }
+    pub(crate) fn retained_row_wrapped(&self, row: usize) -> bool {
+        self.retained_row_metadata(row).wrapped
+    }
+
+    pub(crate) fn retained_row_len(&self, row: usize) -> usize {
+        self.retained_row_metadata(row).len
+    }
+
+    fn retained_row_metadata(&self, row: usize) -> RowMetadata {
+        if row < self.scrollback.len() {
+            let mut metadata = self.scrollback_metadata.get(row).copied().unwrap_or_default();
+            metadata.len = metadata.len.min(self.cols());
+            if metadata.len > 0 && self.scrollback[row].get(metadata.len - 1)
+                .is_some_and(|cell| cell.flags.contains(CellFlags::WIDE))
+            {
+                metadata.len -= 1;
+            }
+            metadata
+        } else if row - self.scrollback.len() < self.rows() {
+            self.buffer.row_metadata(row - self.scrollback.len())
+        } else {
+            RowMetadata::default()
+        }
+    }
+
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
     pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
     pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
@@ -431,6 +458,7 @@ impl Grid {
             for (cell, &byte) in cells.iter_mut().zip(&text[..count]) {
                 *cell = Cell { c: char::from(byte), ..template };
             }
+            self.buffer.mark_written(row, col + count);
             self.dirty[row] = true;
             self.cursor_col += count;
             self.wrap_pending = self.cursor_col >= cols;
@@ -455,8 +483,7 @@ impl Grid {
         if self.is_wrap_pending() || self.cursor_col >= cols {
             self.wrap_pending = false;
             if self.auto_wrap {
-                self.carriage_return();
-                self.newline();
+                self.soft_wrap();
             } else {
                 self.cursor_col = self.cursor_col.min(cols - 1);
             }
@@ -481,8 +508,7 @@ impl Grid {
 
             // The glyph is written on the next line; existing content at the
             // right margin remains intact.
-            self.carriage_return();
-            self.newline();
+            self.soft_wrap();
         }
 
         let row = self.cursor_row;
@@ -532,6 +558,7 @@ impl Grid {
         if self.insert_mode {
             self.repair_wide_row(row);
         }
+        self.buffer.mark_written(row, col + char_width.max(1));
         self.dirty[row] = true;
         self.cursor_col += char_width;
         self.wrap_pending = self.cursor_col >= cols;
@@ -593,7 +620,18 @@ impl Grid {
         Self::repair_wide_buffer_row(&mut self.buffer, row, template);
     }
 
+    fn soft_wrap(&mut self) {
+        self.buffer.set_wrapped(self.cursor_row, true);
+        self.carriage_return();
+        self.advance_line();
+    }
+
     pub fn newline(&mut self) {
+        self.buffer.set_wrapped(self.cursor_row, false);
+        self.advance_line();
+    }
+
+    fn advance_line(&mut self) {
         self.cancel_pending_wrap();
         if self.cursor_row == self.scroll_bottom {
             self.scroll_up(1);
@@ -639,8 +677,10 @@ impl Grid {
             for i in 0..count {
                 let row_data = self.buffer.extract_row(i);
                 self.scrollback.push_back(row_data);
+                self.scrollback_metadata.push_back(self.buffer.row_metadata(i));
                 if self.scrollback.len() > self.scrollback_max {
                     self.scrollback.pop_front();
+                    self.scrollback_metadata.pop_front();
                 }
             }
             self.total_lines_pushed += count;
@@ -815,6 +855,8 @@ impl Grid {
             return;
         }
         let count = count.min(cols - col);
+        let metadata = self.buffer.row_metadata(row);
+        self.buffer.set_row_metadata(row, RowMetadata { len: metadata.len.saturating_sub(count).max(col.min(metadata.len)), ..metadata });
         self.clear_wide_overlap(row, col, count);
         for destination in col..cols {
             let source = destination.saturating_add(count);
@@ -838,6 +880,8 @@ impl Grid {
             return;
         }
         let count = count.min(cols - col);
+        let metadata = self.buffer.row_metadata(row);
+        self.buffer.set_row_metadata(row, RowMetadata { len: (metadata.len.max(col) + count).min(cols), ..metadata });
         self.clear_wide_overlap(row, col, 0);
         for destination in (col..cols).rev() {
             let cell = if destination >= col + count {
@@ -856,6 +900,10 @@ impl Grid {
         let end = end.min(self.cols());
         if start >= end {
             return;
+        }
+        let metadata = self.buffer.row_metadata(row);
+        if end >= metadata.len {
+            self.buffer.set_row_metadata(row, RowMetadata { len: metadata.len.min(start), wrapped: false });
         }
         self.clear_wide_overlap(row, start, end - start);
         let template = self.template_cell();
@@ -906,6 +954,7 @@ impl Grid {
                 let viewport_changed = self.scroll_offset != 0;
                 self.selection_revision = self.selection_revision.wrapping_add(1);
                 self.scrollback.clear();
+                self.scrollback_metadata.clear();
                 let cell_width = f32::from(self.cell_pixel_width);
                 let cell_height = f32::from(self.cell_pixel_height);
                 self.image_placements.retain(|placement| {
@@ -1048,6 +1097,35 @@ mod tests {
         Grid, TerminalEvent,
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+
+    #[test]
+    fn soft_wrap_metadata_follows_scrollback_and_explicit_newlines() {
+        let mut grid = Grid::new(4, 2, 10);
+        grid.put_ascii(b"abc defghi");
+        assert_eq!(grid.scrollback_len(), 1);
+        assert!(grid.retained_row_wrapped(0));
+        assert!(grid.retained_row_wrapped(1));
+        assert_eq!(grid.retained_row_len(0), 4);
+        assert_eq!(grid.retained_row_len(2), 2);
+        grid.newline();
+        assert!(!grid.retained_row_wrapped(2));
+        grid.erase_in_display(2);
+        assert_eq!(grid.retained_row_len(grid.scrollback_len()), 0);
+    }
+
+    #[test]
+    fn row_lengths_distinguish_printed_spaces_from_wide_wrap_padding() {
+        let mut grid = Grid::new(4, 2, 10);
+        grid.put_ascii(b"ab ");
+        grid.put_char('日');
+        assert!(grid.retained_row_wrapped(0));
+        assert_eq!(grid.retained_row_len(0), 3);
+        assert_eq!(grid.retained_row_len(1), 2);
+        grid.carriage_return();
+        grid.erase_in_line(0);
+        assert_eq!(grid.retained_row_len(1), 0);
+    }
+
     use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
 
     #[test]

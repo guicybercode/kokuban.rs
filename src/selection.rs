@@ -147,10 +147,9 @@ impl SelectionState {
             .unwrap_or_default()
     }
 
-    /// Extract only retained rows and visible columns, rejecting output before
-    /// it exceeds the UTF-8 byte limit. Empty padding is trimmed without first
-    /// allocating it. Grid does not yet retain soft-wrap or grapheme metadata,
-    /// so physical rows remain separate and stored scalars are copied verbatim.
+    /// Copy logical text, joining automatically wrapped rows while preserving
+    /// explicit line breaks and printed spaces. Unwritten padding never enters
+    /// the result, and the UTF-8 byte limit is checked before each append.
     pub fn get_text_with_limit(
         &self,
         grid: &Grid,
@@ -176,32 +175,23 @@ impl SelectionState {
                 0
             };
             let col_end = if abs_row == end.row {
-                end.col.min(grid.cols() - 1)
+                end.col.saturating_add(1).min(grid.cols())
             } else {
-                grid.cols() - 1
-            };
+                grid.cols()
+            }
+            .min(grid.retained_row_len(row));
             if col_start < grid.cols() {
                 col_start = wide_leader(grid, row, col_start);
             }
-            let mut spaces = 0usize;
-            for col in col_start..=col_end {
+            for col in col_start..col_end {
                 let cell = retained_cell(grid, row, col);
                 if cell.flags.contains(CellFlags::WIDE_CONT) || cell.c == '\0' {
                     continue;
                 }
-                if cell.c == ' ' {
-                    spaces += 1;
-                    continue;
-                }
-                let required = spaces
-                    .checked_add(cell.c.len_utf8())
-                    .ok_or(SelectionTextError::TooLarge)?;
-                check_text_budget(&text, required, max_bytes)?;
-                text.extend(std::iter::repeat_n(' ', spaces));
+                check_text_budget(&text, cell.c.len_utf8(), max_bytes)?;
                 text.push(cell.c);
-                spaces = 0;
             }
-            if row != last {
+            if row != last && !grid.retained_row_wrapped(row) {
                 check_text_budget(&text, 1, max_bytes)?;
                 text.push('\n');
             }
@@ -283,6 +273,50 @@ mod tests {
         let (start, end) = selection.normalized().unwrap();
         assert_eq!((start.row, start.col), (2, 3));
         assert_eq!((end.row, end.col), (4, 8));
+    }
+
+    #[test]
+    fn copy_joins_wrapped_urls_across_screen_and_history() {
+        let url = "https://example.com/very/long/path?query=terminal";
+        let mut grid = Grid::new(8, 3, 100);
+        grid.put_ascii(url.as_bytes());
+        let last = grid.scrollback_len() + grid.cursor_row;
+        let selection = selected(
+            GridPoint { row: 0, col: 0 },
+            GridPoint { row: last as i64, col: 7 },
+        );
+        assert_eq!(selection.get_text(&grid), url);
+        assert_eq!(selection.get_text_with_limit(&grid, url.len()), Ok(url.to_owned()));
+        assert_eq!(selection.get_text_with_limit(&grid, url.len() - 1), Err(SelectionTextError::TooLarge));
+        let reverse = selected(selection.end.unwrap(), selection.anchor.unwrap());
+        assert_eq!(reverse.get_text(&grid), url);
+    }
+
+    #[test]
+    fn copy_preserves_real_newlines_and_printed_spaces_at_wrap_boundaries() {
+        let mut grid = Grid::new(5, 6, 100);
+        grid.put_ascii(b"echo  hello  ");
+        grid.carriage_return();
+        grid.newline();
+        grid.put_ascii(b"next ");
+        let selection = selected(
+            GridPoint { row: 0, col: 0 },
+            GridPoint { row: 3, col: 4 },
+        );
+        assert_eq!(selection.get_text(&grid), "echo  hello  \nnext ");
+    }
+
+    #[test]
+    fn copy_omits_wide_glyph_wrap_padding_and_keeps_partial_selection() {
+        let mut grid = Grid::new(4, 4, 100);
+        grid.put_ascii(b"abc");
+        grid.put_char('日');
+        grid.put_ascii(b"end");
+        let selection = selected(
+            GridPoint { row: 0, col: 1 },
+            GridPoint { row: 2, col: 0 },
+        );
+        assert_eq!(selection.get_text(&grid), "bc日end");
     }
 
     #[test]

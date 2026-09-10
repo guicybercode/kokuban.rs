@@ -1,10 +1,17 @@
 use super::cell::Cell;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct RowMetadata {
+    pub len: usize,
+    pub wrapped: bool,
+}
+
 #[derive(Debug)]
 pub struct Buffer {
     cells: Vec<Cell>,
     cols: usize,
     rows: usize,
+    metadata: Vec<RowMetadata>,
 }
 
 impl Buffer {
@@ -13,6 +20,7 @@ impl Buffer {
             cells: vec![Cell::default(); cols * rows],
             cols,
             rows,
+            metadata: vec![RowMetadata::default(); rows],
         }
     }
 
@@ -29,6 +37,31 @@ impl Buffer {
         &mut self.cells[start..start + self.cols]
     }
 
+    pub(crate) fn row_metadata(&self, row: usize) -> RowMetadata {
+        let mut metadata = self.metadata[row];
+        // Public cell access is also used by screen writers and test fixtures.
+        // Keep directly assigned nonblank cells in the retained content range.
+        let start = row * self.cols;
+        if let Some(col) = self.cells[start..start + self.cols]
+            .iter().rposition(|cell| cell.c != ' ')
+        {
+            metadata.len = metadata.len.max(col + 1);
+        }
+        metadata
+    }
+
+    pub(crate) fn set_row_metadata(&mut self, row: usize, metadata: RowMetadata) {
+        self.metadata[row] = metadata;
+    }
+
+    pub(crate) fn mark_written(&mut self, row: usize, end: usize) {
+        self.metadata[row].len = self.metadata[row].len.max(end.min(self.cols));
+    }
+
+    pub(crate) fn set_wrapped(&mut self, row: usize, wrapped: bool) {
+        self.metadata[row].wrapped = wrapped;
+    }
+
     pub fn cols(&self) -> usize {
         self.cols
     }
@@ -38,6 +71,7 @@ impl Buffer {
     }
 
     pub fn clear_row(&mut self, row: usize, template: Cell) {
+        self.metadata[row] = RowMetadata::default();
         let start = row * self.cols;
         for i in start..start + self.cols {
             self.cells[i] = template;
@@ -52,6 +86,8 @@ impl Buffer {
         let start = top * self.cols;
         let end = (bottom + 1) * self.cols;
         let shift = count * self.cols;
+        self.metadata.copy_within(top + count..bottom + 1, top);
+        self.metadata[bottom + 1 - count..bottom + 1].fill(RowMetadata::default());
         self.cells.copy_within(start + shift..end, start);
         self.cells[end - shift..end].fill(template);
     }
@@ -64,6 +100,8 @@ impl Buffer {
         let start = top * self.cols;
         let end = (bottom + 1) * self.cols;
         let shift = count * self.cols;
+        self.metadata.copy_within(top..bottom + 1 - count, top + count);
+        self.metadata[top..top + count].fill(RowMetadata::default());
         self.cells.copy_within(start..end - shift, start + shift);
         self.cells[start..start + shift].fill(template);
     }
@@ -82,6 +120,8 @@ impl Buffer {
                 new_cells[row * new_cols + col] = self.cells[row * self.cols + col];
             }
         }
+        self.metadata.resize(new_rows, RowMetadata::default());
+        for metadata in &mut self.metadata { metadata.len = metadata.len.min(new_cols); }
         self.cells = new_cells;
         self.cols = new_cols;
         self.rows = new_rows;
