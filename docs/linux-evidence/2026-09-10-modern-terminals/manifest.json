@@ -1,0 +1,37 @@
+{
+  "purpose": "Functional validation of the four-terminal comparison runner; not performance evidence",
+  "date": "2026-09-10",
+  "kokuban_source_revision": "da14f90",
+  "kokuban_binary_sha256": "28d8033a4cff1921a58e9d88f1a2561a0333149842911eec330841497dba5e0d",
+  "comparison_script_last_changed_revision": "e142905",
+  "comparison_script_sha256": "ca92c29c237d2b0f4e7f330dc8fe6511e8cbff2b92abc83fec054e91a5e45bd0",
+  "base_container": "ubuntu:26.04",
+  "base_container_digest": "sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d",
+  "package_source": "Ubuntu 26.04 official distribution repositories (ports.ubuntu.com/ubuntu-ports)",
+  "host": "macOS Apple M4; Colima Linux arm64 VM; Docker container",
+  "backends": {
+    "x11": "Xvfb 1280x900x24; LIBGL_ALWAYS_SOFTWARE=1",
+    "wayland": "Weston 14.0.2 headless, pixman, 1280x900; LIBGL_ALWAYS_SOFTWARE=1; DISPLAY absent"
+  },
+  "arguments": {
+    "samples": 3,
+    "bytes": 65536,
+    "timeout_seconds": 20,
+    "screen": "alternate",
+    "font_pixels": 14,
+    "columns": 80,
+    "rows": 24
+  },
+  "result": "24/24 terminal processes completed all four workloads, DSR checks and normal exit",
+  "limitations": [
+    "Concurrent functional tests/builds; not a timing benchmark",
+    "Software rendering in shared VM; no physical GPU/display or Omarchy/Hyprland",
+    "Effective pixel dimensions differ between terminals",
+    "Known Kokuban combining-mark and font-fallback limitations; no rendering equivalence established"
+  ],
+  "evidence_sha256": {
+    "system-packages.txt": "da8d0e33b28d9b7b4d872861dab580997f37367e5aa9dccd0e8020044fa39a89",
+    "wayland.json": "20441f9f75383b810a3fe793c78f0bc43500f4f21986dd6c6fa02a0cf055b77d",
+    "x11.json": "5da4026b14d431ce56fac349c658703598ff6ef26b3d8084117026123c1341f1"
+  }
+}

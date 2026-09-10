@@ -113,7 +113,33 @@ também omite caracteres ausentes na fonte selecionada, sem buscar outra fonte.
 Assim, a carga Unicode pode produzir menos conteúdo visual em Kokuban, e seus
 tempos não comprovam desempenho superior com a mesma fidelidade de texto.
 
-O programa não gera ranking. Versões
-antigas dos concorrentes em uma distribuição de testes não representam suas
-versões atuais; a comparação completa exige medições com as versões usadas no
-Omarchy, inclusive Ghostty.
+O programa não gera ranking. Os pacotes de uma distribuição de testes não
+representam necessariamente as versões usadas no Omarchy; a comparação completa
+exige repetir as medições nessa instalação, com GPU e monitor reais.
+
+## Validação funcional dos quatro terminais em 2026-09-10
+
+O comparador concluiu 24 execuções: três amostras de cada terminal em X11/Xvfb
+e três em Wayland nativo com Weston 14.0.2, sem `DISPLAY`. Cada execução
+processou as quatro cargas de aproximadamente 64 KiB, validou as respostas DSR
+e encerrou normalmente. Os concorrentes vieram dos repositórios do Ubuntu 26.04
+arm64; Kokuban foi o executável release da revisão `da14f90`.
+
+| Terminal | Versão do pacote/binário | Grade efetiva | Pixels do PTY |
+| --- | --- | --- | --- |
+| Kokuban | `da14f90`, Rust 1.94.1 | 80×24 | 720×408 |
+| Ghostty | pacote `1.3.0~us1-0ubuntu1.1`; binário `1.3.0-dev+0000000` | 80×24 | 640×384 |
+| Alacritty | pacote `0.16.1-2ubuntu1` | 80×24 | 640×408 |
+| Kitty | pacote `0.45.0-1build1` | 80×24 | 640×408 |
+
+O ambiente foi Docker em uma VM Colima sobre macOS/Apple M4, com renderização
+por software e outros testes/compilações em andamento. Os tempos foram
+preservados para auditoria do comparador, **não como evidência de desempenho**.
+Ambos os relatórios detectaram a diferença de geometria e mantiveram
+`ranking: null` e `rendering_equivalence_verified: false`. As limitações Unicode
+descritas acima permanecem.
+
+Evidências: [relatório X11](linux-evidence/2026-09-10-modern-terminals/x11.json),
+[relatório Wayland](linux-evidence/2026-09-10-modern-terminals/wayland.json),
+[pacotes](linux-evidence/2026-09-10-modern-terminals/system-packages.txt) e
+[manifesto](linux-evidence/2026-09-10-modern-terminals/manifest.json).

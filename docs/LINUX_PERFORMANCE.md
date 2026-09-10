@@ -78,8 +78,12 @@ desenvolvimento em Kokuban, Alacritty 0.11 e Kitty 0.26.5 sob X11 e três amostr
 de Kokuban sob Wayland. Ele detectou tamanhos em pixels diferentes e registra
 que fidelidade visual não foi verificada, incluindo as limitações atuais de
 caracteres combinantes e fallback de fonte. Esses testes não estabelecem
-superioridade sobre Ghostty, Alacritty ou Kitty. Ainda é necessário executar a
-comparação completa nas versões atuais, com GPU/monitor reais e Omarchy/Hyprland.
+superioridade sobre Ghostty, Alacritty ou Kitty. Uma validação posterior concluiu
+também 24 execuções dos quatro terminais com pacotes do Ubuntu 26.04, incluindo
+Ghostty, em X11 e Wayland. Os detalhes e limitações estão na
+[validação funcional do comparador](TERMINAL_COMPARISON.md#validação-funcional-dos-quatro-terminais-em-2026-09-10).
+Ainda é necessário executar a comparação nas versões usadas no Omarchy,
+com GPU/monitor reais e Hyprland.
 
 ## Resultado de 2026-09-05
 
