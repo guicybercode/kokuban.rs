@@ -2,6 +2,8 @@
 mod app;
 mod app_icon;
 mod config;
+#[cfg(test)]
+mod content_preservation_tests;
 mod graphics;
 mod glyph_atlas;
 mod grid;

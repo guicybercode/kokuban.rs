@@ -4,6 +4,8 @@
 Requires xclip, xdotool and xwd. A raw PTY child records every input byte;
 DSR replies acknowledge terminal-mode changes before keyboard/mouse injection.
 No window manager, Python packages or external clipboard daemon are needed.
+The full run also verifies compound graphemes and a wrapped URL across four
+window resizes without reprinting the fixture. --graphemes-only isolates copy.
 """
 
 import json
@@ -25,11 +27,16 @@ COPY_LINE = b"COPY_THIS_TEXT extra"
 SHIFT_LINE = b"SHIFT_COPY_TEXT extra"
 COPY_TEXT = b"COPY_THIS_TEXT"
 SHIFT_TEXT = b"SHIFT_COPY_TEXT"
+GRAPHEME_TEXT = "e\u0301 👩🏽\u200d💻 🇧🇷 1\ufe0f\u20e3 ❤\ufe0f END".encode("utf-8")
+WRAPPED_TEXT = (
+    "https://example.test/a/long/path?first=one&second=two&third=three "
+    "e\u0301 👩🏽\u200d💻 🇧🇷 1\ufe0f\u20e3 END"
+).encode("utf-8")
 PASTE_ONE = "ação 🦀\r\nlinha\t2\n終わり".encode("utf-8")
 PASTE_TWO = "safe\x1b[201~\n二\tfim".encode("utf-8")
 EXPECTED_ONE = b"\x1b[200~" + "ação 🦀\rlinha\t2\r終わり".encode("utf-8") + b"\x1b[201~"
 EXPECTED_TWO = b"\x1b[200~" + "safe[201~\r二\tfim".encode("utf-8") + b"\x1b[201~"
-DSR_REPLY = re.compile(rb"\x1b\[[0-9]+;[0-9]+R")
+DSR_REPLY = re.compile(rb"\x1b\[([0-9]+);([0-9]+)R")
 MAX_CAPTURE_BYTES = 64 * 1024
 
 
@@ -62,16 +69,25 @@ def child() -> None:
                     raise AssertionError("phase changed before the terminal acknowledged it")
                 current_phase = requested
                 pending_reply = requested
-                mouse_mode = b"\x1b[?1000l\x1b[?1002l\x1b[?1006l"
-                line = COPY_LINE
-                if requested == "mouse":
-                    mouse_mode = b"\x1b[?1002h\x1b[?1006h"
-                    line = SHIFT_LINE
-                elif requested not in ("paste", "plain", "copy"):
-                    raise AssertionError(f"unknown smoke phase: {requested}")
-                paste_mode = b"\x1b[?2004l" if requested == "plain" else b"\x1b[?2004h"
-                os.write(1, b"\x1b[?25l\x1b[2J\x1b[H" + line
-                         + paste_mode + mouse_mode + b"\x1b[6n")
+                if requested.startswith("probe-"):
+                    # Resize probes acknowledge the new grid dimensions without
+                    # clearing, repositioning the cursor or reprinting the fixture.
+                    os.write(1, b"\x1b[6n")
+                else:
+                    mouse_mode = b"\x1b[?1000l\x1b[?1002l\x1b[?1006l"
+                    line = COPY_LINE
+                    if requested == "mouse":
+                        mouse_mode = b"\x1b[?1002h\x1b[?1006h"
+                        line = SHIFT_LINE
+                    elif requested == "graphemes":
+                        line = GRAPHEME_TEXT
+                    elif requested == "wrapped":
+                        line = WRAPPED_TEXT
+                    elif requested not in ("paste", "plain", "copy"):
+                        raise AssertionError(f"unknown smoke phase: {requested}")
+                    paste_mode = b"\x1b[?2004l" if requested == "plain" else b"\x1b[?2004h"
+                    os.write(1, b"\x1b[?25l\x1b[2J\x1b[H" + line
+                             + paste_mode + mouse_mode + b"\x1b[6n")
             readable, _, _ = select.select([sys.stdin.fileno()], [], [], 0.02)
             if not readable:
                 continue
@@ -87,10 +103,12 @@ def child() -> None:
                 if reply is None:
                     continue
                 captured.write(reply_buffer[:reply.start()] + reply_buffer[reply.end():])
+                cursor_row, cursor_col = map(int, reply.groups())
                 reply_buffer.clear()
                 size = os.get_terminal_size(sys.stdin.fileno())
                 atomic_text(directory / "ready.json", json.dumps({
                     "phase": pending_reply, "columns": size.columns, "rows": size.lines,
+                    "cursor_row": cursor_row, "cursor_col": cursor_col,
                 }))
                 pending_reply = None
             else:
@@ -120,12 +138,13 @@ class ClipboardSmoke:
         self.directory = directory
         self.terminal = terminal
         self.log = log
-        self.deadline = time.monotonic() + 40
+        self.deadline = time.monotonic() + 65
         self.owners: list[subprocess.Popen] = []
         self.window = ""
         self.cell_width = 0.0
         self.cell_height = 0.0
         self.expected_input = b""
+        self.resize_probe = 0
 
     def wait(self, condition, description: str, timeout: float = 8):
         deadline = min(self.deadline, time.monotonic() + timeout)
@@ -151,7 +170,7 @@ class ClipboardSmoke:
 
         return self.wait(ready, f"{name} mode acknowledgment")
 
-    def locate_window(self, size: dict) -> None:
+    def locate_window(self) -> None:
         def search():
             result = subprocess.run(
                 ["xdotool", "search", "--onlyvisible", "--pid", str(self.terminal.pid)],
@@ -161,6 +180,15 @@ class ClipboardSmoke:
 
         self.window = self.wait(search, "Kokuban X11 window")[0]
         xdo("windowfocus", "--sync", self.window)
+        # The first PTY reply can precede the renderer's initial resize using
+        # the loaded font metrics. Query again after the X11 window exists.
+        self.update_geometry(self.probe())
+
+    def probe(self) -> dict:
+        self.resize_probe += 1
+        return self.phase(f"probe-{self.resize_probe}")
+
+    def update_geometry(self, size: dict) -> None:
         geometry = dict(line.split("=", 1) for line in xdo(
             "getwindowgeometry", "--shell", self.window
         ).decode().splitlines() if "=" in line)
@@ -241,18 +269,73 @@ class ClipboardSmoke:
                   >= minimum_changes, "visible selection highlight", timeout=4)
 
     def copy_selection(self, expected: bytes, shift: bool = False) -> None:
+        self.update_geometry(self.probe())
         before = self.row_pixels()
         self.drag(len(expected), shift)
         self.verify_highlight(before, len(expected))
         self.key("ctrl+shift+c")
-        self.wait(lambda: self.clipboard() == expected, "copied selection text")
+        try:
+            self.wait(lambda: self.clipboard() == expected, "copied selection text")
+        except AssertionError as error:
+            raise AssertionError(f"{error}\nexpected: {expected!r}\n"
+                                 f"actual: {self.clipboard()!r}\n"
+                                 f"cell: {self.cell_width}x{self.cell_height}") from error
         self.verify_input()
         # A second independent client proves the copy owner was retained.
         if self.clipboard() != expected:
             raise AssertionError("clipboard owner was dropped after copying")
 
+    def copy_content(self, expected: bytes) -> None:
+        size = self.probe()
+        self.update_geometry(size)
+        if not 1 <= size["cursor_row"] <= size["rows"]:
+            raise AssertionError(f"fixture cursor left the visible screen: {size}")
+        # Never let a previous successful copy satisfy a later resize check.
+        self.set_clipboard(b"clipboard must be replaced by a new copy")
+        xdo("mousemove", "--sync", "--window", self.window, *self.cell_point(0, 0),
+            "mousedown", "1", "sleep", "0.05",
+            "mousemove", "--sync", "--window", self.window,
+            *self.cell_point(size["columns"] - 1, size["cursor_row"] - 1),
+            "sleep", "0.05", "mouseup", "1")
+        self.key("ctrl+shift+c")
+        try:
+            self.wait(lambda: self.clipboard() == expected, "exact multiline UTF-8 copy")
+        except AssertionError as error:
+            raise AssertionError(f"{error}\nexpected: {expected!r}\n"
+                                 f"actual: {self.clipboard()!r}\nsize: {size}") from error
+        self.verify_input()
+        if self.clipboard() != expected:
+            raise AssertionError("clipboard content changed after copying")
+
+    def resize_without_redraw(self, columns: int, rows: int) -> dict:
+        xdo("windowsize", "--sync", self.window,
+            str(round(columns * self.cell_width)), str(round(rows * self.cell_height)))
+
+        def resized():
+            size = self.probe()
+            return size if (size["columns"], size["rows"]) == (columns, rows) else None
+
+        return self.wait(resized, f"PTY resize acknowledgment to {columns}x{rows}")
+
+    def exercise_content(self, graphemes_only: bool) -> None:
+        self.phase("graphemes")
+        if not self.window:
+            self.locate_window()
+        self.copy_content(GRAPHEME_TEXT)
+        if graphemes_only:
+            return
+
+        size = self.phase("wrapped")
+        if size["cursor_row"] < 2:
+            raise AssertionError("URL fixture did not wrap in the original window")
+        self.copy_content(WRAPPED_TEXT)
+        for columns in (13, 55, 20, 40):
+            self.resize_without_redraw(columns, 20)
+            self.copy_content(WRAPPED_TEXT)
+
     def exercise(self) -> None:
-        self.locate_window(self.phase("paste"))
+        self.phase("paste")
+        self.locate_window()
         self.set_clipboard(PASTE_ONE)
         self.key("ctrl+shift+v")
         self.verify_input(EXPECTED_ONE)
@@ -301,8 +384,9 @@ def main() -> None:
     if sys.argv[1:] == ["--child"]:
         child()
         return
-    if len(sys.argv) != 2:
-        raise SystemExit(f"usage: xvfb-run python3 {sys.argv[0]} /path/to/kokuban")
+    graphemes_only = sys.argv[2:] == ["--graphemes-only"]
+    if len(sys.argv) != 2 and not (len(sys.argv) == 3 and graphemes_only):
+        raise SystemExit(f"usage: xvfb-run python3 {sys.argv[0]} /path/to/kokuban [--graphemes-only]")
     binary = Path(sys.argv[1]).resolve(strict=True)
     with tempfile.TemporaryDirectory(prefix="kokuban-clipboard-") as temporary:
         directory = Path(temporary)
@@ -310,7 +394,7 @@ def main() -> None:
             '[font]\nfamily = "DejaVu Sans Mono"\nsize = 14.0\n'
             '[window]\ncolumns = 40\nrows = 20\n'
         )
-        atomic_text(directory / "phase", "paste")
+        atomic_text(directory / "phase", "graphemes" if graphemes_only else "paste")
         shell = directory / "shell"
         shell.write_text("#!/bin/sh\nexec " + shlex.join(
             [sys.executable, str(Path(__file__).resolve()), "--child"]
@@ -327,15 +411,21 @@ def main() -> None:
                                         stdin=subprocess.DEVNULL, stdout=log, stderr=log)
             smoke = ClipboardSmoke(directory, terminal, log)
             try:
-                smoke.exercise()
+                if not graphemes_only:
+                    smoke.exercise()
+                smoke.exercise_content(graphemes_only)
             except Exception as error:
                 raise AssertionError(f"Linux clipboard smoke: {error}\n"
                                      + log_path.read_text(errors="replace")[-4000:]) from error
             finally:
                 smoke.cleanup()
-        print("PASS clipboard: CtrlShiftV, ShiftInsert, exact UTF-8 paste bytes, "
-              "drag copy, retained owner, visible highlight and Shift mouse override",
-              flush=True)
+        if graphemes_only:
+            print("PASS clipboard: exact compound graphemes through real X11 drag copy", flush=True)
+        else:
+            print("PASS clipboard: CtrlShiftV, ShiftInsert, exact UTF-8 paste bytes, "
+                  "drag copy, retained owner, visible highlight, Shift mouse override, "
+                  "compound graphemes, wrapped URL and exact copy after four no-redraw resizes",
+                  flush=True)
 
 
 if __name__ == "__main__":
