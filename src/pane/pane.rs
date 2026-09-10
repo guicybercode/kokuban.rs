@@ -131,7 +131,11 @@ impl Pane {
             cols,
             rows,
             move |pty_cols, pty_rows| pty.resize(pty_cols, pty_rows),
-            |grid_cols, grid_rows| self.grid.resize(grid_cols, grid_rows),
+            |grid_cols, grid_rows| {
+                self.grid.resize(grid_cols, grid_rows);
+                // Reflow changes retained-row coordinates, as on the Linux path.
+                self.selection.clear();
+            },
         ) {
             log::error!("Failed to resize PTY for pane {}: {error}", self.id);
         }

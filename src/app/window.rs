@@ -1506,11 +1506,10 @@ fn pixel_to_grid_point(
     let col = (local_x / cell_w) as usize;
     let vis_row = (local_y / cell_h) as usize;
 
-    let sb_len = pane.grid.scrollback_len();
-    let scroll_offset = pane.grid.scroll_offset;
-    let abs_row = sb_len as i64 - scroll_offset as i64 + vis_row as i64;
-
-    Some((pane_id, GridPoint { row: abs_row, col }))
+    Some((
+        pane_id,
+        crate::selection::point_from_viewport(&pane.grid, vis_row, col),
+    ))
 }
 
 fn copy_to_clipboard(text: &str) {
