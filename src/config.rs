@@ -359,7 +359,7 @@ fn config_paths(xdg_config_home: Option<PathBuf>, home: Option<PathBuf>) -> Vec<
 impl ColorConfig {
     pub fn parse_hex(hex: &str) -> (u8, u8, u8) {
         let hex = hex.trim_start_matches('#');
-        if hex.len() == 6 {
+        if hex.len() == 6 && hex.is_ascii() {
             let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(192);
             let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(192);
             let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(192);
@@ -372,8 +372,47 @@ impl ColorConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_paths, Config, ImagesConfig};
+    use super::{config_paths, ColorConfig, Config, ImagesConfig};
     use std::path::PathBuf;
+
+    #[test]
+    fn parses_hex_colors_with_existing_prefix_and_case_support() {
+        for (input, expected) in [
+            ("000000", (0, 0, 0)),
+            ("#ffffff", (255, 255, 255)),
+            ("#12aBcD", (0x12, 0xab, 0xcd)),
+            ("##123456", (0x12, 0x34, 0x56)),
+        ] {
+            assert_eq!(ColorConfig::parse_hex(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn invalid_hex_colors_keep_existing_ascii_fallbacks() {
+        for input in ["", "#", "123", "#12345", "#1234567", "#12345678"] {
+            assert_eq!(ColorConfig::parse_hex(input), (192, 192, 192), "{input:?}");
+        }
+        for (input, expected) in [
+            ("#gg1234", (192, 0x12, 0x34)),
+            ("#12gg34", (0x12, 192, 0x34)),
+            ("#1234gg", (0x12, 0x34, 192)),
+        ] {
+            assert_eq!(ColorConfig::parse_hex(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn unicode_hex_colors_fall_back_without_panicking() {
+        // Each value has six bytes, including characters crossing the old RGB slice boundaries.
+        for input in [
+            "日本", "aé123", "abcé1", "ab日f", "💥ff", "ab💥", "é1234", "1234é",
+        ] {
+            for prefix in ["", "#", "##"] {
+                let color = format!("{prefix}{input}");
+                assert_eq!(ColorConfig::parse_hex(&color), (192, 192, 192), "{color:?}");
+            }
+        }
+    }
 
     #[test]
     fn user_configuration_paths_follow_xdg_and_preserve_local_priority() {
