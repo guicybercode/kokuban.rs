@@ -17,7 +17,7 @@ use crate::selection::{point_from_viewport, GridPoint, SelectionState};
 use crate::pty::Pty;
 use crate::parser::ansi::GraphicsSupport;
 use crate::software_graphics::{ImageSnapshot, SoftwareGraphics};
-use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
+use crate::software_raster::{draw_glyph_a8, draw_glyph_rgba, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
@@ -189,6 +189,7 @@ enum WriterStatus {
 #[derive(Clone, Copy)]
 struct GlyphSource<'a> {
     pixels: &'a [u8],
+    rgba_pixels: Option<&'a [u8]>,
     size: (u32, u32),
     ascent: f32,
 }
@@ -3460,14 +3461,15 @@ fn draw_grid_snapshot_with_images(
                 continue;
             }
 
-            if cell.c != ' ' && cell.c != '\0' {
-                let glyph = atlas.get_or_insert(GlyphKey {
-                    c: cell.c,
-                    bold: cell.flags.contains(CellFlags::BOLD),
-                    italic: cell.flags.contains(CellFlags::ITALIC),
-                });
+            if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
+                let glyph = atlas.get_or_insert_text(
+                    &cell.text(),
+                    cell.flags.contains(CellFlags::BOLD),
+                    cell.flags.contains(CellFlags::ITALIC),
+                );
                 let source = GlyphSource {
                     pixels: &atlas.pixels,
+                    rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
                     size: (atlas.width, atlas.height),
                     ascent: atlas.ascent,
                 };
@@ -3587,6 +3589,7 @@ fn draw_ime_preedit(
         });
         let source = GlyphSource {
             pixels: &atlas.pixels,
+            rgba_pixels: atlas.is_color(atlas_glyph).then_some(&atlas.rgba_pixels),
             size: (atlas.width, atlas.height),
             ascent: atlas.ascent,
         };
@@ -3751,6 +3754,10 @@ fn draw_cell_glyph(
         return;
     };
 
+    if let Some(rgba_pixels) = source.rgba_pixels {
+        draw_glyph_rgba(frame, frame_size, rgba_pixels, source.size, glyph, (destination_x, destination_y));
+        return;
+    }
     draw_glyph_a8(
         frame,
         frame_size,
@@ -7872,6 +7879,7 @@ mod tests {
             (5, 5),
             super::GlyphSource {
                 pixels: &[255],
+                rgba_pixels: None,
                 size: (1, 1),
                 ascent: 1.4,
             },
@@ -7927,6 +7935,25 @@ mod tests {
             let start = row * frame_width;
             frame[start..start + usize::from(cell_dimensions.0)].contains(&first_cell_background)
         }));
+    }
+
+    #[test]
+    fn snapshot_renderer_sends_the_full_grapheme_to_the_atlas() {
+        for text in ["e\u{301}", "👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
+            let mut atlas = test_atlas();
+            let mut grid = Grid::new(4, 1, 0);
+            grid.cursor_visible = false;
+            for character in text.chars() {
+                grid.put_char(character);
+            }
+            let (frame, _) = render_grid(grid, &mut atlas);
+            atlas.dirty = false;
+            let glyph = atlas.get_or_insert_text(text, false, false);
+            assert!(!atlas.dirty, "renderer only cached part of {text}");
+            assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0);
+            let background = rgb_to_xrgb(DEFAULT_BACKGROUND.0, DEFAULT_BACKGROUND.1, DEFAULT_BACKGROUND.2);
+            assert!(frame.iter().any(|&pixel| pixel != background), "blank rendered grapheme: {text}");
+        }
     }
 
     #[test]

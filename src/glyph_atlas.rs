@@ -1,13 +1,13 @@
-use font_kit::canvas::{Canvas, Format, RasterizationOptions};
 use font_kit::error::{FontLoadingError, SelectionError};
 use font_kit::family_name::FamilyName;
 use font_kit::font::Font;
-use font_kit::hinting::HintingOptions;
 use font_kit::properties::{Properties, Style, Weight};
 use font_kit::source::{Source, SystemSource};
-use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use unicode_width::UnicodeWidthStr;
+
+mod text_raster;
+use text_raster::{Bitmap, ShapingFont, TextRasterizer};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -66,10 +66,21 @@ pub struct GlyphEntry {
     pub bearing_y: i32,
 }
 
+impl GlyphEntry {
+    fn empty() -> Self {
+        Self { atlas_x: 0, atlas_y: 0, pixel_w: 0, pixel_h: 0, bearing_x: 0, bearing_y: 0 }
+    }
+}
+
 pub struct GlyphAtlas {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// Straight RGBA pixels; monochrome glyphs use white RGB plus coverage.
+    pub rgba_pixels: Vec<u8>,
+    text_glyphs: HashMap<(String, bool, bool), GlyphEntry>,
+    color_glyphs: HashSet<(u32, u32)>,
+    rasterizer: TextRasterizer,
     pub glyphs: HashMap<GlyphKey, GlyphEntry>,
     pub cell_width: f32,
     pub cell_height: f32,
@@ -118,8 +129,7 @@ impl GlyphAtlas {
             .select_best_match(&[FamilyName::Title(font_family.to_string())], &properties)
             .map_err(|error| format!("selection failed: {error}"))
             .and_then(|handle| {
-                handle
-                    .load()
+                ShapingFont::load(&handle)
                     .map_err(|error| format!("loading failed: {error}"))
             });
 
@@ -138,8 +148,7 @@ impl GlyphAtlas {
                         source,
                     })?;
 
-                fallback_handle
-                    .load()
+                ShapingFont::load(&fallback_handle)
                     .map_err(|source| GlyphAtlasError::FallbackLoad {
                         requested_family: font_family.to_string(),
                         requested_error,
@@ -148,7 +157,7 @@ impl GlyphAtlas {
             }
         };
 
-        let metrics = scaled_font_metrics(&font, font_size, scale_factor)?;
+        let metrics = scaled_font_metrics(&font.font, font_size, scale_factor)?;
         let cell_width = metrics.cell_width;
         let cell_height = metrics.cell_height;
         let ascent = metrics.ascent;
@@ -156,7 +165,7 @@ impl GlyphAtlas {
 
         log::info!(
             "Font: {} size={font_size} scale={scale_factor} cell={}x{} ascent={:.1} descent={:.1}",
-            font.full_name(),
+            font.font.full_name(),
             cell_width,
             cell_height,
             ascent,
@@ -169,17 +178,23 @@ impl GlyphAtlas {
 
         // Reserve 1x1 white pixel at (0,0)
         pixels[0] = 255;
+        let mut rgba_pixels = vec![0; (width * height * 4) as usize];
+        rgba_pixels[..4].fill(255);
 
         let mut atlas = Self {
             width,
             height,
             pixels,
+            rgba_pixels,
+            text_glyphs: HashMap::new(),
+            color_glyphs: HashSet::new(),
+            font: font.font.clone(),
+            rasterizer: TextRasterizer::new(font),
             glyphs: HashMap::new(),
             cell_width,
             cell_height,
             ascent,
             descent,
-            font,
             font_size,
             scale_factor,
             cursor_x: 2, // Start after white pixel
@@ -221,6 +236,10 @@ impl GlyphAtlas {
         self.pixels.fill(0);
         self.pixels[0] = 255; // white pixel at (0,0)
         self.glyphs.clear();
+        self.text_glyphs.clear();
+        self.color_glyphs.clear();
+        self.rgba_pixels.fill(0);
+        self.rgba_pixels[..4].fill(255);
         self.cursor_x = 2;
         self.cursor_y = 0;
         self.row_height = 0;
@@ -242,119 +261,84 @@ impl GlyphAtlas {
         if let Some(&entry) = self.glyphs.get(&key) {
             return entry;
         }
+        let mut bytes = [0; 4];
+        let text = key.c.encode_utf8(&mut bytes);
+        let entry = self.rasterize_text(text);
+        self.glyphs.insert(key, entry);
+        entry
+    }
 
-        let glyph_id = match self.font.glyph_for_char(key.c) {
-            Some(id) => id,
-            None => {
-                // Use space entry or create dummy
-                let entry = GlyphEntry {
-                    atlas_x: 0,
-                    atlas_y: 0,
-                    pixel_w: 0,
-                    pixel_h: 0,
-                    bearing_x: 0,
-                    bearing_y: 0,
-                };
-                self.glyphs.insert(key, entry);
-                return entry;
-            }
-        };
-
-        let scaled_size = self.font_size * self.scale_factor;
-        let raster_rect = self
-            .font
-            .raster_bounds(
-                glyph_id,
-                scaled_size,
-                Transform2F::default(),
-                HintingOptions::None,
-                RasterizationOptions::GrayscaleAa,
-            )
-            .unwrap_or_default();
-
-        let glyph_w = raster_rect.width() as u32;
-        let glyph_h = raster_rect.height() as u32;
-
-        if glyph_w == 0 || glyph_h == 0 {
-            let entry = GlyphEntry {
-                atlas_x: 0,
-                atlas_y: 0,
-                pixel_w: 0,
-                pixel_h: 0,
-                bearing_x: 0,
-                bearing_y: 0,
-            };
-            self.glyphs.insert(key, entry);
+    /// Cache a whole grapheme, preserving shaping substitutions and mark offsets.
+    /// Scalar callers share the existing fast cache, including UI labels.
+    pub fn get_or_insert_text(&mut self, text: &str, bold: bool, italic: bool) -> GlyphEntry {
+        let mut chars = text.chars();
+        if let (Some(c), None) = (chars.next(), chars.next()) {
+            return self.get_or_insert(GlyphKey { c, bold, italic });
+        }
+        let key = (text.to_owned(), bold, italic);
+        if let Some(&entry) = self.text_glyphs.get(&key) {
             return entry;
         }
+        let entry = self.rasterize_text(text);
+        self.text_glyphs.insert(key, entry);
+        entry
+    }
 
-        // Check if we need to advance to next row
-        if self.cursor_x + glyph_w + 1 > self.width {
+    pub fn is_color(&self, glyph: GlyphEntry) -> bool {
+        self.color_glyphs.contains(&(glyph.atlas_x, glyph.atlas_y))
+    }
+
+    fn rasterize_text(&mut self, text: &str) -> GlyphEntry {
+        let width = UnicodeWidthStr::width(text).max(1) as f32 * self.cell_width;
+        let bitmap = self.rasterizer.rasterize(text, self.font_size * self.scale_factor, width);
+        match bitmap {
+            Some(bitmap) => self.insert_bitmap(text, bitmap),
+            None => GlyphEntry::empty(),
+        }
+    }
+
+    fn insert_bitmap(&mut self, text: &str, bitmap: Bitmap) -> GlyphEntry {
+        if bitmap.width == 0 || bitmap.height == 0 {
+            return GlyphEntry::empty();
+        }
+        if bitmap.width > self.width || bitmap.height > self.height {
+            log::warn!("Glyph exceeds atlas dimensions: {text:?}");
+            return GlyphEntry::empty();
+        }
+        if self.cursor_x + bitmap.width + 1 > self.width {
             self.cursor_y += self.row_height + 1;
             self.cursor_x = 0;
             self.row_height = 0;
         }
-
-        // Check if atlas is full
-        if self.cursor_y + glyph_h > self.height {
-            log::warn!("Glyph atlas full, cannot rasterize '{}'", key.c);
-            let entry = GlyphEntry {
-                atlas_x: 0,
-                atlas_y: 0,
-                pixel_w: 0,
-                pixel_h: 0,
-                bearing_x: 0,
-                bearing_y: 0,
-            };
-            self.glyphs.insert(key, entry);
-            return entry;
+        if self.cursor_y + bitmap.height > self.height {
+            log::warn!("Glyph atlas full, cannot rasterize {text:?}");
+            return GlyphEntry::empty();
         }
-
-        // Rasterize
-        let mut canvas = Canvas::new(Vector2I::new(glyph_w as i32, glyph_h as i32), Format::A8);
-
-        let origin = Vector2F::new(
-            -raster_rect.origin_x() as f32,
-            -raster_rect.origin_y() as f32,
-        );
-        self.font
-            .rasterize_glyph(
-                &mut canvas,
-                glyph_id,
-                scaled_size,
-                Transform2F::from_translation(origin),
-                HintingOptions::None,
-                RasterizationOptions::GrayscaleAa,
-            )
-            .ok();
-
-        // Copy to atlas
-        for y in 0..glyph_h {
-            for x in 0..glyph_w {
-                let src_idx = (y * glyph_w + x) as usize;
-                let dst_x = self.cursor_x + x;
-                let dst_y = self.cursor_y + y;
-                let dst_idx = (dst_y * self.width + dst_x) as usize;
-                self.pixels[dst_idx] = canvas.pixels[src_idx];
+        for y in 0..bitmap.height {
+            for x in 0..bitmap.width {
+                let src = ((y * bitmap.width + x) * 4) as usize;
+                let dst = ((self.cursor_y + y) * self.width + self.cursor_x + x) as usize;
+                self.pixels[dst] = bitmap.rgba[src + 3];
+                self.rgba_pixels[dst * 4..dst * 4 + 4].copy_from_slice(&bitmap.rgba[src..src + 4]);
             }
         }
-
         let entry = GlyphEntry {
             atlas_x: self.cursor_x,
             atlas_y: self.cursor_y,
-            pixel_w: glyph_w,
-            pixel_h: glyph_h,
-            bearing_x: raster_rect.origin_x(),
-            bearing_y: raster_rect.origin_y(),
+            pixel_w: bitmap.width,
+            pixel_h: bitmap.height,
+            bearing_x: bitmap.x,
+            bearing_y: bitmap.y,
         };
-
-        self.cursor_x += glyph_w + 1;
-        self.row_height = self.row_height.max(glyph_h);
+        if bitmap.color {
+            self.color_glyphs.insert((entry.atlas_x, entry.atlas_y));
+        }
+        self.cursor_x += bitmap.width + 1;
+        self.row_height = self.row_height.max(bitmap.height);
         self.dirty = true;
-
-        self.glyphs.insert(key, entry);
         entry
     }
+
 }
 
 fn validate_sizing(font_size: f32, scale_factor: f32) -> Result<(), GlyphAtlasError> {
@@ -613,6 +597,61 @@ mod tests {
         assert_eq!(cached.atlas_y, expected.atlas_y);
         assert_eq!(cached.pixel_w, expected.pixel_w);
         assert_eq!(cached.pixel_h, expected.pixel_h);
+    }
+
+    #[test]
+    fn grapheme_cache_preserves_combining_marks_and_hits_without_rasterizing_again() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        let plain = atlas.get_or_insert_text("e", false, false);
+        let composed = atlas.get_or_insert_text("e\u{301}", false, false);
+        assert!(composed.pixel_w > 0 && composed.pixel_h > 0);
+        assert_ne!((plain.atlas_x, plain.atlas_y), (composed.atlas_x, composed.atlas_y));
+        assert!(composed.pixel_h > plain.pixel_h, "the accent must appear above the e");
+        atlas.dirty = false;
+        let cached = atlas.get_or_insert_text("e\u{301}", false, false);
+        assert!(!atlas.dirty);
+        assert_eq!((composed.atlas_x, composed.atlas_y), (cached.atlas_x, cached.atlas_y));
+        assert!(atlas.text_glyphs.contains_key(&("e\u{301}".to_owned(), false, false)));
+    }
+
+    #[test]
+    fn compound_samples_reach_rasterization_and_have_visible_coverage() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        for text in ["e\u{301}", "q\u{302}\u{307}", "👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
+            let glyph = atlas.get_or_insert_text(text, false, false);
+            assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0, "blank grapheme: {text}");
+            let visible = (0..glyph.pixel_h).any(|y| (0..glyph.pixel_w).any(|x| {
+                atlas.pixels[((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize] > 0
+            }));
+            assert!(visible, "grapheme has no coverage: {text}");
+        }
+    }
+
+    #[test]
+    fn emoji_fallback_preserves_color_and_survives_font_resize() {
+        #[cfg(target_os = "macos")]
+        let family = "Apple Color Emoji";
+        #[cfg(target_os = "linux")]
+        let family = "Noto Color Emoji";
+        if SystemSource::new().select_best_match(&[FamilyName::Title(family.to_owned())], &Properties::new()).is_err() {
+            eprintln!("{family} is unavailable; install it to exercise bitmap emoji rasterization");
+            return;
+        }
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        for text in ["👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
+            let glyph = atlas.get_or_insert_text(text, false, false);
+            assert!(atlas.is_color(glyph), "system emoji fallback missing for {text}");
+            let colorful = (0..glyph.pixel_h).any(|y| (0..glyph.pixel_w).any(|x| {
+                let index = ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize * 4;
+                let color = &atlas.rgba_pixels[index..index + 4];
+                color[3] > 0 && (color[0] != color[1] || color[1] != color[2])
+            }));
+            assert!(colorful, "emoji color was reduced to a silhouette: {text}");
+        }
+        atlas.clear_and_resize(24.0).unwrap();
+        assert!(atlas.text_glyphs.is_empty());
+        let glyph = atlas.get_or_insert_text("👩🏽\u{200d}💻", false, false);
+        assert!(atlas.is_color(glyph));
     }
 
     #[test]

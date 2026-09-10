@@ -4,6 +4,7 @@ use super::brush::BrushRenderer;
 use super::image_store::ImageStore;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
+
 use crate::graphics::ImageId;
 use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
@@ -16,6 +17,29 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::*;
 
+/// Clip a glyph together with its texture coordinates, including a two-column
+/// grapheme retained in a one-column pane after a resize.
+fn clip_glyph_quad(
+    rectangle: [f32; 4],
+    uv: [f32; 4],
+    bounds: [f32; 4],
+) -> Option<([f32; 4], [f32; 4])> {
+    let clipped = [
+        rectangle[0].max(bounds[0]), rectangle[1].max(bounds[1]),
+        rectangle[2].min(bounds[2]), rectangle[3].min(bounds[3]),
+    ];
+    if clipped[0] >= clipped[2] || clipped[1] >= clipped[3] {
+        return None;
+    }
+    let mut clipped_uv = uv;
+    for edge in 0..4 {
+        let axis = edge % 2;
+        let fraction = (clipped[edge] - rectangle[axis])
+            / (rectangle[axis + 2] - rectangle[axis]);
+        clipped_uv[edge] = uv[axis] + fraction * (uv[axis + 2] - uv[axis]);
+    }
+    Some((clipped, clipped_uv))
+}
 fn white_pixel_uv(atlas_width: u32, atlas_height: u32) -> (f32, f32) {
     (0.5 / atlas_width as f32, 0.5 / atlas_height as f32)
 }
@@ -158,7 +182,7 @@ impl MetalRenderer {
                 .expect("Failed to create uniform buffer");
 
             let tex_desc = MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                MTLPixelFormat::R8Unorm,
+                MTLPixelFormat::RGBA8Unorm,
                 1024,
                 1024,
                 false,
@@ -245,7 +269,7 @@ impl MetalRenderer {
 
                 let bold = cell.flags.contains(CellFlags::BOLD);
                 let is_wide = cell.flags.contains(CellFlags::WIDE);
-                let render_width = if is_wide { 2.0 } else { 1.0 };
+                let render_width = if is_wide { 2.0_f32.min((grid.cols() - col) as f32) } else { 1.0 };
                 let content_is_visible = cell_content_is_visible(cell.flags);
 
                 let resolved =
@@ -255,7 +279,7 @@ impl MetalRenderer {
                 let bg = resolved.background;
 
                 let selected_by_range = pane.selection
-                    .map(|s| s.contains(row, col, grid.scroll_offset, grid.scrollback_len()))
+                    .map(|s| s.contains_cell(grid, row, col))
                     .unwrap_or(false);
                 let (fg_packed, bg_packed) = Self::pack_cell_colors(
                     fg,
@@ -283,10 +307,10 @@ impl MetalRenderer {
                     continue;
                 }
 
-                if cell.c != ' ' && cell.c != '\0' {
+                if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
                     let cw = cell_w * render_width;
                     // Box drawing: geometric lines
-                    if let Some(segs) = box_drawing::box_drawing_lines(cell.c, cw, cell_h) {
+                    if let Some(segs) = box_drawing::box_drawing_lines(cell.c, cw, cell_h).filter(|_| cell.grapheme.is_none()) {
                         for (lx0, ly0, lx1, ly1) in segs {
                             let is_horiz = (ly0 - ly1).abs() < 0.01;
                             let half = line_thickness / 2.0;
@@ -302,7 +326,7 @@ impl MetalRenderer {
                             vertices.push(Vertex::new(rx1, ry1, white_u, white_v, fg_packed, fg_packed));
                             vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
                         }
-                    } else if braille::is_braille(cell.c) {
+                    } else if cell.grapheme.is_none() && braille::is_braille(cell.c) {
                         // Braille: render dots
                         let dots = braille::braille_dots(cell.c);
                         let dot_r = cell_w / 6.0;
@@ -320,8 +344,8 @@ impl MetalRenderer {
                         }
                     } else {
                         // Normal glyph from atlas
-                        let key = GlyphKey { c: cell.c, bold, italic: cell.flags.contains(CellFlags::ITALIC) };
-                        let glyph = atlas.get_or_insert(key);
+                        let glyph = atlas.get_or_insert_text(&cell.text(), bold, cell.flags.contains(CellFlags::ITALIC));
+                        let fg_packed = if atlas.is_color(glyph) { 0xffffff00 | (fg_packed & 0xff) } else { fg_packed };
                         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
                             let gx0 = x0 + glyph.bearing_x as f32;
                             let gy0 = y0 + atlas.ascent + glyph.bearing_y as f32;
@@ -329,12 +353,17 @@ impl MetalRenderer {
                             let gy1 = gy0 + glyph.pixel_h as f32;
                             let (u0, v0, u1, v1) =
                                 glyph_uv_bounds(atlas.width, atlas.height, &glyph);
-                            vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, bg_packed));
-                            vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                            if let Some(([gx0, gy0, gx1, gy1], [u0, v0, u1, v1])) = clip_glyph_quad(
+                                [gx0, gy0, gx1, gy1], [u0, v0, u1, v1],
+                                [rect.x, rect.y, rect.x + grid.cols() as f32 * cell_w, rect.y + grid_height],
+                            ) {
+                                vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
+                                vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
+                                vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                                vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
+                                vertices.push(Vertex::new(gx1, gy1, u1, v1, fg_packed, bg_packed));
+                                vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
+                            }
                         }
                     }
                 }
@@ -522,6 +551,7 @@ impl MetalRenderer {
             italic: false,
         };
         let glyph = atlas.get_or_insert(key);
+        let fg = if atlas.is_color(glyph) { 0xffffff00 | (fg & 0xff) } else { fg };
         let cell_w = atlas.cell_width;
 
         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
@@ -742,13 +772,13 @@ impl MetalRenderer {
                     },
                 };
                 let bytes_ptr =
-                    std::ptr::NonNull::new(atlas.pixels.as_ptr() as *mut std::ffi::c_void).unwrap();
+                    std::ptr::NonNull::new(atlas.rgba_pixels.as_ptr() as *mut std::ffi::c_void).unwrap();
                 self.atlas_texture
                     .replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                         region,
                         0,
                         bytes_ptr,
-                        atlas.width as usize,
+                        atlas.width as usize * 4,
                     );
                 atlas.dirty = false;
             }
@@ -981,6 +1011,7 @@ impl MetalRenderer {
     ) -> f32 {
         let key = GlyphKey { c, bold: false, italic: false };
         let glyph = atlas.get_or_insert(key);
+        let fg = if atlas.is_color(glyph) { 0xffffff00 | (fg & 0xff) } else { fg };
         let char_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
         let advance = atlas.cell_width * char_width as f32;
 
@@ -1005,6 +1036,29 @@ impl MetalRenderer {
 
 #[cfg(test)]
 mod tests {
+    use objc2_metal::MTLTexture;
+
+    #[test]
+    fn metal_pipeline_accepts_rgba_glyph_and_brush_textures() {
+        let Some(device) = objc2_metal::MTLCreateSystemDefaultDevice() else {
+            eprintln!("No Metal device is available for the renderer smoke test");
+            return;
+        };
+        let renderer = super::MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        assert_eq!(renderer.atlas_texture.pixelFormat(), objc2_metal::MTLPixelFormat::RGBA8Unorm);
+        assert_eq!(renderer.brush.texture.pixelFormat(), objc2_metal::MTLPixelFormat::RGBA8Unorm);
+    }
+
+    #[test]
+    fn clips_wide_grapheme_at_pane_edge_with_matching_texture_coordinates() {
+        let clipped = super::clip_glyph_quad(
+            [10.0, 10.0, 30.0, 30.0], [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 20.0, 40.0],
+        ).unwrap();
+        assert_eq!(clipped, ([10.0, 10.0, 20.0, 30.0], [0.0, 0.0, 0.5, 1.0]));
+        assert!(super::clip_glyph_quad(
+            [20.0, 0.0, 30.0, 10.0], [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 10.0, 10.0],
+        ).is_none());
+    }
     use super::{cell_content_is_visible, glyph_uv_bounds, white_pixel_uv, MetalRenderer};
     use crate::glyph_atlas::GlyphEntry;
     use crate::grid::cell::CellFlags;

@@ -154,6 +154,38 @@ pub(crate) fn draw_glyph_a8(
     }
 }
 
+/// Blend an RGBA emoji glyph from the atlas without tinting its font colors.
+pub(crate) fn draw_glyph_rgba(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    atlas: &[u8],
+    atlas_size: (u32, u32),
+    glyph: GlyphEntry,
+    destination: (i32, i32),
+) {
+    if !buffer_contains_surface(frame.len(), frame_size)
+        || !buffer_contains_surface(atlas.len() / 4, atlas_size)
+        || !glyph_fits_atlas(glyph, atlas_size)
+    {
+        return;
+    }
+    let Some(clipped) = clip_rect(destination, (glyph.pixel_w, glyph.pixel_h), frame_size) else {
+        return;
+    };
+    for row in 0..clipped.height {
+        let source_start = ((glyph.atlas_y + clipped.source_y + row) as usize
+            * atlas_size.0 as usize + (glyph.atlas_x + clipped.source_x) as usize) * 4;
+        let destination_start = (clipped.destination_y + row) as usize * frame_size.0 as usize
+            + clipped.destination_x as usize;
+        let source = &atlas[source_start..source_start + clipped.width as usize * 4];
+        let destination = &mut frame[destination_start..destination_start + clipped.width as usize];
+        for (pixel, rgba) in destination.iter_mut().zip(source.chunks_exact(4)) {
+            let rgb = u32::from(rgba[0]) << 16 | u32::from(rgba[1]) << 8 | u32::from(rgba[2]);
+            *pixel = blend_rgb(*pixel, rgb, rgba[3]);
+        }
+    }
+}
+
 /// Fill a clipped rectangle in a softbuffer frame (`0x00RRGGBB`).
 #[allow(dead_code)]
 pub(crate) fn fill_rect(
@@ -258,11 +290,25 @@ fn blend_rgb(destination: u32, foreground: u32, coverage: u8) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_glyph_a8, fill_rect};
+    use super::{draw_glyph_a8, draw_glyph_rgba, fill_rect};
     use crate::glyph_atlas::GlyphEntry;
 
     const BACKGROUND: u32 = 0x0010_2030;
     const FOREGROUND: u32 = 0xffe0_4020;
+
+    #[test]
+    fn colored_grapheme_clips_to_frame_and_preserves_rgb_and_alpha() {
+        let atlas = [255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 255];
+        let mut frame = [0xffffff; 2];
+        draw_glyph_rgba(&mut frame, (2, 1), &atlas, (3, 1), glyph(0, 0, 3, 1), (-1, 0));
+        assert_eq!(frame, [0x7fff7f, 0x0000ff]);
+
+        // Bad atlas extents and truncated RGBA buffers must not write pixels.
+        let expected = frame;
+        draw_glyph_rgba(&mut frame, (2, 1), &atlas, (3, 1), glyph(2, 0, 3, 1), (0, 0));
+        draw_glyph_rgba(&mut frame, (2, 1), &atlas[..11], (3, 1), glyph(0, 0, 3, 1), (0, 0));
+        assert_eq!(frame, expected);
+    }
 
     fn glyph(atlas_x: u32, atlas_y: u32, pixel_w: u32, pixel_h: u32) -> GlyphEntry {
         GlyphEntry {
