@@ -267,7 +267,6 @@ impl MetalRenderer {
                     continue;
                 }
 
-                let bold = cell.flags.contains(CellFlags::BOLD);
                 let is_wide = cell.flags.contains(CellFlags::WIDE);
                 let render_width = if is_wide { 2.0_f32.min((grid.cols() - col) as f32) } else { 1.0 };
                 let content_is_visible = cell_content_is_visible(cell.flags);
@@ -344,7 +343,7 @@ impl MetalRenderer {
                         }
                     } else {
                         // Normal glyph from atlas
-                        let glyph = atlas.get_or_insert_text(&cell.text(), bold, cell.flags.contains(CellFlags::ITALIC));
+                        let glyph = atlas.get_or_insert_cell(cell);
                         let fg_packed = if atlas.is_color(glyph) { 0xffffff00 | (fg_packed & 0xff) } else { fg_packed };
                         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
                             let gx0 = x0 + glyph.bearing_x as f32;

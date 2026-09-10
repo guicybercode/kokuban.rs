@@ -268,6 +268,18 @@ impl GlyphAtlas {
         entry
     }
 
+    /// Use the scalar cache without allocating a temporary String for the
+    /// common case of an ASCII cell. Composite cells retain their full text.
+    pub fn get_or_insert_cell(&mut self, cell: &crate::grid::cell::Cell) -> GlyphEntry {
+        use crate::grid::cell::CellFlags;
+        let bold = cell.flags.contains(CellFlags::BOLD);
+        let italic = cell.flags.contains(CellFlags::ITALIC);
+        match &cell.grapheme {
+            Some(text) => self.get_or_insert_text(text, bold, italic),
+            None => self.get_or_insert(GlyphKey { c: cell.c, bold, italic }),
+        }
+    }
+
     /// Cache a whole grapheme, preserving shaping substitutions and mark offsets.
     /// Scalar callers share the existing fast cache, including UI labels.
     pub fn get_or_insert_text(&mut self, text: &str, bold: bool, italic: bool) -> GlyphEntry {

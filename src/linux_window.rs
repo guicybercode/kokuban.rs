@@ -3462,11 +3462,7 @@ fn draw_grid_snapshot_with_images(
             }
 
             if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
-                let glyph = atlas.get_or_insert_text(
-                    &cell.text(),
-                    cell.flags.contains(CellFlags::BOLD),
-                    cell.flags.contains(CellFlags::ITALIC),
-                );
+                let glyph = atlas.get_or_insert_cell(cell);
                 let source = GlyphSource {
                     pixels: &atlas.pixels,
                     rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
