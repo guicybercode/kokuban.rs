@@ -136,44 +136,20 @@ pub(crate) fn draw_glyph_a8(
     };
     let rgb = rgb & RGB_MASK;
 
-    for row in 0..clipped.height {
-        let Some(source_y) = glyph
-            .atlas_y
-            .checked_add(clipped.source_y)
-            .and_then(|y| y.checked_add(row))
-        else {
-            return;
-        };
-        let Some(destination_y) = clipped.destination_y.checked_add(row) else {
-            return;
-        };
-
-        for column in 0..clipped.width {
-            let Some(source_x) = glyph
-                .atlas_x
-                .checked_add(clipped.source_x)
-                .and_then(|x| x.checked_add(column))
-            else {
-                return;
-            };
-            let Some(destination_x) = clipped.destination_x.checked_add(column) else {
-                return;
-            };
-            let Some(source_index) = pixel_index(atlas_size.0, source_x, source_y) else {
-                return;
-            };
-            let Some(destination_index) = pixel_index(frame_size.0, destination_x, destination_y)
-            else {
-                return;
-            };
-            let Some(&coverage) = atlas.get(source_index) else {
-                return;
-            };
-
-            let Some(destination_pixel) = frame.get_mut(destination_index) else {
-                return;
-            };
-            *destination_pixel = blend_rgb(*destination_pixel, rgb, coverage);
+    // Validation and clipping above guarantee both row slices fit. Keeping
+    // indexing outside the pixel loop lets LLVM vectorize the alpha blend.
+    let width = clipped.width as usize;
+    let source_x = (glyph.atlas_x + clipped.source_x) as usize;
+    let source_y = (glyph.atlas_y + clipped.source_y) as usize;
+    let destination_x = clipped.destination_x as usize;
+    let destination_y = clipped.destination_y as usize;
+    for row in 0..clipped.height as usize {
+        let source_start = (source_y + row) * atlas_size.0 as usize + source_x;
+        let destination_start = (destination_y + row) * frame_size.0 as usize + destination_x;
+        let source = &atlas[source_start..source_start + width];
+        let destination = &mut frame[destination_start..destination_start + width];
+        for (pixel, &coverage) in destination.iter_mut().zip(source) {
+            *pixel = blend_rgb(*pixel, rgb, coverage);
         }
     }
 }
@@ -197,21 +173,18 @@ pub(crate) fn fill_rect(
     };
     let rgb = rgb & RGB_MASK;
 
-    for row in 0..clipped.height {
-        let Some(y) = clipped.destination_y.checked_add(row) else {
-            return;
-        };
-        for column in 0..clipped.width {
-            let Some(x) = clipped.destination_x.checked_add(column) else {
-                return;
-            };
-            let Some(index) = pixel_index(frame_size.0, x, y) else {
-                return;
-            };
-            let Some(pixel) = frame.get_mut(index) else {
-                return;
-            };
-            *pixel = blend_rgb(*pixel, rgb, alpha);
+    let width = clipped.width as usize;
+    let destination_x = clipped.destination_x as usize;
+    let destination_y = clipped.destination_y as usize;
+    for row in 0..clipped.height as usize {
+        let start = (destination_y + row) * frame_size.0 as usize + destination_x;
+        let destination = &mut frame[start..start + width];
+        if alpha == u8::MAX {
+            destination.fill(rgb);
+        } else {
+            for pixel in destination {
+                *pixel = blend_rgb(*pixel, rgb, alpha);
+            }
         }
     }
 }
@@ -268,13 +241,6 @@ fn clip_rect(
         width: u32::try_from(clipped_right - clipped_left).ok()?,
         height: u32::try_from(clipped_bottom - clipped_top).ok()?,
     })
-}
-
-fn pixel_index(row_width: u32, x: u32, y: u32) -> Option<usize> {
-    let index = u64::from(y)
-        .checked_mul(u64::from(row_width))?
-        .checked_add(u64::from(x))?;
-    usize::try_from(index).ok()
 }
 
 fn blend_rgb(destination: u32, foreground: u32, coverage: u8) -> u32 {
@@ -483,6 +449,65 @@ mod tests {
         fill_rect(&mut frame, (2, 1), (1, 0), (1, 1), FOREGROUND, 0);
 
         assert_eq!(frame, [0x00e0_4020, BACKGROUND]);
+    }
+
+    #[test]
+    fn clipped_rows_match_scalar_reference_for_every_alpha() {
+        let atlas: Vec<u8> = (0..=255).collect();
+        let entry = glyph(0, 0, 16, 16);
+        for origin in [(-5, -3), (0, 0), (9, 7), (16, 16), (-16, -16)] {
+            let initial: Vec<u32> = (0..259)
+                .map(|index| 0xa500_0000 | (index * 17_891) as u32)
+                .collect();
+            let mut actual = initial.clone();
+            let mut expected = initial.clone();
+            for y in 0..16i32 {
+                for x in 0..16i32 {
+                    let source_x = x - origin.0;
+                    let source_y = y - origin.1;
+                    if !(0..16).contains(&source_x) || !(0..16).contains(&source_y) {
+                        continue;
+                    }
+                    let alpha = u32::from(atlas[(source_y * 16 + source_x) as usize]);
+                    let pixel = &mut expected[(y * 16 + x) as usize];
+                    let mut blended = 0;
+                    for shift in [0, 8, 16] {
+                        let foreground = (FOREGROUND >> shift) & 255;
+                        let background = (*pixel >> shift) & 255;
+                        blended |= ((foreground * alpha + background * (255 - alpha) + 127)
+                            / 255) << shift;
+                    }
+                    *pixel = blended;
+                }
+            }
+            draw_glyph_a8(&mut actual, (16, 16), &atlas, (16, 16), entry, origin, FOREGROUND);
+            assert_eq!(actual, expected, "glyph at {origin:?}");
+
+            for alpha in 0..=255u8 {
+                actual.clone_from(&initial);
+                expected.clone_from(&initial);
+                for y in 0..16i32 {
+                    for x in 0..16i32 {
+                        if alpha == 0 || !(origin.0..origin.0 + 16).contains(&x)
+                            || !(origin.1..origin.1 + 16).contains(&y) {
+                            continue;
+                        }
+                        let alpha = u32::from(alpha);
+                        let pixel = &mut expected[(y * 16 + x) as usize];
+                        let mut blended = 0;
+                        for shift in [0, 8, 16] {
+                            let foreground = (FOREGROUND >> shift) & 255;
+                            let background = (*pixel >> shift) & 255;
+                            blended |= ((foreground * alpha + background * (255 - alpha) + 127)
+                                / 255) << shift;
+                        }
+                        *pixel = blended;
+                    }
+                }
+                fill_rect(&mut actual, (16, 16), origin, (16, 16), FOREGROUND, alpha);
+                assert_eq!(actual, expected, "rectangle at {origin:?}, alpha={alpha}");
+            }
+        }
     }
 
     #[test]
