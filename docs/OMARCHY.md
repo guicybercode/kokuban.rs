@@ -99,6 +99,14 @@ the CLI working directory is applied after configuration loading.
 
 ## Validation scope
 
+On 2026-09-10, the launcher was checked against `xdg-terminal-exec` commit
+[`065925d`](https://github.com/Vladimir-csp/xdg-terminal-exec/tree/065925df9f419008159258ae169018bfd23df71b)
+using isolated XDG directories. Selection returned Kokuban's desktop ID, and
+`--print-cmd` preserved app ID, title, working directory, and command arguments.
+`scripts/linux-launch-smoke.py` also passed on Debian 12 arm64 under Xvfb and
+headless Weston 10, including real PTY responses and clean command shutdown.
+The first-frame check passed with the X11 display removed in that Wayland session.
+
 The Rust tests cover argument preservation, non-UTF-8 paths, PATH lookup, and
 execution through a real PTY. The Linux window uses winit's Wayland backend when
 available and supports X11 as a fallback. Exercise the CLI and PTY integration

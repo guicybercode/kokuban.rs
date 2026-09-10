@@ -48,6 +48,17 @@ fn cell_content_is_visible(flags: CellFlags) -> bool {
     !flags.contains(CellFlags::HIDDEN)
 }
 
+fn status_cwd_suffix(cwd: &str, max_chars: usize) -> &str {
+    // Status text advances one cell per char in render_char.
+    let start = cwd
+        .char_indices()
+        .rev()
+        .take(max_chars)
+        .last()
+        .map_or(cwd.len(), |(index, _)| index);
+    &cwd[start..]
+}
+
 fn glyph_uv_bounds(
     atlas_width: u32,
     atlas_height: u32,
@@ -516,11 +527,7 @@ impl MetalRenderer {
             }
             // Truncate cwd if too long
             let max_cwd_chars = ((rect.width - cursor_x + rect.x - cell_w * 4.0) / cell_w) as usize;
-            let cwd_display = if pane.cwd.len() > max_cwd_chars && max_cwd_chars > 3 {
-                &pane.cwd[pane.cwd.len() - max_cwd_chars..]
-            } else {
-                pane.cwd
-            };
+            let cwd_display = status_cwd_suffix(pane.cwd, max_cwd_chars);
             for c in cwd_display.chars() {
                 if cursor_x + cell_w > x1 - cell_w * 3.0 {
                     break;
@@ -1058,12 +1065,57 @@ mod tests {
             [20.0, 0.0, 30.0, 10.0], [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 10.0, 10.0],
         ).is_none());
     }
-    use super::{cell_content_is_visible, glyph_uv_bounds, white_pixel_uv, MetalRenderer};
+    use super::{
+        cell_content_is_visible, glyph_uv_bounds, status_cwd_suffix, white_pixel_uv, MetalRenderer,
+    };
     use crate::glyph_atlas::GlyphEntry;
     use crate::grid::cell::CellFlags;
 
     fn assert_close(actual: f32, expected: f32) {
         assert!((actual - expected).abs() <= f32::EPSILON);
+    }
+
+    #[test]
+    fn status_cwd_suffix_preserves_paths_that_fit_and_ascii_tails() {
+        assert_eq!(status_cwd_suffix("/work/project", 7), "project");
+        for cwd in ["", "/work", "/ação", "/日本語", "/🦀ab"] {
+            assert_eq!(status_cwd_suffix(cwd, cwd.chars().count()), cwd);
+            assert_eq!(status_cwd_suffix(cwd, usize::MAX), cwd);
+        }
+    }
+
+    #[test]
+    fn status_cwd_suffix_handles_multibyte_characters() {
+        assert_eq!(status_cwd_suffix("/ação", 4), "ação");
+        assert_eq!(status_cwd_suffix("/日本語", 4), "/日本語");
+        assert_eq!(status_cwd_suffix("/🦀ab", 4), "/🦀ab");
+        assert_eq!(status_cwd_suffix("/home/日本語", 2), "本語");
+        assert_eq!(status_cwd_suffix("/home/🦀🦀", 1), "🦀");
+    }
+
+    #[test]
+    fn status_cwd_suffix_handles_narrow_panes() {
+        let cwd = "/ação/日本語/🦀";
+        for (max_chars, expected) in [(0, ""), (1, "🦀"), (2, "/🦀"), (3, "語/🦀")] {
+            assert_eq!(status_cwd_suffix(cwd, max_chars), expected);
+        }
+    }
+
+    #[test]
+    fn status_cwd_suffix_stays_within_character_budget_as_panes_resize() {
+        for cwd in [
+            "",
+            "/work/project",
+            "/ação/日本語/🦀",
+            "/cafe\u{301}/開発/🦀",
+        ] {
+            let char_count = cwd.chars().count();
+            for max_chars in 0..=cwd.len() + 1 {
+                let suffix = status_cwd_suffix(cwd, max_chars);
+                assert!(cwd.ends_with(suffix));
+                assert_eq!(suffix.chars().count(), char_count.min(max_chars));
+            }
+        }
     }
 
     #[test]

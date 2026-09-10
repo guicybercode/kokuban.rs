@@ -1,0 +1,53 @@
+{
+  "baseline_source": "7e0e9e2d6d32322e3677d7d5f3e8582216c193f5",
+  "candidate_source": "da14f90e8cae489ded45bbda529c3157dfc470d6",
+  "measurement_script_source": "e1429050eeabdc4e6ded2b2a47662e99c85dd3b0",
+  "build_command": [
+    "cargo",
+    "build",
+    "--locked",
+    "--release"
+  ],
+  "local_environment": "rust:1.94.1-bookworm arm64 container with --init in Colima Linux VM on Apple M4 macOS host",
+  "source_note": "The two executable revisions include all changes in the range, including the application icon update; this is not a per-commit attribution.",
+  "order": [
+    [
+      "baseline",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "baseline"
+    ],
+    [
+      "baseline",
+      "candidate"
+    ],
+    [
+      "candidate",
+      "baseline"
+    ],
+    [
+      "baseline",
+      "candidate"
+    ]
+  ],
+  "fixture_command": [
+    "xvfb-run",
+    "-a",
+    "-s",
+    "-screen 0 800x600x24",
+    "python3",
+    "scripts/linux-resource-smoke.py",
+    "BINARY",
+    "--artifacts-dir",
+    "OUTPUT"
+  ],
+  "ci_release_run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34533009622",
+  "ci_all_checks_run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34532945439",
+  "limitations": [
+    "Short finite output on a VM/shared host; report variation, not a hardware-independent guarantee.",
+    "Throughput ends at DSR response and does not measure input-to-photon latency or frame presentation.",
+    "Not a comparison against Ghostty, Alacritty or Kitty."
+  ]
+}

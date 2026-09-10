@@ -33,7 +33,7 @@ pub enum UnderlineStyle {
     Dashed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
     pub c: char,
     pub grapheme: Option<Arc<str>>,
