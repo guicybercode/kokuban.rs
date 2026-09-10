@@ -5,7 +5,7 @@ use nix::pty::openpty;
 use nix::sys::signal::{kill, killpg, Signal};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::{fork, getpgrp, pipe, tcgetpgrp, ForkResult, Pid};
-use std::ffi::{CString, OsString};
+use std::ffi::{CString, OsStr, OsString};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
@@ -54,6 +54,36 @@ impl Pty {
         let environment = child_environment(&shell_path, kitty_graphics, sixel_graphics)?;
 
         Self::spawn_prepared(cols, rows, shell, argv, environment)
+    }
+
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub(crate) fn spawn_command(
+        cols: u16,
+        rows: u16,
+        kitty_graphics: bool,
+        sixel_graphics: bool,
+        command: &[OsString],
+    ) -> Result<Self, PtyError> {
+        let name = command
+            .first()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                PtyError::InvalidCommand("program argument list is empty".to_string())
+            })?;
+        // Resolve PATH and allocate argv before fork: no shell reparsing and no
+        // allocator or environment access in the child of a threaded process.
+        let path = resolve_command(name, std::env::var_os("PATH").as_deref())?;
+        let program = CString::new(path.as_os_str().as_bytes())
+            .map_err(|_| PtyError::InvalidCommand("program contains NUL".to_string()))?;
+        let argv = command
+            .iter()
+            .map(|argument| {
+                CString::new(argument.as_bytes())
+                    .map_err(|_| PtyError::InvalidCommand("argument contains NUL".to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let environment = child_environment(&resolve_shell(), kitty_graphics, sixel_graphics)?;
+        Self::spawn_prepared(cols, rows, program, argv, environment)
     }
 
     fn spawn_prepared(
@@ -453,6 +483,19 @@ fn is_executable_file(path: &Path) -> bool {
     std::fs::metadata(path)
         .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
+}
+
+fn resolve_command(name: &OsStr, search_path: Option<&OsStr>) -> Result<PathBuf, PtyError> {
+    if name.as_bytes().contains(&b'/') {
+        return Ok(PathBuf::from(name));
+    }
+    let search_path = search_path.unwrap_or_else(|| OsStr::new("/usr/local/bin:/usr/bin:/bin"));
+    std::env::split_paths(search_path)
+        .map(|directory| directory.join(name))
+        .find(|path| is_executable_file(path))
+        .ok_or_else(|| {
+            PtyError::InvalidCommand(format!("program {:?} was not found in PATH", name))
+        })
 }
 
 fn child_environment(
@@ -907,9 +950,10 @@ mod tests {
     use super::{
         child_environment, child_stage_name, child_startup_status_with, classify_child_wait,
         classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
-        poll_timeout_for, resize_with_ioctl, select_shell, set_cloexec, terminate_and_reap_with,
-        wait_for_child_reap_with, wait_readable_with, write_all_cancellable_with, write_all_with,
-        write_child_stage_with, CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
+        poll_timeout_for, resize_with_ioctl, resolve_command, select_shell, set_cloexec,
+        terminate_and_reap_with, wait_for_child_reap_with, wait_readable_with,
+        write_all_cancellable_with, write_all_with, write_child_stage_with,
+        CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -2116,6 +2160,52 @@ mod tests {
         assert!(FdFlag::from_bits_truncate(flags).contains(FdFlag::FD_CLOEXEC));
 
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn launches_command_arguments_without_shell_reparsing() {
+        let command = [
+            "sh",
+            "-c",
+            "printf '__KOKUBAN_ARGS__:%s:%s' \"$1\" \"$2\"",
+            "sh",
+            "a b;$(false)",
+            "--title=argument",
+        ]
+        .map(OsString::from);
+        let pty = Pty::spawn_command(40, 4, false, false, &command).unwrap();
+        let expected = b"__KOKUBAN_ARGS__:a b;$(false):--title=argument";
+        assert_eq!(read_until(&pty, expected), expected);
+    }
+
+    #[test]
+    fn command_lookup_supports_path_and_explicit_paths() {
+        assert!(resolve_command("sh".as_ref(), Some("/bin".as_ref()))
+            .unwrap()
+            .ends_with("sh"));
+        assert_eq!(
+            resolve_command("./program".as_ref(), Some("/missing".as_ref())).unwrap(),
+            Path::new("./program")
+        );
+        assert!(resolve_command(
+            "kokuban-definitely-missing-command".as_ref(),
+            Some("/bin".as_ref())
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_empty_or_invalid_command_arguments_before_fork() {
+        for command in [
+            vec![],
+            vec![OsString::new()],
+            vec!["/bin/sh".into(), "a\0b".into()],
+        ] {
+            assert!(matches!(
+                Pty::spawn_command(40, 4, false, false, &command),
+                Err(PtyError::InvalidCommand(_))
+            ));
+        }
     }
 
     #[test]

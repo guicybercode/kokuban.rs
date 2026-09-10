@@ -642,7 +642,10 @@ impl GridSnapshot {
     }
 }
 
-pub(crate) fn launch(config: Config) -> Result<(), String> {
+pub(crate) fn launch(
+    config: Config,
+    options: crate::launch_options::LaunchOptions,
+) -> Result<(), String> {
     if config.window.opacity < 1.0 {
         eprintln!(
             "kokuban: warning: window.opacity={} is not supported by the Linux software renderer; using an opaque window",
@@ -679,6 +682,9 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     );
     grid.default_fg_hex = terminal_color_query_value(foreground);
     grid.default_bg_hex = terminal_color_query_value(background);
+    if let Some(title) = &options.title {
+        grid.set_title(title);
+    }
     let grid = Arc::new(Mutex::new(grid));
     let graphics_support = GraphicsSupport {
         kitty: config.images.kitty_graphics_enabled(),
@@ -686,10 +692,19 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     };
     let graphics = Arc::new(Mutex::new(SoftwareGraphics::new(&config.images)));
     let reader_graphics = graphics.clone();
-    let pty = Arc::new(
+    let pty = if options.command.is_empty() {
         Pty::spawn(columns, rows, graphics_support.kitty, graphics_support.sixel)
-            .map_err(|error| format!("could not start the Linux shell: {error}"))?,
-    );
+    } else {
+        Pty::spawn_command(
+            columns,
+            rows,
+            graphics_support.kitty,
+            graphics_support.sixel,
+            &options.command,
+        )
+    }
+    .map_err(|error| format!("could not start the Linux terminal process: {error}"))?;
+    let pty = Arc::new(pty);
     let redraw_pending = Arc::new(AtomicBool::new(false));
     let window_title_pending = Arc::new(AtomicBool::new(false));
     let event_proxy = event_loop.create_proxy();
@@ -756,6 +771,9 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         window_title_pending,
     );
     application.clipboard = clipboard;
+    application.app_id = options
+        .app_id
+        .unwrap_or_else(|| crate::app_icon::APP_ID.to_string());
 
     let run_result = event_loop
         .run_app(&mut application)
@@ -774,6 +792,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
 }
 
 struct LinuxWindow {
+    app_id: String,
     clipboard: Option<LinuxClipboard>,
     paste_request: u64,
     pending_pastes: HashMap<u64, (bool, u64)>,
@@ -831,6 +850,7 @@ impl LinuxWindow {
         window_title_pending: Arc<AtomicBool>,
     ) -> Self {
         Self {
+            app_id: crate::app_icon::APP_ID.to_string(),
             clipboard: None,
             paste_request: 0,
             pending_pastes: HashMap::new(),
@@ -872,19 +892,21 @@ impl LinuxWindow {
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
+        let initial_title =
+            snapshot_window_title(self.grid.as_ref()).map_err(|error| error.to_string())?;
         let attributes = Window::default_attributes()
-            .with_title(WINDOW_TITLE)
+            .with_title(normalized_window_title(&initial_title).into_owned())
             .with_window_icon(application_icon())
             .with_transparent(false)
             .with_inner_size(self.initial_size);
         let attributes = WindowAttributesExtWayland::with_name(
             attributes,
-            crate::app_icon::APP_ID,
+            self.app_id.clone(),
             "kokuban",
         );
         let attributes = WindowAttributesExtX11::with_name(
             attributes,
-            crate::app_icon::APP_ID,
+            self.app_id.clone(),
             "kokuban",
         );
         let window = Arc::new(
@@ -892,8 +914,6 @@ impl LinuxWindow {
                 .create_window(attributes)
                 .map_err(|error| format!("could not create an opaque window: {error}"))?,
         );
-        let initial_title =
-            snapshot_window_title(self.grid.as_ref()).map_err(|error| error.to_string())?;
         sync_window_title_with(&mut self.applied_window_title, &initial_title, |title| {
             window.set_title(title)
         });
