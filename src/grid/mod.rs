@@ -8,7 +8,7 @@ use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
 use std::collections::VecDeque;
-use unicode_segmentation::UnicodeSegmentation;
+use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::parser::kitty_graphics::KittyCommand;
@@ -41,6 +41,30 @@ const DEFAULT_CELL: Cell = Cell {
     underline_style: UnderlineStyle::None,
     underline_color: Color::Default,
 };
+
+/// Test the boundary after an existing single grapheme without copying it.
+fn scalar_extends_grapheme(previous: &str, c: char) -> bool {
+    let last = previous.chars().next_back().expect("cell text is nonempty");
+    let chunk_start = previous.len() - last.len_utf8();
+    let mut bytes = [0; 8];
+    last.encode_utf8(&mut bytes);
+    c.encode_utf8(&mut bytes[last.len_utf8()..]);
+    let chunk = std::str::from_utf8(&bytes[..last.len_utf8() + c.len_utf8()])
+        .expect("both scalars were encoded as UTF-8");
+    let mut cursor = GraphemeCursor::new(previous.len(), previous.len() + c.len_utf8(), true);
+    loop {
+        match cursor.is_boundary(chunk, chunk_start) {
+            Ok(boundary) => return !boundary,
+            Err(GraphemeIncomplete::PreContext(end)) => {
+                // RI pairs, emoji ZWJ sequences and Indic conjuncts can need
+                // more than the adjacent scalars. The existing cell owns all
+                // preceding context, so lending its prefix needs no allocation.
+                cursor.provide_context(&previous[..end], 0);
+            }
+            Err(_) => unreachable!("the chunk contains both sides of the boundary"),
+        }
+    }
+}
 
 // Mouse tracking modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -617,9 +641,13 @@ impl Grid {
         let previous = self.buffer.cell(row, col);
         if previous.grapheme.is_none() && previous.c.is_ascii() && c.is_ascii() { return false; }
         if col >= self.buffer.row_metadata(row).len { return false; }
-        let mut text = previous.text().into_owned();
+        let mut scalar_bytes = [0; 4];
+        let previous_text = previous.grapheme.as_deref()
+            .unwrap_or_else(|| previous.c.encode_utf8(&mut scalar_bytes));
+        if !scalar_extends_grapheme(previous_text, c) { return false; }
+        let mut text = String::with_capacity(previous_text.len() + c.len_utf8());
+        text.push_str(previous_text);
         text.push(c);
-        if text.graphemes(true).count() != 1 { return false; }
         let previous_len = self.buffer.row_metadata(row).len;
         let old_width = if previous.flags.contains(CellFlags::WIDE)
             && col + 1 < self.cols() { 2 } else { 1 };
@@ -1358,9 +1386,10 @@ mod tests {
     use super::{
         cell::{CellFlags, Color, UnderlineStyle},
         marks::PromptMarkKind,
-        Grid, TerminalEvent,
+        scalar_extends_grapheme, Grid, TerminalEvent,
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+    use unicode_segmentation::UnicodeSegmentation;
 
     #[test]
     fn endless_soft_wrapping_respects_the_history_cell_budget() {
@@ -2304,6 +2333,70 @@ mod tests {
             assert_eq!(grid.cursor_col, width);
             grid.put_char('X');
             assert_eq!(grid.buffer.cell(0, width).c, 'X');
+        }
+    }
+
+    #[test]
+    fn grapheme_boundary_uses_complete_unicode_context() {
+        for (previous, next, extends) in [
+            ("e", '\u{301}', true),
+            ("e\u{301}", 'a', false),
+            ("❤", '\u{fe0f}', true),
+            ("1\u{fe0f}", '\u{20e3}', true),
+            ("👩🏽\u{200d}", '💻', true),
+            ("a\u{200d}", '💻', false),
+            ("👩\u{200d}\u{301}", '💻', false),
+            ("🇧", '🇷', true),
+            ("🇧🇷", '🇺', false),
+            ("क\u{94d}", 'ष', true),
+            ("क\u{94d}\u{200d}", 'ष', true),
+            ("क\u{93c}", 'ष', false),
+            ("\u{600}", 'a', true),
+            ("\u{600}", '\n', false),
+            ("\r", '\n', true),
+            ("\n", '\u{301}', false),
+            ("\u{1100}", '\u{1161}', true),
+            ("\u{1100}\u{1161}", '\u{11a8}', true),
+        ] {
+            assert_eq!(scalar_extends_grapheme(previous, next), extends,
+                "previous={previous:?}, next={next:?}");
+        }
+    }
+
+    #[test]
+    fn split_grapheme_boundaries_match_concatenation() {
+        let scalars = [
+            'a', ' ', '\r', '\n', '\0', '\u{301}', '\u{308}', '\u{600}',
+            '\u{903}', 'क', 'ष', '\u{93c}', '\u{94d}', '\u{200c}', '\u{200d}',
+            '\u{1100}', '\u{1161}', '\u{11a8}', '가', '각', '❤', '\u{fe0e}',
+            '\u{fe0f}', '\u{20e3}', '👩', '💻', '🏽', '🇧', '🇷', '\u{e0067}',
+        ];
+        let check = |previous: &str| {
+            assert_eq!(previous.graphemes(true).count(), 1);
+            for next in scalars {
+                let combined = format!("{previous}{next}");
+                assert_eq!(scalar_extends_grapheme(previous, next),
+                    combined.graphemes(true).count() == 1,
+                    "previous={previous:?}, next={next:?}");
+            }
+        };
+        for first in scalars {
+            check(&first.to_string());
+            for second in scalars {
+                let previous = format!("{first}{second}");
+                if previous.graphemes(true).count() == 1 {
+                    check(&previous);
+                }
+            }
+        }
+        for cluster in [
+            "e\u{301}\u{308}", "👩🏽\u{200d}💻", "👩\u{200d}👩\u{200d}👧\u{200d}👦",
+            "क\u{93c}\u{94d}\u{200d}ष\u{94d}क", "\u{600}\u{600}a\u{301}",
+            "\u{1100}\u{1161}\u{11a8}", "🏴\u{e0067}\u{e0062}\u{e007f}",
+        ] {
+            for (offset, scalar) in cluster.char_indices() {
+                check(&cluster[..offset + scalar.len_utf8()]);
+            }
         }
     }
 
