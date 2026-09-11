@@ -136,7 +136,26 @@ impl Buffer {
 
     pub fn extract_row(&self, row: usize) -> Vec<Cell> {
         let start = self.row_starts[row];
-        self.cells[start..start + self.cols].to_vec()
+        let cells = &self.cells[start..start + self.cols];
+        let suffix = self.uniform_suffix_start[row];
+        if suffix == self.cols || cells[self.cols - 1].grapheme.is_some() {
+            return cells.to_vec();
+        }
+        // Preserve the complete row, including styled trailing cells, while
+        // reading the known scalar suffix from a single repeated template.
+        let mut extracted = Vec::with_capacity(self.cols);
+        extracted.extend_from_slice(&cells[..suffix]);
+        let template = &cells[self.cols - 1];
+        extracted.resize_with(self.cols, || Cell {
+            c: template.c,
+            grapheme: None,
+            fg: template.fg,
+            bg: template.bg,
+            flags: template.flags,
+            underline_style: template.underline_style,
+            underline_color: template.underline_color,
+        });
+        extracted
     }
 
     pub(crate) fn from_retained_rows(cols: usize, rows: &[super::reflow::RetainedRow]) -> Self {
@@ -213,6 +232,58 @@ mod tests {
             buffer.clear_row(0, template.clone());
             assert_eq!(buffer.extract_row(0), vec![template; 5]);
             assert_eq!(buffer.row_metadata(0).len, 5);
+        }
+    }
+
+    #[test]
+    fn extracted_rows_preserve_styles_and_own_their_compound_prefix() {
+        let mut buffer = Buffer::new(8, 1);
+        let template = Cell {
+            fg: Color::Rgb(1, 2, 3), bg: Color::Indexed(4), flags: CellFlags::REVERSE,
+            underline_style: UnderlineStyle::Curly, underline_color: Color::Indexed(5),
+            ..Cell::default()
+        };
+        buffer.clear_row(0, template.clone());
+        let text: std::sync::Arc<str> = "e\u{301}".into();
+        let retained = std::sync::Arc::downgrade(&text);
+        *buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(text), ..template.clone() };
+        let extracted = buffer.extract_row(0);
+        buffer.clear_row(0, Cell::default());
+        assert_eq!(extracted.len(), 8);
+        assert_eq!(extracted[0].text(), "e\u{301}");
+        assert!(extracted[1..].iter().all(|cell| cell == &template));
+        assert_eq!(retained.strong_count(), 1);
+        drop(extracted);
+        assert!(retained.upgrade().is_none());
+    }
+
+    #[test]
+    fn extracting_compound_suffixes_preserves_each_arc_owner() {
+        let mut buffer = Buffer::new(3, 1);
+        let first: std::sync::Arc<str> = "e\u{301}".into();
+        let second: std::sync::Arc<str> = "e\u{301}".into();
+        assert!(!std::sync::Arc::ptr_eq(&first, &second));
+        buffer.clear_row(0, Cell { c: 'e', grapheme: Some(first.clone()), ..Cell::default() });
+        let replacement = Cell { c: 'e', grapheme: Some(second.clone()), ..Cell::default() };
+        *buffer.cell_mut(0, 0) = replacement.clone();
+        // Clearing with an equal template keeps the old suffix allocations.
+        buffer.clear_row(0, replacement);
+        assert_eq!(buffer.uniform_suffix_start[0], 0);
+        let extracted = buffer.extract_row(0);
+        assert!(std::sync::Arc::ptr_eq(extracted[0].grapheme.as_ref().unwrap(), &second));
+        for cell in &extracted[1..] {
+            assert!(std::sync::Arc::ptr_eq(cell.grapheme.as_ref().unwrap(), &first));
+        }
+    }
+
+    #[test]
+    fn extraction_preserves_empty_and_single_column_rows() {
+        for cols in [0, 1] {
+            let mut buffer = Buffer::new(cols, 1);
+            assert_eq!(buffer.extract_row(0), vec![Cell::default(); cols]);
+            let template = Cell { c: 'x', bg: Color::Indexed(3), ..Cell::default() };
+            buffer.clear_row(0, template.clone());
+            assert_eq!(buffer.extract_row(0), vec![template; cols]);
         }
     }
 
