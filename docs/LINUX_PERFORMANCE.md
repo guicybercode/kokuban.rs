@@ -31,6 +31,51 @@ python3 scripts/compare-kokuban-revisions.py \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
 
+## Cópia para o histórico: medição pareada em 2026-09-11
+
+A revisão `48afe69` aproveita o sufixo uniforme ao copiar uma linha para o
+histórico. Quando esse trecho contém células sem grafema composto, a cópia
+preenche texto, cores e atributos diretamente, evitando verificar um `Arc`
+ausente em cada célula. Prefixos e sufixos com grafemas compostos continuam
+clonando as células, e a linha mantém sua largura completa no histórico.
+
+Cinco pares alternados compararam `4bcf68c` com `48afe69` no mesmo runner
+GitHub Ubuntu 24.04 x86_64, AMD EPYC 7763, com ambos os processos na CPU 0.
+Cada carga usou aproximadamente 32 MiB, Rust 1.94.1 release, Weston 13 headless
+pixman e DejaVu Sans Mono 14. A tela primária manteve histórico de 10.000 linhas
+e geometria efetiva de 80×24 células, 720×408 pixels, nas dez amostras.
+
+| Carga com histórico | Anterior, mediana MiB/s | Atual, mediana MiB/s |
+| --- | ---: | ---: |
+| ASCII | 53,045 | 52,771 |
+| ANSI | 42,496 | 47,143 |
+| Unicode | 18,380 | 18,336 |
+| Linhas curtas | 5,929 | 6,777 |
+
+A razão entre medianas indica **14,3% de ganho em linhas curtas** e **10,9%
+em ANSI**. Para ANSI, a mediana das razões calculadas por par é 7,2%; essas
+duas formas de agregar as amostras são distintas. ASCII e Unicode variaram
+−0,52% e −0,24%, respectivamente, permanecendo próximos dentro da variação
+observada. Linhas curtas variaram de 5,628 a 6,057 MiB/s antes e de 6,319 a
+6,992 MiB/s depois. O [relatório completo](linux-evidence/2026-09-11-history-copy/ci-primary-report.json)
+preserva as amostras, os intervalos e as razões por par.
+
+O [workflow](https://github.com/guicybercode/kokuban.rs/actions/runs/34613367069)
+passou. A auditoria conferiu os dez conjuntos de configurações e resultados,
+os payloads reproduzidos e os hashes dos executáveis distintos. O
+[log de compilação](linux-evidence/2026-09-11-history-copy/ci-primary-build-log.txt)
+confirma os dois builds em diretórios separados; seus manifestos e lockfiles
+correspondem às revisões Git. Os números medem processamento e resposta DSR
+neste cenário, sem medir apresentação de quadros ou comparar outros terminais.
+
+Os testes cobrem estilos completos, duração e identidade dos grafemas
+compostos, larguras zero e um, além da comparação diferencial existente com
+600 operações. `check`, testes e Clippy passaram em macOS com
+`--release --locked --all-targets` (566 testes do executável e 203 do exemplo).
+O [CI Linux/macOS de `48afe69`](https://github.com/guicybercode/kokuban.rs/actions/runs/34613309940)
+também passou. O [manifesto](linux-evidence/2026-09-11-history-copy/manifest.json)
+registra a proveniência e os limites da medição.
+
 ## Sufixos de linhas: medição pareada em 2026-09-11
 
 A revisão `4bcf68c` mantém o início do sufixo uniforme de cada linha.
