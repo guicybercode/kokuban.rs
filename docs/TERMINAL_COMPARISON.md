@@ -66,6 +66,61 @@ não são enviados, mas seus tamanhos e hashes permitem verificar a reprodução
 Esse ambiente permite comparar processamento no mesmo sistema; não reproduz
 GPU, monitor, Hyprland ou todas as versões instaladas no Omarchy.
 
+## Revisão `5c1f436`: comparação atualizada em 2026-09-11
+
+O [run `34620294348`](https://github.com/guicybercode/kokuban.rs/actions/runs/34620294348)
+mede Kokuban após as alterações de UTF-8, linhas circulares e classificação
+de controles ASCII. O fonte é `5c1f436`; o executor é `e46f8f6`.
+Foram cinco amostras por terminal, quatro cargas de aproximadamente 32 MiB
+por amostra e oito pré-voos separados das estatísticas.
+
+A sessão usou Ubuntu 26.04 amd64 em container, AMD EPYC 7763, afinidade nas
+quatro CPUs disponíveis e Weston 14.0.2 headless com Pixman. Todos usaram
+tela alternativa sem histórico, DejaVu Sans Mono a 14 pixels lógicos
+(10,5 pontos nos concorrentes) e células efetivas de 9×17 pixels. A grade
+permaneceu em 80×24 células e 720×408 pixels nas 80 cargas cronometradas.
+Imagens estavam desabilitadas no Kokuban; as cargas são de texto e controles.
+
+| Carga | Kokuban, mediana MiB/s | Ghostty | Alacritty | Kitty |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 67,05 | 27,50 | 50,83 | 78,03 |
+| ANSI | 55,99 | 21,63 | 53,67 | 16,41 |
+| Unicode | 21,60 | 26,35 | 52,27 | 59,89 |
+| Linhas curtas | 28,46 | 24,50 | 49,69 | 28,66 |
+
+Neste ensaio, Kokuban ficou acima dos três em ANSI e abaixo dos três em
+Unicode. Em ASCII superou Ghostty e Alacritty, permanecendo abaixo de Kitty.
+Em linhas curtas ficou acima de Ghostty e abaixo de Alacritty; a mediana
+ficou próxima de Kitty, com intervalos sobrepostos: 28,27–28,88 MiB/s no
+Kokuban e 24,99–29,78 no Kitty. A meta de superar todos os concorrentes
+continua sem comprovação.
+
+O RTT mediano DSR foi de 0,075 ms no Kokuban, 0,094 no Ghostty, 0,093 no
+Alacritty e 3,198 no Kitty, com 150 observações por terminal. Esse tempo
+mede resposta de protocolo, sem medir apresentação de quadros ou latência
+entre teclado e tela. O
+[relatório bruto](linux-evidence/2026-09-11-current-terminals/ci-report.json)
+preserva todas as amostras e pré-voos. O
+[manifesto](linux-evidence/2026-09-11-current-terminals/manifest.json) registra
+a conferência dos 28 processos, configurações, payloads reproduzidos,
+geometria e estatísticas recalculadas. Passaram 672 testes Linux do
+executável e 211 do exemplo, com um benchmark ignorado, além do lançamento
+Wayland com argumentos literais, diretório com espaços e resposta DSR.
+
+As versões foram Alacritty `0.16.1`, Kitty `0.45.0` e Ghostty
+`1.3.0-dev+0000000`, canal `tip` (pacotes `0.16.1-2ubuntu1`,
+`0.45.0-1build1` e `1.3.0~us1-0ubuntu1.1`, respectivamente). Noto CJK e Noto
+Color Emoji estavam instaladas. Os hashes de executáveis e fontes foram
+registrados no CI; seus bytes não foram retidos para rehash independente.
+O workflow solicita Mesa/llvmpipe, sem observar `GL_RENDERER` por terminal.
+Geometria igual não confirma renderização equivalente de fontes ou Unicode.
+Faltam comparação visual e medições no Omarchy com GPU e monitor reais.
+
+Este run compara os quatro terminais na mesma sessão. A tabela anterior,
+preservada abaixo, pertence a outra execução e não constitui um ensaio
+pareado antes/depois. Os efeitos isolados das alterações e suas perdas
+estão em [medições pareadas Linux](LINUX_PERFORMANCE.md).
+
 ## Medição com células iguais em 2026-09-11
 
 O [workflow corrigido](https://github.com/guicybercode/kokuban.rs/actions/runs/34615352199)
@@ -128,8 +183,9 @@ container. Seus números não foram recuperados nem usados nesta tabela.
 Cada amostra abre um processo novo e executa quatro cargas: linhas ASCII, SGR com
 cores ANSI/truecolor, texto UTF-8 com caracteres largos e combinantes, e linhas
 curtas de um caractere. O tamanho solicitado é arredondado para um número inteiro
-de linhas, igualmente para todos os terminais. Os arquivos `.bin` e seus hashes
-são preservados. A geração/leitura desses arquivos ocorre antes da medição.
+de linhas, igualmente para todos os terminais. O executor mantém os arquivos
+`.bin` localmente e registra seus hashes; o upload de artefatos do CI exclui
+esses arquivos. A geração/leitura ocorre antes da medição.
 
 Há estabilização inicial de um segundo, cinco consultas de aquecimento e 30
 medições de RTT do protocolo. Antes de cronometrar cada carga, a mesma carga é

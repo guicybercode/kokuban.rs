@@ -1,0 +1,41 @@
+[package]
+name = "kokuban"
+version = "0.1.0"
+edition = "2021"
+description = "A native Rust terminal emulator for Linux and macOS"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/guicybercode/kokuban.rs"
+homepage = "https://github.com/guicybercode/kokuban.rs#readme"
+keywords = ["terminal", "terminal-emulator", "linux", "macos", "graphics"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+nix = { version = "0.29", features = ["term", "fs", "process", "signal", "poll"] }
+toml = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+thiserror = "2"
+bitflags = "2"
+unicode-width = "0.2"
+png = "0.17"
+flate2 = "1"
+base64 = "0.22"
+font-kit = "0.14"
+pathfinder_geometry = "0.5"
+unicode-segmentation = "1.12"
+rustybuzz = "0.20"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSRunLoop", "NSString", "NSNotification", "NSThread", "NSProcessInfo", "NSDictionary", "NSArray"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWindow", "NSView", "NSEvent", "NSResponder", "NSScreen", "NSMenu", "NSMenuItem", "NSRunningApplication", "NSGraphics", "NSColor", "NSText"] }
+objc2-metal = { version = "0.3", features = ["MTLDevice", "MTLCommandQueue", "MTLCommandBuffer", "MTLRenderCommandEncoder", "MTLRenderPipeline", "MTLLibrary", "MTLBuffer", "MTLTexture", "MTLResource", "MTLVertexDescriptor", "MTLSampler", "MTLRenderPass", "MTLPixelFormat", "MTLDrawable"] }
+objc2-quartz-core = { version = "0.3", features = ["CAMetalLayer", "CALayer", "objc2-metal"] }
+block2 = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { version = "3.6.1", default-features = false, features = ["wayland-data-control"] }
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita"] }
+softbuffer = { version = "0.4.8", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }
