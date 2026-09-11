@@ -63,6 +63,14 @@ I/O durante o segundo par. Ela não produziu um resultado utilizável.
 Essas observações exigem uma repetição independente antes de concluir sobre
 a vazão do terminal completo.
 
+O [primeiro ensaio no CI](https://github.com/guicybercode/kokuban.rs/actions/runs/34609339282)
+também foi descartado: a conferência dos hashes detectou duas cópias do
+binário anterior. O diretório Cargo compartilhado reutilizou a compilação
+anterior, apesar dos arquivos-fonte distintos. O [JSON original](linux-evidence/2026-09-11-short-lines/ci-invalid-build.json)
+preserva esse diagnóstico; seu status `passed` verifica métricas e geometria,
+mas não valida a comparação entre revisões. `c03a131` separa os diretórios de
+compilação, e `69dd58d` rejeita executáveis idênticos por padrão no comparador.
+
 Os testes diferenciais com 600 operações mistas cobrem o cache de sufixos,
 rolagem, metadados, estilos e grafemas compostos; acessos inválidos também
 são verificados. `check`, testes e Clippy passaram em macOS (563 testes do

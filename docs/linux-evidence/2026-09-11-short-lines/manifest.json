@@ -31,7 +31,8 @@
   "other_attempts": {
     "initial-candidate.txt": "Unpaired 8 MiB candidate run with three samples; highly variable shared-host load",
     "baseline-recheck.txt": "Subsequent unpaired 8 MiB baseline sample; not a controlled pair with the first run",
-    "preliminary-vm-summary.json": "Console summary only; raw 4 MiB paired report became unreadable and 32 MiB retry failed during host/VM storage fault"
+    "preliminary-vm-summary.json": "Console summary only; raw 4 MiB paired report became unreadable and 32 MiB retry failed during host/VM storage fault",
+    "ci-invalid-build.json": "Rejected for revision attribution: workflow34609339282 reused the baseline Cargo output for the candidate; report status passed only reflects metric/geometry checks, not valid source-to-binary provenance."
   },
   "validation": {
     "linux": {
@@ -61,9 +62,18 @@
   ],
   "evidence_sha256": {
     "baseline-recheck.txt": "0b31cef101e16c328ff57add1bfd6ce27eb3c8f0ee4457f05665c2a47eca53e8",
+    "ci-invalid-build.json": "e0eae8608d055d5a36604107c27abe13366b75d4e9a4b54677fc38ca7fbf3080",
     "decoder-screening.json": "3c169e70ea19869a287d21e6129911aa81bd69ed1b0f60dc1a76ab1f2b151c49",
     "initial-candidate.txt": "fbc3e801961104feac01e451144a515831aa9a8d86b500c5ddb98bd854a664d6",
     "preliminary-vm-summary.json": "3de5089288e6de39898212bea09c40ac4ff9747c31e2bf7fb5b7fb046fd0b5cf",
     "profile-before.txt": "21dba82a2c1a19195b2f53c17d1759c590082355b710a7764947fd11482b68f2"
+  },
+  "rejected_ci_build": {
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34609339282",
+    "harness_revision": "ce26eeb",
+    "identical_binary_sha256": "17813d50031c33a904b14ce0ca25fe53caedd05e1c7402680fbf26fca0192ded",
+    "evidence": "Build log shows only source-before compiled; candidate build finished in0.12s without compiling the root crate.",
+    "fix": "c03a131 uses distinct Cargo target directories for the two source archives.",
+    "usable_for_revision_comparison": false
   }
 }
