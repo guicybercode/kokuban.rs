@@ -118,6 +118,15 @@ jobs:
               'Official Ubuntu26.04 container on GitHub hosted x86_64; Weston headless pixman; Mesa llvmpipe; full runner CPU affinity; fonts include real CJK/emoji fallback; processing/DSR only, not physical Omarchy/GPU performance'
           CONTAINER
 
+      - name: Make container evidence readable by the artifact uploader
+        if: always()
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-four-terminal-evidence"
+          if test -d "$evidence_directory"; then
+            sudo chown -R --no-dereference -- "$(id -u):$(id -g)" "$evidence_directory"
+          fi
+
       - name: Upload comparisons and provenance even on failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
