@@ -2,6 +2,47 @@
 
 O workflow manual `Linux release resource measurements` compila com Rust 1.94.1 e `cargo build --release --locked`, sem strip ou LTO adicionais. Ele registra manifesto, lockfile, árvore Cargo, versões de pacotes, dependências ELF, tamanho/hash do binário e hardware do runner. O perfil de release mantém `debug=0`.
 
+## Sufixos de linhas e investigação de 2026-09-11
+
+A revisão `4bcf68c` mantém o início do sufixo uniforme de cada linha.
+Ao limpar uma linha, ela reescreve somente o prefixo quando o sufixo já é
+igual à célula de limpeza, incluindo texto, cores e atributos. A leitura de
+metadados também pula o sufixo conhecido como vazio, preservando espaços
+impressos explicitamente. O [perfil diagnóstico anterior](linux-evidence/2026-09-11-short-lines/profile-before.txt)
+apontou essas operações como custos frequentes durante rolagem de linhas curtas.
+
+Uma triagem do decoder em macOS, com três pares alternados de 4 MiB, grade
+120×40 e histórico de 10.000 linhas, registrou as seguintes medianas:
+
+| Carga | Anterior `a27b8ce`, MiB/s | Atual `4bcf68c`, MiB/s |
+| --- | ---: | ---: |
+| ASCII | 207,78 | 216,21 |
+| ANSI | 145,25 | 161,27 |
+| Unicode | 42,26 | 69,20 |
+| Linhas curtas | 7,11 | 10,60 |
+
+Os [resultados individuais](linux-evidence/2026-09-11-short-lines/decoder-screening.json)
+excluem PTY, atlas e renderer. São uma triagem em host compartilhado, com
+poucas amostras, e não uma classificação de terminais.
+
+Uma tentativa posterior de cinco pares completos em Wayland, com 4 MiB,
+mostrou variação alta e queda da mediana ASCII de 159,47 para 129,90 MiB/s,
+apesar dos ganhos nas outras cargas. O relatório bruto ficou inacessível após
+erros de armazenamento da VM; o [resumo transcrito da saída](linux-evidence/2026-09-11-short-lines/preliminary-vm-summary.json)
+identifica essa limitação. A repetição com 32 MiB foi interrompida por erro de
+I/O durante o segundo par. Ela não produziu um resultado utilizável.
+Essas observações exigem uma repetição independente antes de concluir sobre
+a vazão do terminal completo.
+
+Os testes diferenciais com 600 operações mistas cobrem o cache de sufixos,
+rolagem, metadados, estilos e grafemas compostos; acessos inválidos também
+são verificados. `check`, testes e Clippy passaram em macOS (563 testes do
+executável e 200 do exemplo) e Linux (661 e 200; um benchmark ignorado).
+O clipboard X11 preservou bytes UTF-8 e texto após quatro redimensionamentos.
+O [CI Linux/macOS de `4bcf68c`](https://github.com/guicybercode/kokuban.rs/actions/runs/34606995498)
+passou. O [manifesto](linux-evidence/2026-09-11-short-lines/manifest.json)
+registra hashes, validações e tentativas preliminares, inclusive as inconclusivas.
+
 ## Unicode sem alocações intermediárias em 2026-09-11
 
 As revisões `ce4799b` e `c51c006` removem duas alocações frequentes: a decisão

@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-11",
+  "purpose": "Uniform row suffix optimization: correctness validation, diagnostic profiling, decoder screening and paired Linux replication",
+  "source_revisions": {
+    "before": "a27b8ce",
+    "after": "4bcf68c"
+  },
+  "optimization": "Skip unchanged uniform row suffixes when clearing rows and skip known blank suffixes while finding retained content; all Cell fields participate in equality.",
+  "local_binary_sha256": {
+    "decoder_before": "2a5a70d6675fc2ed3c977af4f7c6bd609fdba675986064c59595395a498d9c03",
+    "decoder_after": "9714b747ab0f0a406185aa7bb39f9526c2653a1c527931ea4612d63cb6a41d63",
+    "linux_before": "3df28923645b793c3d572e90bb8d1cf048c8e777912d269e08bb4527aea649e2",
+    "linux_after": "b12eaa0fbdd698d0ca29c6d70db17a03cb0eaeb381a377df25e3c76cbdc71f9b"
+  },
+  "local_environment": "Shared Apple M4 macOS host; Linux binaries run under Ubuntu 26.04 arm64 Docker/Colima and Weston headless pixman",
+  "decoder_screening": {
+    "file": "decoder-screening.json",
+    "paired_samples": 3,
+    "mib_per_workload": 4,
+    "rows": 40,
+    "columns": 120,
+    "scrollback_lines": 10000,
+    "chunk_bytes": 16384,
+    "order": "before/after on odd pairs; after/before on even pairs",
+    "scope": "Decoder only; no PTY, font atlas or renderer"
+  },
+  "profile": {
+    "file": "profile-before.txt",
+    "scope": "Diagnostic macOS sample captured while running the baseline short-lines workload; benchmark interrupted after sampling and not counted as a completed throughput run"
+  },
+  "other_attempts": {
+    "initial-candidate.txt": "Unpaired 8 MiB candidate run with three samples; highly variable shared-host load",
+    "baseline-recheck.txt": "Subsequent unpaired 8 MiB baseline sample; not a controlled pair with the first run",
+    "preliminary-vm-summary.json": "Console summary only; raw 4 MiB paired report became unreadable and 32 MiB retry failed during host/VM storage fault"
+  },
+  "validation": {
+    "linux": {
+      "main_tests_passed": 661,
+      "example_tests_passed": 200,
+      "benchmarks_ignored": 1,
+      "check": "passed",
+      "clippy": "passed",
+      "x11_clipboard": "Exact UTF-8, compound graphemes and wrapped URL after four resizes passed"
+    },
+    "macos": {
+      "main_tests_passed": 563,
+      "example_tests_passed": 200,
+      "check": "passed",
+      "clippy": "passed"
+    },
+    "ci": {
+      "revision": "4bcf68c",
+      "status": "success",
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34606995498"
+    }
+  },
+  "limits": [
+    "DSR acknowledges processing, not frame presentation or input-to-photon latency.",
+    "Throughput harness does not prove visual equivalence; correctness tests run separately.",
+    "Software rendering in a VM/CI runner does not establish superiority over Ghostty, Alacritty or Kitty on physical Omarchy/Hyprland."
+  ],
+  "evidence_sha256": {
+    "baseline-recheck.txt": "0b31cef101e16c328ff57add1bfd6ce27eb3c8f0ee4457f05665c2a47eca53e8",
+    "decoder-screening.json": "3c169e70ea19869a287d21e6129911aa81bd69ed1b0f60dc1a76ab1f2b151c49",
+    "initial-candidate.txt": "fbc3e801961104feac01e451144a515831aa9a8d86b500c5ddb98bd854a664d6",
+    "preliminary-vm-summary.json": "3de5089288e6de39898212bea09c40ac4ff9747c31e2bf7fb5b7fb046fd0b5cf",
+    "profile-before.txt": "21dba82a2c1a19195b2f53c17d1759c590082355b710a7764947fd11482b68f2"
+  }
+}

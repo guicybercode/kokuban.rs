@@ -1,0 +1,42 @@
+{
+  "kind": "Diagnostic summary, not a recovered raw benchmark report",
+  "provenance": "Transcribed from the completed runner's console output. The original report.json became unreadable after host disk exhaustion caused ext4 I/O errors in Colima.",
+  "before": "a27b8ce",
+  "after": "4bcf68c",
+  "environment": "Ubuntu 26.04 arm64 in Docker/Colima on a shared Apple M4 macOS host; Weston headless pixman; native Wayland; alternate screen; 80x24 cells; five alternating pairs",
+  "requested_bytes_per_workload": 4194304,
+  "status": "Runner completed with exit status 0, but raw evidence could not be recovered",
+  "median_mib_per_second": {
+    "ascii": {"before": 159.4726768949761, "after": 129.9021859211489},
+    "ansi": {"before": 110.53210972805503, "after": 119.2162426469109},
+    "unicode": {"before": 21.106181990530242, "after": 30.943924152087046},
+    "short_lines": {"before": 14.338742411417535, "after": 31.258974131108886}
+  },
+  "individual_mib_per_second_rounded_in_console": {
+    "before": {
+      "ascii": [167.63, 159.47, 207.77, 121.47, 123.40],
+      "ansi": [110.53, 122.27, 119.64, 106.86, 109.21],
+      "unicode": [21.11, 23.34, 21.98, 19.47, 19.65],
+      "short_lines": [14.09, 14.88, 14.44, 14.34, 14.14]
+    },
+    "after": {
+      "ascii": [97.37, 160.20, 163.68, 129.90, 78.96],
+      "ansi": [101.11, 119.22, 125.86, 129.06, 74.42],
+      "unicode": [30.94, 28.00, 34.36, 33.88, 25.28],
+      "short_lines": [31.26, 37.73, 32.95, 30.88, 25.79]
+    }
+  },
+  "followup_attempt": {
+    "requested_bytes_per_workload": 33554432,
+    "cpu_affinity": [1],
+    "status": "Interrupted during second pair, after sample",
+    "failure": "OSError: [Errno 5] Input/output error while reading child.json in stop_owned_child",
+    "usable_results": false
+  },
+  "limits": [
+    "ASCII median decreased in this noisy run; this observation motivated an independent same-runner replication rather than a claim of universal improvement.",
+    "Host was shared and had variable load; disk fault invalidated further local runtime measurements.",
+    "No throughput numbers are attributed to the interrupted 32 MiB run.",
+    "DSR measures processing, not frame presentation or input-to-photon latency."
+  ]
+}

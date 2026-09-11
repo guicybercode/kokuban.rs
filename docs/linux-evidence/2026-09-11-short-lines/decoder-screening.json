@@ -1,0 +1,62 @@
+[
+  {
+    "sample": 1,
+    "label": "before",
+    "rates": {
+      "ascii": 215.49,
+      "short-lines": 7.51,
+      "ansi": 150.33,
+      "unicode": 44.98
+    }
+  },
+  {
+    "sample": 1,
+    "label": "after",
+    "rates": {
+      "ascii": 222.85,
+      "short-lines": 10.74,
+      "ansi": 167.24,
+      "unicode": 69.87
+    }
+  },
+  {
+    "sample": 2,
+    "label": "after",
+    "rates": {
+      "ascii": 216.21,
+      "short-lines": 10.6,
+      "ansi": 161.27,
+      "unicode": 69.2
+    }
+  },
+  {
+    "sample": 2,
+    "label": "before",
+    "rates": {
+      "ascii": 196.44,
+      "short-lines": 7.11,
+      "ansi": 145.25,
+      "unicode": 42.26
+    }
+  },
+  {
+    "sample": 3,
+    "label": "before",
+    "rates": {
+      "ascii": 207.78,
+      "short-lines": 6.97,
+      "ansi": 141.02,
+      "unicode": 42.04
+    }
+  },
+  {
+    "sample": 3,
+    "label": "after",
+    "rates": {
+      "ascii": 210.83,
+      "short-lines": 10.58,
+      "ansi": 152.77,
+      "unicode": 67.66
+    }
+  }
+]
