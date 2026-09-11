@@ -1,0 +1,44 @@
+911: measure	Validate measurement harness	2026-09-11T16:39:45.1497553Z Ran 23 tests in 0.324s
+913: measure	Validate measurement harness	2026-09-11T16:39:45.1498326Z OK
+917: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1689308Z git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+918: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1689955Z git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
+919: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1690971Z git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+927: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1694903Z   source_directory="$RUNNER_TEMP/kokuban-paired-source-$label"
+929: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1695765Z   git archive "$revision" | tar -x -C "$source_directory"
+932: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1697231Z   cargo build --release --locked --manifest-path "$source_directory/Cargo.toml" \
+933: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1697731Z     --target-dir "$RUNNER_TEMP/kokuban-paired-build-$label"
+934: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1698331Z   cp "$RUNNER_TEMP/kokuban-paired-build-$label/release/kokuban" "$RUNNER_TEMP/kokuban-paired-binaries/$label"
+935: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1699063Z   cp "$source_directory/Cargo.toml" "$source_directory/Cargo.lock" "$evidence_directory/$label-build/"
+937: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1700875Z   sha256sum "$RUNNER_TEMP/kokuban-paired-binaries/$label" > "$evidence_directory/$label-build/binary-sha256.txt"
+941: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1741267Z   CARGO_INCREMENTAL: 0
+942: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1741509Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+943: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1741808Z   BEFORE_REF: 5c1f436751a5ab714caf7d874940baff929d6469
+944: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:39:45.1742135Z   AFTER_REF: c6883b0
+1258: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:40:59.7457932Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-before)
+1599: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:41:09.1132074Z warning: `kokuban` (bin "kokuban") generated 39 warnings
+1600: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:41:09.1132594Z     Finished `release` profile [optimized] target(s) in 1m 23s
+1754: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:42:21.4405074Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-after)
+2095: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:42:30.6073971Z warning: `kokuban` (bin "kokuban") generated 39 warnings
+2096: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:42:30.6074705Z     Finished `release` profile [optimized] target(s) in 1m 21s
+2115: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:42:30.7736349Z timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
+2131: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:42:30.7781972Z   SCREEN: primary
+2133: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:42:31.2793348Z pair 1/5: before (5c1f436751a5ab714caf7d874940baff929d6469)
+2140: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:42:45.0584525Z pair 1/5: after (c6883b0db2f51a9d237e4eee200f71b64ab656b5)
+2141: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:42:58.8311776Z pair 2/5: after (c6883b0db2f51a9d237e4eee200f71b64ab656b5)
+2142: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:43:12.5762066Z pair 2/5: before (5c1f436751a5ab714caf7d874940baff929d6469)
+2143: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:43:26.1957367Z pair 3/5: before (5c1f436751a5ab714caf7d874940baff929d6469)
+2144: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:43:40.0230097Z pair 3/5: after (c6883b0db2f51a9d237e4eee200f71b64ab656b5)
+2145: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:43:53.7415365Z pair 4/5: after (c6883b0db2f51a9d237e4eee200f71b64ab656b5)
+2146: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:44:07.4254980Z pair 4/5: before (5c1f436751a5ab714caf7d874940baff929d6469)
+2147: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:44:21.5148298Z pair 5/5: before (5c1f436751a5ab714caf7d874940baff929d6469)
+2148: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:44:35.0152680Z pair 5/5: after (c6883b0db2f51a9d237e4eee200f71b64ab656b5)
+2150: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:44:48.5639061Z   "report": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/report.json",
+2151: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:44:48.5639695Z   "status": "passed",
+2153: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:44:48.5640574Z     "geometry_and_history_checks_passed": true,
+2178: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:44:48.5923010Z   path: /home/runner/work/_temp/kokuban-paired-evidence
+2179: measure	Upload reports, configurations, logs and build provenance	!/home/runner/work/_temp/kokuban-paired-evidence/**/*.bin
+2182: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:44:48.5923766Z   retention-days: 7
+2195: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:44:48.7839856Z With the provided path, there will be 87 files uploaded
+2202: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:44:49.5870206Z SHA256 digest of uploaded artifact zip is d854397f9168234631e95ee8e411dd27a679f78b7c9bb0213bd39c729dac7a18
+2205: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:44:49.8440803Z Artifact linux-paired-revision-measurements has been successfully uploaded! Final size is 97529 bytes. Artifact ID is 10272774860
+2206: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:44:49.8446862Z Artifact download URL: https://github.com/guicybercode/kokuban.rs/actions/runs/34622836740/artifacts/10272774860

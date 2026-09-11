@@ -1,0 +1,481 @@
+{
+  "schema": 1,
+  "kind": "reused-unicode-widths-paired-evidence",
+  "date": "2026-09-11",
+  "before_revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+  "after_revision": "c6883b0db2f51a9d237e4eee200f71b64ab656b5",
+  "harness_revision": "c6883b0db2f51a9d237e4eee200f71b64ab656b5",
+  "conclusion": "Small, mixed processing changes. Alternate short-line median +2.11%, primary short-line median -2.27% with four of five pairs slower. Unicode median +0.54% alternate and +1.37% primary. Different CPUs were used by the two runs; comparisons remain paired within each run.",
+  "application_input_changes": [
+    "src/grid/mod.rs"
+  ],
+  "profiles": {
+    "alternate": {
+      "audit_file": "alternate/audit.json",
+      "raw_report": "ci-alternate-report.json",
+      "run": {
+        "id": 34622759863,
+        "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34622759863",
+        "status": "success",
+        "harness_revision": "c6883b0db2f51a9d237e4eee200f71b64ab656b5",
+        "created_at": "2026-09-11T16:34:18Z",
+        "updated_at": "2026-09-11T16:39:06Z",
+        "metadata_file": "alternate/ci-run.json",
+        "artifact_id": 10273423054,
+        "artifact_zip_bytes_recorded_ci": 97587,
+        "artifact_zip_sha256_recorded_ci": "86817fde35d0b38e492d5fce557472f0329b575fe80ddcc20ca086aeda0f17c8",
+        "artifact_zip_independently_rehashed": false
+      },
+      "cpu_model": "AMD EPYC 7763 64-Core Processor",
+      "runner_cpu_affinity_observed": [
+        0
+      ],
+      "history_limit_lines": 0,
+      "throughput": {
+        "ascii": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 76.36543405609224,
+              "min": 71.95108256178126,
+              "max": 77.75100214863711,
+              "median_absolute_deviation": 1.3855680925448723
+            },
+            "after": {
+              "count": 5,
+              "median": 76.63460307169179,
+              "min": 75.72080170643723,
+              "max": 77.11365812200073,
+              "median_absolute_deviation": 0.29907283470073764
+            }
+          },
+          "ratio_of_medians_change_percent": 0.35247493702692534,
+          "median_of_pairwise_throughput_change_percent": 0.7441087153160053,
+          "pairs_slower_after": 2
+        },
+        "ansi": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 67.44131323800912,
+              "min": 65.45019103016269,
+              "max": 68.80862728462733,
+              "median_absolute_deviation": 1.1359461252741596
+            },
+            "after": {
+              "count": 5,
+              "median": 68.26045982943175,
+              "min": 65.22871183342113,
+              "max": 69.40039602738486,
+              "median_absolute_deviation": 1.139936197953105
+            }
+          },
+          "ratio_of_medians_change_percent": 1.2146065254271754,
+          "median_of_pairwise_throughput_change_percent": -0.512436825893059,
+          "pairs_slower_after": 3
+        },
+        "unicode": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 22.6061271187004,
+              "min": 21.175461694902072,
+              "max": 22.85526694166751,
+              "median_absolute_deviation": 0.1669261601794112
+            },
+            "after": {
+              "count": 5,
+              "median": 22.72804856845843,
+              "min": 22.417419028779115,
+              "max": 22.941388860447514,
+              "median_absolute_deviation": 0.12863826234281817
+            }
+          },
+          "ratio_of_medians_change_percent": 0.5393292230811753,
+          "median_of_pairwise_throughput_change_percent": 0.006212524830107036,
+          "pairs_slower_after": 2
+        },
+        "short_lines": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 30.6532195269499,
+              "min": 28.172957487555454,
+              "max": 31.145843092309576,
+              "median_absolute_deviation": 0.3000512166643041
+            },
+            "after": {
+              "count": 5,
+              "median": 31.29946446510509,
+              "min": 30.847468645391373,
+              "max": 31.597545121256537,
+              "median_absolute_deviation": 0.15364847392319092
+            }
+          },
+          "ratio_of_medians_change_percent": 2.1082449025852545,
+          "median_of_pairwise_throughput_change_percent": 0.9006879677672996,
+          "pairs_slower_after": 0
+        }
+      }
+    },
+    "primary": {
+      "audit_file": "primary/audit.json",
+      "raw_report": "ci-primary-report.json",
+      "run": {
+        "id": 34622836740,
+        "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34622836740",
+        "status": "success",
+        "harness_revision": "c6883b0db2f51a9d237e4eee200f71b64ab656b5",
+        "created_at": "2026-09-11T16:35:06Z",
+        "updated_at": "2026-09-11T16:44:53Z",
+        "metadata_file": "primary/ci-run.json",
+        "artifact_id": 10272774860,
+        "artifact_zip_bytes_recorded_ci": 97529,
+        "artifact_zip_sha256_recorded_ci": "d854397f9168234631e95ee8e411dd27a679f78b7c9bb0213bd39c729dac7a18",
+        "artifact_zip_independently_rehashed": false
+      },
+      "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+      "runner_cpu_affinity_observed": [
+        0
+      ],
+      "history_limit_lines": 10000,
+      "throughput": {
+        "ascii": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 51.53876046202044,
+              "min": 51.37148810908881,
+              "max": 51.792684698812636,
+              "median_absolute_deviation": 0.1672723529316329
+            },
+            "after": {
+              "count": 5,
+              "median": 51.53602724483344,
+              "min": 50.553318235197025,
+              "max": 51.68775564651867,
+              "median_absolute_deviation": 0.15172840168522583
+            }
+          },
+          "ratio_of_medians_change_percent": -0.005303226469743905,
+          "median_of_pairwise_throughput_change_percent": -0.34293703965315725,
+          "pairs_slower_after": 3
+        },
+        "ansi": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 51.15295362649608,
+              "min": 49.78456962456466,
+              "max": 51.84033464568116,
+              "median_absolute_deviation": 0.6873810191850822
+            },
+            "after": {
+              "count": 5,
+              "median": 50.774040544823045,
+              "min": 50.10904501133066,
+              "max": 51.63024775389132,
+              "median_absolute_deviation": 0.247305911182373
+            }
+          },
+          "ratio_of_medians_change_percent": -0.7407452645642798,
+          "median_of_pairwise_throughput_change_percent": 0.6517589470250051,
+          "pairs_slower_after": 2
+        },
+        "unicode": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 18.960104649177836,
+              "min": 16.999958149475145,
+              "max": 19.424943109445195,
+              "median_absolute_deviation": 0.46483846026735876
+            },
+            "after": {
+              "count": 5,
+              "median": 19.219058946339025,
+              "min": 19.05387254393309,
+              "max": 19.721036151365062,
+              "median_absolute_deviation": 0.1651864024059364
+            }
+          },
+          "ratio_of_medians_change_percent": 1.3657851681341704,
+          "median_of_pairwise_throughput_change_percent": 2.944451555973182,
+          "pairs_slower_after": 1
+        },
+        "short_lines": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 10.21903114766671,
+              "min": 9.610497574952605,
+              "max": 10.3308183509792,
+              "median_absolute_deviation": 0.11178720331249004
+            },
+            "after": {
+              "count": 5,
+              "median": 9.987154391002814,
+              "min": 9.88138923217011,
+              "max": 10.00511505680137,
+              "median_absolute_deviation": 0.017960665798556263
+            }
+          },
+          "ratio_of_medians_change_percent": -2.26906791175443,
+          "median_of_pairwise_throughput_change_percent": -2.603181348788697,
+          "pairs_slower_after": 4
+        }
+      }
+    }
+  },
+  "build_provenance": {
+    "basis": "Resolved refs, pinned workflow, matching Cargo inputs and CI logs showing both root crates compiled from separate Git archives and target directories.",
+    "build_flags": [
+      "--release",
+      "--locked"
+    ],
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_RELEASE_DEBUG": "0",
+    "binary_hashes_distinct_between_sides_and_identical_between_profiles_as_recorded_ci": true,
+    "binary_bytes_retained": false,
+    "binary_independently_rehashed": false
+  },
+  "shared_evidence": {
+    "../2026-09-11-circular-rows/Cargo.toml": {
+      "bytes": 2021,
+      "sha256": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4"
+    },
+    "../2026-09-11-circular-rows/Cargo.lock": {
+      "bytes": 69307,
+      "sha256": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+    },
+    "../2026-09-11-circular-rows/before-cargo-tree.txt": {
+      "bytes": 13320,
+      "sha256": "efe223d9deaa9639402da9644a7ccd0509457dec8c01d169238600a99b981771"
+    },
+    "../2026-09-11-circular-rows/after-cargo-tree.txt": {
+      "bytes": 13319,
+      "sha256": "32649be1c8446d2f40ec4164ac93c06e61a0ea0ef89adf7a5f6f4c4df580cde7"
+    },
+    "../2026-09-11-circular-rows/linux-paired-performance.yml": {
+      "bytes": 5858,
+      "sha256": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4"
+    }
+  },
+  "total_successful_terminal_processes": 20,
+  "total_workload_measurements": 80,
+  "total_protocol_rtt_observations": 600,
+  "raw_reports_byte_identical_to_downloads": true,
+  "validation": "test-summary.json",
+  "source_ci_run": {
+    "id": 34622706935,
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34622706935",
+    "conclusion": "success",
+    "metadata_file": "source-ci-run.json"
+  },
+  "rendering_equivalence_verified": false,
+  "warnings": {
+    "terminal_logs": "All twenty original logs are retained; they record XDG Settings Portal color-scheme lookup timeouts.",
+    "compositor_shutdown": "Both Weston logs record finalizing a layer with views still on it after termination; all measurements and workflow runs completed successfully."
+  },
+  "limitations": [
+    "Only 5c1f436 -> c6883b0 is measured here. The later append_grapheme allocation helper is excluded.",
+    "Alternate ran on AMD EPYC 7763; primary ran on AMD EPYC 9V74. The results are not pooled and the difference between profiles is not attributed solely to history.",
+    "Five AB/BA pairs per profile; fixed within-sample workload order; all before/after ranges overlap in both profiles. No statistical significance or overall speedup claim.",
+    "Alternate ANSI median increased 1.21% but its median paired ratio changed -0.51%, with three pairs slower. Alternate Unicode median increased 0.54% but its median paired ratio was only +0.006%.",
+    "Primary ASCII, ANSI and short-line throughput had lower medians; short lines were slower in four pairs. Primary Unicode was slower in one pair despite a higher median.",
+    "PTY throughput and DSR RTT measure processing/protocol response, not frame presentation, visual correctness or input-to-photon latency.",
+    "Equal cells and configurations do not establish Unicode grapheme or fallback rendering equivalence.",
+    "This is not a competitor ranking or a measurement on an actual Omarchy/Hyprland machine with a physical GPU and monitor.",
+    "Executable and artifact ZIP hashes are CI records; their original bytes are not retained here for independent rehashing. Source provenance comes from workflow/build records, not from verifying machine code against source.",
+    "The standalone runner reports source_refs_verified_by_runner=false. Exact revisions and archives are verified through the CI workflow, refs, Cargo inputs and root-build log observations.",
+    "Local macOS logs contribute correctness validation only. No macOS diagnostic throughput is incorporated into the Linux measurements. Their command/revision association is reported by the operator; commands are not embedded in those local logs.",
+    "The alternate report requests 10000 history lines at top level but its effective configuration intentionally uses zero; primary uses 10000."
+  ],
+  "retention": "Two unmodified raw reports, per-profile audit/inventory/configuration/environment/build and terminal logs, validation summaries; identical Cargo inputs, Cargo trees and workflow reference byte-verified files already retained in circular-rows. No duplicate raw payloads or executable bytes.",
+  "evidence_files": {
+    "alternate/after-binary-sha256.txt": {
+      "bytes": 120,
+      "sha256": "b6a6e08a402a3dfa20035f959290c6223f3be20d2b9b5bb446ecc9551335a8b9"
+    },
+    "alternate/audit.json": {
+      "bytes": 31980,
+      "sha256": "6907eba2381673ca0d2c2a1e215b308f904f2f047fc2d244451f1cf9967eb8a6"
+    },
+    "alternate/before-binary-sha256.txt": {
+      "bytes": 121,
+      "sha256": "6e3453474ca571d5a2b58bd617878e698390a50eb6a2d410d868457380fa403b"
+    },
+    "alternate/ci-log-excerpt.txt": {
+      "bytes": 7310,
+      "sha256": "2cd92edbc6b0ea273f13569bafb735c9c7c65d77bcd03fd7f4d71dff95f1de38"
+    },
+    "alternate/ci-run.json": {
+      "bytes": 2175,
+      "sha256": "3cbe07d8d885292719636d9777bf34b88ecbcdfefad2666b91853eedf466be6a"
+    },
+    "alternate/cpu.txt": {
+      "bytes": 3189,
+      "sha256": "4476e601951bb5e5dc85ca4b9d2e3bc795bb83c0d4e62b8d9f2bdec6659b0e7a"
+    },
+    "alternate/kernel.txt": {
+      "bytes": 113,
+      "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d"
+    },
+    "alternate/kokuban.toml": {
+      "bytes": 125,
+      "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+    },
+    "alternate/rustc.txt": {
+      "bytes": 196,
+      "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+    },
+    "alternate/system-packages.txt": {
+      "bytes": 213,
+      "sha256": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4"
+    },
+    "alternate/terminal-logs/01-after.log": {
+      "bytes": 137,
+      "sha256": "665c3f821cab0ace37d4d17b1b1c4c75ad81da563e69e5724c9977a7dbee9d66"
+    },
+    "alternate/terminal-logs/01-before.log": {
+      "bytes": 137,
+      "sha256": "437c868b166ff89075a2db640b243473ac5b596336fc038b46eaf6af687f3b23"
+    },
+    "alternate/terminal-logs/02-after.log": {
+      "bytes": 137,
+      "sha256": "23a142a64012928abc42199c866bd7bf6e6fbc46f6a6dd91466671b2e9d84eeb"
+    },
+    "alternate/terminal-logs/02-before.log": {
+      "bytes": 137,
+      "sha256": "ac39ef80f6d1135008bd4aad975f833fc851e42fede4df9828b9b5f93cae04fa"
+    },
+    "alternate/terminal-logs/03-after.log": {
+      "bytes": 137,
+      "sha256": "92f10ddcf3c09d7cd37bcfd2ea672316227628cfa8e5158eb6660908edefc2a4"
+    },
+    "alternate/terminal-logs/03-before.log": {
+      "bytes": 137,
+      "sha256": "9e8e149fe895e28b04d630df751064fca49bd0e250bc0e48f944f2b12fd3e6f0"
+    },
+    "alternate/terminal-logs/04-after.log": {
+      "bytes": 137,
+      "sha256": "ef948a7352dd8a30d255dae88c4b8c105f137a6bc4f79eee9d3672ff631e5379"
+    },
+    "alternate/terminal-logs/04-before.log": {
+      "bytes": 137,
+      "sha256": "4edcc83067b22a492821081895e7d3435d8ce9bc9cd566080372cf5825119373"
+    },
+    "alternate/terminal-logs/05-after.log": {
+      "bytes": 137,
+      "sha256": "8722f538c77aba0ff3f8dc7051799ec9abd008290da16afa6d7d3c3d12881cdb"
+    },
+    "alternate/terminal-logs/05-before.log": {
+      "bytes": 137,
+      "sha256": "557ae94a5adb89b97ca3516cd95a9575723538ae7748accfd6e4a412ce42dfb7"
+    },
+    "alternate/weston.log": {
+      "bytes": 1836,
+      "sha256": "41a6e1b1579e5f83f95a50645516fab6ead976c299c6e39e1fc582b81d5c1ff6"
+    },
+    "ci-alternate-report.json": {
+      "bytes": 92969,
+      "sha256": "a0c723fbcf6ef38f7535e69e915952fc94cd82b9e97212a26c200d4261132ce5"
+    },
+    "ci-primary-report.json": {
+      "bytes": 92879,
+      "sha256": "aa333b829a965a21e0b352f315a7bae9b5c303302e405c350da5f69ed4630113"
+    },
+    "primary/after-binary-sha256.txt": {
+      "bytes": 120,
+      "sha256": "b6a6e08a402a3dfa20035f959290c6223f3be20d2b9b5bb446ecc9551335a8b9"
+    },
+    "primary/audit.json": {
+      "bytes": 31980,
+      "sha256": "770e17daab4de79bbecaa9b5dc4483a3d2cdda4e7a5b7fdc836598d971de1d97"
+    },
+    "primary/before-binary-sha256.txt": {
+      "bytes": 121,
+      "sha256": "6e3453474ca571d5a2b58bd617878e698390a50eb6a2d410d868457380fa403b"
+    },
+    "primary/ci-log-excerpt.txt": {
+      "bytes": 7308,
+      "sha256": "6b925ded043e14a9c882a06f2158ccfb3810b50b114982e2a707a4335f2f406a"
+    },
+    "primary/ci-run.json": {
+      "bytes": 2175,
+      "sha256": "0d408808098641e9cd8622af9f58f43a6c736b055188ef4e315779a51df33dc5"
+    },
+    "primary/cpu.txt": {
+      "bytes": 3190,
+      "sha256": "d0dd6780542a3d2ea158ed9e641ca0620e0cce241ad4605dfe94eb8cbf816fd2"
+    },
+    "primary/kernel.txt": {
+      "bytes": 113,
+      "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d"
+    },
+    "primary/kokuban.toml": {
+      "bytes": 129,
+      "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+    },
+    "primary/rustc.txt": {
+      "bytes": 196,
+      "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+    },
+    "primary/system-packages.txt": {
+      "bytes": 213,
+      "sha256": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4"
+    },
+    "primary/terminal-logs/01-after.log": {
+      "bytes": 137,
+      "sha256": "b95238d1d3c50583f25e9f17bdcff2132613b020747d43f0363f36612982c8dd"
+    },
+    "primary/terminal-logs/01-before.log": {
+      "bytes": 137,
+      "sha256": "cd9a390a6240437fc3ecc2f580259efe7b327befc146faab4943f0eb879670cc"
+    },
+    "primary/terminal-logs/02-after.log": {
+      "bytes": 137,
+      "sha256": "73162a3194221654ab3b6b2a60494c175b2e075c9c723a78a85fd12ad0c5161b"
+    },
+    "primary/terminal-logs/02-before.log": {
+      "bytes": 137,
+      "sha256": "2e5b81aef6f795c97f953e3e1fc5db0efdd89a25e75d2d7c637c6a5c38429ebd"
+    },
+    "primary/terminal-logs/03-after.log": {
+      "bytes": 137,
+      "sha256": "58d7d6d1d171a07538ddeaa08b96ec95e770625ec8fb76268a5dd2f8a55042d7"
+    },
+    "primary/terminal-logs/03-before.log": {
+      "bytes": 137,
+      "sha256": "19f66e53e10ca2a0797ee69e2a5a86deec4df18609a9d8b35e50836da2029269"
+    },
+    "primary/terminal-logs/04-after.log": {
+      "bytes": 137,
+      "sha256": "06cc76d2f9fd8697d2384589570fb44611f8a2f4af1a2b56934791425f4b0cd0"
+    },
+    "primary/terminal-logs/04-before.log": {
+      "bytes": 137,
+      "sha256": "afc91197589752cbf43597ff56aa04296b7eaa333dc6a885892ecb5399740af8"
+    },
+    "primary/terminal-logs/05-after.log": {
+      "bytes": 137,
+      "sha256": "21033cb0ca565dba2faa87db305d2bd9ac16d4d8d8091740402c4395c2f349b6"
+    },
+    "primary/terminal-logs/05-before.log": {
+      "bytes": 137,
+      "sha256": "278fa66491cb9f0c7cd4e7565ad78eb1356927443ee9ecc01231d637b399a05b"
+    },
+    "primary/weston.log": {
+      "bytes": 1836,
+      "sha256": "89e06c21f052c3873268f939e71b62960770ca54d1fcd55ae426fb53634a3df8"
+    },
+    "source-ci-run.json": {
+      "bytes": 13091,
+      "sha256": "9dca515742caccd444220facff65c5a8786639b8f41edc9981a7094087f21c49"
+    },
+    "test-summary.json": {
+      "bytes": 5986,
+      "sha256": "fba2bab319eab110ecdb38d68a214ecdfc145f10a33c95fa2384640f31d96108"
+    }
+  }
+}

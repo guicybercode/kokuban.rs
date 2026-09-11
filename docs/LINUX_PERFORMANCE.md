@@ -62,6 +62,80 @@ verificam comportamento; o desempenho é avaliado pelas medições acima.
 O escopo continua sendo
 processamento e DSR, sem comparação visual ou medição em Omarchy físico.
 
+## Reuso de larguras Unicode: resultados mistos em 2026-09-11
+
+A revisão `c6883b0` reutiliza larguras já calculadas ao escrever escalares e
+estender grafemas. Mantém a largura natural do glifo separada das células
+ocupadas após o recorte pela grade e pela margem. A comparação com `5c1f436`
+mostrou variações pequenas e resultados mistos: **linhas curtas variaram
++2,11% na tela alternativa e −2,27% na primária**, enquanto Unicode variou
++0,54% e +1,37%. Esses dados não demonstram uma melhoria geral.
+
+Cada perfil executou cinco pares AB/BA, aproximadamente 32 MiB por carga,
+com os dois processos na CPU 0 do mesmo runner durante sua execução.
+A tela alternativa usou um AMD EPYC 7763; a primária, um AMD EPYC 9V74.
+Os perfis são analisados separadamente: a diferença entre eles não pode
+ser atribuída apenas ao histórico. Ambos usaram Ubuntu 24.04 x86_64,
+Rust 1.94.1 release, Weston 13 headless com Pixman e DejaVu Sans Mono 14.
+As vinte amostras mantiveram 80×24 células e 720×408 pixels.
+
+Na [tela alternativa, sem histórico](https://github.com/guicybercode/kokuban.rs/actions/runs/34622759863):
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas |
+| --- | ---: | ---: | ---: |
+| ASCII | 76,365 | 76,635 | +0,35% |
+| ANSI | 67,441 | 68,260 | +1,21% |
+| Unicode | 22,606 | 22,728 | +0,54% |
+| Linhas curtas | 30,653 | 31,299 | +2,11% |
+
+Linhas curtas melhoraram nos cinco pares. ANSI caiu em três pares, apesar
+da mediana maior; a mediana das razões por par foi −0,51%, uma agregação
+distinta da razão entre medianas da tabela. Para Unicode, essa mediana por
+par foi apenas +0,006%, com perdas em dois pares. ASCII também caiu em dois.
+O [relatório alternativo bruto](linux-evidence/2026-09-11-reused-widths/ci-alternate-report.json)
+preserva os intervalos e todas as amostras.
+
+Na [tela primária, com histórico de 10.000 linhas](https://github.com/guicybercode/kokuban.rs/actions/runs/34622836740):
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas |
+| --- | ---: | ---: | ---: |
+| ASCII | 51,539 | 51,536 | −0,005% |
+| ANSI | 51,153 | 50,774 | −0,74% |
+| Unicode | 18,960 | 19,219 | +1,37% |
+| Linhas curtas | 10,219 | 9,987 | −2,27% |
+
+Linhas curtas perderam vazão em quatro pares, variando de
+9,610–10,331 MiB/s antes para 9,881–10,005 MiB/s depois. ASCII caiu em três
+pares, ANSI em dois e Unicode em um. Todas as cargas dos dois perfis
+tiveram intervalos mínimo–máximo sobrepostos. As cinco amostras por lado
+não estabelecem significância estatística. O
+[relatório primário bruto](linux-evidence/2026-09-11-reused-widths/ci-primary-report.json)
+mantém essas perdas junto dos ganhos observados.
+
+Os dois workflows passaram. A auditoria conferiu 20 processos, 80 cargas,
+600 observações de RTT, configurações, geometria, payloads reproduzidos e
+scripts fixados no Git. Os dois builds de cada execução usaram arquivos
+Git e diretórios de compilação separados. Os hashes dos executáveis foram
+registrados no CI; seus bytes não foram retidos para rehash independente.
+O [manifesto](linux-evidence/2026-09-11-reused-widths/manifest.json) preserva
+a proveniência e referencia os manifestos Cargo, lockfile, árvores Cargo
+e workflow já arquivados, após conferir sua igualdade byte a byte.
+
+Os testes novos cobrem VS15/VS16, contração e crescimento de grafemas,
+grade de uma coluna, margem sem wrap, reflow e rolagem com histórico.
+`check`, testes e Clippy passaram em macOS com
+`--release --locked --all-targets` (579 testes do executável e 216 do
+exemplo), com avisos registrados. O
+[CI Linux/macOS de `c6883b0`](https://github.com/guicybercode/kokuban.rs/actions/runs/34622706935)
+também passou; o [resumo de validação](linux-evidence/2026-09-11-reused-widths/test-summary.json)
+registra os resultados e hashes dos logs originais.
+
+As medições cobrem processamento pelo PTY e resposta DSR. Não verificam
+equivalência visual, apresentação de quadros ou superioridade sobre outros
+terminais no Omarchy com GPU e monitor reais. Diagnósticos macOS de vazão
+e a alteração posterior de alocação em `append_grapheme` não fazem parte
+desses resultados Linux.
+
 ## Linhas circulares: tela alternativa e histórico em 2026-09-11
 
 A revisão `5d1712e` mantém uma origem circular comum aos endereços das linhas,
