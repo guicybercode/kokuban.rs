@@ -62,6 +62,10 @@
   ],
   "evidence_sha256": {
     "baseline-recheck.txt": "0b31cef101e16c328ff57add1bfd6ce27eb3c8f0ee4457f05665c2a47eca53e8",
+    "ci-alternate-build-log.txt": "576ab655b2f6822e140fc87a0b5247b2a9ebeba40d29e9c6a7caf0173b3cb0f1",
+    "ci-alternate-report.json": "155c9ad4eb639bb332ffa73bf46906dd1bb8033a92cf907aab1b06d9257b59c4",
+    "ci-alternate-rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "ci-alternate-system-packages.txt": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4",
     "ci-invalid-build.json": "e0eae8608d055d5a36604107c27abe13366b75d4e9a4b54677fc38ca7fbf3080",
     "decoder-screening.json": "3c169e70ea19869a287d21e6129911aa81bd69ed1b0f60dc1a76ab1f2b151c49",
     "initial-candidate.txt": "fbc3e801961104feac01e451144a515831aa9a8d86b500c5ddb98bd854a664d6",
@@ -75,5 +79,45 @@
     "evidence": "Build log shows only source-before compiled; candidate build finished in0.12s without compiling the root crate.",
     "fix": "c03a131 uses distinct Cargo target directories for the two source archives.",
     "usable_for_revision_comparison": false
+  },
+  "paired_ci_alternate": {
+    "status": "passed",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34610172666",
+    "harness_revision": "c03a13183d48bbd1eb93a39314fb92c9baa4fbc7",
+    "report": "ci-alternate-report.json",
+    "build_log_excerpt": "ci-alternate-build-log.txt",
+    "source_build_inputs_sha256_verified_against_git": {
+      "before": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      },
+      "after": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      }
+    },
+    "binary_sha256": {
+      "before": "17813d50031c33a904b14ce0ca25fe53caedd05e1c7402680fbf26fca0192ded",
+      "after": "2a8e064303adfaa3b7d21376c5dd26ee844240d546cb3e4fa0768fce4fe836a6"
+    },
+    "samples_per_revision": 5,
+    "requested_bytes_per_workload": 33554432,
+    "screen": "alternate",
+    "effective_geometry_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "cpu_affinity": [
+      0
+    ],
+    "platform": "Ubuntu 24.04 x86_64 GitHub runner; AMD EPYC 9V74; Weston 13 headless pixman; DejaVu Sans Mono 14; Rust 1.94.1 release locked",
+    "throughput_median_after_over_before": {
+      "ascii": 1.0067811495648673,
+      "ansi": 1.2172477667547232,
+      "unicode": 1.4083462701168705,
+      "short_lines": 3.282998553938381
+    }
   }
 }

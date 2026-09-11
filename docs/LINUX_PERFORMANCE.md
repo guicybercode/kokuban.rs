@@ -31,7 +31,7 @@ python3 scripts/compare-kokuban-revisions.py \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
 
-## Sufixos de linhas e investigação de 2026-09-11
+## Sufixos de linhas: medição pareada em 2026-09-11
 
 A revisão `4bcf68c` mantém o início do sufixo uniforme de cada linha.
 Ao limpar uma linha, ela reescreve somente o prefixo quando o sufixo já é
@@ -39,6 +39,34 @@ igual à célula de limpeza, incluindo texto, cores e atributos. A leitura de
 metadados também pula o sufixo conhecido como vazio, preservando espaços
 impressos explicitamente. O [perfil diagnóstico anterior](linux-evidence/2026-09-11-short-lines/profile-before.txt)
 apontou essas operações como custos frequentes durante rolagem de linhas curtas.
+
+Cinco pares alternados compararam `a27b8ce` com `4bcf68c` no mesmo runner
+GitHub Ubuntu 24.04 x86_64, AMD EPYC 9V74, com ambos os processos fixados na
+CPU 0. Cada carga usou aproximadamente 32 MiB, Rust 1.94.1 release, Weston 13
+headless pixman, DejaVu Sans Mono 14 e tela alternativa sem histórico.
+A grade efetiva permaneceu em 80×24 células e 720×408 pixels em todas as amostras.
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s |
+| --- | ---: | ---: |
+| ASCII | 91,64 | 92,26 |
+| ANSI | 67,38 | 82,02 |
+| Unicode | 19,64 | 27,66 |
+| Linhas curtas | 9,62 | 31,58 |
+
+A razão entre medianas foi **3,28× em linhas curtas**, **1,41× em Unicode**
+e **1,22× em ANSI**. ASCII variou menos de 1% entre medianas, sem reproduzir
+a queda observada na VM local. Os intervalos mínimo–máximo de linhas curtas
+foram 9,51–9,63 antes e 31,57–31,71 MiB/s depois. O [relatório completo](linux-evidence/2026-09-11-short-lines/ci-alternate-report.json)
+preserva as amostras, as razões por par e as verificações de configuração,
+payload e geometria. Esse resultado mede processamento/DSR; não mede
+apresentação de quadros nem comprova superioridade sobre outros terminais
+no Omarchy com GPU e monitor reais.
+
+O [workflow com builds isolados](https://github.com/guicybercode/kokuban.rs/actions/runs/34610172666)
+passou. Os [trechos do log de compilação](linux-evidence/2026-09-11-short-lines/ci-alternate-build-log.txt)
+confirmam que os dois diretórios-fonte foram compilados. Os executáveis têm
+hashes diferentes; manifesto e lockfile de cada build foram conferidos contra
+o respectivo commit Git. Essa verificação exclui o ensaio inválido descrito abaixo.
 
 Uma triagem do decoder em macOS, com três pares alternados de 4 MiB, grade
 120×40 e histórico de 10.000 linhas, registrou as seguintes medianas:
@@ -60,8 +88,7 @@ apesar dos ganhos nas outras cargas. O relatório bruto ficou inacessível após
 erros de armazenamento da VM; o [resumo transcrito da saída](linux-evidence/2026-09-11-short-lines/preliminary-vm-summary.json)
 identifica essa limitação. A repetição com 32 MiB foi interrompida por erro de
 I/O durante o segundo par. Ela não produziu um resultado utilizável.
-Essas observações exigem uma repetição independente antes de concluir sobre
-a vazão do terminal completo.
+Essas observações motivaram a repetição independente no CI descrita acima.
 
 O [primeiro ensaio no CI](https://github.com/guicybercode/kokuban.rs/actions/runs/34609339282)
 também foi descartado: a conferência dos hashes detectou duas cópias do
