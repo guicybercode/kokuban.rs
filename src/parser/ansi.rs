@@ -1038,6 +1038,25 @@ impl Utf8Parser {
                     index += printable;
                     continue;
                 }
+
+                // A complete UTF-8 scalar cannot contain a terminal event.
+                // Decode it directly when this read has all of its bytes;
+                // partial or malformed sequences retain the byte-wise path.
+                let scalar_len = match input[index] {
+                    0xc2..=0xdf => 2,
+                    0xe0..=0xef => 3,
+                    0xf0..=0xf4 => 4,
+                    _ => 0,
+                };
+                if scalar_len != 0 {
+                    if let Some(bytes) = input[index..].get(..scalar_len) {
+                        if let Ok(text) = std::str::from_utf8(bytes) {
+                            grid.put_char(text.chars().next().expect("validated scalar is nonempty"));
+                            index += scalar_len;
+                            continue;
+                        }
+                    }
+                }
             }
 
             self.feed_byte(input[index], grid);
@@ -1108,6 +1127,85 @@ mod tests {
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
+    }
+
+    fn assert_utf8_matches_byte_decoding_at_every_split(input: &[u8], cols: usize) {
+        for split in 0..=input.len() {
+            let mut fast = Utf8Parser::new();
+            let mut scalar = Utf8Parser::new();
+            let mut actual = Grid::new(cols, 3, 4);
+            let mut expected = Grid::new(cols, 3, 4);
+            for chunk in [&input[..split], &input[split..]] {
+                let mut remaining = chunk;
+                while !remaining.is_empty() {
+                    actual.clear_dirty();
+                    expected.clear_dirty();
+                    let consumed = fast.feed_until_terminal_event(remaining, &mut actual);
+                    let mut scalar_consumed = 0;
+                    for &byte in remaining {
+                        scalar.feed_byte(byte, &mut expected);
+                        scalar_consumed += 1;
+                        if expected.has_pending_terminal_events() { break; }
+                    }
+                    assert_eq!(consumed, scalar_consumed,
+                        "cols={cols}, split={split}, input={input:?}");
+                    // Includes grapheme text, screen/history cells, cursor,
+                    // damage and ordered events with their cursor snapshots.
+                    assert_eq!(format!("{actual:?}"), format!("{expected:?}"),
+                        "cols={cols}, split={split}, input={input:?}");
+                    assert_eq!(fast.parser.state, scalar.parser.state);
+                    assert_eq!(fast.utf8_expected, scalar.utf8_expected);
+                    if fast.utf8_expected != 0 {
+                        assert_eq!(fast.utf8_len, scalar.utf8_len);
+                        assert_eq!(&fast.utf8_buf[..fast.utf8_len], &scalar.utf8_buf[..scalar.utf8_len]);
+                    }
+                    actual.drain_terminal_events();
+                    expected.drain_terminal_events();
+                    remaining = &remaining[consumed..];
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn complete_utf8_scalars_match_byte_decoding_at_every_split() {
+        let text = concat!(
+            "éλ日ह🙂e\u{301}👩🏽‍💻🇧🇷1️⃣",
+            "\u{80}\u{7ff}\u{800}\u{d7ff}\u{e000}\u{ffff}\u{10000}\u{10ffff}\r\n\x1b[6n",
+        );
+        for cols in [1, 2, 8] {
+            for mode in [b"".as_slice(), b"\x1b[4h", b"\x1b[?7l", b"\x1b(0", b"\x1b[?1049h"] {
+                let input = [mode, text.as_bytes()].concat();
+                assert_utf8_matches_byte_decoding_at_every_split(&input, cols);
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_and_partial_utf8_keep_byte_decoding_recovery() {
+        let malformed: &[&[u8]] = &[
+            b"\x80", b"\xbf", b"\xc0\xaf", b"\xc1\xbf", b"\xc2",
+            b"\xe0\x80\xaf", b"\xed\xa0\x80", b"\xe2", b"\xe2\x82",
+            b"\xf0\x80\x80\xaf", b"\xf4\x90\x80\x80", b"\xf5\x80\x80\x80",
+            b"\xf0", b"\xf0\x9f", b"\xf0\x9f\x99", b"\xf8\xff",
+            b"\xe2X", b"\xe2\x1b[6n", b"\xf0\x9f\xc3\xa9",
+        ];
+        for &prefix in malformed {
+            assert_utf8_matches_byte_decoding_at_every_split(prefix, 8);
+            let input = [prefix, "é日🙂\x1b[6nX".as_bytes()].concat();
+            assert_utf8_matches_byte_decoding_at_every_split(&input, 8);
+        }
+    }
+
+    #[test]
+    fn complete_utf8_preserves_control_strings_and_event_boundaries() {
+        let input = concat!(
+            "é\x1b]2;日本🙂\x1b\\λ\x1b[6n",
+            "\x1b_Ga=d,d=a;日本\x1b\\é",
+            "\x1bPq日本~\x1b\\λ",
+            "\x1bPq~\x1b\\🙂\x1b_Ga=d,d=c\x1b\\日\x1b[6n",
+        );
+        assert_utf8_matches_byte_decoding_at_every_split(input.as_bytes(), 8);
     }
 
     #[test]
