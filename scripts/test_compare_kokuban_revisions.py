@@ -155,6 +155,35 @@ class PairedRevisionTests(unittest.TestCase):
         self.assertIn("version", report["error"])
         self.assertIn("sha256", report["terminals"]["before"])
 
+    def test_identical_binaries_are_rejected_before_generating_workloads(self):
+        self.binaries["after"].write_bytes(self.binaries["before"].read_bytes())
+        with patch.dict(GLOBALS, payloads=lambda _count: self.fail("workloads must not be generated")):
+            status, report = self.run_comparison()
+        self.assertEqual(status, 1)
+        self.assertEqual(report["status"], "failed")
+        self.assertTrue(report["binaries_identical"])
+        self.assertFalse(report["allow_identical_binaries"])
+        self.assertIn("--allow-identical-binaries", report["error"])
+        self.assertFalse(self.calls)
+        self.assertEqual(report["payloads"], {})
+        self.assertIsNone(report["paired_summary"])
+        self.assertFalse(report["comparability"]["paired_inputs_validated"])
+
+    def test_identical_binaries_can_run_only_as_explicit_variability_control(self):
+        self.binaries["after"].write_bytes(self.binaries["before"].read_bytes())
+        self.args = RUNNER["parse_args"]([*self.argv, "--samples", "3", "--bytes", "1024",
+                                         "--allow-identical-binaries"])
+        status, report = self.run_comparison()
+        self.assertEqual(status, 0)
+        self.assertEqual(len(self.calls), 6)
+        self.assertTrue(report["binaries_identical"])
+        self.assertTrue(report["allow_identical_binaries"])
+        self.assertEqual(report["comparison_mode"], "same-executable-variability")
+        self.assertIn("Same-executable A/A variability", report["measurement_scope"])
+        self.assertIn("no revision speedup inference", report["comparability"]["scope"])
+        self.assertFalse(report["rendering_equivalence_verified"])
+        self.assertIsNone(report["comparability"]["ranking"])
+
     def test_existing_artifacts_are_not_overwritten(self):
         self.args.artifacts_dir.mkdir()
         preserved = self.args.artifacts_dir / "report.json"

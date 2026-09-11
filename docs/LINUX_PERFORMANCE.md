@@ -20,7 +20,9 @@ inclusive em caso de falha. Os payloads binários são omitidos do upload;
 seus tamanhos e hashes permitem verificar a reprodução pelo gerador do script.
 
 Em uma sessão Wayland Linux existente, o mesmo executor aceita dois binários
-previamente compilados. Os rótulos de revisão são declarados pelo operador:
+previamente compilados. Os rótulos de revisão são declarados pelo operador.
+Hashes de executáveis idênticos são rejeitados; `--allow-identical-binaries`
+permite um controle A/A explícito, identificado como medição de variabilidade:
 
 ```sh
 python3 scripts/compare-kokuban-revisions.py \

@@ -55,6 +55,8 @@ def parse_args(argv=None):
     parser.add_argument("--font-pixels", type=float, default=14.0)
     parser.add_argument("--scrollback-lines", type=int, default=10000)
     parser.add_argument("--environment-note", default="")
+    parser.add_argument("--allow-identical-binaries", action="store_true",
+                        help="allow an intentional A/A variability control using the same executable")
     args = parser.parse_args(argv)
     if args.samples < 3 or args.bytes < 1024:
         parser.error("at least 3 pairs and at least 1024 bytes are required")
@@ -77,6 +79,9 @@ def initial_report(args) -> dict:
         "font_pixels": args.font_pixels, "scrollback_lines": args.scrollback_lines,
         "timeout_seconds": args.timeout, "settle_seconds": args.settle_seconds,
         "environment_note": args.environment_note,
+        "binaries_identical": None,
+        "allow_identical_binaries": args.allow_identical_binaries,
+        "comparison_mode": "revision-comparison",
         "source_refs_verified_by_runner": False,
         "rendering_equivalence_verified": False,
         "measurement_scope": "PTY processing throughput and DSR RTT; no presentation latency or terminal ranking",
@@ -92,6 +97,8 @@ def summarize_pairs(report: dict, args) -> bool:
     summarize(report, args)
     comparability = report["comparability"]
     reasons = list(comparability["reasons"])
+    if report["binaries_identical"] and not args.allow_identical_binaries:
+        reasons.append("before/after executable hashes are identical")
     configs = set()
     for side, terminal in report["terminals"].items():
         for sample in terminal["samples"]:
@@ -115,6 +122,7 @@ def summarize_pairs(report: dict, args) -> bool:
     comparability["paired_inputs_validated"] = not reasons
     comparability["rendering_equivalence_verified"] = False
     comparability["ranking"] = None
+    comparability["scope"] = report["measurement_scope"]
     report["paired_summary"] = None
     if reasons:
         return False
@@ -164,6 +172,17 @@ def compare(args) -> int:
                 raise ValueError(f"could not read {side} binary version: {version}")
             terminal["version"] = version["output"]
             record(output, "report.json", report)
+        report["binaries_identical"] = (
+            report["terminals"]["before"]["sha256"] == report["terminals"]["after"]["sha256"])
+        if report["binaries_identical"]:
+            report["comparison_mode"] = "same-executable-variability"
+            report["measurement_scope"] = (
+                "Same-executable A/A variability in PTY processing and DSR RTT; "
+                "no revision speedup inference, presentation latency or terminal ranking")
+            if not args.allow_identical_binaries:
+                raise ValueError(
+                    "before/after executable hashes are identical; verify the build outputs or use "
+                    "--allow-identical-binaries for an intentional A/A variability control")
         for name, payload in payloads(args.bytes).items():
             path = output / (name + ".bin")
             path.write_bytes(payload)
