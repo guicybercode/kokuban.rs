@@ -78,7 +78,8 @@ pub struct GlyphAtlas {
     pub pixels: Vec<u8>,
     /// Straight RGBA pixels; monochrome glyphs use white RGB plus coverage.
     pub rgba_pixels: Vec<u8>,
-    text_glyphs: HashMap<(String, bool, bool), GlyphEntry>,
+    // Separate style maps allow borrowed text lookup without allocating a key.
+    text_glyphs: [HashMap<String, GlyphEntry>; 4],
     color_glyphs: HashSet<(u32, u32)>,
     rasterizer: TextRasterizer,
     pub glyphs: HashMap<GlyphKey, GlyphEntry>,
@@ -186,7 +187,7 @@ impl GlyphAtlas {
             height,
             pixels,
             rgba_pixels,
-            text_glyphs: HashMap::new(),
+            text_glyphs: std::array::from_fn(|_| HashMap::new()),
             color_glyphs: HashSet::new(),
             font: font.font.clone(),
             rasterizer: TextRasterizer::new(font),
@@ -236,7 +237,9 @@ impl GlyphAtlas {
         self.pixels.fill(0);
         self.pixels[0] = 255; // white pixel at (0,0)
         self.glyphs.clear();
-        self.text_glyphs.clear();
+        for glyphs in &mut self.text_glyphs {
+            glyphs.clear();
+        }
         self.color_glyphs.clear();
         self.rgba_pixels.fill(0);
         self.rgba_pixels[..4].fill(255);
@@ -287,12 +290,12 @@ impl GlyphAtlas {
         if let (Some(c), None) = (chars.next(), chars.next()) {
             return self.get_or_insert(GlyphKey { c, bold, italic });
         }
-        let key = (text.to_owned(), bold, italic);
-        if let Some(&entry) = self.text_glyphs.get(&key) {
+        let style = usize::from(bold) | (usize::from(italic) << 1);
+        if let Some(&entry) = self.text_glyphs[style].get(text) {
             return entry;
         }
         let entry = self.rasterize_text(text);
-        self.text_glyphs.insert(key, entry);
+        self.text_glyphs[style].insert(text.to_owned(), entry);
         entry
     }
 
@@ -623,7 +626,52 @@ mod tests {
         let cached = atlas.get_or_insert_text("e\u{301}", false, false);
         assert!(!atlas.dirty);
         assert_eq!((composed.atlas_x, composed.atlas_y), (cached.atlas_x, cached.atlas_y));
-        assert!(atlas.text_glyphs.contains_key(&("e\u{301}".to_owned(), false, false)));
+        assert!(atlas.text_glyphs[0].contains_key("e\u{301}"));
+    }
+
+    #[test]
+    fn compound_cache_preserves_each_style_and_clears_all_styles_on_resize() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        let text = "e\u{301}";
+        let styles = [(false, false), (true, false), (false, true), (true, true)];
+        let entries: Vec<_> = styles.iter().map(|&(bold, italic)| {
+            atlas.get_or_insert_text(text, bold, italic)
+        }).collect();
+        assert!(atlas.text_glyphs.iter().all(|glyphs| glyphs.len() == 1));
+        let original_position = (atlas.cursor_x, atlas.cursor_y, atlas.row_height);
+        atlas.dirty = false;
+        // Borrow equal text stored separately from the cached keys.
+        let borrowed_text = String::from(text);
+        for (&(bold, italic), expected) in styles.iter().zip(&entries) {
+            let cached = atlas.get_or_insert_text(&borrowed_text, bold, italic);
+            assert_eq!(
+                (cached.atlas_x, cached.atlas_y, cached.pixel_w, cached.pixel_h,
+                    cached.bearing_x, cached.bearing_y),
+                (expected.atlas_x, expected.atlas_y, expected.pixel_w, expected.pixel_h,
+                    expected.bearing_x, expected.bearing_y),
+            );
+        }
+        assert!(!atlas.dirty);
+        assert_eq!((atlas.cursor_x, atlas.cursor_y, atlas.row_height), original_position);
+
+        atlas.clear_and_resize(24.0).unwrap();
+        assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
+        for (bold, italic) in styles {
+            atlas.dirty = false;
+            let glyph = atlas.get_or_insert_text(text, bold, italic);
+            assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0);
+            assert!(atlas.dirty, "resizing must invalidate every style");
+        }
+    }
+
+    #[test]
+    fn scalar_text_keeps_using_the_scalar_cache_for_each_style() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+            atlas.get_or_insert_text("é", bold, italic);
+            assert!(atlas.glyphs.contains_key(&GlyphKey { c: 'é', bold, italic }));
+        }
+        assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
     }
 
     #[test]
@@ -661,7 +709,7 @@ mod tests {
             assert!(colorful, "emoji color was reduced to a silhouette: {text}");
         }
         atlas.clear_and_resize(24.0).unwrap();
-        assert!(atlas.text_glyphs.is_empty());
+        assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
         let glyph = atlas.get_or_insert_text("👩🏽\u{200d}💻", false, false);
         assert!(atlas.is_color(glyph));
     }
