@@ -1,0 +1,182 @@
+{
+  "source_revision": "34ab430682a81ec0a91ee3bae740daeb91b2fefc",
+  "local_macos": {
+    "check": {
+      "command_reported_by_operator": "cargo check --release --locked --all-targets",
+      "command_line_embedded_in_log": false,
+      "source_path": "/tmp/kokuban-append-validation/check.log",
+      "full_log_bytes": 10224,
+      "full_log_sha256": "a83edf387d03f55a714206e27d9f96785f2df550e9f4b92bd1a2466d33ce80c9",
+      "full_log_retained": false,
+      "selected_lines": [
+        {
+          "line": 324,
+          "text": "warning: `kokuban` (bin \"kokuban\") generated 34 warnings"
+        },
+        {
+          "line": 336,
+          "text": "warning: `kokuban` (bin \"kokuban\" test) generated 7 warnings (6 duplicates)"
+        },
+        {
+          "line": 337,
+          "text": "    Finished `release` profile [optimized] target(s) in 1.51s"
+        }
+      ]
+    },
+    "test": {
+      "command_reported_by_operator": "cargo test --release --locked --all-targets",
+      "command_line_embedded_in_log": false,
+      "source_path": "/tmp/kokuban-append-validation/test.log",
+      "full_log_bytes": 73743,
+      "full_log_sha256": "d2f13b6ddf22a0c719907436eacbbfd84a388efe85a46e960551b8e21988494e",
+      "full_log_retained": false,
+      "selected_lines": [
+        {
+          "line": 63,
+          "text": "warning: `kokuban` (bin \"kokuban\" test) generated 7 warnings"
+        },
+        {
+          "line": 64,
+          "text": "    Finished `release` profile [optimized] target(s) in 6.52s"
+        },
+        {
+          "line": 651,
+          "text": "test result: ok. 582 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s"
+        },
+        {
+          "line": 657,
+          "text": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        },
+        {
+          "line": 882,
+          "text": "test result: ok. 219 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s"
+        }
+      ]
+    },
+    "clippy": {
+      "command_reported_by_operator": "cargo clippy --release --locked --all-targets",
+      "command_line_embedded_in_log": false,
+      "source_path": "/tmp/kokuban-append-validation/clippy.log",
+      "full_log_bytes": 23426,
+      "full_log_sha256": "c19e590e23a04c02d778ca80cb090c3c49c399a47ae85136d38862c128091e32",
+      "full_log_retained": false,
+      "selected_lines": [
+        {
+          "line": 11,
+          "text": "warning: `kokuban` (example \"terminal-throughput\") generated 1 warning (run `cargo clippy --fix --example \"terminal-throughput\" -p kokuban` to apply 1 suggestion)"
+        },
+        {
+          "line": 593,
+          "text": "warning: `kokuban` (bin \"kokuban\") generated 54 warnings (run `cargo clippy --fix --bin \"kokuban\" -p kokuban` to apply 10 suggestions)"
+        },
+        {
+          "line": 645,
+          "text": "warning: `kokuban` (bin \"kokuban\" test) generated 30 warnings (26 duplicates)"
+        },
+        {
+          "line": 646,
+          "text": "    Finished `release` profile [optimized] target(s) in 2.20s"
+        }
+      ]
+    },
+    "tests": {
+      "main_passed": 582,
+      "example_passed": 219,
+      "total_passed": 801,
+      "failed": 0,
+      "ignored": 0
+    }
+  },
+  "ci": {
+    "run_id": 34623498103,
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34623498103",
+    "source_revision": "34ab430682a81ec0a91ee3bae740daeb91b2fefc",
+    "conclusion": "success",
+    "metadata_file": "source-ci-run.json",
+    "full_log_bytes": 806305,
+    "full_log_sha256": "7781e2906884c12c3b73fd03c4d28a17030e057638a95324ccd65f2947508d81",
+    "full_log_retained": false,
+    "selected_lines": [
+      {
+        "line": 140,
+        "text": "macOS\tCheck all targets\t2026-09-11T16:42:18.3252630Z ##[group]Run cargo check --locked --all-targets"
+      },
+      {
+        "line": 673,
+        "text": "macOS\tTest all targets\t2026-09-11T16:42:47.6474320Z ##[group]Run cargo test --locked --all-targets"
+      },
+      {
+        "line": 1410,
+        "text": "macOS\tTest all targets\t2026-09-11T16:43:20.4120840Z test result: ok. 582 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.48s"
+      },
+      {
+        "line": 1416,
+        "text": "macOS\tTest all targets\t2026-09-11T16:43:20.4874320Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 1641,
+        "text": "macOS\tTest all targets\t2026-09-11T16:43:20.9698700Z test result: ok. 219 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s"
+      },
+      {
+        "line": 1649,
+        "text": "macOS\tTest benchmark reports and process cleanup\t2026-09-11T16:43:21.7514820Z Ran 23 tests in 0.272s"
+      },
+      {
+        "line": 1652,
+        "text": "macOS\tRun Clippy\t2026-09-11T16:43:21.7681350Z ##[group]Run cargo clippy --locked --all-targets"
+      },
+      {
+        "line": 3398,
+        "text": "Linux graphical shell\tCheck all targets\t2026-09-11T16:42:48.2758765Z ##[group]Run cargo check --locked --all-targets"
+      },
+      {
+        "line": 4084,
+        "text": "Linux graphical shell\tTest all targets\t2026-09-11T16:43:17.9482309Z ##[group]Run cargo test --locked --all-targets"
+      },
+      {
+        "line": 5063,
+        "text": "Linux graphical shell\tTest all targets\t2026-09-11T16:44:05.7162349Z test result: ok. 680 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 4.43s"
+      },
+      {
+        "line": 5069,
+        "text": "Linux graphical shell\tTest all targets\t2026-09-11T16:44:05.7203794Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 5294,
+        "text": "Linux graphical shell\tTest all targets\t2026-09-11T16:44:06.5926536Z test result: ok. 219 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s"
+      },
+      {
+        "line": 5302,
+        "text": "Linux graphical shell\tTest benchmark reports and process cleanup\t2026-09-11T16:44:07.1730602Z Ran 23 tests in 0.358s"
+      },
+      {
+        "line": 5305,
+        "text": "Linux graphical shell\tRun Clippy\t2026-09-11T16:44:07.1932190Z ##[group]Run cargo clippy --locked --all-targets"
+      }
+    ],
+    "tests": {
+      "macOS": {
+        "main_passed": 582,
+        "example_passed": 219,
+        "total_passed": 801,
+        "ignored": 0,
+        "harness_passed": 23
+      },
+      "Linux graphical shell": {
+        "main_passed": 680,
+        "example_passed": 219,
+        "total_passed": 899,
+        "ignored": 1,
+        "harness_passed": 23
+      }
+    },
+    "linux_smoke_steps": "All applicable Linux steps succeeded; full step names and outcomes retained in source-ci-run.json."
+  },
+  "tests_added": [
+    "appended_graphemes_preserve_multibyte_scalars_at_stack_boundaries",
+    "appended_graphemes_retain_large_clusters_without_truncation",
+    "fragmented_grapheme_growth_preserves_snapshots_style_and_pending_wrap"
+  ],
+  "warning_note": "Successful check and Clippy commands emitted warnings; no warning-free claim. Local command lines are operator-reported, not embedded in logs.",
+  "performance_scope": "Local correctness validation only; local macOS diagnostic throughput is not incorporated into the Linux measurements."
+}

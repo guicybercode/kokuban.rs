@@ -62,6 +62,42 @@ verificam comportamento; o desempenho é avaliado pelas medições acima.
 O escopo continua sendo
 processamento e DSR, sem comparação visual ou medição em Omarchy físico.
 
+## Grafemas curtos na pilha: ganho Unicode e perda ANSI em 2026-09-11
+
+A revisão `34ab430` usa um buffer local de 64 bytes ao estender grafemas
+curtos, evitando uma alocação temporária antes de criar o texto compartilhado.
+Grafemas maiores mantêm o caminho com `String`, sem truncamento. No
+[run pareado `34623517573`](https://github.com/guicybercode/kokuban.rs/actions/runs/34623517573),
+contra `c6883b0`, **Unicode ganhou 3,29%, enquanto ANSI perdeu 1,32%**:
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas |
+| --- | ---: | ---: | ---: |
+| ASCII | 74,744 | 75,467 | +0,97% |
+| ANSI | 68,955 | 68,047 | −1,32% |
+| Unicode | 22,817 | 23,568 | +3,29% |
+| Linhas curtas | 31,301 | 31,254 | −0,15% |
+
+Unicode melhorou nos cinco pares, passando de 22,663–23,025 para
+23,424–23,660 MiB/s. ANSI piorou nos cinco pares. Linhas curtas teve uma
+perda entre medianas, mas a mediana das razões por par foi +0,42%; os dois
+cálculos permanecem separados no
+[pacote auditado](linux-evidence/2026-09-11-stack-graphemes/README.md).
+
+O ensaio usou Ubuntu 24.04, AMD EPYC 7763, afinidade na CPU 0, Rust 1.94.1,
+Weston headless com Pixman e DejaVu Sans Mono 14. Foram cinco pares de
+aproximadamente 32 MiB por carga, tela alternativa sem histórico, com
+80×24 células e 720×408 pixels em todas as amostras. A auditoria conferiu
+10 processos, 40 cargas, 300 RTTs e os builds das revisões exatas em
+diretórios separados. Os hashes de executáveis foram registrados pelo CI;
+seus bytes não foram retidos para rehash independente.
+
+Os testes incluem os limites de 63/64/65 bytes, grafemas longos, entrada
+fragmentada, estilos, snapshots e wrap pendente. `check`, testes e Clippy
+passaram localmente e no [CI da mesma revisão](https://github.com/guicybercode/kokuban.rs/actions/runs/34623498103):
+801 testes Rust no macOS e 899 no Linux, com um ignorado no Linux e avisos
+registrados. O resultado de desempenho é misto; mede processamento PTY/DSR,
+sem demonstrar ganho geral, equivalência visual ou desempenho em Omarchy físico.
+
 ## Reuso de larguras Unicode: resultados mistos em 2026-09-11
 
 A revisão `c6883b0` reutiliza larguras já calculadas ao escrever escalares e

@@ -1,0 +1,251 @@
+{
+  "schema": 1,
+  "kind": "stack-grapheme-append-paired-evidence",
+  "date": "2026-09-11",
+  "conclusion": "Unicode improves 3.29% in the alternate-screen run, with all five pairs faster; ANSI declines 1.32%, with all five pairs slower. ASCII improves 0.97%; short-line median declines 0.15%. This is a mixed result, not an overall performance gain.",
+  "source_comparison": {
+    "before": "c6883b0db2f51a9d237e4eee200f71b64ab656b5",
+    "after": "34ab430682a81ec0a91ee3bae740daeb91b2fefc",
+    "harness": "34ab430682a81ec0a91ee3bae740daeb91b2fefc",
+    "files": [
+      "src/grid/mod.rs"
+    ],
+    "commits": 1,
+    "api_url": "https://api.github.com/repos/guicybercode/kokuban.rs/compare/c6883b0db2f51a9d237e4eee200f71b64ab656b5...34ab430682a81ec0a91ee3bae740daeb91b2fefc",
+    "api_response_bytes": 18976,
+    "api_response_sha256": "7d01fdaac9e9c6e5195538e44e14c989739ee8bc84e92ef08b0b49593f249e79",
+    "api_response_retained": false
+  },
+  "profiles": {
+    "alternate": {
+      "audit": "alternate/audit.json",
+      "raw_report": "ci-alternate-report.json",
+      "raw_report_sha256": "47cc68706308eecaccc16b9fbf54d5f3827f2e30c722e7035ab304a19c164340",
+      "raw_report_byte_identical_to_download": true,
+      "measurement_run_id": 34623517573,
+      "measurement_run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34623517573",
+      "artifact": {
+        "id": 10273730612,
+        "name": "linux-paired-revision-measurements",
+        "zip_bytes_recorded_ci": 97814,
+        "zip_sha256_recorded_ci": "sha256:589147b5769d613d1b8eeeb6b7cc1eecd7b52c7708a3b2cbdd9adb4e7843fd44",
+        "zip_independently_rehashed": false,
+        "api_metadata_matches_log": true
+      },
+      "cpu_model": "AMD EPYC 7763 64-Core Processor",
+      "throughput": {
+        "ascii": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 74.74358236285104,
+              "min": 74.13779913283157,
+              "max": 76.50155112618742,
+              "median_absolute_deviation": 0.4939106393449748,
+              "samples": [
+                74.13779913283157,
+                75.23749300219602,
+                76.50155112618742,
+                74.59408310083418,
+                74.74358236285104
+              ]
+            },
+            "after": {
+              "count": 5,
+              "median": 75.46650603062189,
+              "min": 74.84698220402328,
+              "max": 76.40372552529541,
+              "median_absolute_deviation": 0.6195238265986092,
+              "samples": [
+                74.84698220402328,
+                76.40372552529541,
+                75.00798949761527,
+                75.46650603062189,
+                76.10267316008374
+              ]
+            }
+          },
+          "ratio_of_medians_change_percent": 0.9672050026466872,
+          "median_of_pairwise_throughput_change_percent": 1.1695604979933716,
+          "pairs_slower_after": 1,
+          "pairwise_throughput_change_percent": [
+            0.9565742165087432,
+            1.5500682925005949,
+            -1.9523285561995452,
+            1.1695604979933716,
+            1.8183377813426604
+          ],
+          "min_max_intervals_overlap": true
+        },
+        "ansi": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 68.95460038788087,
+              "min": 67.18041886686191,
+              "max": 69.02520594730673,
+              "median_absolute_deviation": 0.07060555942585722,
+              "samples": [
+                67.18041886686191,
+                69.02520594730673,
+                68.95460038788087,
+                68.97638101485059,
+                68.78523890106199
+              ]
+            },
+            "after": {
+              "count": 5,
+              "median": 68.04679638421796,
+              "min": 66.68088329734772,
+              "max": 68.41567453509882,
+              "median_absolute_deviation": 0.15984607544723417,
+              "samples": [
+                66.68088329734772,
+                68.05242043582662,
+                67.88695030877072,
+                68.41567453509882,
+                68.04679638421796
+              ]
+            }
+          },
+          "ratio_of_medians_change_percent": -1.3165242036881852,
+          "median_of_pairwise_throughput_change_percent": -1.0735479423225947,
+          "pairs_slower_after": 5,
+          "pairwise_throughput_change_percent": [
+            -0.7435731689976133,
+            -1.4093192452373504,
+            -1.548337707860603,
+            -0.8128963443748249,
+            -1.0735479423225947
+          ],
+          "min_max_intervals_overlap": true
+        },
+        "unicode": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 22.81728320696001,
+              "min": 22.662869414115775,
+              "max": 23.025247319595632,
+              "median_absolute_deviation": 0.06486474740947301,
+              "samples": [
+                22.752418459550537,
+                22.81728320696001,
+                23.025247319595632,
+                22.662869414115775,
+                22.830206968175062
+              ]
+            },
+            "after": {
+              "count": 5,
+              "median": 23.568336069984284,
+              "min": 23.424012375332335,
+              "max": 23.659977964128334,
+              "median_absolute_deviation": 0.07824161375002348,
+              "samples": [
+                23.49009445623426,
+                23.579403163916105,
+                23.568336069984284,
+                23.424012375332335,
+                23.659977964128334
+              ]
+            }
+          },
+          "ratio_of_medians_change_percent": 3.2915963579536855,
+          "median_of_pairwise_throughput_change_percent": 3.3400994765390157,
+          "pairs_slower_after": 0,
+          "pairwise_throughput_change_percent": [
+            3.2421871898812515,
+            3.3400994765390157,
+            2.3586663059486757,
+            3.3585462957416823,
+            3.634531202936353
+          ],
+          "min_max_intervals_overlap": false
+        },
+        "short_lines": {
+          "mib_per_second": {
+            "before": {
+              "count": 5,
+              "median": 31.301461561139064,
+              "min": 30.924102101612323,
+              "max": 31.43625064666417,
+              "median_absolute_deviation": 0.1347890855251066,
+              "samples": [
+                31.12388518798353,
+                31.344184903005253,
+                31.43625064666417,
+                31.301461561139064,
+                30.924102101612323
+              ]
+            },
+            "after": {
+              "count": 5,
+              "median": 31.254092820294478,
+              "min": 31.18959865717258,
+              "max": 31.60870604989044,
+              "median_absolute_deviation": 0.06449416312189626,
+              "samples": [
+                31.254092820294478,
+                31.18959865717258,
+                31.45343353942793,
+                31.60870604989044,
+                31.22550243205165
+              ]
+            }
+          },
+          "ratio_of_medians_change_percent": -0.15133076374744814,
+          "median_of_pairwise_throughput_change_percent": 0.41835275873984834,
+          "pairs_slower_after": 1,
+          "pairwise_throughput_change_percent": [
+            0.41835275873984834,
+            -0.49318955433372835,
+            0.05465948518126318,
+            0.9815659506865471,
+            0.9746453735308691
+          ],
+          "min_max_intervals_overlap": true
+        }
+      },
+      "protocol_rtt_seconds": {
+        "before": {
+          "count": 150,
+          "median": 5.473200002370504e-05,
+          "min": 4.1017000000920234e-05,
+          "max": 0.00014275699999188873,
+          "median_absolute_deviation": 5.109499966238218e-06
+        },
+        "after": {
+          "count": 150,
+          "median": 4.9987999972245234e-05,
+          "min": 4.6145999988311814e-05,
+          "max": 0.0001350730000240219,
+          "median_absolute_deviation": 2.4690000088867237e-06
+        }
+      }
+    }
+  },
+  "validation": "test-summary.json",
+  "source_ci_metadata": "source-ci-run.json",
+  "retained_files_checksum_inventory": "evidence-sha256.txt",
+  "audit_implementation": {
+    "path_in_operator_workspace": "/tmp/kokuban-append-profile-audit.py",
+    "sha256": "557f034808d2a782631165ea5a0b5d46ceb5517cdfd0a44c8a24e7db2a2113d5",
+    "retained": false,
+    "notes": "Audits downloaded data only; no application build or timing performed while preparing the evidence."
+  },
+  "limitations": [
+    "Only alternate screen was measured in this package; no primary-screen inference.",
+    "DSR processing throughput and protocol RTT do not establish input-to-photon latency or rendering equivalence.",
+    "Headless Weston/Pixman CI is not a physical Omarchy/Hyprland/GPU session and does not rank other terminals.",
+    "Five alternating pairs describe this run; overlapping ranges alone neither establish equivalence nor prove measurement noise.",
+    "Absolute rates should not be compared across runs on different CPUs or with different environments.",
+    "Per-process CPU counters are coarse; equal medians do not establish equal instruction cost.",
+    "Binary and ZIP hashes are CI observations; binary and ZIP bytes were not independently rehashed or retained.",
+    "The 87 original artifact files are inventoried in alternate/audit.json; selected files and raw report are retained, not all original sample files.",
+    "Payload files were excluded from the artifact; sizes and SHA-256 values were regenerated using pinned generator input.",
+    "Shared Cargo inputs, workflow and cargo trees are referenced only after byte-for-byte comparison.",
+    "Harness CPU affinity was observed and inherited; child affinity was not read back for each terminal."
+  ],
+  "rendering_equivalence_verified": false
+}
