@@ -72,6 +72,40 @@ The current [Omarchy terminal selector](https://github.com/basecamp/omarchy/blob
 accepts Alacritty, Foot, Ghostty, and Kitty. Register Kokuban through the preference
 file above. Selecting another terminal from Omarchy's menu can replace that file.
 
+## Join Omarchy's terminal window rules
+
+The [terminal rules in Omarchy `f4378f0`](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/default/hypr/apps/terminals.conf),
+inspected on 2026-09-11, do not include Kokuban's normal window class. Add this
+block once to your own `~/.config/hypr/looknfeel.conf`:
+
+```ini
+# Kokuban terminal integration
+windowrule = tag +terminal, match:class ^(io[.]github[.]guicybercode[.]kokuban)$
+```
+
+Omarchy [loads this user file after its defaults](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/config/hypr/hyprland.conf).
+The rule uses the `.conf` syntax of that Omarchy revision and
+[Hyprland 0.54](https://wiki.hypr.land/0.54.0/Configuring/Window-Rules/).
+Check the configuration format in your installation before applying it to a
+newer Hyprland release. Keep the rule in the user file so Omarchy updates can
+replace their own defaults independently.
+
+Reload, check for configuration errors, and open a normal Kokuban window:
+
+```sh
+hyprctl reload
+hyprctl configerrors
+hyprctl clients -j | jq '.[] | select(.class == "io.github.guicybercode.kokuban") |
+  {class, initialClass, tags, xwayland}'
+```
+
+Confirm the terminal tag appears (dynamic tags may be displayed as `terminal*`),
+`xwayland` is `false`, and the window has the expected terminal appearance.
+Custom `org.omarchy.<command>` IDs continue to use Omarchy's corresponding TUI
+rules. To undo this addition, remove only the block above and reload Hyprland.
+These checks require a running Omarchy/Hyprland session; they have not yet been
+executed on a physical Omarchy machine for this project.
+
 ## Use the existing Omarchy bindings
 
 Omarchy's [terminal binding](https://github.com/basecamp/omarchy/blob/master/config/hypr/bindings.conf)
