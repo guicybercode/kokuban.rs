@@ -1,0 +1,591 @@
+{
+  "34618962851": {
+    "conclusion": "success",
+    "createdAt": "2026-09-11T15:55:15Z",
+    "databaseId": 34618962851,
+    "headSha": "5d1712ec22ed26d701002a519dd974f2255b4d81",
+    "jobs": [
+      {
+        "completedAt": "2026-09-11T16:00:08Z",
+        "conclusion": "success",
+        "databaseId": 103327838671,
+        "name": "measure",
+        "startedAt": "2026-09-11T15:55:19Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-11T15:55:21Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-11T15:55:20Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:22Z",
+            "conclusion": "success",
+            "name": "Check out measurement harness and revision history",
+            "number": 2,
+            "startedAt": "2026-09-11T15:55:21Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:49Z",
+            "conclusion": "success",
+            "name": "Install Rust and native Wayland dependencies",
+            "number": 3,
+            "startedAt": "2026-09-11T15:55:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:49Z",
+            "conclusion": "success",
+            "name": "Validate measurement harness",
+            "number": 4,
+            "startedAt": "2026-09-11T15:55:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:58:38Z",
+            "conclusion": "success",
+            "name": "Build both exact revisions sequentially with the same toolchain",
+            "number": 5,
+            "startedAt": "2026-09-11T15:55:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:04Z",
+            "conclusion": "success",
+            "name": "Measure five alternating pairs in one native Wayland session",
+            "number": 6,
+            "startedAt": "2026-09-11T15:58:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:05Z",
+            "conclusion": "success",
+            "name": "Upload reports, configurations, logs and build provenance",
+            "number": 7,
+            "startedAt": "2026-09-11T16:00:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:06Z",
+            "conclusion": "success",
+            "name": "Post Check out measurement harness and revision history",
+            "number": 14,
+            "startedAt": "2026-09-11T16:00:05Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:06Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 15,
+            "startedAt": "2026-09-11T16:00:06Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618962851/job/103327838671"
+      }
+    ],
+    "status": "completed",
+    "updatedAt": "2026-09-11T16:00:08Z",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618962851"
+  },
+  "34618965511": {
+    "conclusion": "success",
+    "createdAt": "2026-09-11T15:55:17Z",
+    "databaseId": 34618965511,
+    "headSha": "5d1712ec22ed26d701002a519dd974f2255b4d81",
+    "jobs": [
+      {
+        "completedAt": "2026-09-11T16:06:36Z",
+        "conclusion": "success",
+        "databaseId": 103329391348,
+        "name": "measure",
+        "startedAt": "2026-09-11T16:00:11Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-11T16:00:13Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-11T16:00:12Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:14Z",
+            "conclusion": "success",
+            "name": "Check out measurement harness and revision history",
+            "number": 2,
+            "startedAt": "2026-09-11T16:00:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:48Z",
+            "conclusion": "success",
+            "name": "Install Rust and native Wayland dependencies",
+            "number": 3,
+            "startedAt": "2026-09-11T16:00:14Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:00:49Z",
+            "conclusion": "success",
+            "name": "Validate measurement harness",
+            "number": 4,
+            "startedAt": "2026-09-11T16:00:48Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:03:49Z",
+            "conclusion": "success",
+            "name": "Build both exact revisions sequentially with the same toolchain",
+            "number": 5,
+            "startedAt": "2026-09-11T16:00:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:06:34Z",
+            "conclusion": "success",
+            "name": "Measure five alternating pairs in one native Wayland session",
+            "number": 6,
+            "startedAt": "2026-09-11T16:03:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:06:35Z",
+            "conclusion": "success",
+            "name": "Upload reports, configurations, logs and build provenance",
+            "number": 7,
+            "startedAt": "2026-09-11T16:06:34Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:06:35Z",
+            "conclusion": "success",
+            "name": "Post Check out measurement harness and revision history",
+            "number": 14,
+            "startedAt": "2026-09-11T16:06:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T16:06:35Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 15,
+            "startedAt": "2026-09-11T16:06:35Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618965511/job/103329391348"
+      }
+    ],
+    "status": "completed",
+    "updatedAt": "2026-09-11T16:06:37Z",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618965511"
+  },
+  "34618903077": {
+    "conclusion": "success",
+    "createdAt": "2026-09-11T15:54:38Z",
+    "databaseId": 34618903077,
+    "headSha": "5d1712ec22ed26d701002a519dd974f2255b4d81",
+    "jobs": [
+      {
+        "completedAt": "2026-09-11T15:57:29Z",
+        "conclusion": "success",
+        "databaseId": 103327635211,
+        "name": "Linux graphical shell",
+        "startedAt": "2026-09-11T15:54:41Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-11T15:54:43Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-11T15:54:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:54:44Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-09-11T15:54:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:54:52Z",
+            "conclusion": "success",
+            "name": "Install Rust 1.94.1",
+            "number": 3,
+            "startedAt": "2026-09-11T15:54:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:12Z",
+            "conclusion": "success",
+            "name": "Install Linux display and font dependencies",
+            "number": 4,
+            "startedAt": "2026-09-11T15:54:52Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:42Z",
+            "conclusion": "success",
+            "name": "Check all targets",
+            "number": 5,
+            "startedAt": "2026-09-11T15:55:12Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:32Z",
+            "conclusion": "success",
+            "name": "Test all targets",
+            "number": 6,
+            "startedAt": "2026-09-11T15:55:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:33Z",
+            "conclusion": "success",
+            "name": "Test benchmark reports and process cleanup",
+            "number": 7,
+            "startedAt": "2026-09-11T15:56:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:40Z",
+            "conclusion": "success",
+            "name": "Run Clippy",
+            "number": 8,
+            "startedAt": "2026-09-11T15:56:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:40Z",
+            "conclusion": "skipped",
+            "name": "Verify macOS dependency isolation",
+            "number": 9,
+            "startedAt": "2026-09-11T15:56:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:40Z",
+            "conclusion": "success",
+            "name": "Verify Linux dependency isolation",
+            "number": 10,
+            "startedAt": "2026-09-11T15:56:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:46Z",
+            "conclusion": "success",
+            "name": "Verify clean Linux display failure",
+            "number": 11,
+            "startedAt": "2026-09-11T15:56:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:49Z",
+            "conclusion": "success",
+            "name": "Smoke test the first Linux frame under Xvfb",
+            "number": 12,
+            "startedAt": "2026-09-11T15:56:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:49Z",
+            "conclusion": "success",
+            "name": "Verify the embedded Linux application icon",
+            "number": 13,
+            "startedAt": "2026-09-11T15:56:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:50Z",
+            "conclusion": "success",
+            "name": "Verify Omarchy launch arguments under X11",
+            "number": 14,
+            "startedAt": "2026-09-11T15:56:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:51Z",
+            "conclusion": "success",
+            "name": "Verify native Wayland frame and command launch",
+            "number": 15,
+            "startedAt": "2026-09-11T15:56:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:08Z",
+            "conclusion": "success",
+            "name": "Verify presented Linux images and frame replacement",
+            "number": 16,
+            "startedAt": "2026-09-11T15:56:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:13Z",
+            "conclusion": "success",
+            "name": "Verify Linux clipboard and mouse selection",
+            "number": 17,
+            "startedAt": "2026-09-11T15:57:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:23Z",
+            "conclusion": "success",
+            "name": "Verify real mpv Kitty video and pause under Xvfb",
+            "number": 18,
+            "startedAt": "2026-09-11T15:57:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:24Z",
+            "conclusion": "success",
+            "name": "Upload Linux video smoke evidence",
+            "number": 19,
+            "startedAt": "2026-09-11T15:57:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:27Z",
+            "conclusion": "success",
+            "name": "Verify Linux SSH and interactive development applications",
+            "number": 20,
+            "startedAt": "2026-09-11T15:57:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:28Z",
+            "conclusion": "success",
+            "name": "Upload Linux application smoke evidence",
+            "number": 21,
+            "startedAt": "2026-09-11T15:57:27Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:28Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 42,
+            "startedAt": "2026-09-11T15:57:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:28Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 43,
+            "startedAt": "2026-09-11T15:57:28Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618903077/job/103327635211"
+      },
+      {
+        "completedAt": "2026-09-11T15:57:48Z",
+        "conclusion": "success",
+        "databaseId": 103327635519,
+        "name": "macOS",
+        "startedAt": "2026-09-11T15:54:50Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-09-11T15:54:51Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-09-11T15:54:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:54:54Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-09-11T15:54:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:03Z",
+            "conclusion": "success",
+            "name": "Install Rust 1.94.1",
+            "number": 3,
+            "startedAt": "2026-09-11T15:54:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:55:03Z",
+            "conclusion": "skipped",
+            "name": "Install Linux display and font dependencies",
+            "number": 4,
+            "startedAt": "2026-09-11T15:55:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:56:06Z",
+            "conclusion": "success",
+            "name": "Check all targets",
+            "number": 5,
+            "startedAt": "2026-09-11T15:55:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:32Z",
+            "conclusion": "success",
+            "name": "Test all targets",
+            "number": 6,
+            "startedAt": "2026-09-11T15:56:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:33Z",
+            "conclusion": "success",
+            "name": "Test benchmark reports and process cleanup",
+            "number": 7,
+            "startedAt": "2026-09-11T15:57:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:41Z",
+            "conclusion": "success",
+            "name": "Run Clippy",
+            "number": 8,
+            "startedAt": "2026-09-11T15:57:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "success",
+            "name": "Verify macOS dependency isolation",
+            "number": 9,
+            "startedAt": "2026-09-11T15:57:41Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify Linux dependency isolation",
+            "number": 10,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify clean Linux display failure",
+            "number": 11,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Smoke test the first Linux frame under Xvfb",
+            "number": 12,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify the embedded Linux application icon",
+            "number": 13,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify Omarchy launch arguments under X11",
+            "number": 14,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify native Wayland frame and command launch",
+            "number": 15,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify presented Linux images and frame replacement",
+            "number": 16,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify Linux clipboard and mouse selection",
+            "number": 17,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify real mpv Kitty video and pause under Xvfb",
+            "number": 18,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Upload Linux video smoke evidence",
+            "number": 19,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Verify Linux SSH and interactive development applications",
+            "number": 20,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:42Z",
+            "conclusion": "skipped",
+            "name": "Upload Linux application smoke evidence",
+            "number": 21,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:43Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 42,
+            "startedAt": "2026-09-11T15:57:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-09-11T15:57:46Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 43,
+            "startedAt": "2026-09-11T15:57:43Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618903077/job/103327635519"
+      }
+    ],
+    "status": "completed",
+    "updatedAt": "2026-09-11T15:57:49Z",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34618903077"
+  }
+}

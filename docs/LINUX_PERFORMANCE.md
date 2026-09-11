@@ -31,6 +31,79 @@ python3 scripts/compare-kokuban-revisions.py \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
 
+## Linhas circulares: tela alternativa e histórico em 2026-09-11
+
+A revisão `5d1712e` mantém uma origem circular comum aos endereços das linhas,
+aos sufixos uniformes e aos metadados. A rolagem da tela inteira atualiza essa
+origem sem mover os três vetores; rolagens parciais normalizam a ordem antes
+de alterar a região. O processamento continua limpando as linhas expostas.
+Na comparação com `4614d9e`, **linhas curtas ganharam 38,82% na tela
+alternativa e 1,50% na tela primária com histórico**. Unicode variou −0,39%
+e +0,48%, respectivamente; o resultado depende da carga e do cenário.
+
+Cada cenário executou cinco pares AB/BA de aproximadamente 32 MiB por carga,
+no mesmo runner dentro de cada execução: Ubuntu 24.04 x86_64, AMD EPYC 7763,
+afinidade na CPU 0, Rust 1.94.1 release, Weston 13 headless com Pixman e
+DejaVu Sans Mono 14. Os dois runs passaram e foram auditados separadamente.
+As vinte amostras mantiveram 80×24 células e 720×408 pixels.
+
+Na [tela alternativa, sem histórico](https://github.com/guicybercode/kokuban.rs/actions/runs/34618962851):
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas |
+| --- | ---: | ---: | ---: |
+| ASCII | 73,402 | 76,670 | +4,45% |
+| ANSI | 63,361 | 66,327 | +4,68% |
+| Unicode | 22,680 | 22,591 | −0,39% |
+| Linhas curtas | 21,596 | 29,979 | +38,82% |
+
+Linhas curtas melhoraram nos cinco pares, com intervalos de
+21,183–21,645 MiB/s antes e 29,698–30,163 MiB/s depois. Unicode caiu em
+quatro pares, com intervalos sobrepostos. O
+[relatório alternativo bruto](linux-evidence/2026-09-11-circular-rows/ci-alternate-report.json)
+preserva a variação de todas as amostras.
+
+Na [tela primária, com histórico de 10.000 linhas](https://github.com/guicybercode/kokuban.rs/actions/runs/34618965511):
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas |
+| --- | ---: | ---: | ---: |
+| ASCII | 52,518 | 53,768 | +2,38% |
+| ANSI | 46,119 | 46,490 | +0,81% |
+| Unicode | 19,500 | 19,594 | +0,48% |
+| Linhas curtas | 7,001 | 7,107 | +1,50% |
+
+Com histórico, todas as cargas tiveram intervalos mínimo–máximo sobrepostos.
+Unicode variou de 18,558 a 19,840 MiB/s antes e de 18,590 a 19,841 depois;
+caiu em dois pares, e a mediana das razões por par foi apenas +0,005%.
+ANSI também caiu em dois pares e ASCII em um. Linhas curtas melhoraram nos
+cinco pares, mas sem reproduzir o ganho da tela alternativa. A mediana das
+razões por par foi +3,44% nessa carga, distinta do +1,50% entre medianas.
+O [relatório primário bruto](linux-evidence/2026-09-11-circular-rows/ci-primary-report.json)
+contém os números Linux; diagnósticos macOS não entram nessa comparação.
+
+A auditoria conferiu 20 processos, 80 cargas, 600 observações de RTT,
+configurações, geometria, payloads reproduzidos e os três scripts fixados
+no Git. Os dois builds de cada execução usaram as revisões exatas em
+diretórios separados; somente `src/grid/buffer.rs` mudou entre os inputs
+da aplicação. Os hashes
+dos executáveis foram registrados no CI, mas seus bytes não foram retidos
+para rehash independente. O
+[manifesto](linux-evidence/2026-09-11-circular-rows/manifest.json) preserva a
+proveniência, o workflow fixado e os avisos dos vinte logs dos terminais.
+
+Os quatro testes novos cobrem voltas completas, rolagens parciais após
+rolagens completas, metadados, dimensões vazias, índices inválidos e duração
+dos grafemas compartilhados. `check`, testes e Clippy passaram em macOS
+com `--release --locked --all-targets` (573 testes do executável e 210 do
+exemplo), com avisos registrados. O
+[CI Linux/macOS de `5d1712e`](https://github.com/guicybercode/kokuban.rs/actions/runs/34618903077)
+também passou; o [resumo de validação](linux-evidence/2026-09-11-circular-rows/test-summary.json)
+preserva os resultados e hashes dos logs originais.
+
+Estas medições cobrem processamento pelo PTY e resposta DSR, sem verificar
+equivalência visual ou apresentação de quadros. Não estabelecem
+superioridade sobre outros terminais ou desempenho em uma máquina Omarchy
+com GPU e monitor reais, e não incluem alterações posteriores do parser.
+
 ## Decodificação UTF-8 contígua: ganho e regressões em 2026-09-11
 
 A revisão original `4614d9e` decodifica diretamente um escalar UTF-8 completo
