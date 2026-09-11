@@ -1,0 +1,123 @@
+name: Linux paired revision measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: Baseline commit or ref
+        required: true
+        default: a27b8ce
+      after:
+        description: Candidate commit or ref
+        required: true
+        default: 4bcf68c
+      screen:
+        description: Screen and history scenario
+        type: choice
+        options: [alternate, primary]
+        default: alternate
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-paired-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      BEFORE_REF: ${{ inputs.before }}
+      AFTER_REF: ${{ inputs.after }}
+      SCREEN: ${{ inputs.screen }}
+
+    steps:
+      - name: Check out measurement harness and revision history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust and native Wayland dependencies
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-dejavu-core fonts-noto-color-emoji libfontconfig1-dev \
+            libfreetype6-dev libxkbcommon-x11-0 pkg-config weston
+
+      - name: Validate measurement harness
+        run: python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
+
+      - name: Build both exact revisions sequentially with the same toolchain
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-paired-evidence"
+          mkdir -p "$evidence_directory" "$RUNNER_TEMP/kokuban-paired-binaries"
+          git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+          git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
+          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          rustc --version --verbose > "$evidence_directory/rustc.txt"
+          lscpu > "$evidence_directory/cpu.txt"
+          uname -a > "$evidence_directory/kernel.txt"
+          dpkg-query -W weston fonts-dejavu-core fonts-noto-color-emoji \
+            libfontconfig1 libfreetype6 libxkbcommon-x11-0 > "$evidence_directory/system-packages.txt"
+          for label in before after; do
+            revision="$(cat "$evidence_directory/$label-revision.txt")"
+            source_directory="$RUNNER_TEMP/kokuban-paired-source-$label"
+            mkdir "$source_directory" "$evidence_directory/$label-build"
+            git archive "$revision" | tar -x -C "$source_directory"
+            cargo build --release --locked --manifest-path "$source_directory/Cargo.toml" \
+              --target-dir "$RUNNER_TEMP/kokuban-paired-build"
+            cp "$RUNNER_TEMP/kokuban-paired-build/release/kokuban" "$RUNNER_TEMP/kokuban-paired-binaries/$label"
+            cp "$source_directory/Cargo.toml" "$source_directory/Cargo.lock" "$evidence_directory/$label-build/"
+            cargo tree --locked --manifest-path "$source_directory/Cargo.toml" > "$evidence_directory/$label-build/cargo-tree.txt"
+            sha256sum "$RUNNER_TEMP/kokuban-paired-binaries/$label" > "$evidence_directory/$label-build/binary-sha256.txt"
+          done
+
+      - name: Measure five alternating pairs in one native Wayland session
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-paired-evidence"
+          export XDG_RUNTIME_DIR
+          XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WAYLAND_DISPLAY=wayland-kokuban-paired
+          unset DISPLAY WAYLAND_SOCKET
+          weston --backend=headless-backend.so --use-pixman \
+            --socket="$WAYLAND_DISPLAY" --idle-time=0 --width=1280 --height=900 \
+            --log="$evidence_directory/weston.log" &
+          weston_pid=$!
+          trap 'kill "$weston_pid" 2>/dev/null || true; wait "$weston_pid" 2>/dev/null || true' EXIT
+          for _attempt in {1..100}; do
+            test ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" || break
+            kill -0 "$weston_pid"
+            sleep 0.1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
+            python3 scripts/compare-kokuban-revisions.py \
+              --before "$RUNNER_TEMP/kokuban-paired-binaries/before" \
+              --after "$RUNNER_TEMP/kokuban-paired-binaries/after" \
+              --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
+              --after-ref "$(cat "$evidence_directory/after-revision.txt")" \
+              --artifacts-dir "$evidence_directory/measurements" \
+              --backend wayland --screen "$SCREEN" --samples 5 --bytes 33554432 \
+              --timeout 120 --environment-note \
+              "GitHub ubuntu-24.04 runner; Weston headless pixman; both binaries on CPU $benchmark_cpu; DSR processing only, no physical display or GPU comparison"
+
+      - name: Upload reports, configurations, logs and build provenance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-paired-revision-measurements
+          path: |
+            ${{ runner.temp }}/kokuban-paired-evidence
+            !${{ runner.temp }}/kokuban-paired-evidence/**/*.bin
+          if-no-files-found: ignore
+          retention-days: 7

@@ -2,6 +2,33 @@
 
 O workflow manual `Linux release resource measurements` compila com Rust 1.94.1 e `cargo build --release --locked`, sem strip ou LTO adicionais. Ele registra manifesto, lockfile, árvore Cargo, versões de pacotes, dependências ELF, tamanho/hash do binário e hardware do runner. O perfil de release mantém `debug=0`.
 
+Para comparar duas revisões no mesmo runner Linux, use o workflow manual
+`Linux paired revision measurements`:
+
+```sh
+gh workflow run linux-paired-performance.yml \
+  -f before=a27b8ce -f after=4bcf68c -f screen=alternate
+```
+
+Ele resolve os commits, compila os dois arquivos-fonte Git com Rust 1.94.1 e
+lockfile, preserva os binários e executa cinco pares alternados com cargas de
+32 MiB na mesma CPU permitida. A sessão usa Ubuntu 24.04, Weston headless
+pixman, DejaVu Sans Mono 14 e grade 80×24. `screen=primary` habilita histórico
+de 10.000 linhas; `alternate` usa a tela alternativa sem histórico. O artefato
+retido por sete dias contém JSONs, configurações, logs, hashes e proveniência,
+inclusive em caso de falha. Os payloads binários são omitidos do upload;
+seus tamanhos e hashes permitem verificar a reprodução pelo gerador do script.
+
+Em uma sessão Wayland Linux existente, o mesmo executor aceita dois binários
+previamente compilados. Os rótulos de revisão são declarados pelo operador:
+
+```sh
+python3 scripts/compare-kokuban-revisions.py \
+  --before /caminho/anterior --after /caminho/atual \
+  --before-ref REVISAO_ANTERIOR --after-ref REVISAO_ATUAL \
+  --artifacts-dir /tmp/kokuban-paired --backend wayland
+```
+
 ## Sufixos de linhas e investigação de 2026-09-11
 
 A revisão `4bcf68c` mantém o início do sufixo uniforme de cada linha.
