@@ -1,0 +1,271 @@
+{
+  "scope": "Decoder/grid only, 120x40, history 10000, 16KiB chunks; not PTY/render/compositor",
+  "platform": "Darwin-25.2.0-arm64-arm-64bit-Mach-O",
+  "processor": "arm",
+  "mib_per_workload": 8,
+  "samples_per_binary": 5,
+  "source_revisions": {
+    "before": "b58e499",
+    "after": "ce4799b"
+  },
+  "binary_sha256": {
+    "before": "21fa6f45ce78bdadeef37822c3e6b793e87ba00fc6473c2e4cb057dd68e67f27",
+    "after": "2a5a70d6675fc2ed3c977af4f7c6bd609fdba675986064c59595395a498d9c03"
+  },
+  "order": [
+    [
+      1,
+      "before"
+    ],
+    [
+      1,
+      "after"
+    ],
+    [
+      2,
+      "after"
+    ],
+    [
+      2,
+      "before"
+    ],
+    [
+      3,
+      "before"
+    ],
+    [
+      3,
+      "after"
+    ],
+    [
+      4,
+      "after"
+    ],
+    [
+      4,
+      "before"
+    ],
+    [
+      5,
+      "before"
+    ],
+    [
+      5,
+      "after"
+    ]
+  ],
+  "samples": [
+    {
+      "index": 1,
+      "binary": "before",
+      "output": "01-before.txt",
+      "mib_s": {
+        "ascii": 234.13,
+        "short-lines": 7.36,
+        "ansi": 163.25,
+        "unicode": 32.37
+      }
+    },
+    {
+      "index": 1,
+      "binary": "after",
+      "output": "01-after.txt",
+      "mib_s": {
+        "ascii": 221.2,
+        "short-lines": 7.76,
+        "ansi": 161.42,
+        "unicode": 46.88
+      }
+    },
+    {
+      "index": 2,
+      "binary": "after",
+      "output": "02-after.txt",
+      "mib_s": {
+        "ascii": 227.01,
+        "short-lines": 7.68,
+        "ansi": 159.12,
+        "unicode": 46.06
+      }
+    },
+    {
+      "index": 2,
+      "binary": "before",
+      "output": "02-before.txt",
+      "mib_s": {
+        "ascii": 232.02,
+        "short-lines": 7.8,
+        "ansi": 163.74,
+        "unicode": 32.51
+      }
+    },
+    {
+      "index": 3,
+      "binary": "before",
+      "output": "03-before.txt",
+      "mib_s": {
+        "ascii": 228.27,
+        "short-lines": 7.82,
+        "ansi": 130.57,
+        "unicode": 32.23
+      }
+    },
+    {
+      "index": 3,
+      "binary": "after",
+      "output": "03-after.txt",
+      "mib_s": {
+        "ascii": 224.45,
+        "short-lines": 7.79,
+        "ansi": 159.83,
+        "unicode": 46.29
+      }
+    },
+    {
+      "index": 4,
+      "binary": "after",
+      "output": "04-after.txt",
+      "mib_s": {
+        "ascii": 228.0,
+        "short-lines": 7.8,
+        "ansi": 162.35,
+        "unicode": 46.75
+      }
+    },
+    {
+      "index": 4,
+      "binary": "before",
+      "output": "04-before.txt",
+      "mib_s": {
+        "ascii": 227.2,
+        "short-lines": 7.84,
+        "ansi": 163.87,
+        "unicode": 32.49
+      }
+    },
+    {
+      "index": 5,
+      "binary": "before",
+      "output": "05-before.txt",
+      "mib_s": {
+        "ascii": 224.27,
+        "short-lines": 7.84,
+        "ansi": 145.53,
+        "unicode": 32.36
+      }
+    },
+    {
+      "index": 5,
+      "binary": "after",
+      "output": "05-after.txt",
+      "mib_s": {
+        "ascii": 227.71,
+        "short-lines": 7.79,
+        "ansi": 163.21,
+        "unicode": 46.41
+      }
+    }
+  ],
+  "summary": {
+    "before": {
+      "ascii": {
+        "median": 228.27,
+        "min": 224.27,
+        "max": 234.13,
+        "samples": [
+          234.13,
+          232.02,
+          228.27,
+          227.2,
+          224.27
+        ]
+      },
+      "short-lines": {
+        "median": 7.82,
+        "min": 7.36,
+        "max": 7.84,
+        "samples": [
+          7.36,
+          7.8,
+          7.82,
+          7.84,
+          7.84
+        ]
+      },
+      "ansi": {
+        "median": 163.25,
+        "min": 130.57,
+        "max": 163.87,
+        "samples": [
+          163.25,
+          163.74,
+          130.57,
+          163.87,
+          145.53
+        ]
+      },
+      "unicode": {
+        "median": 32.37,
+        "min": 32.23,
+        "max": 32.51,
+        "samples": [
+          32.37,
+          32.51,
+          32.23,
+          32.49,
+          32.36
+        ]
+      }
+    },
+    "after": {
+      "ascii": {
+        "median": 227.01,
+        "min": 221.2,
+        "max": 228.0,
+        "samples": [
+          221.2,
+          227.01,
+          224.45,
+          228.0,
+          227.71
+        ]
+      },
+      "short-lines": {
+        "median": 7.79,
+        "min": 7.68,
+        "max": 7.8,
+        "samples": [
+          7.76,
+          7.68,
+          7.79,
+          7.8,
+          7.79
+        ]
+      },
+      "ansi": {
+        "median": 161.42,
+        "min": 159.12,
+        "max": 163.21,
+        "samples": [
+          161.42,
+          159.12,
+          159.83,
+          162.35,
+          163.21
+        ]
+      },
+      "unicode": {
+        "median": 46.41,
+        "min": 46.06,
+        "max": 46.88,
+        "samples": [
+          46.88,
+          46.06,
+          46.29,
+          46.75,
+          46.41
+        ]
+      }
+    }
+  }
+}

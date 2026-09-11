@@ -2,6 +2,71 @@
 
 O workflow manual `Linux release resource measurements` compila com Rust 1.94.1 e `cargo build --release --locked`, sem strip ou LTO adicionais. Ele registra manifesto, lockfile, árvore Cargo, versões de pacotes, dependências ELF, tamanho/hash do binário e hardware do runner. O perfil de release mantém `debug=0`.
 
+## Unicode sem alocações intermediárias em 2026-09-11
+
+As revisões `ce4799b` e `c51c006` removem duas alocações frequentes: a decisão
+de fronteira de grafema agora consulta `GraphemeCursor` com uma pequena janela
+UTF-8 e contexto emprestado; o cache do atlas consulta `&str` em quatro mapas
+por estilo. O texto é alocado quando um grafema realmente cresce ou quando
+uma chave nova entra no cache. Shaping, cores, fallback e regras de grafemas
+permanecem habilitados.
+
+Cinco execuções de cada binário, alternando anterior/atual e atual/anterior,
+compararam `b58e499` com `c51c006`. Ambiente: Rust 1.94.1 release, Ubuntu 26.04
+arm64 em Docker/Colima sobre Apple M4/macOS, Weston 14 headless com pixman e
+renderização por software. Cada carga tinha aproximadamente 4 MiB e terminava
+com resposta DSR. Os dois binários usaram a mesma grade efetiva de 80×24,
+720×408 pixels, DejaVu Sans Mono 14 e tela alternativa sem histórico.
+Não havia outras medições ou compilações desta tarefa durante as amostras.
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s |
+| --- | ---: | ---: |
+| ASCII | 178,65 | 178,18 |
+| ANSI | 132,85 | 139,55 |
+| Unicode | 24,07 | 31,70 |
+| Linhas curtas | 23,07 | 23,69 |
+
+A mediana Unicode aumentou **31,7% neste cenário**; seus intervalos
+mínimo–máximo foram 22,12–24,19 e 30,53–32,56 MiB/s. Os intervalos completos
+das demais cargas estão no [relatório pareado](linux-evidence/2026-09-11-unicode-performance/paired-wayland.json).
+ASCII variou de 168,31 a 239,77 MiB/s antes e de 175,72 a 215,15 depois;
+o ambiente compartilhado não permite tratar diferenças pequenas como ganhos
+precisos. O ensaio mede processamento/DSR, não apresentação de quadros.
+
+Um ensaio separado do decoder em macOS, com 8 MiB por carga, cinco pares,
+120×40 células e 10.000 linhas de histórico, passou de 32,37 para 46,41 MiB/s
+medianos em Unicode (**43,4%**). Esse resultado exclui PTY, atlas e renderer;
+ele mede a mudança de fronteiras, não o efeito do cache de grafemas.
+Os [resultados individuais do decoder](linux-evidence/2026-09-11-unicode-performance/decoder.json)
+também preservam as outras cargas, cujas medianas ficaram próximas.
+
+Passaram `check`, testes e Clippy com `--all-targets` em Linux (657 testes do
+executável e 196 do exemplo; um benchmark ignorado) e macOS (559 e 196).
+Os testes diferenciais verificam fronteiras UAX #29, incluindo ZWJ, indicadores
+regionais, Indic, controles e marcas combinantes. O teste real de clipboard X11
+também preservou os bytes de grafemas compostos e de uma URL quebrada em linhas
+após quatro redimensionamentos sem reimprimir o conteúdo.
+O [CI Linux/macOS de `c51c006`](https://github.com/guicybercode/kokuban.rs/actions/runs/34605347739)
+também passou.
+
+O [ensaio exploratório dos quatro terminais](linux-evidence/2026-09-11-unicode-performance/exploratory-four-terminals.json)
+foi executado antes dessas duas mudanças, com três amostras de 4 MiB por terminal.
+Ele ajuda a localizar gargalos, mas registra geometrias diferentes e fidelidade
+visual não comparada. Linhas curtas continuam sendo um gargalo. Esses números
+não comprovam superioridade geral sobre Ghostty, Alacritty ou Kitty, nem
+substituem a comparação no Omarchy/Hyprland com GPU e monitor reais.
+
+O [manifesto](linux-evidence/2026-09-11-unicode-performance/manifest.json) registra
+hashes e validações; o [executor do par](linux-evidence/2026-09-11-unicode-performance/paired-pty.py)
+reutiliza o comparador do repositório. Em uma sessão Wayland, é possível repetir
+o par com os dois binários preservados:
+
+```sh
+python3 docs/linux-evidence/2026-09-11-unicode-performance/paired-pty.py \
+  scripts/compare-terminal-performance.py /caminho/anterior /caminho/atual \
+  /tmp/kokuban-unicode-paired
+```
+
 ## Otimizações e medição pareada de 2026-09-10
 
 Entre `7e0e9e2` e `da14f90`, o processamento passou a agrupar ASCII imprimível,
