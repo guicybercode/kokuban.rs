@@ -53,6 +53,12 @@
       "revision": "4bcf68c",
       "status": "success",
       "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34606995498"
+    },
+    "harness": {
+      "python_tests_passed": 13,
+      "ci_status": "success",
+      "ci_revision": "eb20d92",
+      "ci_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34611011443"
     }
   },
   "limits": [
@@ -67,6 +73,10 @@
     "ci-alternate-rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
     "ci-alternate-system-packages.txt": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4",
     "ci-invalid-build.json": "e0eae8608d055d5a36604107c27abe13366b75d4e9a4b54677fc38ca7fbf3080",
+    "ci-primary-build-log.txt": "66f18be8432972273c2c31500f001b8e4ad3c1226b5d8ca3f2f5cd4e09b8eb42",
+    "ci-primary-report.json": "1bc5e153d5c71867953f6590b46fa204cd4e6064db450d297d5dcdfeaac5cc53",
+    "ci-primary-rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "ci-primary-system-packages.txt": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4",
     "decoder-screening.json": "3c169e70ea19869a287d21e6129911aa81bd69ed1b0f60dc1a76ab1f2b151c49",
     "initial-candidate.txt": "fbc3e801961104feac01e451144a515831aa9a8d86b500c5ddb98bd854a664d6",
     "preliminary-vm-summary.json": "3de5089288e6de39898212bea09c40ac4ff9747c31e2bf7fb5b7fb046fd0b5cf",
@@ -119,5 +129,47 @@
       "unicode": 1.4083462701168705,
       "short_lines": 3.282998553938381
     }
+  },
+  "paired_ci_primary": {
+    "status": "passed",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34610695516",
+    "harness_revision": "d50c734f8a73c2754c6312a3d4dd366acc30e7ab",
+    "report": "ci-primary-report.json",
+    "build_log_excerpt": "ci-primary-build-log.txt",
+    "source_build_inputs_sha256_verified_against_git": {
+      "before": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      },
+      "after": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      }
+    },
+    "binary_sha256": {
+      "before": "17813d50031c33a904b14ce0ca25fe53caedd05e1c7402680fbf26fca0192ded",
+      "after": "2a8e064303adfaa3b7d21376c5dd26ee844240d546cb3e4fa0768fce4fe836a6"
+    },
+    "samples_per_revision": 5,
+    "requested_bytes_per_workload": 33554432,
+    "screen": "primary",
+    "scrollback_lines": 10000,
+    "effective_geometry_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "cpu_affinity": [
+      0
+    ],
+    "platform": "Ubuntu 24.04 x86_64 GitHub runner; AMD EPYC 7763; Weston 13 headless pixman; DejaVu Sans Mono 14; Rust 1.94.1 release locked",
+    "throughput_median_after_over_before": {
+      "ascii": 0.9966568966176058,
+      "ansi": 1.1649306771996013,
+      "unicode": 1.493494760484172,
+      "short_lines": 1.643810663326889
+    },
+    "cross_scenario_limit": "Primary and alternate runs used different CPU models; compare revisions within each scenario, not absolute rates between scenarios."
   }
 }

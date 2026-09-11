@@ -68,6 +68,29 @@ confirmam que os dois diretórios-fonte foram compilados. Os executáveis têm
 hashes diferentes; manifesto e lockfile de cada build foram conferidos contra
 o respectivo commit Git. Essa verificação exclui o ensaio inválido descrito abaixo.
 
+Outro ensaio usou a tela primária com histórico de 10.000 linhas, mantendo
+cinco pares de 32 MiB, as mesmas revisões, fontes e geometria. Esse runner
+usou AMD EPYC 7763; os dois executáveis ficaram na CPU 0. Os modelos de CPU
+dos dois ensaios diferem, portanto seus valores absolutos não isolam o custo
+do histórico. A comparação válida é entre as revisões dentro de cada ensaio.
+
+| Carga com histórico | Anterior, mediana MiB/s | Atual, mediana MiB/s |
+| --- | ---: | ---: |
+| ASCII | 54,13 | 53,95 |
+| ANSI | 39,39 | 45,89 |
+| Unicode | 12,75 | 19,05 |
+| Linhas curtas | 3,83 | 6,30 |
+
+Neste cenário, a razão entre medianas foi **1,64× em linhas curtas**,
+**1,49× em Unicode** e **1,16× em ANSI**. A mediana ASCII caiu 0,3%, dentro
+dos intervalos observados de 51,76–55,10 e 51,86–55,40 MiB/s. O
+[relatório com histórico](linux-evidence/2026-09-11-short-lines/ci-primary-report.json)
+preserva todas as amostras. O [workflow](https://github.com/guicybercode/kokuban.rs/actions/runs/34610695516)
+passou, incluindo a nova checagem de executáveis diferentes. Seus hashes
+coincidem com os respectivos binários do ensaio de tela alternativa, e o
+[log](linux-evidence/2026-09-11-short-lines/ci-primary-build-log.txt) confirma
+as duas compilações independentes.
+
 Uma triagem do decoder em macOS, com três pares alternados de 4 MiB, grade
 120×40 e histórico de 10.000 linhas, registrou as seguintes medianas:
 
