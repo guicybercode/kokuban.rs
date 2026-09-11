@@ -1028,38 +1028,44 @@ impl Utf8Parser {
 
         let mut index = 0;
         while index < input.len() {
+            let byte = input[index];
             if self.parser.state == State::Ground && self.utf8_expected == 0 {
-                let printable = input[index..]
-                    .iter()
-                    .position(|byte| !matches!(byte, b' '..=b'~'))
-                    .unwrap_or(input.len() - index);
-                if printable != 0 {
-                    grid.put_ascii(&input[index..index + printable]);
-                    index += printable;
-                    continue;
-                }
-
-                // A complete UTF-8 scalar cannot contain a terminal event.
-                // Decode it directly when this read has all of its bytes;
-                // partial or malformed sequences retain the byte-wise path.
-                let scalar_len = match input[index] {
-                    0xc2..=0xdf => 2,
-                    0xe0..=0xef => 3,
-                    0xf0..=0xf4 => 4,
-                    _ => 0,
-                };
-                if scalar_len != 0 {
-                    if let Some(bytes) = input[index..].get(..scalar_len) {
-                        if let Ok(text) = std::str::from_utf8(bytes) {
-                            grid.put_char(text.chars().next().expect("validated scalar is nonempty"));
-                            index += scalar_len;
-                            continue;
+                match byte {
+                    b' '..=b'~' => {
+                        // The first byte is already printable; scan its tail.
+                        let tail = &input[index + 1..];
+                        let printable = 1 + tail.iter()
+                            .position(|byte| !matches!(byte, b' '..=b'~'))
+                            .unwrap_or(tail.len());
+                        grid.put_ascii(&input[index..index + printable]);
+                        index += printable;
+                        continue;
+                    }
+                    0x80..=0xff => {
+                        // A complete UTF-8 scalar cannot contain a terminal event.
+                        // Partial or malformed sequences retain the byte-wise path.
+                        let scalar_len = match byte {
+                            0xc2..=0xdf => 2,
+                            0xe0..=0xef => 3,
+                            0xf0..=0xf4 => 4,
+                            _ => 0,
+                        };
+                        if scalar_len != 0 {
+                            if let Some(bytes) = input[index..].get(..scalar_len) {
+                                if let Ok(text) = std::str::from_utf8(bytes) {
+                                    grid.put_char(text.chars().next().expect("validated scalar is nonempty"));
+                                    index += scalar_len;
+                                    continue;
+                                }
+                            }
                         }
                     }
+                    // CR, LF, ESC and other ASCII controls need no text scan.
+                    _ => {}
                 }
             }
 
-            self.feed_byte(input[index], grid);
+            self.feed_byte(byte, grid);
             index += 1;
             if grid.has_pending_terminal_events() {
                 return index;
@@ -1164,6 +1170,18 @@ mod tests {
                     remaining = &remaining[consumed..];
                 }
             }
+        }
+    }
+
+    #[test]
+    fn ascii_controls_and_printable_edges_match_byte_decoding_at_every_split() {
+        for control in (0..=0x1f).chain([0x7f]) {
+            let input = [b" ~".as_slice(), &[control], b"A~ \x1b[6nZ"].concat();
+            assert_utf8_matches_byte_decoding_at_every_split(&input, 8);
+        }
+        // A printable run may end at the last byte of a read.
+        for input in [b" ".as_slice(), b"~", b" ~"] {
+            assert_utf8_matches_byte_decoding_at_every_split(input, 8);
         }
     }
 
