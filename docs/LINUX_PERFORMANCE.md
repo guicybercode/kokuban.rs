@@ -11,8 +11,8 @@ gh workflow run linux-paired-performance.yml \
 ```
 
 Ele resolve os commits, compila os dois arquivos-fonte Git com Rust 1.94.1 e
-lockfile, preserva os binários e executa cinco pares alternados com cargas de
-32 MiB na mesma CPU permitida. A sessão usa Ubuntu 24.04, Weston headless
+lockfile, registra os hashes dos executáveis e executa cinco pares alternados
+com cargas de 32 MiB na mesma CPU permitida. A sessão usa Ubuntu 24.04, Weston headless
 pixman, DejaVu Sans Mono 14 e grade 80×24. `screen=primary` habilita histórico
 de 10.000 linhas; `alternate` usa a tela alternativa sem histórico. O artefato
 retido por sete dias contém JSONs, configurações, logs, hashes e proveniência,
@@ -30,6 +30,62 @@ python3 scripts/compare-kokuban-revisions.py \
   --before-ref REVISAO_ANTERIOR --after-ref REVISAO_ATUAL \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
+
+## Decodificação UTF-8 contígua: ganho e regressões em 2026-09-11
+
+A revisão original `4614d9e` decodifica diretamente um escalar UTF-8 completo
+quando todos os seus bytes estão disponíveis no estado normal do parser.
+Sequências incompletas ou inválidas mantêm o processamento byte a byte.
+A medição contra `48afe69` mostrou **ganho de 5,6% em Unicode, acompanhado de
+quedas de 2,8% em ANSI e 7,7% em linhas curtas**. Este resultado contém uma
+troca de desempenho entre cargas, sem demonstrar uma melhoria geral.
+
+O [workflow pareado](https://github.com/guicybercode/kokuban.rs/actions/runs/34618310640)
+executou cinco pares em ordem AB/BA no mesmo runner Ubuntu 24.04 x86_64,
+AMD EPYC 7763, com afinidade na CPU 0. Ambos os builds usaram Rust 1.94.1
+release e diretórios de compilação separados. Cada carga continha cerca de
+32 MiB, na tela alternativa sem histórico, com DejaVu Sans Mono 14 e Weston
+13 headless usando Pixman. As dez amostras mantiveram 80×24 células e
+720×408 pixels, com configurações idênticas.
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas |
+| --- | ---: | ---: | ---: |
+| ASCII | 73,634 | 73,303 | −0,45% |
+| ANSI | 64,852 | 63,068 | −2,75% |
+| Unicode | 21,582 | 22,800 | +5,64% |
+| Linhas curtas | 23,351 | 21,546 | −7,73% |
+
+Linhas curtas perderam vazão nos cinco pares; seus intervalos foram
+22,773–24,053 MiB/s antes e 21,332–21,685 MiB/s depois. ANSI caiu em quatro
+pares. Unicode caiu em um dos cinco pares, apesar da mediana maior.
+A mediana das razões por par indica −8,65% em linhas curtas e −3,46% em ANSI;
+esse cálculo difere da razão entre medianas apresentada na tabela.
+O [relatório bruto](linux-evidence/2026-09-11-utf8-dispatch/ci-report.json)
+preserva todas as amostras, intervalos e razões, sem incorporar revisões
+posteriores do parser ou do buffer.
+
+A auditoria conferiu os dez conjuntos de resultados e configurações,
+40 cargas, 300 observações de RTT, hashes dos payloads reproduzidos e os
+três scripts do executor contra o Git fixado. Os manifestos e lockfiles dos
+builds correspondem às revisões declaradas. Os hashes distintos dos
+executáveis foram registrados no CI; os bytes desses binários não foram
+retidos no artefato para uma nova verificação independente. O
+[manifesto](linux-evidence/2026-09-11-utf8-dispatch/manifest.json) registra essas
+verificações, o workflow fixado e os avisos dos logs.
+
+Os três testes diferenciais cobrem todos os pontos de divisão dos exemplos
+UTF-8, limites de escalares, sequências inválidas, grafemas compostos, modos
+do terminal e ordem dos eventos. `check`, testes e Clippy passaram em macOS
+com `--release --locked --all-targets` (569 testes do executável e 206 do
+exemplo), com avisos registrados. O
+[CI Linux/macOS de `4614d9e`](https://github.com/guicybercode/kokuban.rs/actions/runs/34618261323)
+também passou; o [resumo de validação](linux-evidence/2026-09-11-utf8-dispatch/test-summary.json)
+preserva os resultados e hashes dos logs originais.
+
+Os números medem processamento pelo PTY e resposta DSR neste runner.
+Não medem apresentação de quadros nem verificam equivalência visual de
+Unicode e fontes. Também não estabelecem superioridade sobre outros
+terminais ou desempenho em uma máquina Omarchy com GPU e monitor reais.
 
 ## Cópia para o histórico: medição pareada em 2026-09-11
 
