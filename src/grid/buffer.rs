@@ -12,6 +12,10 @@ pub struct Buffer {
     // Logical rows point into one cell allocation. Scrolling rotates these
     // offsets instead of copying every cell that remains on screen.
     row_starts: Vec<usize>,
+    // Cells from this column onward are identical to the row's last cell.
+    // A frontier at `cols` means the suffix is unknown. Mutable access only
+    // moves the frontier right; clearing establishes a uniform whole row.
+    uniform_suffix_start: Vec<usize>,
     cols: usize,
     rows: usize,
     metadata: Vec<RowMetadata>,
@@ -22,6 +26,7 @@ impl Buffer {
         Self {
             cells: vec![Cell::default(); cols * rows],
             row_starts: (0..rows).map(|row| row * cols).collect(),
+            uniform_suffix_start: vec![0; rows],
             cols,
             rows,
             metadata: vec![RowMetadata::default(); rows],
@@ -33,12 +38,22 @@ impl Buffer {
     }
 
     pub fn cell_mut(&mut self, row: usize, col: usize) -> &mut Cell {
+        assert!(col < self.cols);
+        self.uniform_suffix_start[row] = self.uniform_suffix_start[row].max(col + 1);
         &mut self.cells[self.row_starts[row] + col]
     }
 
     pub fn row_mut(&mut self, row: usize) -> &mut [Cell] {
+        self.row_range_mut(row, 0..self.cols)
+    }
+
+    pub(crate) fn row_range_mut(&mut self, row: usize, range: std::ops::Range<usize>) -> &mut [Cell] {
+        assert!(range.start <= range.end && range.end <= self.cols);
+        if !range.is_empty() {
+            self.uniform_suffix_start[row] = self.uniform_suffix_start[row].max(range.end);
+        }
         let start = self.row_starts[row];
-        &mut self.cells[start..start + self.cols]
+        &mut self.cells[start + range.start..start + range.end]
     }
 
     pub(crate) fn row_metadata(&self, row: usize) -> RowMetadata {
@@ -46,10 +61,16 @@ impl Buffer {
         // Public cell access is also used by screen writers and test fixtures.
         // Keep directly assigned nonblank cells in the retained content range.
         let start = self.row_starts[row];
-        if let Some(col) = self.cells[start..start + self.cols]
+        let suffix = self.uniform_suffix_start[row];
+        if suffix < self.cols && self.cells[start + self.cols - 1].c != ' ' {
+            metadata.len = metadata.len.max(self.cols);
+            return metadata;
+        }
+        let scan_start = metadata.len.min(suffix);
+        if let Some(col) = self.cells[start + scan_start..start + suffix]
             .iter().rposition(|cell| cell.c != ' ')
         {
-            metadata.len = metadata.len.max(col + 1);
+            metadata.len = metadata.len.max(scan_start + col + 1);
         }
         metadata
     }
@@ -75,8 +96,16 @@ impl Buffer {
     }
 
     pub fn clear_row(&mut self, row: usize, template: Cell) {
+        let start = self.row_starts[row];
+        let suffix = self.uniform_suffix_start[row];
+        let end = if suffix < self.cols && self.cells[start + self.cols - 1] == template {
+            suffix
+        } else {
+            self.cols
+        };
+        self.cells[start..start + end].fill(template);
         self.metadata[row] = RowMetadata::default();
-        self.row_mut(row).fill(template);
+        self.uniform_suffix_start[row] = 0;
     }
 
     pub fn scroll_up(&mut self, top: usize, bottom: usize, count: usize, template: Cell) {
@@ -85,6 +114,7 @@ impl Buffer {
             return;
         }
         self.row_starts[top..=bottom].rotate_left(count);
+        self.uniform_suffix_start[top..=bottom].rotate_left(count);
         self.metadata[top..=bottom].rotate_left(count);
         for row in bottom + 1 - count..=bottom {
             self.clear_row(row, template.clone());
@@ -97,6 +127,7 @@ impl Buffer {
             return;
         }
         self.row_starts[top..=bottom].rotate_right(count);
+        self.uniform_suffix_start[top..=bottom].rotate_right(count);
         self.metadata[top..=bottom].rotate_right(count);
         for row in top..top + count {
             self.clear_row(row, template.clone());
@@ -121,8 +152,166 @@ impl Buffer {
 
 #[cfg(test)]
 mod tests {
-    use super::Buffer;
+    use super::{Buffer, RowMetadata};
     use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
+
+    #[test]
+    fn rejected_mutable_access_cannot_invalidate_another_rows_suffix() {
+        let mut buffer = Buffer::new(4, 2);
+        for range_access in [false, true] {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if range_access {
+                    buffer.row_range_mut(0, 0..5).fill(Cell { c: 'x', ..Cell::default() });
+                } else {
+                    buffer.cell_mut(0, 4).c = 'x';
+                }
+            }));
+            assert!(result.is_err());
+            assert_eq!(buffer.uniform_suffix_start, vec![0, 0]);
+            buffer.clear_row(1, Cell::default());
+            assert_eq!(buffer.extract_row(0), vec![Cell::default(); 4]);
+            assert_eq!(buffer.extract_row(1), vec![Cell::default(); 4]);
+        }
+    }
+
+    #[test]
+    fn partial_writes_keep_blank_suffixes_and_release_erased_graphemes() {
+        let mut buffer = Buffer::new(12, 2);
+        let text: std::sync::Arc<str> = "e\u{301}".into();
+        let erased = std::sync::Arc::downgrade(&text);
+        *buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(text), ..Cell::default() };
+        buffer.row_range_mut(0, 1..3).fill(Cell { c: 'x', ..Cell::default() });
+        buffer.mark_written(0, 5); // Printed spaces remain retained content.
+        assert_eq!(buffer.uniform_suffix_start[0], 3);
+        assert_eq!(buffer.row_metadata(0).len, 5);
+        buffer.clear_row(0, Cell::default());
+        assert!(erased.upgrade().is_none());
+        assert_eq!(buffer.uniform_suffix_start[0], 0);
+        assert_eq!(buffer.extract_row(0), vec![Cell::default(); 12]);
+
+        let styled = Cell { bg: Color::Indexed(5), flags: CellFlags::REVERSE, ..Cell::default() };
+        buffer.clear_row(0, styled.clone());
+        buffer.cell_mut(0, 2).c = 'x';
+        buffer.clear_row(0, Cell::default());
+        assert_eq!(buffer.extract_row(0), vec![Cell::default(); 12]);
+
+        buffer.cell_mut(0, 11).c = 'z';
+        assert_eq!(buffer.uniform_suffix_start[0], 12);
+        assert_eq!(buffer.row_metadata(0).len, 12);
+        buffer.clear_row(0, styled.clone());
+        assert_eq!(buffer.extract_row(0), vec![styled; 12]);
+    }
+
+    #[test]
+    fn clearing_uniform_rows_compares_graphemes_and_wide_flags() {
+        let mut buffer = Buffer::new(5, 1);
+        let first = Cell { c: 'e', grapheme: Some("e\u{301}".into()), ..Cell::default() };
+        let second = Cell { grapheme: Some("e\u{308}".into()), ..first.clone() };
+        let wide = Cell { flags: CellFlags::WIDE, ..second.clone() };
+        let continuation = Cell { flags: CellFlags::WIDE_CONT, ..wide.clone() };
+        for template in [first, second, wide, continuation] {
+            buffer.clear_row(0, template.clone());
+            assert_eq!(buffer.extract_row(0), vec![template; 5]);
+            assert_eq!(buffer.row_metadata(0).len, 5);
+        }
+    }
+
+    #[test]
+    fn suffix_tracking_matches_full_row_reference_after_mixed_edits() {
+        let (cols, rows) = (13, 7);
+        let mut buffer = Buffer::new(cols, rows);
+        let mut expected = vec![vec![Cell::default(); cols]; rows];
+        let mut metadata = vec![RowMetadata::default(); rows];
+        let mut state = 0x5a17_2026_u64;
+        let mut random = || {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (state >> 32) as usize
+        };
+        for step in 0..600 {
+            let row = random() % rows;
+            let col = random() % cols;
+            let template = match step % 5 {
+                0 | 1 => Cell::default(),
+                2 => Cell { bg: Color::Indexed(4), flags: CellFlags::ITALIC, ..Cell::default() },
+                3 => Cell { c: 'e', grapheme: Some("e\u{301}".into()), ..Cell::default() },
+                _ => Cell { fg: Color::Rgb(1, 2, 3), underline_style: UnderlineStyle::Curly,
+                    underline_color: Color::Indexed(7), ..Cell::default() },
+            };
+            match random() % 8 {
+                0 => {
+                    *buffer.cell_mut(row, col) = template.clone();
+                    expected[row][col] = template;
+                }
+                1 => {
+                    let end = col + random() % (cols - col + 1);
+                    buffer.row_range_mut(row, col..end).fill(template.clone());
+                    expected[row][col..end].fill(template);
+                }
+                2 => {
+                    buffer.row_mut(row).rotate_right(col);
+                    expected[row].rotate_right(col);
+                }
+                3 => {
+                    buffer.clear_row(row, template.clone());
+                    expected[row].fill(template);
+                    metadata[row] = RowMetadata::default();
+                }
+                4 => {
+                    let bottom = row + random() % (rows - row);
+                    let count = random() % (rows + 2);
+                    let count = count.min(bottom - row + 1);
+                    if random() % 2 == 0 {
+                        buffer.scroll_up(row, bottom, count, template.clone());
+                        expected[row..=bottom].rotate_left(count);
+                        metadata[row..=bottom].rotate_left(count);
+                        for erased in bottom + 1 - count..=bottom {
+                            expected[erased].fill(template.clone());
+                            metadata[erased] = RowMetadata::default();
+                        }
+                    } else {
+                        buffer.scroll_down(row, bottom, count, template.clone());
+                        expected[row..=bottom].rotate_right(count);
+                        metadata[row..=bottom].rotate_right(count);
+                        for erased in row..row + count {
+                            expected[erased].fill(template.clone());
+                            metadata[erased] = RowMetadata::default();
+                        }
+                    }
+                }
+                5 => {
+                    metadata[row] = RowMetadata { len: col, wrapped: step % 2 == 0 };
+                    buffer.set_row_metadata(row, metadata[row]);
+                }
+                6 => {
+                    let end = random() % (cols + 5);
+                    buffer.mark_written(row, end);
+                    metadata[row].len = metadata[row].len.max(end.min(cols));
+                    buffer.set_wrapped(row, step % 2 == 0);
+                    metadata[row].wrapped = step % 2 == 0;
+                }
+                _ => {
+                    let retained: Vec<_> = expected.iter().zip(&metadata)
+                        .map(|(cells, metadata)| crate::grid::reflow::RetainedRow {
+                            cells: cells.clone(), metadata: *metadata,
+                        }).collect();
+                    buffer = Buffer::from_retained_rows(cols, &retained);
+                }
+            }
+            for row in 0..rows {
+                assert_eq!(buffer.extract_row(row), expected[row], "step={step}, row={row}");
+                let last_nonblank = expected[row].iter().rposition(|cell| cell.c != ' ')
+                    .map_or(0, |col| col + 1);
+                let actual = buffer.row_metadata(row);
+                assert_eq!((actual.len, actual.wrapped),
+                    (metadata[row].len.max(last_nonblank), metadata[row].wrapped),
+                    "step={step}, row={row}");
+                let suffix = buffer.uniform_suffix_start[row];
+                assert!(suffix <= cols);
+                assert!(expected[row][suffix..].iter().all(|cell| cell == &expected[row][cols - 1]),
+                    "invalid suffix after step={step}, row={row}");
+            }
+        }
+    }
 
     #[test]
     fn repeated_region_scrolls_preserve_row_edits_and_reconstruction_order() {

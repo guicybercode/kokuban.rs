@@ -520,7 +520,7 @@ impl Grid {
             if count > 1 {
                 self.clear_wide_overlap(row, col + count - 1, 1);
             }
-            let cells = &mut self.buffer.row_mut(row)[col..col + count];
+            let cells = self.buffer.row_range_mut(row, col..col + count);
             for (cell, &byte) in cells.iter_mut().zip(&text[..count]) {
                 *cell = Cell { c: char::from(byte), ..template.clone() };
             }
