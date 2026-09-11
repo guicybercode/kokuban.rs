@@ -31,6 +31,37 @@ python3 scripts/compare-kokuban-revisions.py \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
 
+## Classificação de controles ASCII: resultado misto em 2026-09-11
+
+A revisão `5c1f436` separa controles ASCII antes da busca de texto imprimível
+e da seleção de comprimento UTF-8. A comparação com `5d1712e` no
+[run `34620206592`](https://github.com/guicybercode/kokuban.rs/actions/runs/34620206592)
+**não demonstrou ganho geral**:
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas | Pares mais lentos depois |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 133,568 | 131,059 | −1,88% | 4/5 |
+| ANSI | 114,461 | 112,916 | −1,35% | 4/5 |
+| Unicode | 40,076 | 39,406 | −1,67% | 3/5 |
+| Linhas curtas | 53,176 | 53,572 | +0,75% | 1/5 |
+
+Foram cinco pares AB/BA/AB/BA/AB, tela alternativa sem histórico e cerca de
+32 MiB por carga. O runner usou AMD EPYC 9V45, com quatro CPUs expostas e
+afinidade na CPU 0, Weston headless com Pixman e DejaVu Sans Mono 14.
+As dez instâncias mantiveram 80×24 células e 720×408 pixels. O run anterior
+do parser UTF-8 usou EPYC 7763; os valores absolutos entre esses runners
+não são comparáveis e não comprovam recuperação da regressão anterior.
+
+Todos os intervalos mínimo–máximo se sobrepõem, o que não prova ruído ou
+equivalência. O [pacote auditado](linux-evidence/2026-09-11-ascii-controls/README.md)
+preserva as perdas, razões por par, CPU, RTT, relatório bruto e proveniência
+dos builds separados. Foram conferidos 10 processos, 40 cargas e 300 RTT.
+Os testes locais e o CI de uma revisão com código equivalente passaram;
+o cancelamento do CI direto também está registrado no pacote. Esses testes
+verificam comportamento; o desempenho é avaliado pelas medições acima.
+O escopo continua sendo
+processamento e DSR, sem comparação visual ou medição em Omarchy físico.
+
 ## Linhas circulares: tela alternativa e histórico em 2026-09-11
 
 A revisão `5d1712e` mantém uma origem circular comum aos endereços das linhas,
