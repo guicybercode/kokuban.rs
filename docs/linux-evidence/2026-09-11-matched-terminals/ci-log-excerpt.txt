@@ -1,0 +1,446 @@
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:03.5230430Z    Compiling kokuban v0.1.0 (/source)
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7279645Z warning: fields `descent` and `font` are never read
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7280834Z   --> src/glyph_atlas.rs:89:9
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7283646Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7284745Z 75 | pub struct GlyphAtlas {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7285813Z    |            ---------- fields in this struct
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7287025Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7287935Z 89 |     pub descent: f32,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7288601Z    |         ^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7290417Z 90 |     font: Font,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7291057Z    |     ^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7292094Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7293203Z    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7294369Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7294766Z warning: method `clear_and_resize` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7295892Z    --> src/glyph_atlas.rs:220:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7296653Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7297030Z 107 | impl GlyphAtlas {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7297506Z     | --------------- method in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7298531Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7299511Z 220 |     pub fn clear_and_resize(&mut self, new_font_size: f32) -> Result<(), GlyphAtlasError> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7300395Z     |            ^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7300709Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7301093Z warning: field `blinking` is never read
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7301676Z   --> src/grid/mod.rs:95:9
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7302110Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7302539Z 93 | pub struct CursorStyle {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7303336Z    |            ----------- field in this struct
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7303903Z 94 |     pub shape: CursorShape,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7304346Z 95 |     pub blinking: bool,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7304633Z    |         ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7304884Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7306362Z    = note: `CursorStyle` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7307420Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7307906Z warning: methods `title_revision`, `scrollback_cell`, `clear_dirty`, and `is_any_dirty` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7308708Z     --> src/grid/mod.rs:342:19
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7309083Z      |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7309383Z  205 | impl Grid {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7309753Z      | --------- methods in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7310196Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7310652Z  342 |     pub(crate) fn title_revision(&self) -> u64 { self.title_revision }
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7311511Z      |                   ^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7311775Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7312062Z  368 |     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7312438Z      |            ^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7312840Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7313368Z 1380 |     pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7314019Z      |            ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7314589Z 1381 |     pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7315225Z      |            ^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7315741Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7315915Z warning: method `text` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7316368Z   --> src/grid/cell.rs:48:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7316747Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7317247Z 47 | impl Cell {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7317631Z    | --------- method in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7318346Z 48 |     pub fn text(&self) -> Cow<'_, str> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7318794Z    |            ^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7319011Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7319173Z warning: field `kind` is never read
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7319600Z   --> src/grid/marks.rs:11:9
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7319962Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7320271Z 10 | pub struct PromptMark {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7320684Z    |            ---------- field in this struct
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7321336Z 11 |     pub kind: PromptMarkKind,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7321743Z    |         ^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7322065Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7322918Z    = note: `PromptMark` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7323983Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7324455Z warning: methods `prev_prompt`, `next_prompt`, `visible_prompt_rows`, and `is_empty` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7325368Z   --> src/grid/marks.rs:34:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7325741Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7326031Z 20 | impl MarkIndex {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7326424Z    | -------------- methods in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7326887Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7327329Z 34 |     pub fn prev_prompt(&self, current_row: usize) -> Option<usize> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7327912Z    |            ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7328158Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7328426Z 48 |     pub fn next_prompt(&self, current_row: usize) -> Option<usize> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7328783Z    |            ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7328984Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7329168Z 58 |     pub fn visible_prompt_rows(
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7329411Z    |            ^^^^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7329637Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7329834Z 79 |     pub fn is_empty(&self) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7330090Z    |            ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7330218Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7330337Z warning: struct `KeyBind` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7330633Z   --> src/input/keybind.rs:15:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7331094Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7331375Z 15 | pub struct KeyBind {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7331591Z    |            ^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7331900Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7332007Z warning: enum `PaneAction` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7332275Z   --> src/input/keybind.rs:21:10
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7332496Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7332671Z 21 | pub enum PaneAction {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7332889Z    |          ^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7333011Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7333134Z warning: struct `KeybindMap` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7333430Z   --> src/input/keybind.rs:40:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7333649Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7333823Z 40 | pub struct KeybindMap {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7334040Z    |            ^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7334177Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7334343Z warning: associated items `from_config` and `lookup` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7334712Z   --> src/input/keybind.rs:45:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7334929Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7335096Z 44 | impl KeybindMap {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7335354Z    | --------------- associated items in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7335745Z 45 |     pub fn from_config(config: &KeybindConfig) -> Self {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7342272Z    |            ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7342510Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7342851Z 74 |     pub fn lookup(&self, key_code: u16, modifiers: KeyModifiers) -> Option<PaneAction> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7343264Z    |            ^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7343387Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7343510Z warning: function `parse_keybind` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7343804Z   --> src/input/keybind.rs:84:4
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7344028Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7344239Z 84 | fn parse_keybind(s: &str) -> Option<KeyBind> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7344702Z    |    ^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7344825Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7344940Z warning: function `key_name_to_code` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7345242Z    --> src/input/keybind.rs:103:4
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7345474Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7345690Z 103 | fn key_name_to_code(name: &str) -> Option<u16> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7345976Z     |    ^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7346103Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7346224Z warning: type alias `PaneId` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7346492Z  --> src/layout.rs:5:10
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7346689Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7346877Z 5 | pub type PaneId = u64;
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7347094Z   |          ^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7347211Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7347328Z warning: constant `DIVIDER_THICKNESS` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7347619Z  --> src/layout.rs:7:11
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7347821Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7348013Z 7 | pub const DIVIDER_THICKNESS: f32 = 6.0;
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7348278Z   |           ^^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7348426Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7348582Z warning: enum `SplitDirection` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7348857Z   --> src/layout.rs:10:10
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7349068Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7349249Z 10 | pub enum SplitDirection {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7349475Z    |          ^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7349630Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7349752Z warning: struct `PixelRect` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7350167Z   --> src/layout.rs:16:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7350371Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7350547Z 16 | pub struct PixelRect {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7350762Z    |            ^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7351173Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7351383Z warning: associated items `ZERO`, `split`, and `contains` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7351762Z   --> src/layout.rs:24:15
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7351966Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7352140Z 23 | impl PixelRect {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7352397Z    | -------------- associated items in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7352714Z 24 |     pub const ZERO: Self = Self {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7352967Z    |               ^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7353166Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7353507Z 31 |     pub fn split(self, direction: SplitDirection, ratio: f32) -> (PixelRect, PixelRect) {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7353919Z    |            ^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7354118Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7354329Z 69 |     pub fn contains(&self, x: f32, y: f32) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7354615Z    |            ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7354891Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7355018Z warning: struct `DividerInfo` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7355314Z   --> src/layout.rs:75:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7355536Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7355719Z 75 | pub struct DividerInfo {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7355954Z    |            ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7356086Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7356206Z warning: function `compute_layout` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7356496Z   --> src/layout.rs:84:8
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7356697Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7356872Z 84 | pub fn compute_layout(
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7357117Z    |        ^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7357249Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7357366Z warning: function `node_contains` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7357655Z    --> src/layout.rs:131:4
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7357863Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7358107Z 131 | fn node_contains(node: &PaneNode, id: PaneId) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7358429Z     |    ^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7358549Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7358658Z warning: enum `PaneNode` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7358917Z  --> src/layout/tree.rs:3:10
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7359127Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7359303Z 3 | pub enum PaneNode {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7359506Z   |          ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7359627Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7360016Z warning: associated items `split_leaf`, `remove_leaf`, `adjust_ratio`, `contains`, `collect_leaf_ids`, and `is_single_leaf` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7360586Z    --> src/layout/tree.rs:16:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7360804Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7361119Z  13 | impl PaneNode {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7361507Z     | ------------- associated items in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7361799Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7361975Z  16 |     pub fn split_leaf(
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7362191Z     |            ^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7362389Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7362629Z  44 |     pub fn remove_leaf(&mut self, target_id: PaneId) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7362947Z     |            ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7363151Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7363431Z  72 |     pub fn adjust_ratio(&mut self, target_id: PaneId, delta: f32) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7363803Z     |            ^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7364006Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7364249Z 104 |     pub fn contains(node: &PaneNode, id: PaneId) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7364565Z     |            ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7364760Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7364996Z 113 |     pub fn collect_leaf_ids(&self, out: &mut Vec<PaneId>) {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7365310Z     |            ^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7365529Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7365726Z 123 |     pub fn is_single_leaf(&self) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7365996Z     |            ^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7366140Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7366230Z warning: enum `Action` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7366484Z  --> src/parser/mod.rs:6:10
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7366694Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7366864Z 6 | pub enum Action {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7367064Z   |          ^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7367180Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7367274Z warning: method `feed` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7367529Z    --> src/parser/ansi.rs:113:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7367752Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7367923Z  77 | impl Parser {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7368147Z     | ----------- method in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7368412Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7368640Z 113 |     pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7368942Z     |            ^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7369062Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7369200Z warning: methods `master_fd` and `resize` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7369517Z    --> src/pty/unix.rs:178:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7369729Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7369900Z  35 | impl Pty {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7370119Z     | -------- methods in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7370374Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7370560Z 178 |     pub fn master_fd(&self) -> RawFd {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7370953Z     |            ^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7371286Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7376097Z 243 |     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7376491Z     |            ^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7376631Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7376781Z warning: struct `PaneRenderData` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7377113Z  --> src/render_scene.rs:5:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7377342Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7377531Z 5 | pub struct PaneRenderData<'a> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7377781Z   |            ^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7377923Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7378069Z warning: struct `ConfirmOverlayInfo` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7378403Z   --> src/render_scene.rs:16:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7378634Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7378822Z 16 | pub struct ConfirmOverlayInfo {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7379076Z    |            ^^^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7379226Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7379356Z warning: struct `ChromeColors` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7379658Z   --> src/render_scene.rs:23:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7379884Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7380064Z 23 | pub struct ChromeColors {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7380291Z    |            ^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7380431Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7380569Z warning: methods `contains` and `get_text` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7381268Z    --> src/selection.rs:85:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7381573Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7381764Z  32 | impl SelectionState {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7382036Z     | ------------------- methods in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7382325Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7382501Z  85 |     pub fn contains(
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7382896Z     |            ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7383096Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7383317Z 145 |     pub fn get_text(&self, grid: &Grid) -> String {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7383609Z     |            ^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7383739Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7383909Z warning: variant `UnexpectedProtocolEvent` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7384281Z   --> src/terminal_reader.rs:53:5
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7384517Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7384701Z 45 | pub(crate) enum ReaderExit {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7384966Z    |                 ---------- variant in this enum
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7385225Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7385409Z 53 |     UnexpectedProtocolEvent,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7385648Z    |     ^^^^^^^^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7385858Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7386292Z    = note: `ReaderExit` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7386738Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7386945Z warning: associated functions `spawn_text` and `spawn_with_io` are never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7387359Z    --> src/terminal_reader.rs:64:19
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7387596Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7387776Z  63 | impl TerminalReader {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7388074Z     | ------------------- associated functions in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7388427Z  64 |     pub(crate) fn spawn_text<U, X>(
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7388689Z     |                   ^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7388908Z ...
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7389082Z 111 |     fn spawn_with_io<I, U, X>(
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7389320Z     |        ^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7389496Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7389605Z warning: struct `Vertex` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7389891Z   --> src/renderer/mod.rs:21:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7390109Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7390280Z 21 | pub struct Vertex {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7390486Z    |            ^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7390608Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7390728Z warning: associated function `new` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7391179Z   --> src/renderer/mod.rs:29:12
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7391400Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7391566Z 28 | impl Vertex {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7391819Z    | ----------- associated function in this implementation
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7392215Z 29 |     pub fn new(x: f32, y: f32, u: f32, v: f32, fg: u32, bg: u32) -> Self {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7392549Z    |            ^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7392668Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7392919Z warning: function `box_drawing_lines` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7393229Z  --> src/renderer/box_drawing.rs:4:8
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7393465Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7393772Z 4 | pub fn box_drawing_lines(c: char, w: f32, h: f32) -> Option<Vec<(f32, f32, f32, f32)>> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7394161Z   |        ^^^^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7394301Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7394413Z warning: function `is_box_drawing` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7394710Z    --> src/renderer/box_drawing.rs:124:8
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7394958Z     |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7395157Z 124 | pub fn is_box_drawing(c: char) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7395432Z     |        ^^^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7395564Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7395674Z warning: function `is_braille` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7395951Z  --> src/renderer/braille.rs:2:8
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7396176Z   |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7396360Z 2 | pub fn is_braille(c: char) -> bool {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7396608Z   |        ^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7396739Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7396845Z warning: function `braille_dots` is never used
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7397129Z   --> src/renderer/braille.rs:12:8
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7397364Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7397572Z 12 | pub fn braille_dots(c: char) -> Vec<(u8, u8)> {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7397859Z    |        ^^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7397984Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7398109Z warning: variant `Unsupported` is never constructed
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7398421Z   --> src/renderer/image_animation.rs:20:5
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7398677Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7398858Z 19 | pub enum AnimationError {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7399284Z    |          -------------- variant in this enum
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7399550Z 20 |     Unsupported,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7399742Z    |     ^^^^^^^^^^^
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7399923Z    |
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7400421Z    = note: `AnimationError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:04.7401058Z
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:12.8249968Z warning: `kokuban` (bin "kokuban") generated 39 warnings
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:12.8251116Z     Finished `release` profile [optimized] target(s) in 1m 25s
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:34.1903378Z cell calibration baseline: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:35.3125018Z cell calibration baseline: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:37.4141985Z cell calibration baseline: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:38.6171300Z cell calibration baseline: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:39.4908444Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.7' (uid=0 pid=10506 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:39.4937942Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:40.8520610Z cell calibration adjusted: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:41.9740816Z cell calibration adjusted: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:44.0980340Z cell calibration adjusted: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:45.3009867Z cell calibration adjusted: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:45.5445380Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.15' (uid=0 pid=10579 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:45.5484457Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:46.8803566Z sample 1/5: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:21:56.3060628Z sample 1/5: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:09.2211615Z sample 1/5: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:15.5735028Z sample 1/5: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:15.8202878Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.23' (uid=0 pid=10652 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:15.8242016Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:25.2326966Z sample 2/5: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:37.7643404Z sample 2/5: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:44.0623764Z sample 2/5: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:44.3094165Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.29' (uid=0 pid=10714 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:44.3133501Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:22:53.5657305Z sample 2/5: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:02.9722788Z sample 3/5: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:09.3720339Z sample 3/5: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:09.6194880Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.35' (uid=0 pid=10764 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:09.6224256Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:19.0095401Z sample 3/5: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:28.4145665Z sample 3/5: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:40.9621374Z sample 4/5: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:41.2107547Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.41' (uid=0 pid=10817 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:41.2145384Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:23:50.6155621Z sample 4/5: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:00.0008253Z sample 4/5: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:12.8209704Z sample 4/5: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:19.0539999Z sample 5/5: kokuban
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:28.3477288Z sample 5/5: ghostty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:40.8409648Z sample 5/5: alacritty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:47.1059009Z sample 5/5: kitty
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:47.3469022Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.55' (uid=0 pid=10942 comm="/usr/bin/kitty --config NONE --override font_famil" label="docker-default (enforce)")
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:47.3517663Z dbus-daemon[10445]: [session uid=0 pid=10445 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9072762Z {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9074884Z   "report": "/evidence/measurements/report.json",
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9075506Z   "comparability": {
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9075860Z     "geometry_and_history_checks_passed": true,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9076278Z     "reasons": [],
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9076587Z     "geometries_rows_cols_pixels": [
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9076946Z       [
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9077191Z         24,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9077433Z         80,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9077672Z         720,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9077957Z         408
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9078221Z       ]
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9078457Z     ],
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9078776Z     "rendering_equivalence_verified": false,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9079194Z     "rendering_limitations": [
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9079717Z       "DSR validates the final marker reply, not workload text or rendered pixels",
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9080610Z       "Unicode grapheme and font fallback fidelity must be checked separately from this throughput workload",
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9081974Z       "Installed fallback fonts can differ between terminals and affect rendered output"
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9082852Z     ],
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9083105Z     "ranking": null,
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9083640Z     "scope": "Processing throughput and protocol RTT only; no overall performance ranking"
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9084247Z   }
+compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T15:24:56.9084479Z }
+compare	Make container evidence readable by the artifact uploader	﻿2026-09-11T15:24:58.1138036Z ##[group]Run evidence_directory="$RUNNER_TEMP/kokuban-four-terminal-evidence"
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1138723Z [36;1mevidence_directory="$RUNNER_TEMP/kokuban-four-terminal-evidence"[0m
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1139206Z [36;1mif test -d "$evidence_directory"; then[0m
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1139684Z [36;1m  sudo chown -R --no-dereference -- "$(id -u):$(id -g)" "$evidence_directory"[0m
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1140130Z [36;1mfi[0m
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1177588Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1177963Z env:
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1178165Z   SOURCE_REF: 48afe69
+compare	Make container evidence readable by the artifact uploader	2026-09-11T15:24:58.1178394Z ##[endgroup]
+compare	Upload comparisons and provenance even on failure	﻿2026-09-11T15:24:58.1591519Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1593590Z ##[group]Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1593990Z with:
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1594212Z   name: linux-four-terminal-comparison
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1594812Z   path: /home/runner/work/_temp/kokuban-four-terminal-evidence
+compare	Upload comparisons and provenance even on failure	!/home/runner/work/_temp/kokuban-four-terminal-evidence/**/*.bin
+compare	Upload comparisons and provenance even on failure
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1595409Z   if-no-files-found: ignore
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1595642Z   retention-days: 7
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1595849Z   compression-level: 6
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1596063Z   overwrite: false
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1596268Z   include-hidden-files: false
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1596491Z env:
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1596679Z   SOURCE_REF: 48afe69
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.1596911Z ##[endgroup]
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.3347791Z (node:13540) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.3349343Z (Use `node --trace-deprecation ...` to show where the warning was created)
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.7270959Z With the provided path, there will be 837 files uploaded
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.7277694Z Artifact name is valid!
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:58.7278490Z Root directory input is valid!
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:59.1078370Z Beginning upload of artifact content to blob storage
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:24:59.8660560Z (node:13540) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.5625904Z Uploaded bytes 1977096
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.6348866Z Finished uploading artifact content to blob storage!
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.6350380Z SHA256 digest of uploaded artifact zip is 23b7c04a5d5ebc6e8a286e8d7de3d3d75164dea83cd885e3ba9d7b58c69b5e00
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.6352279Z Finalizing artifact upload
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.9076950Z Artifact linux-four-terminal-comparison.zip successfully finalized. Artifact ID 10269489657
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.9078684Z Artifact linux-four-terminal-comparison has been successfully uploaded! Final size is 1977096 bytes. Artifact ID is 10269489657
+compare	Upload comparisons and provenance even on failure	2026-09-11T15:25:00.9083946Z Artifact download URL: https://github.com/guicybercode/kokuban.rs/actions/runs/34615352199/artifacts/10269489657

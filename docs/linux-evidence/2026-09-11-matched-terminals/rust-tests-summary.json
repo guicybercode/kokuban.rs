@@ -1,0 +1,28 @@
+{
+  "command": "cargo test --release --locked --all-targets",
+  "source_artifact": "rust-tests.txt",
+  "source_artifact_bytes": 84028,
+  "source_artifact_sha256": "453b3d3947fa6c559ba25a8a22eb703b484135fb1a927fb7e99023b1f2a91b27",
+  "full_original_not_copied": true,
+  "verbatim_summary_lines": [
+    "     Running unittests src/main.rs (/build/target/release/deps/kokuban-d28fe75466c9cead)",
+    "running 665 tests",
+    "test result: ok. 664 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.06s",
+    "     Running unittests examples/graphics.rs (/build/target/release/examples/graphics-30f6a88133411d78)",
+    "running 0 tests",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "     Running unittests examples/terminal-throughput.rs (/build/target/release/examples/terminal_throughput-01a8dd9ec51bc8c3)",
+    "running 203 tests",
+    "test result: ok. 203 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s"
+  ],
+  "main_tests": {
+    "passed": 664,
+    "failed": 0,
+    "ignored": 1
+  },
+  "example_tests": {
+    "passed": 203,
+    "failed": 0,
+    "ignored": 0
+  }
+}

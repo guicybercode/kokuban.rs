@@ -66,6 +66,63 @@ não são enviados, mas seus tamanhos e hashes permitem verificar a reprodução
 Esse ambiente permite comparar processamento no mesmo sistema; não reproduz
 GPU, monitor, Hyprland ou todas as versões instaladas no Omarchy.
 
+## Medição com células iguais em 2026-09-11
+
+O [workflow corrigido](https://github.com/guicybercode/kokuban.rs/actions/runs/34615352199)
+concluiu cinco amostras por terminal, quatro cargas de aproximadamente 32 MiB
+por amostra e oito pré-voos separados das estatísticas. O código de Kokuban
+é `48afe69`; o executor e o workflow são de `4184729`. A sessão usou Ubuntu
+26.04 amd64 em container, AMD EPYC 7763 e afinidade nas quatro CPUs disponíveis
+do runner, com Weston 14 headless pixman e renderização por software.
+
+Todos usaram tela alternativa sem histórico, DejaVu Sans Mono no tamanho
+solicitado de 14 pixels lógicos e grade efetiva de 80×24 células, 720×408 pixels.
+O perfil desabilitou imagens no Kokuban; as cargas contêm somente texto e
+controles de terminal.
+A calibração manteve Kokuban em 9×17 pixels por célula e acrescentou espaçamento:
+1 pixel em largura/altura no Ghostty e 1 pixel em largura no Alacritty e no
+Kitty. A geometria permaneceu estável nas 80 cargas cronometradas.
+
+As versões foram Alacritty `0.16.1` (pacote `0.16.1-2ubuntu1`), Kitty `0.45.0`
+(pacote `0.45.0-1build1`) e Ghostty `1.3.0-dev+0000000`, canal `tip` (pacote
+`1.3.0~us1-0ubuntu1.1`). Esse Ghostty não se identifica como release estável.
+Kokuban foi compilado em release com Rust 1.94.1 e lockfile.
+
+| Carga | Kokuban, mediana MiB/s | Ghostty | Alacritty | Kitty |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 64,85 | 27,05 | 50,87 | 78,69 |
+| ANSI | 54,54 | 22,10 | 53,97 | 16,62 |
+| Unicode | 20,54 | 25,96 | 52,39 | 59,85 |
+| Linhas curtas | 22,45 | 23,87 | 48,82 | 29,28 |
+
+Neste ensaio, Kokuban processou ASCII acima de Ghostty e Alacritty, mas abaixo
+de Kitty. Em ANSI ficou próximo de Alacritty, com intervalos sobrepostos
+(53,96–55,83 e 53,66–54,36 MiB/s), e acima dos outros dois. Em Unicode e linhas
+curtas ficou abaixo dos três. Esses dois caminhos continuam sendo prioridades
+de investigação; os dados não sustentam a meta de superar todos os concorrentes.
+
+O RTT mediano do protocolo, com 150 observações por terminal, foi de 0,069 ms
+no Kokuban, 0,107 ms no Ghostty, 0,092 ms no Alacritty e 3,200 ms no Kitty.
+Esse tempo mede a resposta DSR e não a latência entre teclado e tela. O
+[relatório bruto](linux-evidence/2026-09-11-matched-terminals/ci-report.json)
+preserva todas as amostras, intervalos, CPU/RSS observados, configurações,
+hashes dos executáveis e pré-voos.
+
+Noto CJK e Noto Color Emoji estavam instaladas, com a cadeia de fallback do
+Fontconfig e os hashes dos arquivos registrados. Isso não confirma que cada
+terminal desenhou os mesmos glifos. O workflow força software Mesa/llvmpipe,
+mas não registra `GL_RENDERER` efetivo por terminal. Com células iguais, a
+conclusão permanece restrita a processamento neste ambiente; faltam comparação
+visual e medições de apresentação/entrada no Omarchy com GPU e monitor reais.
+
+Passaram 664 testes Linux do executável e 203 do exemplo, com um benchmark
+ignorado, além do lançamento Wayland com diretório contendo espaços,
+argumentos literais e resposta DSR. O [manifesto](linux-evidence/2026-09-11-matched-terminals/manifest.json)
+preserva a proveniência e também registra a tentativa anterior: o
+[run `34614491270`](https://github.com/guicybercode/kokuban.rs/actions/runs/34614491270)
+concluiu a medição, mas perdeu o upload por permissões de caches criados pelo
+container. Seus números não foram recuperados nem usados nesta tabela.
+
 ## Cargas e amostragem
 
 Cada amostra abre um processo novo e executa quatro cargas: linhas ASCII, SGR com
