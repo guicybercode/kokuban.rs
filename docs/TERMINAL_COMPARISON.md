@@ -15,16 +15,17 @@ sessão Wayland, fora de tmux/SSH, execute:
 cargo build --locked --release
 python3 scripts/compare-terminal-performance.py \
   --kokuban "$PWD/target/release/kokuban" \
-  --backend wayland --samples 7 --bytes 16777216 \
+  --backend wayland --samples 7 --bytes 16777216 --match-cell-size \
   --environment-note 'Descreva GPU, compositor, monitor e escala desta máquina' \
   --output-dir /tmp/kokuban-comparison-wayland
 ```
 
 O diretório de saída deve ser novo. Use `--ghostty`, `--alacritty` e `--kitty`
 para selecionar executáveis específicos. O padrão solicita todos os quatro:
-um executável ausente fica registrado e causa retorno diferente de zero, sem
-apagar medições dos terminais disponíveis. Para um ensaio explicitamente parcial,
-use, por exemplo, `--terminals kokuban alacritty kitty`.
+a calibração exige os executáveis solicitados e suas versões identificáveis.
+Falhas ficam registradas e causam retorno diferente de zero, preservando a
+evidência já produzida. Para um ensaio explicitamente parcial, use, por exemplo,
+`--terminals kokuban alacritty kitty`.
 
 Para desenvolvimento em X11, um ensaio menor é:
 
@@ -41,6 +42,29 @@ GPU, o compositor e o monitor reais para conclusões sobre o Omarchy. Mantenha a
 janelas visíveis, no mesmo monitor e escala, e suspenda outras compilações ou
 medições durante o ensaio. Um gerenciador de janelas pode substituir o tamanho
 solicitado; o relatório registra o tamanho efetivo antes e depois de cada carga.
+
+## Executar a comparação de processamento no CI
+
+O workflow manual `Linux four-terminal processing comparison` usa a imagem
+oficial Ubuntu 26.04 amd64 em um runner GitHub Ubuntu 24.04. Ele resolve e
+registra o digest da imagem, instala os três concorrentes dos repositórios
+Ubuntu e compila o commit solicitado de Kokuban com Rust 1.94.1:
+
+```sh
+gh workflow run linux-terminal-comparison.yml -f revision=main
+```
+
+Depois dos testes Rust e do lançamento real de Kokuban em Wayland, o workflow
+calibra as células e executa cinco amostras de aproximadamente 32 MiB por carga
+e terminal, com ordem rotativa e tela alternativa. Usa a afinidade completa do
+runner, Weston headless pixman e Mesa por software. DejaVu Sans Mono, Noto CJK
+e Noto Color Emoji estão instaladas; versões dos pacotes, fontes/fallbacks e
+hashes dos arquivos ficam no artefato. Os relatórios, configurações, logs e
+proveniência são mantidos por sete dias mesmo em falhas. Os payloads `.bin`
+não são enviados, mas seus tamanhos e hashes permitem verificar a reprodução.
+
+Esse ambiente permite comparar processamento no mesmo sistema; não reproduz
+GPU, monitor, Hyprland ou todas as versões instaladas no Omarchy.
 
 ## Cargas e amostragem
 
@@ -95,6 +119,23 @@ geometria durante a carga; nessas condições, não se deve ordenar os resultado
 como comparação equivalente. `--columns`, `--rows` e `--font-pixels` permitem
 repetir o cenário com outro tamanho solicitado.
 
+Com `--match-cell-size`, dois pré-voos ficam fora das estatísticas. O primeiro
+mede a largura e a altura reais de cada célula; o segundo confirma os ajustes
+de espaçamento para atingir as maiores dimensões observadas. A fonte e seu
+tamanho solicitado permanecem os mesmos. Os ajustes usam `adjust-cell-width`
+e `adjust-cell-height` no Ghostty, `font.offset` no Alacritty e `modify_font` no
+Kitty. Versões desconhecidas ou anteriores aos pisos verificados são rejeitadas:
+Ghostty 1.0.0, Alacritty 0.10.0 e Kitty 0.26.0. Esses pisos não representam
+necessariamente a primeira versão que ofereceu cada opção.
+
+O campo `cell_size_calibration` guarda as configurações, respostas, alvo em
+pixels e deltas aplicados. A calibração exige a grade solicitada, células com
+dimensões inteiras e geometria estável. Se outro terminal exigir uma célula maior
+que a de Kokuban, o ensaio falha porque Kokuban ainda não oferece ajuste de
+espaçamento. Em um gerenciador que substitui o tamanho solicitado, prepare as
+janelas para respeitar a grade antes do ensaio. Igualar as células não verifica
+o desenho dos glifos nem a fidelidade visual.
+
 As configurações são isoladas das preferências do usuário. Alacritty anterior
 a 0.13 recebe YAML e versões posteriores recebem TOML, com invocação pela
 [CLI documentada](https://alacritty.org/cmd-alacritty.html). Kitty recebe
@@ -103,7 +144,8 @@ a 0.13 recebe YAML e versões posteriores recebem TOML, com invocação pela
 [configuração oficial](https://sw.kovidgoyal.net/kitty/conf/).
 
 O campo `comparability` informa amostras ausentes, geometria ou retenção
-incompatível. Mesmo quando essas verificações passam, a conclusão se limita à
+incompatível. Qualquer reprovação nesse campo retorna erro, inclusive sem
+calibração. Mesmo quando essas verificações passam, a conclusão se limita à
 vazão e ao RTT medidos naquele ambiente. O relatório mantém
 `rendering_equivalence_verified: false`: a consulta DSR confirma a resposta após
 o marcador, mas não verifica o conteúdo do texto nem os pixels apresentados.
