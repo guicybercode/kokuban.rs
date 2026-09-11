@@ -543,7 +543,8 @@ impl Grid {
         if self.extend_grapheme(c) {
             return;
         }
-        let char_width = c.width().unwrap_or(1).max(1).min(self.cols());
+        let scalar_width = c.width();
+        let char_width = scalar_width.unwrap_or(1).max(1).min(self.cols());
         let cols = self.cols();
 
         // Under stable dimensions `cursor_col == cols` is the delayed-wrap
@@ -598,7 +599,7 @@ impl Grid {
         cell.underline_style = self.underline_style;
         cell.underline_color = self.underline_color;
 
-        if c.width() == Some(2) {
+        if scalar_width == Some(2) {
             cell.flags.insert(CellFlags::WIDE);
             cell.flags.remove(CellFlags::WIDE_CONT);
             // Set continuation cell
@@ -640,7 +641,8 @@ impl Grid {
         }
         let previous = self.buffer.cell(row, col);
         if previous.grapheme.is_none() && previous.c.is_ascii() && c.is_ascii() { return false; }
-        if col >= self.buffer.row_metadata(row).len { return false; }
+        let previous_len = self.buffer.row_metadata(row).len;
+        if col >= previous_len { return false; }
         let mut scalar_bytes = [0; 4];
         let previous_text = previous.grapheme.as_deref()
             .unwrap_or_else(|| previous.c.encode_utf8(&mut scalar_bytes));
@@ -648,14 +650,14 @@ impl Grid {
         let mut text = String::with_capacity(previous_text.len() + c.len_utf8());
         text.push_str(previous_text);
         text.push(c);
-        let previous_len = self.buffer.row_metadata(row).len;
         let old_width = if previous.flags.contains(CellFlags::WIDE)
             && col + 1 < self.cols() { 2 } else { 1 };
-        let new_width = text.width().clamp(1, 2).min(self.cols());
+        let natural_width = text.width().clamp(1, 2);
+        let new_width = natural_width.min(self.cols());
         let mut cell = previous.clone();
         cell.grapheme = Some(text.into());
         cell.flags.remove(CellFlags::WIDE | CellFlags::WIDE_CONT);
-        if cell.display_width() == 2 { cell.flags.insert(CellFlags::WIDE); }
+        if natural_width == 2 { cell.flags.insert(CellFlags::WIDE); }
         if new_width > old_width && col + new_width > self.cols() && self.auto_wrap {
             *self.buffer.cell_mut(row, col) = self.template_cell();
             let mut metadata = self.buffer.row_metadata(row);
@@ -663,11 +665,11 @@ impl Grid {
             self.buffer.set_row_metadata(row, metadata);
             self.dirty[row] = true;
             self.soft_wrap();
-            self.write_cluster_cell(cell);
+            self.write_cluster_cell(cell, new_width);
             return true;
         }
         let new_width = new_width.min(self.cols() - col);
-        if cell.display_width() == 2 && new_width == 1 && self.cols() > 1 {
+        if natural_width == 2 && new_width == 1 && self.cols() > 1 {
             cell.flags.remove(CellFlags::WIDE);
         }
         self.clear_wide_overlap(row, col, new_width);
@@ -690,10 +692,9 @@ impl Grid {
         true
     }
 
-    fn write_cluster_cell(&mut self, cell: Cell) {
+    fn write_cluster_cell(&mut self, cell: Cell, width: usize) {
         let row = self.cursor_row;
         let col = self.cursor_col;
-        let width = cell.display_width().min(self.cols());
         self.clear_wide_overlap(row, col, width);
         *self.buffer.cell_mut(row, col) = cell;
         if width == 2 {
@@ -2308,6 +2309,107 @@ mod tests {
     }
 
     #[test]
+    fn one_column_emoji_presentation_keeps_natural_width() {
+        for auto_wrap in [true, false] {
+            let mut grid = Grid::new(1, 2, 4);
+            grid.set_auto_wrap(auto_wrap);
+            grid.put_char('❤');
+            grid.put_char('\u{fe0f}');
+            let cell = grid.buffer.cell(0, 0);
+            assert_eq!(cell.text(), "❤\u{fe0f}");
+            assert_eq!(cell.display_width(), 2);
+            assert!(cell.flags.contains(CellFlags::WIDE));
+            assert!(!cell.flags.contains(CellFlags::WIDE_CONT));
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 1));
+            assert!(grid.is_wrap_pending());
+            assert_eq!(grid.retained_row_len(0), 1);
+            assert_eq!(grid.scrollback_len(), 0);
+        }
+    }
+
+    #[test]
+    fn presentation_width_recovers_after_reflow_from_one_column() {
+        for (text, natural_width) in [("❤\u{fe0f}", 2), ("♈\u{fe0e}", 1), ("👩🏽‍💻", 2)] {
+            let mut grid = Grid::new(1, 3, 4);
+            for c in text.chars() { grid.put_char(c); }
+            for cols in [4, 1, 3] {
+                grid.resize(cols, 3);
+                let occupied = natural_width.min(cols);
+                let cell = grid.buffer.cell(0, 0);
+                assert_eq!(cell.text(), text, "cols={cols}");
+                assert_eq!(cell.display_width(), natural_width, "cols={cols}");
+                assert_eq!(cell.flags.contains(CellFlags::WIDE), natural_width == 2);
+                if occupied == 2 {
+                    assert!(grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE_CONT));
+                } else if cols > 1 {
+                    assert_eq!(grid.buffer.cell(0, 1).text(), " ");
+                }
+                assert_eq!((grid.cursor_row, grid.cursor_col), (0, occupied.min(cols - 1)));
+                assert_eq!(grid.is_wrap_pending(), occupied == cols);
+                assert_eq!(grid.retained_row_len(0), occupied);
+                if cols > 1 { assert_wide_row_valid(&grid, 0); }
+            }
+        }
+    }
+
+    #[test]
+    fn text_presentation_shrinks_wide_cells_without_erasing_following_text() {
+        for (cols, following_text) in [(2, false), (4, true)] {
+            let mut grid = Grid::new(cols, 2, 4);
+            if following_text {
+                grid.set_cursor_pos(0, 3);
+                grid.put_char('Z');
+                grid.set_cursor_pos(0, 0);
+            }
+            grid.put_char('♈');
+            assert_eq!(grid.is_wrap_pending(), cols == 2);
+            grid.put_char('\u{fe0e}');
+            let cell = grid.buffer.cell(0, 0);
+            assert_eq!(cell.text(), "♈\u{fe0e}");
+            assert_eq!(cell.display_width(), 1);
+            assert!(!cell.flags.intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
+            assert_eq!(grid.buffer.cell(0, 1).text(), " ");
+            assert!(!grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE_CONT));
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 1));
+            assert!(!grid.is_wrap_pending());
+            assert_eq!(grid.retained_row_len(0), if following_text { 4 } else { 1 });
+            if following_text { assert_eq!(grid.buffer.cell(0, 3).c, 'Z'); }
+            assert_wide_row_valid(&grid, 0);
+            grid.put_char('X');
+            assert_eq!(grid.buffer.cell(0, 0).text(), "♈\u{fe0e}");
+            assert_eq!(grid.buffer.cell(0, 1).c, 'X');
+        }
+    }
+
+    #[test]
+    fn emoji_presentation_at_nowrap_margin_clips_only_occupied_width() {
+        let mut grid = Grid::new(2, 2, 4);
+        grid.set_auto_wrap(false);
+        grid.put_char('a');
+        grid.put_char('❤');
+        grid.put_char('\u{fe0f}');
+        let cell = grid.buffer.cell(0, 1);
+        assert_eq!(cell.text(), "❤\u{fe0f}");
+        assert_eq!(cell.display_width(), 2);
+        assert!(!cell.flags.intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
+        assert_eq!(grid.buffer.cell(0, 0).c, 'a');
+        assert_eq!(grid.buffer.cell(1, 0).text(), " ");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
+        assert!(grid.is_wrap_pending());
+        assert_eq!(grid.retained_row_len(0), 2);
+        assert_eq!(grid.scrollback_len(), 0);
+
+        grid.resize(4, 2);
+        assert_eq!(grid.buffer.cell(0, 1).text(), "❤\u{fe0f}");
+        assert!(grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE));
+        assert!(grid.buffer.cell(0, 2).flags.contains(CellFlags::WIDE_CONT));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 3));
+        assert!(!grid.is_wrap_pending());
+        assert_eq!(grid.retained_row_len(0), 3);
+        assert_wide_row_valid(&grid, 0);
+    }
+
+    #[test]
     fn one_column_wide_char_consumes_pending_margin() {
         let mut wrapping = Grid::new(1, 2, 0);
         wrapping.put_char('x');
@@ -2421,6 +2523,29 @@ mod tests {
         assert_eq!(grid.buffer.cell(1, 0).text(), "❤️");
         assert_eq!(grid.retained_row_len(0), 1);
         assert!(grid.retained_row_wrapped(0));
+        assert_wide_row_valid(&grid, 1);
+    }
+
+    #[test]
+    fn emoji_presentation_growth_at_scroll_bottom_preserves_history() {
+        let mut grid = Grid::new(2, 2, 4);
+        grid.put_ascii(b"zz");
+        grid.newline();
+        grid.carriage_return();
+        grid.put_char('a');
+        grid.put_char('❤');
+        grid.put_char('\u{fe0f}');
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.scrollback_cell(0, 0), 'z');
+        assert_eq!(grid.scrollback_cell(0, 1), 'z');
+        assert_eq!(grid.retained_row_len(0), 2);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'a');
+        assert_eq!(grid.retained_row_len(1), 1);
+        assert!(grid.retained_row_wrapped(1));
+        assert_eq!(grid.buffer.cell(1, 0).text(), "❤\u{fe0f}");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 2));
+        assert!(grid.is_wrap_pending());
+        assert_eq!(grid.retained_row_len(2), 2);
         assert_wide_row_valid(&grid, 1);
     }
 
