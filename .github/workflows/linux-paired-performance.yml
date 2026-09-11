@@ -72,9 +72,11 @@ jobs:
             source_directory="$RUNNER_TEMP/kokuban-paired-source-$label"
             mkdir "$source_directory" "$evidence_directory/$label-build"
             git archive "$revision" | tar -x -C "$source_directory"
+            # Archives preserve old mtimes: isolate targets so Cargo cannot
+            # reuse the other revision's root binary as an apparently fresh build.
             cargo build --release --locked --manifest-path "$source_directory/Cargo.toml" \
-              --target-dir "$RUNNER_TEMP/kokuban-paired-build"
-            cp "$RUNNER_TEMP/kokuban-paired-build/release/kokuban" "$RUNNER_TEMP/kokuban-paired-binaries/$label"
+              --target-dir "$RUNNER_TEMP/kokuban-paired-build-$label"
+            cp "$RUNNER_TEMP/kokuban-paired-build-$label/release/kokuban" "$RUNNER_TEMP/kokuban-paired-binaries/$label"
             cp "$source_directory/Cargo.toml" "$source_directory/Cargo.lock" "$evidence_directory/$label-build/"
             cargo tree --locked --manifest-path "$source_directory/Cargo.toml" > "$evidence_directory/$label-build/cargo-tree.txt"
             sha256sum "$RUNNER_TEMP/kokuban-paired-binaries/$label" > "$evidence_directory/$label-build/binary-sha256.txt"
