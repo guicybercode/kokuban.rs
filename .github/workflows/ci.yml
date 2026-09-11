@@ -68,6 +68,9 @@ jobs:
       - name: Check all targets
         run: cargo check --locked --all-targets
 
+      - name: Verify generated Unicode grapheme tables
+        run: python3 -B scripts/generate-grapheme-tables.py --check
+
       - name: Test all targets
         run: cargo test --locked --all-targets
 

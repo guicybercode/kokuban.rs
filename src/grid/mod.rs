@@ -2,6 +2,7 @@ pub mod buffer;
 pub mod cell;
 pub mod marks;
 mod reflow;
+mod boundary_pages;
 
 use buffer::{Buffer, RowMetadata};
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
@@ -45,6 +46,9 @@ const DEFAULT_CELL: Cell = Cell {
 /// Test the boundary after an existing single grapheme without copying it.
 fn scalar_extends_grapheme(previous: &str, c: char) -> bool {
     let last = previous.chars().next_back().expect("cell text is nonempty");
+    if let Some(extends) = boundary_pages::scalar_extends(last, c) {
+        return extends;
+    }
     let chunk_start = previous.len() - last.len_utf8();
     let mut bytes = [0; 8];
     last.encode_utf8(&mut bytes);
