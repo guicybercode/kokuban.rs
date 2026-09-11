@@ -124,11 +124,14 @@ def controlled_child(directory: Path) -> None:
 
 def terminal_command(name: str, binary: Path, version: str, directory: Path, args) -> tuple[list, dict]:
     history = 0 if args.screen == "alternate" else args.scrollback_lines
+    width_offset, height_offset = getattr(args, "cell_adjustments", {}).get(name, (0, 0))
     child = [sys.executable, str(Path(__file__).resolve()), "--child-dir", str(directory)]
     # Kokuban's size is logical pixels, the other terminals use points. Convert
     # at 96 dpi; actual cells/pixels are still checked because DPI varies.
     point_size = args.font_pixels * 72 / 96
     if name == "kokuban":
+        if width_offset or height_offset:
+            raise ValueError("Kokuban does not expose cell spacing adjustments")
         config = (f'[font]\nfamily = "{FONT}"\nsize = {args.font_pixels}\n'
                   f'[window]\ncolumns = {args.columns}\nrows = {args.rows}\nscrollback_lines = {history}\n'
                   '[images]\nenabled = false\n')
@@ -143,12 +146,17 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
                       f'window:\n  dimensions:\n    columns: {args.columns}\n    lines: {args.rows}\n'
                       '  padding:\n    x: 0\n    y: 0\n  decorations: none\n'
                       f'scrolling:\n  history: {history}\n')
+            if width_offset or height_offset:
+                config = config.replace('  normal:\n',
+                                        f'  offset:\n    x: {width_offset}\n    y: {height_offset}\n  normal:\n', 1)
         else:
             filename = "alacritty.toml"
             config = (f'[font]\nsize = {point_size}\n[font.normal]\nfamily = "{FONT}"\n'
                       '[window]\ndecorations = "None"\n[window.padding]\nx = 0\ny = 0\n'
                       f'[window.dimensions]\ncolumns = {args.columns}\nlines = {args.rows}\n'
                       f'[scrolling]\nhistory = {history}\n')
+            if width_offset or height_offset:
+                config += f'[font.offset]\nx = {width_offset}\ny = {height_offset}\n'
         command = [str(binary), "--config-file", str(directory / filename), "-e", *child]
     elif name == "kitty":
         filename = "kitty.conf"
@@ -157,6 +165,9 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
                   f'initial_window_width {args.columns}c\ninitial_window_height {args.rows}c\n'
                   'hide_window_decorations yes\nshell_integration disabled\n'
                   f'linux_display_server {args.backend}\n')
+        if width_offset or height_offset:
+            config += (f'modify_font cell_width {width_offset}px\n'
+                       f'modify_font cell_height {height_offset}px\n')
         command = [str(binary), "--config", "NONE"]
         for line in config.splitlines():
             key, value = line.split(" ", 1)
@@ -171,6 +182,8 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
                   f'window-width = {args.columns}\nwindow-height = {args.rows}\n'
                   'window-padding-x = 0\nwindow-padding-y = 0\nwindow-decoration = none\n'
                   'shell-integration = none\ngtk-single-instance = false\n')
+        if width_offset or height_offset:
+            config += f'adjust-cell-width = {width_offset}\nadjust-cell-height = {height_offset}\n'
         command = [str(binary), "--config-default-files=false",
                    "--config-file=" + str(directory / filename), "-e", *child]
     (directory / filename).write_text(config)
@@ -241,9 +254,105 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
     return sample
 
 
+def cell_dimensions(geometry, args) -> tuple[int, int]:
+    """Require actual integer pixel cells, not just a requested rows/cols count."""
+    if (not isinstance(geometry, (list, tuple)) or len(geometry) != 4
+            or any(type(value) is not int or value <= 0 for value in geometry)):
+        raise ValueError("missing or invalid effective PTY cell/pixel dimensions")
+    rows, columns, width, height = geometry
+    if (rows, columns) != (args.rows, args.columns):
+        raise ValueError("effective PTY rows/columns differ from the requested geometry")
+    if width % columns or height % rows:
+        raise ValueError("effective PTY pixels do not describe integer cell dimensions")
+    return width // columns, height // rows
+
+
+def calibrated_sample_size(sample: dict, probe: dict, args) -> tuple[int, int]:
+    if sample.get("status") != "passed":
+        raise ValueError(f"calibration launch failed: {sample.get('error', sample.get('status'))}")
+    measurements = sample["measurements"]
+    geometry = measurements["initial_geometry"]
+    size = cell_dimensions(geometry, args)
+    workload = measurements["workloads"]["geometry_probe"]
+    if any(workload[key] != geometry for key in ("geometry_before", "geometry_after")):
+        raise ValueError("effective PTY geometry changed during calibration")
+    if workload["sha256"] != probe["sha256"] or workload["bytes"] != probe["bytes"]:
+        raise ValueError("calibration payload differs from the recorded probe")
+    return size
+
+
+def calibrate_cell_size(report: dict, output: Path, args) -> None:
+    """Two untimed preflights: observe natural cells, then verify spacing deltas."""
+    calibration = {"status": "running", "included_in_timed_statistics": False,
+                   "rendering_equivalence_verified": False,
+                   "preflight": {"baseline": {}, "adjusted": {}},
+                   "option_sources": {
+                       "ghostty": "https://github.com/ghostty-org/ghostty/blob/v1.0.0/src/config/Config.zig#L219-L244",
+                       "alacritty": "https://github.com/alacritty/alacritty/blob/v0.10.0/alacritty/src/display/mod.rs#L776-L782",
+                       "kitty": "https://github.com/kovidgoyal/kitty/blob/v0.26.0/kitty/fonts.c#L303-L337"}}
+    report["cell_size_calibration"] = calibration
+    try:
+        # Conservative supported baselines, not claims of introduction versions.
+        minimum_versions = {"ghostty": (1, 0, 0), "alacritty": (0, 10, 0), "kitty": (0, 26, 0)}
+        calibration["minimum_supported_versions"] = minimum_versions
+        for name, terminal in report["terminals"].items():
+            if "path" not in terminal:
+                raise ValueError(f"{name}: calibration requires an available executable and version")
+            if name in minimum_versions:
+                match = re.search(rf"(?im)^{name}\s+(\d+)\.(\d+)\.(\d+)", terminal["version"])
+                if not match or tuple(map(int, match.groups())) < minimum_versions[name]:
+                    raise ValueError(f"{name}: unsupported or unknown version for cell spacing calibration")
+        probe_payload = payloads(1024)["ascii"]
+        probe_path = output / "geometry-probe.bin"
+        probe_path.write_bytes(probe_payload)
+        probe = {"path": str(probe_path), "bytes": len(probe_payload),
+                 "sha256": hashlib.sha256(probe_payload).hexdigest()}
+        calibration["payload"] = probe
+        args.cell_adjustments = {}
+        natural_sizes = {}
+        for phase in ("baseline", "adjusted"):
+            for name, terminal in report["terminals"].items():
+                report["in_progress"] = {"calibration": phase, "terminal": name}
+                record(output, "report.json", report)
+                print(f"cell calibration {phase}: {name}", flush=True)
+                sample = execute_sample(name, Path(terminal["path"]), terminal["version"],
+                                        output / f"preflight-{phase}-{name}",
+                                        {"geometry_probe": str(probe_path)}, args)
+                calibration["preflight"][phase][name] = sample
+                record(output, "report.json", report)
+                size = calibrated_sample_size(sample, probe, args)
+                if phase == "baseline":
+                    natural_sizes[name] = size
+                elif list(size) != calibration["target_cell_pixels"]:
+                    raise ValueError(f"{name}: spacing adjustments did not reach the target cell dimensions")
+            if phase == "baseline":
+                target = [max(size[axis] for size in natural_sizes.values()) for axis in (0, 1)]
+                calibration["target_cell_pixels"] = target
+                args.cell_adjustments = {name: [target[axis] - size[axis] for axis in (0, 1)]
+                                         for name, size in natural_sizes.items()}
+                calibration["spacing_adjustments_pixels"] = args.cell_adjustments
+                if any(args.cell_adjustments.get("kokuban", (0, 0))):
+                    raise ValueError("target cell dimensions require unsupported Kokuban spacing adjustments")
+                if any(value > 127 for value in args.cell_adjustments.get("alacritty", ())):
+                    raise ValueError("Alacritty spacing adjustments exceed its signed 8-bit limits")
+                if "kitty" in natural_sizes and not (2 <= target[0] <= 1000 and 4 <= target[1] <= 1000):
+                    raise ValueError("target cell dimensions exceed Kitty's supported metric limits")
+        calibration["status"] = "passed"
+        report["in_progress"] = None
+    except BaseException as error:
+        calibration.update(status="interrupted" if isinstance(error, KeyboardInterrupt) else "failed",
+                           error=f"{type(error).__name__}: {error}")
+        raise
+    finally:
+        record(output, "report.json", report)
+
+
 def summarize(report: dict, args) -> None:
     reasons = []
     geometries = set()
+    calibration = report.get("cell_size_calibration")
+    if calibration and calibration["status"] != "passed":
+        reasons.append("cell size calibration did not pass")
     for name, terminal in report["terminals"].items():
         samples = terminal.get("samples", [])
         passed = [sample["measurements"] for sample in samples if sample["status"] == "passed"]
@@ -255,11 +364,14 @@ def summarize(report: dict, args) -> None:
         for workload in report["payloads"]:
             measured = [sample["workloads"][workload] for sample in passed]
             for item in measured:
-                geometry = tuple(item["geometry_before"])
-                geometries.add(geometry)
-                if any(value <= 0 for value in geometry):
-                    reasons.append(f"{name}: missing effective PTY cell/pixel dimensions")
-                if item["geometry_after"] != list(geometry) or geometry[:2] != (args.rows, args.columns):
+                try:
+                    size = cell_dimensions(item["geometry_before"], args)
+                    geometries.add(tuple(item["geometry_before"]))
+                    if calibration and list(size) != calibration.get("target_cell_pixels"):
+                        reasons.append(f"{name}: measured cells differ from the calibrated target")
+                except ValueError as error:
+                    reasons.append(f"{name}: {error}")
+                if item["geometry_after"] != item["geometry_before"]:
                     reasons.append(f"{name}: requested geometry not stable in {workload}")
                 if item["sha256"] != report["payloads"][workload]["sha256"]:
                     reasons.append(f"{name}: payload mismatch in {workload}")
@@ -286,7 +398,7 @@ def summarize(report: dict, args) -> None:
                                "scope": "Processing throughput and protocol RTT only; no overall performance ranking"}
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--child-dir", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--output-dir", type=Path)
@@ -299,13 +411,15 @@ def main() -> int:
     parser.add_argument("--columns", type=int, default=80)
     parser.add_argument("--rows", type=int, default=24)
     parser.add_argument("--font-pixels", type=float, default=14.0)
+    parser.add_argument("--match-cell-size", action="store_true",
+                        help="calibrate equal integer pixel cells using untimed spacing preflights")
     parser.add_argument("--screen", choices=("alternate", "primary"), default="alternate")
     parser.add_argument("--scrollback-lines", type=int, default=10000)
     parser.add_argument("--ghostty-scrollback-bytes", type=int, default=64 * 1024 * 1024)
     parser.add_argument("--settle-seconds", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--environment-note", default="", help="GPU/compositor/display details for this run")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.child_dir:
         controlled_child(args.child_dir)
         return 0
@@ -345,36 +459,55 @@ def main() -> int:
                   "GDK_DPI_SCALE", "WINIT_X11_SCALE_FACTOR")},
               "payloads": {name: {"bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
                            for name, payload in data.items()}, "terminals": {}, "execution_order": []}
-    for name in dict.fromkeys(args.terminals):
-        path = shutil.which(getattr(args, name))
-        if path is None:
-            report["terminals"][name] = {"status": "missing", "samples": []}
-            continue
-        binary = Path(path).resolve()
-        version = command_observation([str(binary), "--version"])
-        if version.get("status") != 0:
-            report["terminals"][name] = {"status": "version_failed", "version_observation": version, "samples": []}
-            continue
-        report["terminals"][name] = {"path": str(binary), "version": version["output"],
-                                     "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "samples": []}
-    available = [name for name, terminal in report["terminals"].items() if "path" in terminal]
-    for index in range(args.samples):
-        # Rotate order between samples to distribute warm machine/cache effects.
-        order = available[index % len(available):] + available[:index % len(available)] if available else []
-        for name in order:
-            terminal = report["terminals"][name]
-            report["execution_order"].append([index, name])
-            print(f"sample {index + 1}/{args.samples}: {name}", flush=True)
-            sample = execute_sample(name, Path(terminal["path"]), terminal["version"],
-                                    output / f"{index + 1:02d}-{name}", paths, args)
-            terminal["samples"].append(sample)
-            record(output, "report.json", report)
-    summarize(report, args)
+    report["status"] = "running"
+    report["match_cell_size"] = args.match_cell_size
     record(output, "report.json", report)
+    result = 1
+    try:
+        for name in dict.fromkeys(args.terminals):
+            path = shutil.which(getattr(args, name))
+            if path is None:
+                report["terminals"][name] = {"status": "missing", "samples": []}
+                continue
+            binary = Path(path).resolve()
+            version = command_observation([str(binary), "--version"])
+            if version.get("status") != 0:
+                report["terminals"][name] = {"status": "version_failed", "version_observation": version, "samples": []}
+                continue
+            report["terminals"][name] = {"path": str(binary), "version": version["output"],
+                                         "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "samples": []}
+            record(output, "report.json", report)
+        if args.match_cell_size:
+            calibrate_cell_size(report, output, args)
+        available = [name for name, terminal in report["terminals"].items() if "path" in terminal]
+        for index in range(args.samples):
+            # Rotate order between samples to distribute warm machine/cache effects.
+            order = available[index % len(available):] + available[:index % len(available)] if available else []
+            for name in order:
+                terminal = report["terminals"][name]
+                report["execution_order"].append([index, name])
+                report["in_progress"] = {"sample": index + 1, "terminal": name}
+                record(output, "report.json", report)
+                print(f"sample {index + 1}/{args.samples}: {name}", flush=True)
+                sample = execute_sample(name, Path(terminal["path"]), terminal["version"],
+                                        output / f"{index + 1:02d}-{name}", paths, args)
+                terminal["samples"].append(sample)
+                report["in_progress"] = None
+                record(output, "report.json", report)
+        result = 0
+    except KeyboardInterrupt:
+        report["error"] = "KeyboardInterrupt"
+        result = 130
+    except Exception as error:
+        report["error"] = f"{type(error).__name__}: {error}"
+    finally:
+        summarize(report, args)
+        if not report["comparability"]["geometry_and_history_checks_passed"] and result == 0:
+            result = 1
+        report["status"] = "interrupted" if result == 130 else "passed" if result == 0 else "failed"
+        record(output, "report.json", report)
     print(json.dumps({"report": str(output / "report.json"), "comparability": report["comparability"]}, indent=2))
-    return int(any(len(terminal.get("samples", [])) != args.samples or
-                   any(sample["status"] != "passed" for sample in terminal["samples"])
-                   for terminal in report["terminals"].values()))
+    return result
 
 
 if __name__ == "__main__":
