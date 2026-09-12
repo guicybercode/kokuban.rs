@@ -1,0 +1,739 @@
+   Compiling libc v0.2.183
+    Checking bitflags v2.11.0
+   Compiling objc2 v0.6.4
+    Checking objc2-encode v4.1.0
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling semver v1.0.27
+   Compiling serde_core v1.0.228
+    Checking bitflags v1.3.2
+    Checking memchr v2.8.0
+    Checking log v0.4.29
+   Compiling libm v0.2.16
+    Checking core-foundation-sys v0.8.7
+   Compiling rustc_version v0.4.1
+   Compiling crc32fast v1.5.0
+    Checking simd-adler32 v0.3.8
+    Checking regex-syntax v0.8.10
+   Compiling pathfinder_simd v0.5.5
+    Checking cfg-if v1.0.4
+    Checking foreign-types-shared v0.3.1
+    Checking aho-corasick v1.1.4
+   Compiling cfg_aliases v0.2.1
+    Checking adler2 v2.0.1
+    Checking utf8parse v0.2.2
+    Checking option-ext v0.2.0
+    Checking anstyle-parse v0.2.7
+    Checking miniz_oxide v0.8.9
+   Compiling nix v0.29.0
+    Checking colorchoice v1.0.5
+   Compiling syn v2.0.117
+    Checking anstyle v1.0.14
+    Checking is_terminal_polyfill v1.70.2
+    Checking anstyle-query v1.1.5
+   Compiling serde v1.0.228
+    Checking winnow v1.0.0
+   Compiling thiserror v2.0.18
+   Compiling font-kit v0.14.3
+    Checking same-file v1.0.6
+    Checking objc2-core-foundation v0.3.2
+    Checking block2 v0.6.2
+    Checking dispatch2 v0.3.1
+    Checking regex-automata v0.4.14
+    Checking walkdir v2.5.0
+    Checking core-foundation v0.9.4
+    Checking dirs-sys v0.5.0
+    Checking toml_parser v1.0.10+spec-1.1.0
+    Checking dirs v6.0.0
+    Checking pathfinder_geometry v0.5.1
+    Checking core-graphics-types v0.1.3
+    Checking anstream v0.6.21
+    Checking flate2 v1.1.9
+    Checking fdeflate v0.3.7
+    Checking core_maths v0.1.1
+    Checking ttf-parser v0.25.1
+    Checking unicode-script v0.5.8
+    Checking bytemuck v1.25.2
+    Checking byteorder v1.5.0
+    Checking lazy_static v1.5.0
+    Checking toml_writer v1.0.7+spec-1.1.0
+    Checking unicode-properties v0.1.4
+    Checking unicode-ccc v0.4.0
+    Checking smallvec v1.15.2
+    Checking objc2-foundation v0.3.2
+    Checking objc2-core-graphics v0.3.2
+    Checking objc2-core-video v0.3.2
+    Checking objc2-core-text v0.3.2
+    Checking float-ord v0.3.2
+    Checking jiff v0.2.23
+    Checking unicode-bidi-mirroring v0.4.0
+    Checking png v0.17.16
+    Checking unicode-segmentation v1.13.3
+    Checking toml_datetime v1.0.1+spec-1.1.0
+    Checking serde_spanned v1.0.4
+    Checking unicode-width v0.2.2
+    Checking toml v1.0.7+spec-1.1.0
+    Checking base64 v0.22.1
+    Checking regex v1.12.3
+    Checking env_filter v1.0.0
+   Compiling foreign-types-macros v0.2.3
+   Compiling thiserror-impl v2.0.18
+   Compiling serde_derive v1.0.228
+    Checking rustybuzz v0.20.1
+    Checking foreign-types v0.5.0
+    Checking core-graphics v0.23.2
+    Checking core-text v20.1.0
+    Checking env_logger v0.11.9
+    Checking objc2-metal v0.3.2
+    Checking objc2-core-image v0.3.2
+    Checking objc2-core-data v0.3.2
+    Checking objc2-cloud-kit v0.3.2
+    Checking objc2-quartz-core v0.3.2
+    Checking objc2-app-kit v0.3.2
+    Checking kokuban v0.1.0 (/private/tmp/kokuban-mixed-integration)
+warning: this OR pattern can be rewritten using a range
+   --> examples/../src/parser/ansi.rs:626:13
+    |
+626 |             0x0a | 0x0b | 0x0c => grid.newline(),
+    |             ^^^^^^^^^^^^^^^^^^ help: try: `0x0a..=0x0c`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_range_patterns
+    = note: `#[warn(clippy::manual_range_patterns)]` on by default
+
+warning: `kokuban` (example "terminal-throughput") generated 1 warning (run `cargo clippy --fix --example "terminal-throughput" -p kokuban` to apply 1 suggestion)
+warning: field `blinking` is never read
+   --> src/grid/mod.rs:118:9
+    |
+116 | pub struct CursorStyle {
+    |            ----------- field in this struct
+117 |     pub shape: CursorShape,
+118 |     pub blinking: bool,
+    |         ^^^^^^^^
+    |
+    = note: `CursorStyle` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `selection_revision`, `screen_revision`, `scrollback_cell`, `clear_dirty`, and `is_any_dirty` are never used
+    --> src/grid/mod.rs:343:19
+     |
+ 228 | impl Grid {
+     | --------- methods in this implementation
+...
+ 343 |     pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
+     |                   ^^^^^^^^^^^^^^^^^^
+ 344 |     pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
+     |                   ^^^^^^^^^^^^^^^
+...
+ 391 |     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
+     |            ^^^^^^^^^^^^^^^
+...
+1505 |     pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
+     |            ^^^^^^^^^^^
+1506 |     pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
+     |            ^^^^^^^^^^^^
+
+warning: method `text` is never used
+  --> src/grid/cell.rs:48:12
+   |
+47 | impl Cell {
+   | --------- method in this implementation
+48 |     pub fn text(&self) -> Cow<'_, str> {
+   |            ^^^^
+
+warning: method `is_empty` is never used
+  --> src/grid/marks.rs:79:12
+   |
+20 | impl MarkIndex {
+   | -------------- method in this implementation
+...
+79 |     pub fn is_empty(&self) -> bool {
+   |            ^^^^^^^^
+
+warning: variant `Insert` is never constructed
+  --> src/input/keyboard.rs:16:5
+   |
+ 2 | pub enum TerminalKey {
+   |          ----------- variant in this enum
+...
+16 |     Insert,
+   |     ^^^^^^
+   |
+   = note: `TerminalKey` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: constant `MAX_PASTE_BYTES` is never used
+ --> src/input/paste.rs:3:11
+  |
+3 | pub const MAX_PASTE_BYTES: usize = 1024 * 1024;
+  |           ^^^^^^^^^^^^^^^
+
+warning: constant `PASTE_START` is never used
+ --> src/input/paste.rs:4:7
+  |
+4 | const PASTE_START: &[u8] = b"\x1b[200~";
+  |       ^^^^^^^^^^^
+
+warning: constant `PASTE_END` is never used
+ --> src/input/paste.rs:5:7
+  |
+5 | const PASTE_END: &[u8] = b"\x1b[201~";
+  |       ^^^^^^^^^
+
+warning: enum `PasteError` is never used
+ --> src/input/paste.rs:8:10
+  |
+8 | pub enum PasteError {
+  |          ^^^^^^^^^^
+
+warning: function `encode_paste` is never used
+  --> src/input/paste.rs:21:8
+   |
+21 | pub fn encode_paste(text: &str, bracketed: bool, max_bytes: usize) -> Result<Vec<u8>, PasteError> {
+   |        ^^^^^^^^^^^^
+
+warning: function `normalized_chars` is never used
+  --> src/input/paste.rs:57:4
+   |
+57 | fn normalized_chars(text: &str) -> impl Iterator<Item = char> + '_ {
+   |    ^^^^^^^^^^^^^^^^
+
+warning: fields `default_cols` and `default_rows` are never read
+  --> src/pane/mod.rs:22:5
+   |
+16 | pub struct PaneTree {
+   |            -------- fields in this struct
+...
+22 |     default_cols: u16,
+   |     ^^^^^^^^^^^^
+23 |     default_rows: u16,
+   |     ^^^^^^^^^^^^
+
+warning: method `pane_count` is never used
+  --> src/pane/mod.rs:89:12
+   |
+34 | impl PaneTree {
+   | ------------- method in this implementation
+...
+89 |     pub fn pane_count(&self) -> usize {
+   |            ^^^^^^^^^^
+
+warning: enum `Action` is never used
+ --> src/parser/mod.rs:6:10
+  |
+6 | pub enum Action {
+  |          ^^^^^^
+
+warning: method `feed` is never used
+   --> src/parser/ansi.rs:113:12
+    |
+ 77 | impl Parser {
+    | ----------- method in this implementation
+...
+113 |     pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
+    |            ^^^^
+
+warning: field `pane_index` is never read
+  --> src/render_scene.rs:10:9
+   |
+ 5 | pub struct PaneRenderData<'a> {
+   |            -------------- field in this struct
+...
+10 |     pub pane_index: usize,
+   |         ^^^^^^^^^^
+
+warning: field `hanko_dim` is never read
+  --> src/render_scene.rs:29:9
+   |
+23 | pub struct ChromeColors {
+   |            ------------ field in this struct
+...
+29 |     pub hanko_dim: (u8, u8, u8),
+   |         ^^^^^^^^^
+
+warning: methods `rebase_after_eviction` and `contains` are never used
+  --> src/selection.rs:51:12
+   |
+32 | impl SelectionState {
+   | ------------------- methods in this implementation
+...
+51 |     pub fn rebase_after_eviction(&mut self, dropped_rows: usize) -> bool {
+   |            ^^^^^^^^^^^^^^^^^^^^^
+...
+85 |     pub fn contains(
+   |            ^^^^^^^^
+
+warning: function `is_box_drawing` is never used
+   --> src/renderer/box_drawing.rs:124:8
+    |
+124 | pub fn is_box_drawing(c: char) -> bool {
+    |        ^^^^^^^^^^^^^^
+
+warning: constant `MAX_FRAMES_PER_IMAGE` is never used
+  --> src/renderer/image_animation.rs:15:18
+   |
+15 | pub(crate) const MAX_FRAMES_PER_IMAGE: usize = 256;
+   |                  ^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `MAX_RETAINED_FRAMES` is never used
+  --> src/renderer/image_animation.rs:16:18
+   |
+16 | pub(crate) const MAX_RETAINED_FRAMES: usize = 4096;
+   |                  ^^^^^^^^^^^^^^^^^^^
+
+warning: multiple variants are never constructed
+  --> src/renderer/image_animation.rs:21:5
+   |
+19 | pub enum AnimationError {
+   |          -------------- variants in this enum
+20 |     Unsupported,
+21 |     ImageNotFound,
+   |     ^^^^^^^^^^^^^
+22 |     FrameNotFound,
+   |     ^^^^^^^^^^^^^
+23 |     InvalidDimensions,
+   |     ^^^^^^^^^^^^^^^^^
+24 |     InvalidRectangle,
+   |     ^^^^^^^^^^^^^^^^
+25 |     OverlappingComposition,
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+26 |     TooLarge,
+   |     ^^^^^^^^
+27 |     TooManyFrames,
+   |     ^^^^^^^^^^^^^
+28 |     AllocationFailed,
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `AnimationError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: struct `AnimationUpdate` is never constructed
+  --> src/renderer/image_animation.rs:48:12
+   |
+48 | pub struct AnimationUpdate {
+   |            ^^^^^^^^^^^^^^^
+
+warning: struct `AnimationFrame` is never constructed
+  --> src/renderer/image_animation.rs:53:19
+   |
+53 | pub(crate) struct AnimationFrame {
+   |                   ^^^^^^^^^^^^^^
+
+warning: function `pixels_are_opaque` is never used
+  --> src/renderer/image_animation.rs:61:15
+   |
+61 | pub(crate) fn pixels_are_opaque(pixels: &[u8]) -> bool {
+   |               ^^^^^^^^^^^^^^^^^
+
+warning: struct `Animation` is never constructed
+  --> src/renderer/image_animation.rs:67:19
+   |
+67 | pub(crate) struct Animation {
+   |                   ^^^^^^^^^
+
+warning: multiple associated items are never used
+   --> src/renderer/image_animation.rs:79:12
+    |
+ 78 | impl Animation {
+    | -------------- associated items in this implementation
+ 79 |     pub fn new(root: Arc<[u8]>, now: Instant) -> Self {
+    |            ^^^
+...
+ 96 |     pub fn frame_count(&self) -> usize {
+    |            ^^^^^^^^^^^
+...
+100 |     pub fn active_pixels(&self) -> &Arc<[u8]> {
+    |            ^^^^^^^^^^^^^
+...
+104 |     pub fn active_opaque(&self) -> bool {
+    |            ^^^^^^^^^^^^^
+...
+108 |     fn index(&self, frame: u32) -> Result<usize, AnimationError> {
+    |        ^^^^^
+...
+116 |     pub fn prepare_upload(
+    |            ^^^^^^^^^^^^^^
+...
+179 |     pub fn reserve_frame(&mut self) -> Result<(), AnimationError> {
+    |            ^^^^^^^^^^^^^
+...
+185 |     pub fn commit_upload(&mut self, index: usize, frame: AnimationFrame, now: Instant) {
+    |            ^^^^^^^^^^^^^
+...
+205 |     pub fn control(
+    |            ^^^^^^^
+...
+252 |     pub fn prepare_composition(
+    |            ^^^^^^^^^^^^^^^^^^^
+...
+303 |     pub fn commit_composition(&mut self, index: usize, pixels: Arc<[u8]>, now: Instant) {
+    |            ^^^^^^^^^^^^^^^^^^
+...
+309 |     pub fn delete_frame(&mut self, frame: u32, now: Instant) {
+    |            ^^^^^^^^^^^^
+...
+338 |     pub fn advance(&mut self, now: Instant) -> Option<Instant> {
+    |            ^^^^^^^
+...
+420 |     fn display_last_timed_frame(&mut self, start: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+429 |     fn finish_loop(&mut self) -> bool {
+    |        ^^^^^^^^^^^
+...
+440 |     fn stop_at_end(&mut self) {
+    |        ^^^^^^^^^^^
+
+warning: function `duration_from_nanos` is never used
+   --> src/renderer/image_animation.rs:448:4
+    |
+448 | fn duration_from_nanos(nanos: u128) -> Duration {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `specified_gap` is never used
+   --> src/renderer/image_animation.rs:455:4
+    |
+455 | fn specified_gap(gap: Option<i32>) -> Option<Duration> {
+    |    ^^^^^^^^^^^^^
+
+warning: function `copy_pixels` is never used
+   --> src/renderer/image_animation.rs:460:4
+    |
+460 | fn copy_pixels(pixels: &[u8]) -> Result<Vec<u8>, AnimationError> {
+    |    ^^^^^^^^^^^
+
+warning: function `solid_canvas` is never used
+   --> src/renderer/image_animation.rs:468:4
+    |
+468 | fn solid_canvas(len: usize, rgba: u32) -> Result<Vec<u8>, AnimationError> {
+    |    ^^^^^^^^^^^^
+
+warning: function `validate_rectangle` is never used
+   --> src/renderer/image_animation.rs:482:4
+    |
+482 | fn validate_rectangle(
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `compose_pixels` is never used
+   --> src/renderer/image_animation.rs:502:4
+    |
+502 | fn compose_pixels(
+    |    ^^^^^^^^^^^^^^
+
+warning: function `alpha_blend` is never used
+   --> src/renderer/image_animation.rs:535:4
+    |
+535 | fn alpha_blend(source: &[u8], destination: &mut [u8]) {
+    |    ^^^^^^^^^^^
+
+warning: initializer for `thread_local` value can be made `const`
+   --> src/app/window.rs:386:53
+    |
+386 |     static VIEW_STATE: RefCell<Option<ViewState>> = RefCell::new(None);
+    |                                                     ^^^^^^^^^^^^^^^^^^ help: replace with: `const { RefCell::new(None) }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#missing_const_for_thread_local
+    = note: `#[warn(clippy::missing_const_for_thread_local)]` on by default
+
+warning: this `map_or` can be simplified
+   --> src/app/window.rs:548:17
+    |
+548 |                 state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+    = note: `#[warn(clippy::unnecessary_map_or)]` on by default
+help: use is_some_and instead
+    |
+548 -                 state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
+548 +                 state.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some())
+    |
+
+warning: this `map_or` can be simplified
+   --> src/app/window.rs:810:47
+    |
+810 |             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_some_and instead
+    |
+810 -             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+810 +             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
+    |
+
+warning: this `map_or` can be simplified
+   --> src/app/window.rs:859:47
+    |
+859 |             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_some_and instead
+    |
+859 -             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+859 +             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
+    |
+
+warning: this `map_or` can be simplified
+   --> src/app/window.rs:899:47
+    |
+899 |             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_some_and instead
+    |
+899 -             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+899 +             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
+    |
+
+warning: this `map_or` can be simplified
+   --> src/app/window.rs:930:54
+    |
+930 |             let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+    |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_some_and instead
+    |
+930 -             let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+930 +             let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
+    |
+
+warning: this `map_or` can be simplified
+    --> src/app/window.rs:1733:31
+     |
+1733 |         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
+     |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#unnecessary_map_or
+help: use is_some_and instead
+     |
+1733 -         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
+1733 +         let still_animating = state.confirm_dialog.as_ref().is_some_and(|d| d.is_animating());
+     |
+
+warning: this function has too many arguments (29/7)
+    --> src/app/window.rs:1804:1
+     |
+1804 | / pub(super) fn create_terminal_view(
+1805 | |     mtm: MainThreadMarker,
+1806 | |     device: &ProtocolObject<dyn MTLDevice>,
+1807 | |     pane_tree: Arc<Mutex<PaneTree>>,
+...    |
+1833 | |     confirm_on_quit: bool,
+1834 | | ) -> Retained<TerminalView> {
+     | |___________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+     = note: `#[warn(clippy::too_many_arguments)]` on by default
+
+warning: this `impl` can be derived
+   --> src/config.rs:179:1
+    |
+179 | / impl Default for Config {
+180 | |     fn default() -> Self {
+181 | |         Self {
+182 | |             font: FontConfig::default(),
+...   |
+194 | | }
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#derivable_impls
+    = note: `#[warn(clippy::derivable_impls)]` on by default
+help: replace the manual implementation with a derive attribute
+    |
+  6 + #[derive(Default)]
+  7 | pub struct Config {
+    |
+
+warning: this `impl` can be derived
+   --> src/config.rs:248:1
+    |
+248 | / impl Default for ThemeConfig {
+249 | |     fn default() -> Self {
+250 | |         Self {
+251 | |             chrome: ChromeConfig::default(),
+...   |
+254 | | }
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#derivable_impls
+help: replace the manual implementation with a derive attribute
+    |
+ 63 + #[derive(Default)]
+ 64 | pub struct ThemeConfig {
+    |
+
+warning: module has the same name as its containing module
+ --> src/pane/mod.rs:1:1
+  |
+1 | pub mod pane;
+  | ^^^^^^^^^^^^^
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#module_inception
+  = note: `#[warn(clippy::module_inception)]` on by default
+
+warning: this OR pattern can be rewritten using a range
+   --> src/parser/ansi.rs:626:13
+    |
+626 |             0x0a | 0x0b | 0x0c => grid.newline(),
+    |             ^^^^^^^^^^^^^^^^^^ help: try: `0x0a..=0x0c`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_range_patterns
+    = note: `#[warn(clippy::manual_range_patterns)]` on by default
+
+warning: this function has too many arguments (10/7)
+   --> src/renderer/kitty_handler.rs:345:5
+    |
+345 | /     pub(crate) fn process(
+346 | |         &mut self,
+347 | |         mut cmd: KittyCommand,
+348 | |         store: &mut ImageStore,
+...   |
+355 | |         placements: &mut Vec<ImagePlacement>,
+356 | |     ) -> KittyProcessOutcome {
+    | |____________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: this function has too many arguments (11/7)
+    --> src/renderer/kitty_handler.rs:1191:5
+     |
+1191 | /     fn create_placement(
+1192 | |         &mut self,
+1193 | |         cmd: &KittyCommand,
+1194 | |         image_id: ImageId,
+...    |
+1202 | |         placements: &mut Vec<ImagePlacement>,
+1203 | |     ) -> Result<Option<CursorAdvance>, PlacementError> {
+     | |______________________________________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: manually constructing a nul-terminated string
+    --> src/renderer/kitty_handler.rs:2048:13
+     |
+2048 |             b"/\0".as_ptr().cast(),
+     |             ^^^^^^ help: use a `c""` literal: `c"/"`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#manual_c_str_literals
+     = note: `#[warn(clippy::manual_c_str_literals)]` on by default
+
+warning: this function has too many arguments (8/7)
+   --> src/renderer/metal.rs:254:5
+    |
+254 | /     fn build_pane_vertices(
+255 | |         &self,
+256 | |         pane: &PaneRenderData,
+257 | |         atlas: &mut GlyphAtlas,
+...   |
+262 | |         vertices: &mut Vec<Vertex>,
+263 | |     ) {
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: this function has too many arguments (8/7)
+   --> src/renderer/metal.rs:464:5
+    |
+464 |     fn add_rect(vertices: &mut Vec<Vertex>, x0: f32, y0: f32, x1: f32, y1: f32, u: f32, v: f32, color: u32) {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: this function has too many arguments (8/7)
+   --> src/renderer/metal.rs:544:5
+    |
+544 | /     fn render_char(
+545 | |         &self,
+546 | |         c: char,
+547 | |         x: f32,
+...   |
+552 | |         vertices: &mut Vec<Vertex>,
+553 | |     ) -> f32 {
+    | |____________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: this function has too many arguments (16/7)
+   --> src/renderer/metal.rs:637:5
+    |
+637 | /     pub fn draw_frame(
+638 | |         &mut self,
+639 | |         panes: &[PaneRenderData],
+640 | |         dividers: &[DividerInfo],
+...   |
+653 | |         confirm_overlay: Option<&ConfirmOverlayInfo>,
+654 | |     ) {
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: this function has too many arguments (8/7)
+    --> src/renderer/metal.rs:1008:5
+     |
+1008 | /     fn render_char_with_alpha(
+1009 | |         &self,
+1010 | |         c: char,
+1011 | |         x: f32,
+...    |
+1016 | |         vertices: &mut Vec<Vertex>,
+1017 | |     ) -> f32 {
+     | |____________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#too_many_arguments
+
+warning: `kokuban` (bin "kokuban") generated 54 warnings (run `cargo clippy --fix --bin "kokuban" -p kokuban` to apply 10 suggestions)
+warning: method `is_empty` is never used
+  --> src/grid/marks.rs:79:12
+   |
+20 | impl MarkIndex {
+   | -------------- method in this implementation
+...
+79 |     pub fn is_empty(&self) -> bool {
+   |            ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: the loop variable `row` is used to index `expected`
+   --> src/grid/buffer.rs:597:24
+    |
+597 |             for row in top..=bottom {
+    |                        ^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#needless_range_loop
+    = note: `#[warn(clippy::needless_range_loop)]` on by default
+help: consider using an iterator and enumerate()
+    |
+597 -             for row in top..=bottom {
+597 +             for (row, <item>) in expected.iter_mut().enumerate().take(bottom + 1).skip(top) {
+    |
+
+warning: the loop variable `row` is used to index `before`
+   --> src/grid/buffer.rs:664:20
+    |
+664 |         for row in 2..=4 {
+    |                    ^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+    |
+664 -         for row in 2..=4 {
+664 +         for (row, <item>) in before.iter().enumerate().take(4 + 1).skip(2) {
+    |
+
+warning: the loop variable `col` is used to index `before`
+   --> src/grid/buffer.rs:713:48
+    |
+713 | ...                   for col in 0..cols {
+    |                                  ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.94.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+    |
+713 -                                     for col in 0..cols {
+713 +                                     for (col, <item>) in before.iter().enumerate().take(cols) {
+    |
+
+warning: `kokuban` (bin "kokuban" test) generated 30 warnings (26 duplicates)
+    Finished `release` profile [optimized] target(s) in 24.72s

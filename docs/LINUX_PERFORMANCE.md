@@ -730,3 +730,49 @@ xvfb-run -a -s '-screen 0 800x600x24' timeout 90s \
 ```
 
 Use a mesma carga, configuração, revisão e máquina para comparações. As dependências de vídeo pertencem ao player externo; o inventário de runtime do Kokuban deve ser lido separadamente. Referência das métricas do kernel: [documentação de `/proc`](https://www.kernel.org/doc/html/latest/filesystems/proc.html).
+
+## Spans mistos UTF-8: triagem local de 2026-09-12
+
+O candidato `74eaad83dbf813cb15bd883b45d52adf0dc729bd` agrupa texto ASCII/UTF-8
+em spans de células com limites Unicode verificados. A triagem V5 comparou a
+fonte anterior `469b2ac3fb88509a5ac4bf1769e4b2b3512c1008` com o patch do
+candidato, em **macOS/Apple M4, somente decoder e grade**. O commit acrescenta
+apenas um comentário ao código do patch efetivamente medido. Esta seção registra
+evidência local de implementação; seus números não são uma medição Linux via PTY.
+
+Cada valor é a mediana de cinco medianas de processo, com oito rounds de cerca
+de 4 MiB por processo, um aquecimento e chunks de 16 KiB. Os cinco pares alternam
+AB/BA em cada tela, com grade 80×24 e 10.000 linhas de histórico. Delta é a razão
+das medianas menos um.
+
+| Tela | Carga | Antes MiB/s | Depois MiB/s | Delta | Pares mais lentos |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Alternativa | ASCII | 383,341 | 379,347 | −1,04% | 4/5 |
+| Alternativa | ANSI | 256,077 | 239,320 | −6,54% | 4/5 |
+| Alternativa | Unicode | 93,523 | 140,681 | +50,42% | 0/5 |
+| Alternativa | Linhas curtas | 84,283 | 86,150 | +2,22% | 1/5 |
+| Principal | ASCII | 210,168 | 208,332 | −0,87% | 3/5 |
+| Principal | ANSI | 155,243 | 149,960 | −3,40% | 3/5 |
+| Principal | Unicode | 74,185 | 100,538 | +35,52% | 0/5 |
+| Principal | Linhas curtas | 16,115 | 16,908 | +4,92% | 2/5 |
+
+Unicode melhorou nos cinco pares de ambos os perfis, com faixas de medianas de
+processo sem sobreposição. **As regressões ANSI permanecem registradas**: os
+atributos de inline do V5 deixam o caminho de bytes chamar `Parser::advance`
+diretamente, sem símbolo/chamada a `feed_byte` no assembly inspecionado, mas isso
+não recuperou a mediana ANSI em relação ao anterior. A inspeção estática não
+explica quantitativamente toda a perda. O host não foi isolado de outras sessões
+e processos; não há PTY, janela, renderização ou medição de apresentação neste
+helper. Sua organização de compilação e seu lock mínimo diferem do produto.
+Esses resultados não estabelecem desempenho Linux nem posição frente a outros
+terminais.
+
+O [pacote local](linux-evidence/2026-09-12-mixed-utf8-local/README.md) preserva
+80 registros de processo, 640 rounds, hashes distintos dos executáveis, patch,
+proveniência da fonte, helpers, locks, logs de builds em targets separados,
+geração exata dos payloads, estatísticas e inventário auditável. Os 241 testes
+locais do helper, check e Clippy passaram. O teste completo local foi interrompido
+por `ENOSPC`; o [CI 34719026097](https://github.com/guicybercode/kokuban.rs/actions/runs/34719026097)
+concluiu **845 testes Rust macOS e 944 Linux, com um ignorado no Linux**, além de
+check, Clippy e verificação das tabelas Unicode. A validação funcional e a
+triagem local devem ser lidas separadamente das medições Linux completas.

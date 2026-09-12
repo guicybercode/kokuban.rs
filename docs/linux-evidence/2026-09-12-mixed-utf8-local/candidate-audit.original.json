@@ -1,0 +1,29 @@
+{
+  "baseline_revision": "469b2ac3fb88509a5ac4bf1769e4b2b3512c1008",
+  "changed_rust_files": [
+    {
+      "path": "src/grid/boundary_pages.rs",
+      "before_sha256": "86eb8b605124a8befcac483cc0170de7a5be5328d314172688ff328d08c4ee86",
+      "after_sha256": "d964b3723c7a6a8c38739a0e814501b1f81244884e142c491744c834a19e7bc1"
+    },
+    {
+      "path": "src/grid/mod.rs",
+      "before_sha256": "bb545b9d562ca9b13338fa4c2976a4ecd4a52865c47baa751f6f6e11b7ff3eea",
+      "after_sha256": "11928184586e6de7c735cdf2108596ac4a2b9d3eafc13d51b2a2abd44e2628a9"
+    },
+    {
+      "path": "src/grid/utf8_spans_tests.rs",
+      "before_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "after_sha256": "79213775a17122de9e6ca38296f4134e505b93032994bc684433e81dad89ad7e"
+    },
+    {
+      "path": "src/parser/ansi.rs",
+      "before_sha256": "601251c1e24887d9f49e9e8631ff511409fb3d248ee94ffda34131a6c5f5922e",
+      "after_sha256": "c5ba38c9688fdce5b467fdd46dae5332724dc306010f332f5587a5b9d5d7877e"
+    }
+  ],
+  "candidate_patch_sha256": "cafbf37a84e0f768f01e576d4ec04794819bad33160ef54a4294b4b8a875bdd0",
+  "baseline_binary_origin": "/tmp/kokuban-mixed-spans-prototype/baseline-target/release/kokuban-core-profile",
+  "variant": "mixed spans; feed_utf8_text inline(never); feed_byte inline(always)",
+  "status": "assembly gate pending; no timing yet"
+}
