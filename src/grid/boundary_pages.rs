@@ -27,6 +27,13 @@ fn successor_class(c: char) -> SuccessorClass {
     }
 }
 
+/// True only for successors that join no predecessor other than Prepend.
+#[inline]
+pub(super) fn is_other(c: char) -> bool {
+    unicode_segmentation::UNICODE_VERSION == GENERATED_UNICODE_VERSION
+        && successor_class(c) == SuccessorClass::Other
+}
+
 #[inline]
 pub(super) fn scalar_extends(last: char, next: char) -> Option<bool> {
     // The exact dependency pin protects against category changes within the

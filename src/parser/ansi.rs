@@ -1042,23 +1042,8 @@ impl Utf8Parser {
                         continue;
                     }
                     0x80..=0xff => {
-                        // A complete UTF-8 scalar cannot contain a terminal event.
-                        // Partial or malformed sequences retain the byte-wise path.
-                        let scalar_len = match byte {
-                            0xc2..=0xdf => 2,
-                            0xe0..=0xef => 3,
-                            0xf0..=0xf4 => 4,
-                            _ => 0,
-                        };
-                        if scalar_len != 0 {
-                            if let Some(bytes) = input[index..].get(..scalar_len) {
-                                if let Ok(text) = std::str::from_utf8(bytes) {
-                                    grid.put_char(text.chars().next().expect("validated scalar is nonempty"));
-                                    index += scalar_len;
-                                    continue;
-                                }
-                            }
-                        }
+                        index += self.feed_utf8_text(&input[index..], grid);
+                        continue;
                     }
                     // CR, LF, ESC and other ASCII controls need no text scan.
                     _ => {}
@@ -1075,6 +1060,43 @@ impl Utf8Parser {
         input.len()
     }
 
+    /// Consume mixed UTF-8 and printable ASCII while Ground has no partial scalar.
+    #[inline(never)]
+    fn feed_utf8_text(&mut self, input: &[u8], grid: &mut Grid) -> usize {
+        debug_assert!(self.parser.state == State::Ground && self.utf8_expected == 0);
+        debug_assert!(input.first().is_some_and(|byte| !byte.is_ascii()));
+
+        // ASCII inside multilingual text belongs to the same block. Stop before
+        // C0/DEL so escape sequences and terminal events retain their boundaries.
+        let tail = &input[1..];
+        let block_len = 1 + tail.iter()
+            .position(|byte| *byte < 0x20 || *byte == 0x7f)
+            .unwrap_or(tail.len());
+        let block = &input[..block_len];
+        match std::str::from_utf8(block) {
+            Ok(text) => grid.put_utf8(text),
+            Err(error) => {
+                let (valid, rest) = block.split_at(error.valid_up_to());
+                if !valid.is_empty() {
+                    grid.put_utf8(std::str::from_utf8(valid)
+                        .expect("valid_up_to ends at a UTF-8 boundary"));
+                }
+                // Preserve exact recovery through the entire suffix. A lead
+                // interrupting a partial scalar is consumed, not restarted;
+                // printable ASCII aborts that scalar and is still printed.
+                for &byte in rest {
+                    self.feed_byte(byte, grid);
+                }
+            }
+        }
+        // Ground currently ignores raw C1 bytes. Neither these bytes nor the
+        // printable ASCII in the suffix can change state or queue an event.
+        // Revisit this block boundary if raw C1 controls are supported.
+        block_len
+    }
+
+    // ANSI parameters use this path for every byte, even without UTF-8 text.
+    #[inline(always)]
     fn feed_byte(&mut self, byte: u8, grid: &mut Grid) {
         // OSC, APC and DCS payloads are byte-oriented. Decoding their UTF-8
         // here would print the decoded character into the terminal grid
@@ -1137,38 +1159,45 @@ mod tests {
 
     fn assert_utf8_matches_byte_decoding_at_every_split(input: &[u8], cols: usize) {
         for split in 0..=input.len() {
-            let mut fast = Utf8Parser::new();
-            let mut scalar = Utf8Parser::new();
-            let mut actual = Grid::new(cols, 3, 4);
-            let mut expected = Grid::new(cols, 3, 4);
-            for chunk in [&input[..split], &input[split..]] {
-                let mut remaining = chunk;
-                while !remaining.is_empty() {
-                    actual.clear_dirty();
-                    expected.clear_dirty();
-                    let consumed = fast.feed_until_terminal_event(remaining, &mut actual);
-                    let mut scalar_consumed = 0;
-                    for &byte in remaining {
-                        scalar.feed_byte(byte, &mut expected);
-                        scalar_consumed += 1;
-                        if expected.has_pending_terminal_events() { break; }
-                    }
-                    assert_eq!(consumed, scalar_consumed,
-                        "cols={cols}, split={split}, input={input:?}");
-                    // Includes grapheme text, screen/history cells, cursor,
-                    // damage and ordered events with their cursor snapshots.
-                    assert_eq!(format!("{actual:?}"), format!("{expected:?}"),
-                        "cols={cols}, split={split}, input={input:?}");
-                    assert_eq!(fast.parser.state, scalar.parser.state);
-                    assert_eq!(fast.utf8_expected, scalar.utf8_expected);
-                    if fast.utf8_expected != 0 {
-                        assert_eq!(fast.utf8_len, scalar.utf8_len);
-                        assert_eq!(&fast.utf8_buf[..fast.utf8_len], &scalar.utf8_buf[..scalar.utf8_len]);
-                    }
-                    actual.drain_terminal_events();
-                    expected.drain_terminal_events();
-                    remaining = &remaining[consumed..];
+            assert_utf8_chunks_match_byte_decoding([&input[..split], &input[split..]], cols);
+        }
+    }
+
+    fn assert_utf8_chunks_match_byte_decoding<'a>(
+        chunks: impl IntoIterator<Item = &'a [u8]>,
+        cols: usize,
+    ) {
+        let mut fast = Utf8Parser::new();
+        let mut scalar = Utf8Parser::new();
+        let mut actual = Grid::new(cols, 3, 4);
+        let mut expected = Grid::new(cols, 3, 4);
+        for (chunk_index, chunk) in chunks.into_iter().enumerate() {
+            let mut remaining = chunk;
+            while !remaining.is_empty() {
+                actual.clear_dirty();
+                expected.clear_dirty();
+                let consumed = fast.feed_until_terminal_event(remaining, &mut actual);
+                let mut scalar_consumed = 0;
+                for &byte in remaining {
+                    scalar.feed_byte(byte, &mut expected);
+                    scalar_consumed += 1;
+                    if expected.has_pending_terminal_events() { break; }
                 }
+                assert_eq!(consumed, scalar_consumed,
+                    "cols={cols}, chunk={chunk_index}, remaining={remaining:?}");
+                // Includes grapheme text, screen/history cells, cursor,
+                // damage and ordered events with their cursor snapshots.
+                assert_eq!(format!("{actual:?}"), format!("{expected:?}"),
+                    "cols={cols}, chunk={chunk_index}, remaining={remaining:?}");
+                assert_eq!(fast.parser.state, scalar.parser.state);
+                assert_eq!(fast.utf8_expected, scalar.utf8_expected);
+                if fast.utf8_expected != 0 {
+                    assert_eq!(fast.utf8_len, scalar.utf8_len);
+                    assert_eq!(&fast.utf8_buf[..fast.utf8_len], &scalar.utf8_buf[..scalar.utf8_len]);
+                }
+                actual.drain_terminal_events();
+                expected.drain_terminal_events();
+                remaining = &remaining[consumed..];
             }
         }
     }
@@ -1224,6 +1253,135 @@ mod tests {
             "\x1bPq~\x1b\\🙂\x1b_Ga=d,d=c\x1b\\日\x1b[6n",
         );
         assert_utf8_matches_byte_decoding_at_every_split(input.as_bytes(), 8);
+    }
+
+    #[test]
+    fn utf8_blocks_preserve_malformed_suffix_recovery_and_event_boundaries() {
+        let suffixes: &[&[u8]] = &[
+            b"\xe2\xc3\xa9", b"\xf0\x9f\xc3\xa9", b"\xe2\x82\xc3\xa9",
+            b"\x80\x9b\xff", b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80",
+            b"\xc2", b"\xe2\x82", b"\xf0\x9f\x99",
+        ];
+        for &suffix in suffixes {
+            let input = ["é日本λ".as_bytes(), suffix, "β🙂\x1b[6nZ".as_bytes()].concat();
+            assert_utf8_matches_byte_decoding_at_every_split(&input, 7);
+        }
+
+        // Interrupting a pending scalar consumes the second lead byte. This
+        // assertion fixes the legacy behavior independently of the oracle.
+        let mut parser = Utf8Parser::new();
+        let mut actual = grid();
+        let input = "λ".as_bytes();
+        let stream = [input, b"\xe2\xc3\xa9\xf0\x9f\xc3\xa9", b"X\x1b[6n"].concat();
+        assert_eq!(parser.feed_until_terminal_event(&stream, &mut actual), stream.len());
+        assert_eq!(row_prefix(&actual, 2), "λX");
+        assert!(matches!(actual.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[1;3R"));
+    }
+
+    #[test]
+    fn utf8_blocks_preserve_every_ascii_byte_and_graphics_boundaries() {
+        for ascii in 0..=0x7f {
+            let input = [
+                "é日λ".as_bytes(), &[ascii],
+                "β\x1b[6n\x1b_Ga=d,d=c\x1b\\日\x1bPq~\x1b\\λ".as_bytes(),
+            ].concat();
+            assert_utf8_matches_byte_decoding_at_every_split(&input, 8);
+        }
+    }
+
+    #[test]
+    fn utf8_blocks_match_byte_decoding_across_grid_modes_and_chunks() {
+        let input = concat!(
+            "日本語日本語日本語\r\nλéβδ\x1b[1;2Hαβγ日\x1b[6n",
+            "\x1b[1;3;4;38;2;12;34;56;48;5;7m日λé\u{301}\x1b[0m",
+            "\x1b[1;1H\u{600}日é\u{301}👩🏽‍💻🇧🇷क्\u{200d}ष\x1b[6n",
+            "\x1b[4h\x1b[1;2H日本é\x1b[4l\x1b[6n",
+            "\x1b[?7l日本語λβ日本語\x1b[?7h日本語λβ\r\n",
+            "\x1b(0lq日λé\u{301}x\x1b(B日本語\r\n",
+            "\x1b[2;3r日本語\r\n日本語\r\n日本語\x1b[r",
+            "\x1b[?1049h日é\u{301}\r\nλβ\x1b[?1049l日本語\x1b[6n",
+            "\x1b]2;日本語\x1b\\λ\x1bPq~\x1b\\日\x1b_Ga=d,d=c\x1b\\β",
+            "\x1b[2J\x1b[3J日本語\x1bc日λé\x1b[6n",
+        ).as_bytes();
+        for cols in [1, 2, 7, 40] {
+            for chunk_size in [1, 2, 3, 7, 16, 63, input.len()] {
+                assert_utf8_chunks_match_byte_decoding(input.chunks(chunk_size), cols);
+            }
+        }
+    }
+
+    #[test]
+    fn utf8_blocks_keep_long_malformed_suffixes_and_partial_read_state() {
+        let mut input = "é日本λ".as_bytes().to_vec();
+        // 3.5 KiB with an invalid sequence at the start of every seven bytes.
+        // The whole suffix must retain byte-wise recovery, including partial
+        // sequences left active at chunk boundaries.
+        for _ in 0..512 {
+            input.extend_from_slice(b"\xe2\xc3\xa9\xf0\x9f\xc3\xa9");
+        }
+        input.extend_from_slice("β日🙂\x1b[6nZ".as_bytes());
+        for chunk_size in [1, 2, 3, 7, 64, 511, 4096, input.len()] {
+            assert_utf8_chunks_match_byte_decoding(input.chunks(chunk_size), 8);
+        }
+        for pending in [b"\xc3".as_slice(), b"\xe6\x97", b"\xf0\x9f\x99"] {
+            assert_utf8_chunks_match_byte_decoding([
+                "λ".as_bytes(), pending, b"\x82\xe2\xc3\xa9", "日\x1b[6nZ".as_bytes(),
+            ], 8);
+        }
+    }
+
+    #[test]
+    fn mixed_utf8_blocks_keep_ascii_recovery_and_stop_before_escape_events() {
+        let suffixes: &[&[u8]] = &[
+            b"\xe2X", b"\xe2\xc3\xa9 ~", b"\xf0\x9f\xc3\xa9 abc",
+            b"\xff A\xc2B", b"\x80 ~ \xed\xa0\x80 text", b"\xe2 X \xf0\x9f Y",
+        ];
+        for &suffix in suffixes {
+            let input = [
+                "é a 日 ".as_bytes(), suffix, " β x 本 ".as_bytes(),
+                b"\xe2\x1b[6nEND",
+            ].concat();
+            assert_utf8_matches_byte_decoding_at_every_split(&input, 8);
+        }
+
+        // ASCII interrupting a scalar is printed; a second non-ASCII lead
+        // interrupting it is consumed. A partial scalar before ESC must leave
+        // that ESC to begin the query, with trailing text still unconsumed.
+        let stream = [
+            "é a".as_bytes(), b"\xe2X \xf0\x9f\xc3\xa9Y", " β".as_bytes(),
+            b"\xe2\x1b[6nEND",
+        ].concat();
+        let mut parser = Utf8Parser::new();
+        let mut actual = grid();
+        assert_eq!(parser.feed_until_terminal_event(&stream, &mut actual), stream.len() - 3);
+        assert_eq!(row_prefix(&actual, 8), "é aX Y β");
+        assert_eq!(actual.buffer.cell(0, 8).c, ' ');
+        assert_eq!(parser.utf8_expected, 0);
+        assert_eq!(parser.parser.state, State::Ground);
+        assert!(matches!(actual.drain_terminal_events().as_slice(),
+            [TerminalEvent::Response(response)] if response == b"\x1b[1;9R"));
+    }
+
+    #[test]
+    fn mixed_utf8_blocks_preserve_pending_prefixes_and_long_mixed_chunks() {
+        for pending in [b"\xc3".as_slice(), b"\xe6\x97", b"\xf0\x9f\x99"] {
+            for start in [b"\x82".as_slice(), b"X", b"\x1b[6n"] {
+                let prefix = ["α ".as_bytes(), pending].concat();
+                let text = [start, "日 abc λ e\u{301} 本 xyz \x1b[6n".as_bytes()].concat();
+                assert_utf8_chunks_match_byte_decoding([
+                    prefix.as_slice(), text.as_slice(),
+                    "é text \x1b_Ga=d,d=c\x1b\\日 next \x1bPq~\x1b\\β".as_bytes(),
+                ], 8);
+            }
+        }
+
+        let text = format!("λ{}{}\x1b[6nEND", "a b ".repeat(30), "日 x 本 é ".repeat(20));
+        for cols in [8, 80, 256] {
+            for chunk_size in [31, 63, 64, 65, 127, text.len()] {
+                assert_utf8_chunks_match_byte_decoding(text.as_bytes().chunks(chunk_size), cols);
+            }
+        }
     }
 
     #[test]

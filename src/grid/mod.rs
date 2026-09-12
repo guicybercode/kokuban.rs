@@ -555,6 +555,109 @@ impl Grid {
         }
     }
 
+    /// Write independent UTF-8 scalars in bounded spans of mixed cell widths.
+    pub(crate) fn put_utf8(&mut self, mut text: &str) {
+        if self.charset != CharSet::Ascii || self.insert_mode || self.cols() == 1 {
+            for c in text.chars() {
+                self.put_char(c);
+            }
+            return;
+        }
+
+        let cols = self.cols();
+        let mut staged = [('\0', 0u8); 64];
+        let leader = Cell {
+            c: '\0',
+            grapheme: None,
+            fg: self.fg,
+            bg: self.bg,
+            flags: self.flags & !(CellFlags::WIDE | CellFlags::WIDE_CONT),
+            underline_style: self.underline_style,
+            underline_color: self.underline_color,
+        };
+        let continuation = Cell {
+            c: '\0',
+            grapheme: None,
+            fg: self.fg,
+            bg: self.bg,
+            flags: CellFlags::WIDE_CONT,
+            underline_style: UnderlineStyle::None,
+            underline_color: Color::Default,
+        };
+        while let Some(first) = text.chars().next() {
+            let first_bytes = first.len_utf8();
+            if self.is_wrap_pending()
+                || self.cursor_col >= cols
+                || self.cursor_row >= self.rows()
+                || !boundary_pages::is_other(first)
+            {
+                self.put_char(first);
+                text = &text[first_bytes..];
+                continue;
+            }
+            let width = match first.width() {
+                Some(width @ (1 | 2)) if width <= cols - self.cursor_col => width,
+                _ => {
+                    self.put_char(first);
+                    text = &text[first_bytes..];
+                    continue;
+                }
+            };
+            // Prepend can join the first scalar. Every staged interior scalar
+            // is GC_Any, so none can introduce that context for its successor.
+            if self.extend_grapheme(first) {
+                text = &text[first_bytes..];
+                continue;
+            }
+
+            let row = self.cursor_row;
+            let col = self.cursor_col;
+            let mut end = col + width;
+            let mut count = 1;
+            let mut bytes = first_bytes;
+            staged[0] = (first, width as u8);
+            let mut remaining = text[first_bytes..].chars();
+            while count < staged.len() && end < cols {
+                let Some(c) = remaining.next() else { break };
+                if !boundary_pages::is_other(c) {
+                    break;
+                }
+                let width = match c.width() {
+                    Some(width @ (1 | 2)) if width <= cols - end => width,
+                    _ => break,
+                };
+                staged[count] = (c, width as u8);
+                count += 1;
+                bytes += c.len_utf8();
+                end += width;
+            }
+            // Every interior cell is replaced. Only the span's two boundaries
+            // can leave half of a preexisting wide character outside the write.
+            self.clear_wide_overlap(row, col, 1);
+            if end - col > 1 {
+                self.clear_wide_overlap(row, end - 1, 1);
+            }
+            let cells = self.buffer.row_range_mut(row, col..end);
+            let mut offset = 0;
+            for &(c, width) in &staged[..count] {
+                let mut cell = Cell { c, ..leader.clone() };
+                if width == 2 {
+                    cell.flags.insert(CellFlags::WIDE);
+                }
+                cells[offset] = cell;
+                if width == 2 {
+                    cells[offset + 1] = continuation.clone();
+                }
+                offset += usize::from(width);
+            }
+            self.buffer.mark_written(row, end);
+            self.dirty[row] = true;
+            self.cursor_col = end;
+            self.wrap_pending = end >= cols;
+            text = &text[bytes..];
+        }
+    }
+
     /// Place a character at the cursor, handling wide chars and DEC charset.
     pub fn put_char(&mut self, c: char) {
         let c = if self.charset == CharSet::DecSpecial {
@@ -1402,6 +1505,9 @@ impl Grid {
     pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
     pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
 }
+
+#[cfg(test)]
+mod utf8_spans_tests;
 
 #[cfg(test)]
 mod tests {
