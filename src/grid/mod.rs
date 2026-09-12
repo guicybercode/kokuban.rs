@@ -838,8 +838,20 @@ impl Grid {
             && self.scroll_bottom == self.rows() - 1;
         if save_scrollback {
             for i in 0..count {
-                let row_data = self.buffer.extract_row(i);
                 let metadata = self.buffer.row_metadata(i);
+                // The first eviction is already inevitable. Reuse that row's
+                // allocation instead of allocating and freeing one per line
+                // while a long-running command fills the history.
+                let exceeds_budget = self.scrollback_cells.saturating_add(self.cols())
+                    > self.scrollback_cell_budget
+                    || self.scrollback_hard_lines.saturating_add(usize::from(!metadata.wrapped))
+                        > self.scrollback_max;
+                let reusable = if exceeds_budget {
+                    self.evict_oldest_scrollback_row().unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+                let row_data = self.buffer.extract_row_into(i, reusable);
                 self.scrollback_cells += row_data.len();
                 self.scrollback_hard_lines += usize::from(!metadata.wrapped);
                 self.scrollback.push_back(row_data);
@@ -849,13 +861,7 @@ impl Grid {
                 while self.scrollback_hard_lines > self.scrollback_max
                     || self.scrollback_cells > self.scrollback_cell_budget
                 {
-                    if let Some(evicted) = self.scrollback.pop_front() {
-                        self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(1));
-                        self.scrollback_cells -= evicted.len();
-                        if self.scrollback_metadata.pop_front().is_some_and(|row| !row.wrapped) {
-                            self.scrollback_hard_lines -= 1;
-                        }
-                    } else { break; }
+                    if self.evict_oldest_scrollback_row().is_none() { break; }
                 }
             }
             self.total_lines_pushed += count;
@@ -876,6 +882,17 @@ impl Grid {
         for row in self.scroll_top..=self.scroll_bottom {
             self.dirty[row] = true;
         }
+    }
+
+    fn evict_oldest_scrollback_row(&mut self) -> Option<Vec<Cell>> {
+        let evicted = self.scrollback.pop_front()?;
+        self.saved_cursor_retained_row = self.saved_cursor_retained_row
+            .and_then(|row| row.checked_sub(1));
+        self.scrollback_cells -= evicted.len();
+        if self.scrollback_metadata.pop_front().is_some_and(|row| !row.wrapped) {
+            self.scrollback_hard_lines -= 1;
+        }
+        Some(evicted)
     }
 
     pub fn scroll_down(&mut self, count: usize) {
@@ -1406,7 +1423,8 @@ impl Grid {
 #[cfg(test)]
 mod tests {
     use super::{
-        cell::{CellFlags, Color, UnderlineStyle},
+        buffer::RowMetadata,
+        cell::{Cell, CellFlags, Color, UnderlineStyle},
         marks::PromptMarkKind,
         append_grapheme, scalar_extends_grapheme, Grid, TerminalEvent,
     };
@@ -1422,6 +1440,142 @@ mod tests {
             assert!(grid.scrollback_cells <= max * 4);
             assert!(grid.scrollback_len() <= max);
             assert_eq!(grid.scrollback_hard_lines, 0);
+        }
+    }
+
+    #[test]
+    fn full_history_reuses_the_oldest_row_without_changing_content_or_cursor() {
+        let mut grid = Grid::new(4, 2, 2);
+        for (row, text) in [b"old1", b"old2"].into_iter().enumerate() {
+            for (col, byte) in text.iter().enumerate() {
+                grid.buffer.cell_mut(row, col).c = char::from(*byte);
+            }
+        }
+        grid.scroll_up(2);
+        let allocation = grid.scrollback.front().unwrap().as_ptr();
+        let kept = grid.scrollback.back().unwrap().clone();
+        let styled = Cell {
+            c: 'e', grapheme: Some("e\u{301}".into()), fg: Color::Rgb(1, 2, 3),
+            bg: Color::Indexed(7), flags: CellFlags::BOLD,
+            underline_style: UnderlineStyle::Curly, underline_color: Color::Indexed(4),
+        };
+        *grid.buffer.cell_mut(0, 0) = styled.clone();
+        grid.buffer.set_row_metadata(0, RowMetadata { len: 2, wrapped: true });
+        grid.buffer.cell_mut(1, 0).c = 'Z';
+        grid.cursor_row = 1;
+        grid.cursor_col = 2;
+        grid.saved_cursor_retained_row = Some(1);
+
+        grid.scroll_up(1);
+
+        assert_eq!(grid.scrollback.len(), 2);
+        assert_eq!(grid.scrollback.front().unwrap(), &kept);
+        assert_eq!(grid.scrollback.back().unwrap().as_ptr(), allocation);
+        assert_eq!(grid.scrollback.back().unwrap(), &vec![styled, Cell::default(), Cell::default(), Cell::default()]);
+        let metadata: Vec<_> = grid.scrollback_metadata.iter().map(|m| (m.len, m.wrapped)).collect();
+        assert_eq!(metadata, [(4, false), (2, true)]);
+        assert_eq!((grid.scrollback_cells, grid.scrollback_hard_lines), (8, 1));
+        assert_eq!(grid.saved_cursor_retained_row, Some(0));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 2));
+        assert_eq!(grid.total_lines_pushed, 3);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'Z');
+        assert_eq!(grid.buffer.extract_row(1), vec![Cell::default(); 4]);
+    }
+
+    #[test]
+    fn multirow_scroll_reuses_full_history_storage_for_every_incoming_row() {
+        for count in [2, 3] {
+            for (saved_row, expected_saved) in [(count - 1, None), (count, Some(0))] {
+                let mut grid = Grid::new(4, 3, 1);
+                grid.buffer.cell_mut(0, 0).c = 'o';
+                grid.scroll_up(1);
+                let allocation = grid.scrollback[0].as_ptr();
+                let mut expected_rows = Vec::new();
+                for (row, (c, len, wrapped)) in [('a', 4, true), ('b', 2, false), ('c', 3, true)].into_iter().enumerate() {
+                    *grid.buffer.cell_mut(row, 0) = Cell { c, fg: Color::Indexed(row as u8 + 1), ..Cell::default() };
+                    grid.buffer.set_row_metadata(row, RowMetadata { len, wrapped });
+                    expected_rows.push(grid.buffer.extract_row(row));
+                }
+                grid.saved_cursor_retained_row = Some(saved_row);
+                grid.cursor_row = 2;
+                grid.cursor_col = 1;
+
+                grid.scroll_up(count);
+
+                assert_eq!(grid.scrollback.len(), 1);
+                assert_eq!(grid.scrollback[0].as_ptr(), allocation, "count={count}");
+                assert_eq!(grid.scrollback[0], expected_rows[count - 1]);
+                let metadata = grid.scrollback_metadata[0];
+                let expected_metadata = if count == 2 { (2, false) } else { (3, true) };
+                assert_eq!(grid.scrollback_metadata.len(), 1);
+                assert_eq!((metadata.len, metadata.wrapped), expected_metadata);
+                assert_eq!(grid.scrollback_cells, 4);
+                assert_eq!(grid.scrollback_hard_lines, usize::from(count == 2));
+                assert_eq!(grid.saved_cursor_retained_row, expected_saved);
+                assert_eq!(grid.total_lines_pushed, 1 + count);
+                assert_eq!((grid.cursor_row, grid.cursor_col), (2, 1));
+                if count == 2 { assert_eq!(grid.buffer.extract_row(0), expected_rows[2]); }
+                for row in 3 - count..3 {
+                    assert_eq!(grid.buffer.extract_row(row), vec![Cell::default(); 4]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hard_line_limit_evicts_all_leading_wrapped_rows_and_rebases_saved_cursor() {
+        for (saved_row, expected_saved) in [(2, None), (3, Some(0))] {
+            let mut grid = Grid::new(4, 2, 1);
+            grid.scrollback_cell_budget = 16;
+            for (c, wrapped) in [('a', true), ('b', true), ('c', false)] {
+                grid.buffer.cell_mut(0, 0).c = c;
+                grid.buffer.set_row_metadata(0, RowMetadata { len: 1, wrapped });
+                grid.scroll_up(1);
+            }
+            assert_eq!((grid.scrollback.len(), grid.scrollback_hard_lines), (3, 1));
+            let allocation = grid.scrollback.front().unwrap().as_ptr();
+            grid.saved_cursor_retained_row = Some(saved_row);
+            grid.buffer.cell_mut(0, 0).c = 'd';
+
+            grid.scroll_up(1);
+
+            assert_eq!(grid.scrollback.len(), 1);
+            assert_eq!(grid.scrollback[0].as_ptr(), allocation);
+            assert_eq!(grid.scrollback[0].iter().map(|cell| cell.c).collect::<String>(), "d   ");
+            assert_eq!((grid.scrollback_cells, grid.scrollback_hard_lines), (4, 1));
+            assert_eq!(grid.scrollback_metadata.len(), 1);
+            let metadata = grid.scrollback_metadata[0];
+            assert_eq!((metadata.len, metadata.wrapped), (1, false));
+            assert_eq!(grid.saved_cursor_retained_row, expected_saved);
+            assert_eq!(grid.total_lines_pushed, 4);
+        }
+    }
+
+    #[test]
+    fn history_too_small_for_one_row_releases_cells_without_changing_screen_scroll() {
+        for (max_lines, cell_budget) in [(0, 0), (2, 0), (2, 3)] {
+            let mut grid = Grid::new(4, 2, max_lines);
+            grid.scrollback_cell_budget = cell_budget;
+            let old: Arc<str> = "e\u{301}".into();
+            let old_owner = Arc::downgrade(&old);
+            *grid.buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(old), ..Cell::default() };
+            grid.buffer.set_row_metadata(0, RowMetadata { len: 1, wrapped: true });
+            grid.buffer.cell_mut(1, 0).c = 'Z';
+            grid.cursor_row = 1;
+            grid.cursor_col = 2;
+
+            grid.scroll_up(1);
+
+            assert!(grid.scrollback.is_empty(), "max={max_lines}, budget={cell_budget}");
+            assert!(grid.scrollback_metadata.is_empty());
+            assert_eq!((grid.scrollback_cells, grid.scrollback_hard_lines), (0, 0));
+            assert!(old_owner.upgrade().is_none());
+            assert_eq!(grid.buffer.cell(0, 0).c, 'Z');
+            assert_eq!((grid.cursor_row, grid.cursor_col), (1, 2));
+            grid.scroll_up(1);
+            assert!(grid.scrollback.is_empty());
+            assert_eq!((grid.scrollback_cells, grid.scrollback_hard_lines), (0, 0));
+            assert_eq!(grid.total_lines_pushed, 2);
         }
     }
 
