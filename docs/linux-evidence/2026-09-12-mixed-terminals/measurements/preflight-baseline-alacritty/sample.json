@@ -1,0 +1,87 @@
+{
+  "command": [
+    "/usr/bin/alacritty",
+    "--config-file",
+    "/evidence/measurements/preflight-baseline-alacritty/alacritty.toml",
+    "-e",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/preflight-baseline-alacritty"
+  ],
+  "config": {
+    "filename": "alacritty.toml",
+    "text": "[font]\nsize = 10.5\n[font.normal]\nfamily = \"DejaVu Sans Mono\"\n[window]\ndecorations = \"None\"\n[window.padding]\nx = 0\ny = 0\n[window.dimensions]\ncolumns = 80\nlines = 24\n[scrolling]\nhistory = 0\n",
+    "sha256": "227313d95967510c66e5f2c0d818fafdbc6d276c4a46ff768d6917aee6e2d696",
+    "history_limit": 0,
+    "history_unit": "lines"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      640,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      7.332100000212449e-05,
+      7.443199999102035e-05,
+      7.433099997911086e-05,
+      7.571399999051209e-05,
+      7.449200001019562e-05,
+      7.410099999560771e-05,
+      9.568400000148358e-05,
+      7.561300000702431e-05,
+      7.351000002131514e-05,
+      8.349500001259003e-05,
+      8.10930000056942e-05,
+      7.332999999221101e-05,
+      7.358099998100442e-05,
+      7.286999999678301e-05,
+      7.470300002410113e-05,
+      7.26190000079896e-05,
+      7.335099999750128e-05,
+      7.325999999352462e-05,
+      7.289999999215979e-05,
+      8.104200000502715e-05,
+      7.78980000006868e-05,
+      7.414200001676363e-05,
+      7.302000000208864e-05,
+      7.329999999683423e-05,
+      7.304999999746542e-05,
+      7.24090000119304e-05,
+      7.207899997752065e-05,
+      7.17780000059065e-05,
+      7.179800002177217e-05,
+      7.286000001727189e-05
+    ],
+    "workloads": {
+      "geometry_probe": {
+        "bytes": 988,
+        "sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967",
+        "write_seconds": 1.1886999999433101e-05,
+        "drain_rtt_seconds": 9.710700001619443e-05,
+        "write_and_dsr_seconds": 0.00010899400001562753,
+        "mib_per_second": 8.644789845994076,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          640,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          640,
+          408
+        ],
+        "terminal_cpu_seconds": 0.0,
+        "terminal_rss_before_kib": 136048,
+        "terminal_rss_after_kib": 136048
+      }
+    },
+    "term": "alacritty"
+  },
+  "status": "passed"
+}

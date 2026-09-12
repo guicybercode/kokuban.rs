@@ -1,0 +1,1115 @@
+   Compiling kokuban v0.1.0 (/source)
+warning: method `is_empty` is never used
+  --> src/grid/marks.rs:79:12
+   |
+20 | impl MarkIndex {
+   | -------------- method in this implementation
+...
+79 |     pub fn is_empty(&self) -> bool {
+   |            ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `KeyBind` is never constructed
+  --> src/input/keybind.rs:15:12
+   |
+15 | pub struct KeyBind {
+   |            ^^^^^^^
+
+warning: enum `PaneAction` is never used
+  --> src/input/keybind.rs:21:10
+   |
+21 | pub enum PaneAction {
+   |          ^^^^^^^^^^
+
+warning: struct `KeybindMap` is never constructed
+  --> src/input/keybind.rs:40:12
+   |
+40 | pub struct KeybindMap {
+   |            ^^^^^^^^^^
+
+warning: associated items `from_config` and `lookup` are never used
+  --> src/input/keybind.rs:45:12
+   |
+44 | impl KeybindMap {
+   | --------------- associated items in this implementation
+45 |     pub fn from_config(config: &KeybindConfig) -> Self {
+   |            ^^^^^^^^^^^
+...
+74 |     pub fn lookup(&self, key_code: u16, modifiers: KeyModifiers) -> Option<PaneAction> {
+   |            ^^^^^^
+
+warning: function `parse_keybind` is never used
+  --> src/input/keybind.rs:84:4
+   |
+84 | fn parse_keybind(s: &str) -> Option<KeyBind> {
+   |    ^^^^^^^^^^^^^
+
+warning: function `key_name_to_code` is never used
+   --> src/input/keybind.rs:103:4
+    |
+103 | fn key_name_to_code(name: &str) -> Option<u16> {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: associated constant `ZERO` is never used
+  --> src/layout.rs:24:15
+   |
+23 | impl PixelRect {
+   | -------------- associated constant in this implementation
+24 |     pub const ZERO: Self = Self {
+   |               ^^^^
+
+warning: enum `Action` is never used
+ --> src/parser/mod.rs:6:10
+  |
+6 | pub enum Action {
+  |          ^^^^^^
+
+warning: method `feed` is never used
+   --> src/parser/ansi.rs:113:12
+    |
+ 77 | impl Parser {
+    | ----------- method in this implementation
+...
+113 |     pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
+    |            ^^^^
+
+warning: struct `PaneRenderData` is never constructed
+ --> src/render_scene.rs:5:12
+  |
+5 | pub struct PaneRenderData<'a> {
+  |            ^^^^^^^^^^^^^^
+
+warning: struct `ConfirmOverlayInfo` is never constructed
+  --> src/render_scene.rs:16:12
+   |
+16 | pub struct ConfirmOverlayInfo {
+   |            ^^^^^^^^^^^^^^^^^^
+
+warning: struct `ChromeColors` is never constructed
+  --> src/render_scene.rs:23:12
+   |
+23 | pub struct ChromeColors {
+   |            ^^^^^^^^^^^^
+
+warning: associated function `spawn_text` is never used
+  --> src/terminal_reader.rs:64:19
+   |
+63 | impl TerminalReader {
+   | ------------------- associated function in this implementation
+64 |     pub(crate) fn spawn_text<U, X>(
+   |                   ^^^^^^^^^^
+
+warning: struct `Vertex` is never constructed
+  --> src/renderer/mod.rs:21:12
+   |
+21 | pub struct Vertex {
+   |            ^^^^^^
+
+warning: associated function `new` is never used
+  --> src/renderer/mod.rs:29:12
+   |
+28 | impl Vertex {
+   | ----------- associated function in this implementation
+29 |     pub fn new(x: f32, y: f32, u: f32, v: f32, fg: u32, bg: u32) -> Self {
+   |            ^^^
+
+warning: function `box_drawing_lines` is never used
+ --> src/renderer/box_drawing.rs:4:8
+  |
+4 | pub fn box_drawing_lines(c: char, w: f32, h: f32) -> Option<Vec<(f32, f32, f32, f32)>> {
+  |        ^^^^^^^^^^^^^^^^^
+
+warning: function `is_box_drawing` is never used
+   --> src/renderer/box_drawing.rs:124:8
+    |
+124 | pub fn is_box_drawing(c: char) -> bool {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `is_braille` is never used
+ --> src/renderer/braille.rs:2:8
+  |
+2 | pub fn is_braille(c: char) -> bool {
+  |        ^^^^^^^^^^
+
+warning: function `braille_dots` is never used
+  --> src/renderer/braille.rs:12:8
+   |
+12 | pub fn braille_dots(c: char) -> Vec<(u8, u8)> {
+   |        ^^^^^^^^^^^^
+
+warning: variant `Unsupported` is never constructed
+  --> src/renderer/image_animation.rs:20:5
+   |
+19 | pub enum AnimationError {
+   |          -------------- variant in this enum
+20 |     Unsupported,
+   |     ^^^^^^^^^^^
+   |
+   = note: `AnimationError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: `kokuban` (bin "kokuban" test) generated 21 warnings
+    Finished `release` profile [optimized] target(s) in 19.36s
+     Running unittests src/main.rs (/build/target/release/deps/kokuban-d28fe75466c9cead)
+
+running 704 tests
+test config::tests::graphics_protocols_honor_master_and_specific_switches ... ok
+test config::tests::invalid_hex_colors_keep_existing_ascii_fallbacks ... ok
+test config::tests::parses_hex_colors_with_existing_prefix_and_case_support ... ok
+test config::tests::unicode_hex_colors_fall_back_without_panicking ... ok
+test config::tests::user_configuration_paths_follow_xdg_and_preserve_local_priority ... ok
+test content_preservation_tests::a_late_emoji_presentation_selector_reflows_the_right_margin ... ok
+test content_preservation_tests::bytewise_graphemes_survive_wraps_and_copy_byte_limits ... ok
+test content_preservation_tests::a_combining_mark_extends_the_right_margin_before_the_next_wrap ... ok
+test content_preservation_tests::character_insertion_deletion_and_erasure_keep_graphemes_and_styles_together ... ok
+test content_preservation_tests::cursor_movement_and_erasure_do_not_reconnect_a_previous_grapheme ... ok
+test content_preservation_tests::clearing_the_display_does_not_resurrect_screen_overflow_after_growing ... ok
+test content_preservation_tests::erasing_scrollback_preserves_screen_rows_hidden_by_a_height_reduction ... ok
+test content_preservation_tests::hard_blank_lines_and_deliberate_trailing_spaces_survive_reflow ... ok
+test content_preservation_tests::nonmoving_sgr_between_scalars_does_not_break_a_grapheme ... ok
+test content_preservation_tests::newline_reveals_retained_screen_overflow_before_creating_a_blank_row ... ok
+test config::tests::loads_first_existing_configuration_without_merging_or_hiding_parse_errors ... ok
+test content_preservation_tests::resizing_an_alternate_screen_preserves_hidden_primary_content_and_cursor ... ok
+test content_preservation_tests::resize_does_not_evict_existing_text_when_scrollback_is_disabled_or_tiny ... ok
+test content_preservation_tests::repeated_width_and_height_changes_preserve_history_and_visible_text ... ok
+test content_preservation_tests::restoring_a_saved_cursor_below_the_viewport_reveals_and_edits_its_retained_row ... ok
+test content_preservation_tests::restoring_a_saved_cursor_in_history_edits_its_original_logical_position ... ok
+test content_preservation_tests::saved_cursor_restores_its_logical_text_position_after_resize ... ok
+test content_preservation_tests::resizing_between_grapheme_bytes_keeps_the_cluster_intact ... ok
+test content_preservation_tests::shrinking_only_height_retains_rows_that_leave_the_viewport ... ok
+test content_preservation_tests::shrinking_with_cursor_at_top_preserves_populated_rows_below_the_viewport ... ok
+test content_preservation_tests::soft_wraps_preserve_spaces_and_omit_unused_wide_character_padding ... ok
+test content_preservation_tests::text_presentation_shrinks_a_wide_grapheme_without_copying_a_phantom_space ... ok
+test content_preservation_tests::text_received_after_resize_appends_at_the_reflowed_cursor ... ok
+test content_preservation_tests::unicode_graphemes_are_one_selectable_unit_across_every_utf8_split ... ok
+test content_preservation_tests::wrapped_urls_and_commands_copy_exactly_across_every_read_split ... ok
+test glyph_atlas::tests::cached_glyph_lookup_does_not_dirty_or_grow_atlas ... ok
+test glyph_atlas::tests::compound_cache_preserves_each_style_and_clears_all_styles_on_resize ... ok
+test glyph_atlas::tests::grapheme_cache_preserves_combining_marks_and_hits_without_rasterizing_again ... ok
+test glyph_atlas::tests::invalid_resize_preserves_existing_atlas_state ... ok
+test glyph_atlas::tests::rejects_invalid_sizing_before_accessing_font_source ... ok
+test glyph_atlas::tests::reports_when_requested_and_fallback_fonts_cannot_be_loaded ... ok
+test glyph_atlas::tests::reports_when_requested_and_fallback_fonts_cannot_be_selected ... ok
+test glyph_atlas::tests::rasterizes_visible_glyph_into_a8_atlas ... ok
+test glyph_atlas::tests::scalar_text_keeps_using_the_scalar_cache_for_each_style ... ok
+test glyph_atlas::tests::compound_samples_reach_rasterization_and_have_visible_coverage ... ok
+test graphics::tests::aspect_ratio_footprint_rounds_up_and_saturates ... ok
+test graphics::tests::automatic_cell_footprint_includes_offsets_without_expanding_explicit_sizes ... ok
+test graphics::tests::client_image_ids_are_namespaced_from_shared_store_ids ... ok
+test graphics::tests::client_image_registry_retains_bindings_until_explicit_pruning ... ok
+test graphics::tests::generated_image_ids_skip_live_entries_and_zero_after_wrap ... ok
+test graphics::tests::hard_delete_candidates_require_zero_references_across_kitty_sixel_and_panes ... ok
+test graphics::tests::image_number_reassignment_never_leaves_an_old_alias ... ok
+test graphics::tests::image_number_registry_prunes_evicted_generations_across_all_numbers ... ok
+test graphics::tests::image_numbers_resolve_the_newest_live_generation_and_fall_back ... ok
+test graphics::tests::inline_offsets_stay_inside_cells_after_cell_size_shrinks ... ok
+test graphics::tests::inline_pixel_rect_tracks_cell_size_and_preserves_offsets ... ok
+test graphics::tests::kitty_auto_size_normalizes_missing_and_zero_cell_counts ... ok
+test graphics::tests::kitty_layout_resolves_auto_and_single_axis_requests_together ... ok
+test graphics::tests::native_pixel_size_is_independent_from_its_effective_cell_footprint ... ok
+test graphics::tests::scrolled_image_keeps_negative_pixel_origin_and_clips_cell_hit_testing ... ok
+test graphics::tests::single_axis_pixel_rect_preserves_aspect_ratio_after_cell_resize ... ok
+test graphics::tests::single_axis_visual_rect_and_effective_footprint_are_distinct ... ok
+test glyph_atlas::text_raster::tests::combining_cluster_is_shaped_as_a_whole_instead_of_scalar_overlays ... ok
+test glyph_atlas::tests::emoji_fallback_preserves_color_and_survives_font_resize ... ok
+test grid::boundary_pages::tests::long_cluster_contexts_match_the_full_segmenter ... ok
+test grid::boundary_pages::tests::mixed_pages_and_contextual_successors_keep_the_fallback ... ok
+test grid::boundary_pages::tests::official_unicode_17_grapheme_break_corpus_matches_streaming ... ok
+test grid::buffer::tests::clearing_uniform_rows_compares_graphemes_and_wide_flags ... ok
+test grid::buffer::tests::extracted_rows_preserve_styles_and_own_their_compound_prefix ... ok
+test grid::buffer::tests::extracting_compound_suffixes_preserves_each_arc_owner ... ok
+test grid::buffer::tests::extraction_preserves_empty_and_single_column_rows ... ok
+test grid::buffer::tests::partial_scrolls_normalize_the_ring_before_editing_the_region ... ok
+test grid::buffer::tests::partial_writes_keep_blank_suffixes_and_release_erased_graphemes ... ok
+test grid::buffer::tests::rejected_mutable_access_cannot_invalidate_another_rows_suffix ... ok
+test glyph_atlas::text_raster::tests::system_emoji_font_shapes_zwj_flags_modifiers_and_keycaps_into_single_glyphs ... ok
+test grid::buffer::tests::ring_access_rejects_out_of_range_rows_and_keeps_empty_buffers_valid ... ok
+test grid::buffer::tests::ring_scrolls_release_only_removed_graphemes ... ok
+test grid::buffer::tests::row_offset_rotation_keeps_graphemes_lengths_and_wrap_flags_together ... ok
+test grid::buffer::tests::scrolling_preserves_cells_outside_the_region_and_fills_exposed_rows ... ok
+test grid::buffer::tests::suffix_tracking_matches_full_row_reference_after_mixed_edits ... ok
+test grid::buffer::tests::whole_screen_scrolls_wrap_without_rotating_row_vectors ... ok
+test grid::cell::tests::hidden_uses_the_last_unassigned_cell_flag_bit ... ok
+test grid::marks::tests::erase_saved_lines_drops_history_and_rebases_screen_marks ... ok
+test grid::tests::alt_screen_hides_and_restores_primary_image_placements ... ok
+test grid::tests::alt_screen_image_lifecycle_ignores_repeated_transitions ... ok
+test grid::tests::alt_screen_round_trip_preserves_pending_wrap ... ok
+test grid::tests::alternate_images_scroll_out_without_moving_hidden_primary_images ... ok
+test grid::tests::appended_graphemes_preserve_multibyte_scalars_at_stack_boundaries ... ok
+test grid::tests::appended_graphemes_retain_large_clusters_without_truncation ... ok
+test grid::tests::ascii_batches_preserve_delayed_wrap_across_resize_and_wide_overwrites ... ok
+test grid::tests::ascii_batches_repair_wide_pairs_at_both_ends_of_each_run ... ok
+test grid::tests::auto_wrap_defaults_to_delayed_wrap ... ok
+test grid::tests::auto_wrap_toggle_preserves_pending_margin_until_next_printable ... ok
+test grid::tests::combining_at_delayed_wrap_does_not_start_a_new_row ... ok
+test grid::tests::combining_marks_extend_wide_glyphs_without_overwriting_them ... ok
+test grid::tests::construction_rejects_zero_dimensions - should panic ... ok
+test grid::tests::csi_1049_round_trip_restores_primary_image_placements ... ok
+test grid::tests::delayed_wrap_scrolls_exactly_once_after_the_next_printable ... ok
+test grid::tests::disabled_auto_wrap_after_grow_appends_to_preserved_content ... ok
+test grid::tests::disabled_auto_wrap_consumes_pending_margin_without_wrapping ... ok
+test grid::tests::disabled_auto_wrap_ignores_wide_char_at_right_margin ... ok
+test grid::tests::disabled_auto_wrap_keeps_wide_margin_cells_valid ... ok
+test grid::tests::disabled_auto_wrap_overwrites_right_margin_without_scrolling ... ok
+test grid::tests::disabled_auto_wrap_remains_bounded_after_resize_and_insert ... ok
+test grid::tests::emoji_presentation_at_nowrap_margin_clips_only_occupied_width ... ok
+test grid::tests::emoji_presentation_growth_at_scroll_bottom_preserves_history ... ok
+test grid::tests::emoji_presentation_growth_moves_the_complete_cluster_at_margin ... ok
+test grid::tests::endless_soft_wrapping_respects_the_history_cell_budget ... ok
+test grid::tests::erase_display_all_clears_primary_image_placements ... ok
+test grid::tests::erase_display_all_on_alt_screen_preserves_primary_image_placements ... ok
+test grid::tests::erase_display_all_preserves_saved_lines ... ok
+test grid::tests::erase_saved_lines_at_bottom_does_not_dirty_unchanged_screen ... ok
+test grid::tests::erase_saved_lines_preserves_screen_and_rebases_current_marks ... ok
+test grid::tests::erase_screen_and_saved_lines_keep_the_other_image_set ... ok
+test grid::tests::explicit_line_and_cursor_controls_cancel_pending_wrap ... ok
+test grid::tests::extended_graphemes_are_single_cells_across_scalar_writes ... ok
+test grid::tests::fragmented_grapheme_growth_preserves_snapshots_style_and_pending_wrap ... ok
+test grid::tests::grapheme_boundary_uses_complete_unicode_context ... ok
+test grid::tests::image_cursor_advance_moves_right_and_down ... ok
+test grid::tests::images_follow_newlines_into_bounded_primary_history ... ok
+test grid::tests::insert_delete_lines_move_images_and_leave_saved_history_in_place ... ok
+test grid::tests::insert_mode_can_shift_a_wide_character_by_two_cells ... ok
+test grid::tests::insert_mode_is_applied_after_delayed_wrap ... ok
+test grid::tests::insert_mode_preserves_a_shifted_wide_character ... ok
+test grid::tests::insert_mode_repairs_wide_pairs_split_at_the_cursor_or_margin ... ok
+test grid::tests::leaving_alt_screen_discards_alternate_image_placements ... ok
+test grid::tests::one_column_emoji_presentation_keeps_natural_width ... ok
+test grid::tests::one_column_grid_retains_wide_characters ... ok
+test grid::tests::one_column_wide_char_consumes_pending_margin ... ok
+test grid::tests::partial_and_scrollback_erases_preserve_active_image_placements ... ok
+test grid::tests::partial_region_scroll_preserves_fixed_images_and_discards_crossing_images ... ok
+test grid::tests::pending_sixel_queue_bounds_per_image_metadata ... ok
+test grid::tests::pending_sixel_queue_enforces_and_resets_its_byte_budget ... ok
+test grid::tests::presentation_width_recovers_after_reflow_from_one_column ... ok
+test grid::tests::primary_pending_margin_obeys_auto_wrap_changed_on_alt_screen ... ok
+test grid::tests::reset_discards_active_and_hidden_image_placements ... ok
+test grid::tests::resize_maps_pending_wrap_to_the_end_of_reflowed_content ... ok
+test grid::tests::resize_preserves_cursor_rows_and_clamps_unused_columns ... ok
+test grid::tests::resize_preserves_primary_logical_cursor_under_alt_screen ... ok
+test grid::tests::resize_preserves_screen_specific_image_placements ... ok
+test grid::tests::resize_reflows_every_scrollback_glyph_without_hidden_clipping ... ok
+test grid::tests::resize_reflows_wide_chars_in_active_and_saved_buffers ... ok
+test grid::tests::resize_rejects_zero_dimensions - should panic ... ok
+test grid::tests::restored_pending_margin_obeys_disabled_auto_wrap ... ok
+test grid::tests::retransmission_cleanup_removes_hidden_kitty_but_preserves_sixel ... ok
+test grid::tests::row_lengths_distinguish_printed_spaces_from_wide_wrap_padding ... ok
+test grid::tests::save_restore_preserves_pending_wrap ... ok
+test grid::tests::saved_and_alternate_cursors_follow_reflowed_content ... ok
+test grid::tests::scalar_boundaries_use_cluster_context_and_written_content ... ok
+test grid::tests::screen_cursor_projects_pending_wrap_and_rejects_invalid_columns ... ok
+test grid::tests::scroll_retention_uses_current_native_pixel_height ... ok
+test grid::tests::selection_and_paste_revisions_distinguish_repaint_from_screen_changes ... ok
+test grid::tests::selection_revision_survives_history_reset_and_partial_scroll ... ok
+test grid::tests::soft_wrap_metadata_follows_scrollback_and_explicit_newlines ... ok
+test grid::tests::split_grapheme_boundaries_match_concatenation ... ok
+test grid::tests::text_presentation_shrinks_wide_cells_without_erasing_following_text ... ok
+test grid::tests::wide_aware_editing_never_leaves_an_orphaned_half ... ok
+test grid::tests::wide_wrap_at_scroll_bottom_preserves_the_margin_before_scrolling ... ok
+test grid::tests::wide_wrap_from_a_continuation_keeps_both_rows_valid ... ok
+test grid::tests::wide_wrap_preserves_existing_right_margin_content ... ok
+test grid::tests::zero_and_oversized_scroll_counts_match_image_and_text_movement ... ok
+test grid::boundary_pages::tests::fast_decisions_match_concatenation_at_property_endpoints_with_context ... ok
+test grid::buffer::tests::repeated_region_scrolls_preserve_row_edits_and_reconstruction_order ... ok
+test grid::utf8_spans_tests::mixed_utf8_spans_repair_wide_pairs_and_release_arcs_at_staging_edges ... ok
+test grid::utf8_spans_tests::utf8_spans_fall_back_for_insert_and_dec_special_modes ... ok
+test grid::utf8_spans_tests::utf8_spans_keep_the_uniform_suffix_frontier_at_the_written_end ... ok
+test grid::boundary_pages::tests::every_classified_scalar_and_predicate_matches_the_original_table ... ok
+test grid::utf8_spans_tests::utf8_spans_match_scalars_for_widths_and_alternating_runs ... ok
+test grid::utf8_spans_tests::utf8_spans_preserve_history_alternate_screen_and_regional_scrolls ... ok
+test grid::utf8_spans_tests::utf8_spans_preserve_margins_disabled_wrap_and_resized_saved_wrap ... ok
+test grid::utf8_spans_tests::utf8_spans_repair_wide_edges_preserve_styles_and_release_arcs ... ok
+test input::keyboard::tests::encodes_backtab_editing_and_function_keys ... ok
+test input::keyboard::tests::encodes_cursor_keys_in_normal_and_application_modes ... ok
+test input::keyboard::tests::encodes_every_xterm_modifier_parameter ... ok
+test input::keyboard::tests::encodes_modified_cursor_editing_and_function_key_families ... ok
+test input::keyboard::tests::modified_cursor_keys_use_csi_in_both_cursor_modes ... ok
+test input::keyboard::tests::non_parameterized_named_keys_keep_traditional_alt_prefixes ... ok
+test input::linux::tests::alt_prefixes_text_and_control_but_parameterizes_named_sequences ... ok
+test input::linux::tests::encodes_every_linux_named_key_to_its_exact_terminal_sequence ... ok
+test input::linux::tests::filters_release_and_synthetic_events_but_accepts_repeats ... ok
+test input::linux::tests::ime_commits_preserve_bytes_and_enforce_the_atomic_limit ... ok
+test input::linux::tests::logical_key_preserves_numlock_text_instead_of_modifierless_navigation ... ok
+test input::linux::tests::maps_every_supported_named_key ... ok
+test input::linux::tests::maps_exact_shift_navigation_to_local_scrollback_actions ... ok
+test input::linux::tests::modified_named_keys_use_xterm_parameters_without_text_duplicates ... ok
+test input::linux::tests::modified_numlock_text_stays_text_instead_of_navigation ... ok
+test input::linux::tests::named_cursor_keys_follow_the_terminal_application_mode ... ok
+test input::linux::tests::named_keys_take_precedence_over_their_text_without_duplicates ... ok
+test input::linux::tests::non_local_page_up_combinations_keep_their_terminal_sequences ... ok
+test input::linux::tests::scrollback_shortcuts_require_a_real_press_and_exact_shift ... ok
+test input::linux::tests::super_and_empty_text_do_not_reach_the_terminal ... ok
+test input::linux::tests::tab_keeps_backtab_and_traditional_alt_behavior ... ok
+test input::linux::tests::text_preserves_unicode_and_control_supplements ... ok
+test input::mouse::tests::alternate_scroll_encodes_bounded_cursor_key_repetitions ... ok
+test input::mouse::tests::legacy_clamps_pressed_button ... ok
+test input::mouse::tests::legacy_enforces_one_based_coordinates_and_clamps_without_wrapping ... ok
+test input::mouse::tests::legacy_release_uses_code_three_and_preserves_modifiers ... ok
+test input::mouse::tests::mouse_modifier_flags_match_xterm_button_bits ... ok
+test input::mouse::tests::sgr_encodes_press_release_and_unbounded_coordinates ... ok
+test input::mouse::tests::sgr_encodes_wheel_buttons_exactly ... ok
+test input::mouse::tests::wheel_route_prefers_mouse_tracking_then_active_alternate_scroll ... ok
+test input::paste::tests::clipboard_cannot_inject_early_bracketed_paste_end_or_key_controls ... ok
+test input::paste::tests::empty_or_control_only_text_sends_no_paste_markers ... ok
+test input::paste::tests::preserves_unicode_and_tabs_with_terminal_line_endings ... ok
+test grid::utf8_spans_tests::utf8_spans_preserve_prepend_combining_and_contextual_clusters ... ok
+test input::paste::tests::rejects_whole_paste_when_utf8_or_framing_exceeds_budget ... ok
+test launch_options::tests::defaults_to_login_shell_and_prints_help_without_launching ... ok
+test launch_options::tests::preserves_non_utf8_paths_and_command_arguments ... ok
+test launch_options::tests::rejects_invalid_launches_instead_of_silently_opening_a_shell ... ok
+test launch_options::tests::supports_omarchy_tui_launch_and_preserves_arguments ... ok
+test launch_options::tests::supports_separate_and_inline_window_options ... ok
+test layout::tests::computes_nested_layout_in_depth_first_order ... ok
+test layout::tests::pane_tree_split_resize_and_remove_cycle_preserves_ids ... ok
+test layout::tests::splits_rects_around_a_fixed_width_divider ... ok
+test linux_clipboard::tests::bounded_queue_and_shutdown_do_not_wait_for_an_external_clipboard_owner ... ok
+test grid::utf8_spans_tests::mixed_utf8_spans_preserve_prepend_near_staging_and_row_boundaries ... ok
+test linux_clipboard::tests::retains_copy_ownership_and_returns_paste_to_its_request_id ... ok
+test linux_clipboard::tests::unavailable_backend_can_be_retried_without_spawning_more_workers ... ok
+test linux_window::damage_tests::benchmark_frame_repaint ... ignored, CPU raster microbenchmark; run release on an idle Linux host with --nocapture
+test linux_clipboard::tests::bounds_copied_text_before_enqueue_and_pasted_text_before_callback ... ok
+test input::paste::tests::rejects_oversized_payloads_without_truncating_or_partial_framing ... ok
+test linux_window::damage_tests::glyph_overhang_is_removed_and_repainted_with_fractional_font_metrics ... ok
+test linux_window::damage_tests::small_edits_limit_damage_and_unchanged_scenes_need_no_rasterization ... ok
+test grid::utf8_spans_tests::mixed_utf8_spans_preserve_text_across_staging_capacity_and_row_edges ... ok
+test linux_window::damage_tests::unknown_age_dimensions_and_overlay_transitions_require_full_repaint ... ok
+test linux_window::graphics_tests::equal_z_index_uses_client_image_id_independently_of_transmission_order ... ok
+test linux_window::graphics_tests::lowest_layer_is_visible_through_default_background_but_below_explicit_background ... ok
+test linux_window::graphics_tests::overlapping_images_are_sorted_by_z_index_before_compositing ... ok
+test linux_window::selection_clipboard_tests::clipboard_shortcuts_accept_only_the_documented_modifier_combinations ... ok
+test linux_window::selection_clipboard_tests::clipboard_shortcuts_leave_control_and_meta_keys_for_terminal_apps ... ok
+test linux_window::selection_clipboard_tests::insert_clipboard_shortcuts_leave_all_other_modifier_combinations_for_apps ... ok
+test linux_window::selection_clipboard_tests::pointer_selection_rejects_nonfinite_positions_and_zero_sized_cells ... ok
+test linux_window::selection_clipboard_tests::pointer_selection_snaps_wide_characters_and_tracks_visible_history ... ok
+test linux_window::selection_clipboard_tests::pointer_selection_uses_zero_based_rows_and_columns_independently ... ok
+test linux_window::selection_clipboard_tests::repaint_invalidates_selection_without_changing_the_paste_target_screen ... ok
+test linux_window::selection_clipboard_tests::selection_snapshot_covers_a_whole_wide_glyph_and_preserves_hidden_content ... ok
+test linux_window::selection_clipboard_tests::selection_snapshot_projects_scrollback_and_reverse_drag ... ok
+test linux_window::selection_clipboard_tests::selection_sync_invalidates_coordinates_on_grid_revision_changes ... ok
+test linux_window::selection_clipboard_tests::selection_sync_rebases_evicted_history_once_and_clears_when_fully_lost ... ok
+test linux_window::selection_clipboard_tests::unchanged_geometry_and_viewport_scrolling_preserve_selection ... ok
+test linux_window::tests::alternate_scroll_forwards_unmodified_cursor_keys_without_pointer_geometry ... ok
+test linux_window::graphics_tests::negative_layer_is_below_text_and_zero_layer_covers_text ... ok
+test linux_window::tests::concealed_linux_cells_never_render_content_or_decorations ... ok
+test linux_window::tests::configured_dimensions_are_clamped_before_allocating_grid_or_pty ... ok
+test linux_window::tests::converts_faint_cell_colors_to_xrgb_without_mutating_style_flags ... ok
+test linux_window::tests::converts_rgb_to_softbuffer_xrgb ... ok
+test linux_window::tests::atlas_metrics_are_positive_rounded_and_synchronized_with_the_grid ... ok
+test linux_window::tests::empty_grid_cursor_is_visible_and_follows_each_cursor_shape ... ok
+test linux_window::tests::every_supported_mouse_tracking_mode_forwards_button_press_and_release ... ok
+test linux_window::tests::every_supported_mouse_tracking_mode_forwards_wheel_reports ... ok
+test linux_window::tests::failed_pixel_or_grid_resize_retains_last_success_and_can_retry_same_target ... ok
+test linux_window::tests::failed_pty_resize_preserves_grid_dimensions ... ok
+test linux_window::damage_tests::changing_only_a_grapheme_repaints_old_and_new_ink_like_a_full_frame ... ok
+test linux_window::tests::focus_loss_clears_stale_keyboard_modifiers ... ok
+test linux_window::tests::focus_reporting_is_gated_and_writes_exact_bytes_without_scrolling ... ok
+test linux_window::tests::grid_snapshot_preserves_faint_cell_flags ... ok
+test linux_window::tests::grid_updates_coalesce_until_redraw_begins_then_rearm ... ok
+test linux_window::tests::empty_grid_has_no_banner_and_first_cell_renders_at_the_frame_origin ... ok
+test linux_window::tests::ime_commit_is_queued_once_as_raw_utf8_outside_the_grid_lock ... ok
+test linux_window::tests::ime_cursor_area_handles_pending_wrap_clipping_and_invalid_geometry ... ok
+test linux_window::tests::ime_cursor_area_sync_requires_an_active_session_and_deduplicates_updates ... ok
+test linux_window::tests::ime_cursor_area_tracks_the_physical_terminal_cell_and_dpi_metrics ... ok
+test linux_window::tests::ime_cursor_uses_live_input_position_while_visual_cursor_is_suppressed ... ok
+test linux_window::tests::ime_preedit_clears_an_underlying_wide_leader_without_auto_wrap ... ok
+test linux_window::tests::ime_preedit_cluster_selection_keeps_base_and_combining_colors_coherent ... ok
+test linux_window::tests::ime_preedit_colors_project_a_wide_continuation_to_its_leader ... ok
+test linux_window::tests::ime_preedit_layout_handles_wide_combining_selection_and_controls ... ok
+test linux_window::tests::ime_preedit_layout_wraps_without_half_wide_glyphs_and_clips_at_bottom ... ok
+test linux_window::tests::ime_preedit_limits_are_atomic_and_never_truncate_utf8 ... ok
+test linux_window::tests::ime_preedit_obeys_disabled_auto_wrap_at_the_right_margin ... ok
+test linux_window::tests::ime_preedit_preserves_utf8_ranges_and_hides_malformed_cursors ... ok
+test linux_window::tests::hidden_wide_snapshot_keeps_resolved_background_without_glyph_or_underline ... ok
+test linux_window::tests::ime_preedit_render_decorates_zero_width_glyphs_without_advancing_them ... ok
+test linux_window::damage_tests::rotated_buffers_match_full_frames_through_text_scroll_styles_and_cursor_changes ... ok
+test linux_window::tests::failed_scale_or_metric_rebuild_preserves_the_previous_atlas ... ok
+test linux_window::tests::ime_preedit_render_preserves_contrast_on_reversed_terminal_cells ... ok
+test linux_window::tests::ime_preedit_reveals_live_input_and_replaces_provisional_state ... ok
+test linux_window::tests::ime_preedit_uses_the_reflowed_cursor_after_growing ... ok
+test linux_window::tests::immediate_surface_sizes_reconcile_and_stale_events_are_filtered ... ok
+test linux_window::tests::initial_dimensions_follow_the_configured_grid ... ok
+test linux_window::tests::initial_dimensions_never_start_at_zero ... ok
+test linux_window::tests::initial_metrics_and_pixel_only_resizes_update_pty_without_resizing_grid ... ok
+test linux_window::tests::ime_preedit_render_uses_reverse_selection_underline_and_topmost_caret ... ok
+test linux_window::tests::initial_placeholder_dimensions_respect_the_logical_size_budget ... ok
+test linux_window::tests::keyboard_forwarding_skips_empty_output_and_preserves_queue_errors ... ok
+test linux_window::tests::launch_result_preserves_worker_failures_before_late_finish_errors ... ok
+test linux_window::tests::keyboard_forwarding_releases_the_grid_before_encoding_and_enqueueing ... ok
+test linux_window::tests::linux_default_underline_tracks_resolved_faint_reverse_foreground ... ok
+test linux_window::tests::linux_underline_anchor_clamps_extreme_metrics_to_the_cell ... ok
+test linux_window::tests::linux_underline_rasterizes_every_style_inside_its_cell ... ok
+test linux_window::tests::maps_only_primary_winit_mouse_buttons_to_xterm_codes ... ok
+test linux_window::tests::mouse_button_release_clamps_negative_grab_coordinates_to_the_terminal_edge ... ok
+test linux_window::tests::mouse_button_reports_anchor_motion_without_hiding_button_queue_failures ... ok
+test linux_window::tests::mouse_buttons_encode_modifiers_without_holding_the_grid_lock_or_scrolling ... ok
+test linux_window::tests::mouse_buttons_ignore_disabled_unsupported_or_missing_geometry_and_preserve_queue_errors ... ok
+test linux_window::tests::mouse_motion_clamps_only_finite_drags_and_propagates_disconnects ... ok
+test linux_window::tests::mouse_motion_deduplicates_only_committed_cells_and_uses_current_context_next ... ok
+test linux_window::tests::mouse_motion_encodes_buttons_modifiers_and_both_encodings ... ok
+test linux_window::tests::mouse_motion_respects_xterm_tracking_modes ... ok
+test linux_window::tests::mouse_wheel_modifiers_match_xterm_button_bits ... ok
+test linux_window::tests::one_row_scrollback_pages_by_one_line_without_underflow ... ok
+test linux_window::tests::only_final_ime_commits_become_terminal_payloads ... ok
+test linux_window::tests::physical_grid_size_is_checked_and_dpi_metrics_preserve_rows_and_columns ... ok
+test linux_window::tests::physical_mouse_buttons_survive_tracking_transitions_and_follow_chord_order ... ok
+test linux_window::tests::pointer_positions_map_to_one_based_clamped_terminal_cells ... ok
+test linux_window::tests::pointer_route_drops_stale_dpi_position_after_the_last_release ... ok
+test linux_window::tests::pointer_route_isolates_mouse_button_positions_by_device ... ok
+test linux_window::tests::pointer_route_keeps_a_forwarded_button_captured_until_its_release ... ok
+test linux_window::tests::pointer_route_keeps_fractional_wheel_steps_per_active_device ... ok
+test linux_window::tests::pointer_route_preserves_physical_drag_identity_across_leave_and_dpi ... ok
+test linux_window::tests::pointer_route_releases_chords_even_when_the_release_is_not_forwarded ... ok
+test linux_window::tests::pointer_route_requires_matching_position_only_for_tracked_wheel_input ... ok
+test linux_window::tests::pointer_route_resets_on_device_changes_matching_leaves_and_scale_changes ... ok
+test linux_window::tests::poisoned_grid_prevents_keyboard_ime_focus_and_mouse_queue_writes ... ok
+test linux_window::tests::poisoned_grid_returns_a_typed_error ... ok
+test linux_window::tests::positions_a8_glyphs_from_cell_origin_ascent_and_bearings ... ok
+test linux_window::tests::reader_failures_include_actionable_context ... ok
+test linux_window::tests::repeated_window_focus_states_are_not_transitions ... ok
+test linux_window::tests::resize_transaction_calls_pty_before_grid_commit ... ok
+test linux_window::tests::ime_preedit_render_hides_the_terminal_cursor_before_a_wrapped_wide_glyph ... ok
+test linux_window::tests::rounds_only_finite_coordinates_that_fit_i32 ... ok
+test linux_window::tests::linux_underlines_blank_and_wide_cells_with_explicit_colors ... ok
+test linux_window::tests::pending_cursor_uses_the_wide_leader_background_for_contrast ... ok
+test linux_window::tests::scrollback_shortcuts_navigate_locally_without_queueing_input ... ok
+test linux_window::tests::shutdown_and_eof_are_normal_reader_exits ... ok
+test linux_window::tests::surface_dimensions_use_floor_minimum_and_memory_budget_limits ... ok
+test linux_window::tests::successful_terminal_resize_updates_pty_and_grid ... ok
+test linux_window::tests::resolves_bold_indexed_foreground_before_reverse_and_fills_cell_backgrounds ... ok
+test linux_window::tests::surface_extent_guard_rejects_frames_above_the_physical_budget ... ok
+test linux_window::tests::terminal_pixel_size_uses_the_drawable_area_and_saturates_without_wrapping ... ok
+test linux_window::tests::terminal_query_colors_are_canonical_six_digit_hex ... ok
+test linux_window::tests::terminal_stops_accepting_input_while_exiting_or_after_the_reader_exits ... ok
+test linux_window::tests::tracked_wheel_ignores_missing_geometry_and_preserves_queue_errors ... ok
+test linux_window::tests::unchanged_terminal_cells_and_pixels_do_not_call_the_pty ... ok
+test linux_window::tests::wheel_delta_accumulates_fractional_lines_and_bounds_each_event ... ok
+test linux_window::tests::wheel_remainder_resets_between_gestures_routes_and_pointer_contexts ... ok
+test linux_window::tests::wheel_scrolls_locally_or_reports_tracking_without_holding_the_grid_lock ... ok
+test linux_window::tests::unchanged_capped_surface_reconciles_after_cell_metrics_grow ... ok
+test linux_window::tests::window_title_change_detection_is_independent_from_frame_redraws ... ok
+test linux_window::tests::window_title_events_coalesce_while_preserving_the_latest_value ... ok
+test linux_window::tests::window_title_snapshot_reads_the_latest_grid_title ... ok
+test linux_window::tests::writer_shutdown_is_normal_and_failures_include_actionable_context ... ok
+test linux_window::tests::zero_sized_windows_do_not_create_a_surface_extent ... ok
+test parser::ansi::tests::aborted_osc_cannot_steal_later_apc_terminator ... ok
+test parser::ansi::tests::accepts_large_kitten_packets_across_pty_reads_then_unpadded_tail ... ok
+test parser::ansi::tests::accepts_parameter_limit_and_ignores_excess_sequence ... ok
+test parser::ansi::tests::advances_window_title_revision_only_when_the_title_changes ... ok
+test parser::ansi::tests::applies_remaining_queue_budget_before_decoding_sixel ... ok
+test linux_window::tests::terminal_cursor_remains_visible_over_hidden_linux_content ... ok
+test linux_window::tests::wide_continuations_neither_overwrite_the_leader_background_nor_add_a_glyph ... ok
+test parser::ansi::tests::bounds_kitty_apc_without_dispatching_truncated_command ... ok
+test parser::ansi::tests::bounds_osc_and_discards_overflow_for_bell_and_st ... ok
+test parser::ansi::tests::bounds_sixel_dcs_without_decoding_truncated_payload ... ok
+test parser::ansi::tests::colon_truecolor_channels_do_not_apply_sgr_attributes ... ok
+test parser::ansi::tests::complete_utf8_preserves_control_strings_and_event_boundaries ... ok
+test parser::ansi::tests::ascii_controls_and_printable_edges_match_byte_decoding_at_every_split ... ok
+test parser::ansi::tests::conceal_is_cell_scoped_and_sgr_28_preserves_other_attributes ... ok
+test parser::ansi::tests::conceal_resets_with_sgr_zero_empty_sgr_and_ris_without_revealing_written_cells ... ok
+test parser::ansi::tests::consecutive_inline_placements_observe_previous_advance ... ok
+test parser::ansi::tests::consumes_equal_private_csi_and_recovers_for_text_and_valid_csi ... ok
+test parser::ansi::tests::consumes_less_than_private_csi_at_every_read_boundary ... ok
+test parser::ansi::tests::csi_3j_erases_scrollback_without_erasing_the_screen ... ok
+test parser::ansi::tests::csi_3j_on_alt_screen_preserves_primary_history_and_marks ... ok
+test parser::ansi::tests::csi_3j_preserves_delayed_wrap ... ok
+test parser::ansi::tests::cursor_position_report_projects_pending_wrap_to_the_right_margin ... ok
+test parser::ansi::tests::decawm_participates_in_multi_parameter_private_modes ... ok
+test parser::ansi::tests::decawm_toggle_without_printable_preserves_pending_wrap ... ok
+test parser::ansi::tests::decckm_mode_drives_cursor_key_encoding ... ok
+test parser::ansi::tests::escape_restarts_csi_from_the_intermediate_state_at_every_read_boundary ... ok
+test parser::ansi::tests::extended_color_modes_do_not_leak_faint_from_value_two ... ok
+test parser::ansi::tests::extended_color_value_eight_does_not_enable_conceal ... ok
+test parser::ansi::tests::faint_intensity_is_independent_and_resets_with_sgr_and_ris ... ok
+test parser::ansi::tests::graphics_support_gates_parsing_buffering_and_da1 ... ok
+test parser::ansi::tests::horizontal_tab_preserves_pending_wrap_at_the_right_margin ... ok
+test parser::ansi::tests::horizontal_tab_uses_the_reflowed_cursor_after_growing ... ok
+test parser::ansi::tests::ignores_excess_intermediates_and_recovers ... ok
+test parser::ansi::tests::incomplete_semicolon_truecolors_do_not_leak_channels_as_attributes ... ok
+test parser::ansi::tests::keeps_utf8_inside_bell_terminated_osc ... ok
+test parser::ansi::tests::keeps_utf8_inside_st_terminated_osc_split_across_reads ... ok
+test parser::ansi::tests::kitty_event_boundary_precedes_trailing_text ... ok
+test parser::ansi::tests::kitty_events_project_pending_wrap_to_the_right_margin ... ok
+test linux_window::tests::snapshot_renderer_sends_the_full_grapheme_to_the_atlas ... ok
+test parser::ansi::tests::malformed_colon_color_preserves_following_sgr ... ok
+test parser::ansi::tests::malformed_intermediate_parameters_are_ignored_across_read_boundaries ... ok
+test parser::ansi::tests::malformed_private_markers_do_not_leak_or_enable_ansi_modes ... ok
+test parser::ansi::tests::malformed_and_partial_utf8_keep_byte_decoding_recovery ... ok
+test parser::ansi::tests::mixed_utf8_blocks_keep_ascii_recovery_and_stop_before_escape_events ... ok
+test parser::ansi::tests::non_moving_sequences_preserve_pending_wrap ... ok
+test parser::ansi::tests::parses_colon_truecolor_for_background_and_underline ... ok
+test parser::ansi::tests::parses_colon_truecolor_with_empty_color_space ... ok
+test parser::ansi::tests::preserves_existing_extended_color_forms ... ok
+test parser::ansi::tests::preserves_supported_private_and_intermediate_csi_routes ... ok
+test parser::ansi::tests::preserves_terminal_event_order_and_kitty_cursor_snapshots ... ok
+test parser::ansi::tests::prints_utf8_split_across_reads ... ok
+test parser::ansi::tests::private_csi_namespaces_cannot_reach_standard_handlers ... ok
+test parser::ansi::tests::rejects_out_of_range_extended_colors_without_leaking_channels ... ok
+test parser::ansi::tests::saturates_oversized_numeric_parameters_across_reads ... ok
+test parser::ansi::tests::screen_editing_controls_cancel_pending_wrap_before_the_next_printable ... ok
+test parser::ansi::tests::screen_scroll_controls_preserve_pending_wrap ... ok
+test parser::ansi::tests::sixel_events_project_pending_wrap_to_the_right_margin ... ok
+test parser::ansi::tests::subparameters_count_toward_limit_without_dispatching_prefix ... ok
+test parser::ansi::tests::terminal_pixel_extent_saturates_at_the_u64_limit ... ok
+test parser::ansi::tests::terminal_pixel_report_preserves_extents_larger_than_u16 ... ok
+test parser::ansi::tests::toggles_alternate_scroll_independently_and_preserves_it_across_ris ... ok
+test parser::ansi::tests::toggles_application_cursor_keys_with_decckm ... ok
+test parser::ansi::tests::toggles_auto_wrap_with_decawm_and_resets_it_with_ris ... ok
+test parser::ansi::tests::toggles_focus_reporting_with_dec_private_mode_and_ris ... ok
+test parser::ansi::tests::toggles_mouse_tracking_and_encoding_with_dec_private_modes_and_ris ... ok
+test parser::ansi::tests::complete_utf8_scalars_match_byte_decoding_at_every_split ... ok
+test parser::ansi::tests::mixed_utf8_blocks_preserve_pending_prefixes_and_long_mixed_chunks ... ok
+test parser::ansi::tests::ascii_batches_match_scalar_decoding_across_modes_and_read_boundaries ... ok
+test parser::ansi::tests::utf8_blocks_match_byte_decoding_across_grid_modes_and_chunks ... ok
+test parser::kitty_graphics::tests::accepts_padded_and_unpadded_payloads_but_rejects_invalid_base64 ... ok
+test parser::kitty_graphics::tests::composition_maps_asymmetric_rectangles_to_released_kitty_behavior ... ok
+test parser::kitty_graphics::tests::delete_capitalization_and_coordinates_are_preserved ... ok
+test parser::kitty_graphics::tests::delete_id_selectors_are_order_independent ... ok
+test parser::kitty_graphics::tests::delete_number_selectors_are_order_independent ... ok
+test parser::kitty_graphics::tests::distinguishes_omitted_action_chunks_from_explicit_transmission ... ok
+test parser::kitty_graphics::tests::enforces_the_kitty_encoded_chunk_limit ... ok
+test parser::kitty_graphics::tests::frame_delete_selectors_preserve_root_default_and_hard_delete_policy ... ok
+test parser::kitty_graphics::tests::incomplete_or_unknown_delete_selectors_never_expand_to_all ... ok
+test parser::kitty_graphics::tests::invalid_delete_identifiers_become_safe_noop_events ... ok
+test parser::kitty_graphics::tests::invalid_image_selectors_are_preserved_for_every_action ... ok
+test parser::kitty_graphics::tests::malformed_animation_numbers_never_become_default_operations ... ok
+test parser::kitty_graphics::tests::normalizes_zero_animation_keys_without_assigning_runtime_defaults ... ok
+test parser::kitty_graphics::tests::overloaded_keys_are_validated_in_their_final_action_namespace ... ok
+test parser::kitty_graphics::tests::parses_frame_rectangle_base_and_edit_after_final_action_is_known ... ok
+test parser::kitty_graphics::tests::parses_loading_running_stop_and_wire_loop_count ... ok
+test parser::kitty_graphics::tests::released_icat_composition_key_takes_precedence_for_frame_uploads ... ok
+test parser::kitty_graphics::tests::valid_isolated_image_selectors_are_not_marked_invalid ... ok
+test parser::sixel::tests::allocation_capacity_never_rejects_a_valid_logical_canvas ... ok
+test parser::ansi::tests::utf8_blocks_keep_long_malformed_suffixes_and_partial_read_state ... ok
+test parser::ansi::tests::utf8_blocks_preserve_malformed_suffix_recovery_and_event_boundaries ... ok
+test parser::sixel::tests::caller_byte_budget_is_applied_before_canvas_allocation ... ok
+test parser::sixel::tests::decodes_minimal_and_repeated_sixels ... ok
+test parser::sixel::tests::enforces_input_limit_and_valid_output_invariants ... ok
+test parser::sixel::tests::geometric_growth_preserves_existing_colors ... ok
+test parser::sixel::tests::only_quoted_prefix_is_treated_as_raster_attributes ... ok
+test parser::sixel::tests::production_budget_accepts_4k_but_rejects_larger_canvases ... ok
+test parser::sixel::tests::raster_attributes_preserve_a_minimum_canvas ... ok
+test parser::sixel::tests::raster_height_allows_a_partial_final_sixel_band ... ok
+test parser::sixel::tests::rejects_dynamic_width_and_height_instead_of_clamping ... ok
+test parser::sixel::tests::rejects_incomplete_or_zero_repeats ... ok
+test parser::sixel::tests::rejects_raster_attributes_outside_exact_limits ... ok
+test parser::sixel::tests::rejects_repeat_before_it_can_exceed_budgets ... ok
+test pty::unix::tests::bounded_child_reap_hands_back_control_at_the_deadline ... ok
+test pty::unix::tests::bounded_child_reap_retries_pending_states_and_wait_errors ... ok
+test pty::unix::tests::cancellable_readiness_prioritizes_shutdown_and_preserves_eof_and_errors ... ok
+test pty::unix::tests::cancellable_readiness_wait_has_no_timeout_even_after_interrupts ... ok
+test pty::unix::tests::cancellable_write_completes_partial_and_retried_output_atomically ... ok
+test pty::unix::tests::cancellable_write_rechecks_shutdown_after_acquiring_the_lock ... ok
+test pty::unix::tests::cancellable_write_retries_interrupts_and_preserves_native_errors ... ok
+test pty::unix::tests::cancellable_write_stops_after_partial_output_and_would_block ... ok
+test pty::unix::tests::cancellable_write_stops_before_and_while_waiting_for_the_lock ... ok
+test pty::unix::tests::child_cleanup_escalates_then_hands_off_the_final_reap ... ok
+test pty::unix::tests::child_cleanup_stops_after_a_successful_reap ... ok
+test parser::sixel::tests::allocation_work_budget_rejects_near_limit_resize_churn ... ok
+test pty::unix::tests::child_reap_handoff_falls_back_when_thread_spawn_fails ... ok
+test pty::unix::tests::child_setup_stage_names_remain_stable ... ok
+test pty::unix::tests::child_stage_write_retries_interrupts_until_the_byte_is_written ... ok
+test pty::unix::tests::child_stage_write_stops_after_a_permanent_error ... ok
+test pty::unix::tests::child_stage_write_stops_on_zero_or_non_exact_output ... ok
+test pty::unix::tests::child_stage_write_succeeds_in_one_call ... ok
+test pty::unix::tests::child_startup_hangup_preserves_eof_and_failure_stage_statuses ... ok
+test pty::unix::tests::child_startup_interrupts_can_finish_before_the_deadline ... ok
+test pty::unix::tests::child_startup_interrupts_share_the_original_deadline ... ok
+test pty::unix::tests::child_startup_preserves_native_poll_and_read_errors ... ok
+test pty::unix::tests::child_startup_read_interrupt_stops_at_the_deadline ... ok
+test pty::unix::tests::child_startup_rejects_invalid_poll_events_without_reading ... ok
+test pty::unix::tests::child_wait_classifier_only_accepts_terminal_states ... ok
+test pty::unix::tests::classifies_readable_hangup_error_and_invalid_events ... ok
+test pty::unix::tests::command_lookup_supports_path_and_explicit_paths ... ok
+test pty::unix::tests::child_exit_becomes_readable_eof ... ok
+test parser::sixel::tests::alternating_axis_growth_uses_bounded_reallocations ... ok
+test pty::unix::tests::concurrent_logical_writes_do_not_interleave ... ok
+test pty::unix::tests::interrupted_polls_preserve_the_original_deadline ... ok
+test pty::unix::tests::launches_command_arguments_without_shell_reparsing ... ok
+test pty::unix::tests::marks_descriptors_close_on_exec ... ok
+test pty::unix::tests::pixel_aware_resize_is_visible_through_the_real_pty_winsize ... ok
+test pty::unix::tests::prefers_kokuban_shell_then_user_shell ... ok
+test pty::unix::tests::preserves_native_write_errors ... ok
+test pty::unix::tests::pty_can_be_shared_with_a_reader_thread ... ok
+test pty::unix::tests::rejects_empty_or_invalid_command_arguments_before_fork ... ok
+test pty::unix::tests::rejects_relative_shell_paths ... ok
+test pty::unix::tests::reported_child_cleanup_kills_only_the_child_then_hands_off_reaping ... ok
+test pty::unix::tests::reports_exec_failure_to_the_parent ... ok
+test pty::unix::tests::reports_only_enabled_graphics_protocols ... ok
+test pty::unix::tests::resize_preserves_non_interrupted_errno_without_retrying ... ok
+test pty::unix::tests::resize_retries_only_interrupted_ioctls_with_the_same_window_size ... ok
+test pty::unix::tests::resize_returns_an_error_that_follows_an_interruption ... ok
+test pty::unix::tests::resize_success_uses_one_ioctl_without_reading_errno ... ok
+test pty::unix::tests::rounds_and_bounds_poll_timeouts ... ok
+test pty::unix::tests::serializes_partial_and_retried_output_as_one_logical_write ... ok
+test pty::unix::tests::shutdown_before_poll_is_not_lost_even_when_pty_output_is_ready ... ok
+test pty::unix::tests::socket_shutdown_wakes_a_silent_pty_without_output_or_child_exit ... ok
+test pty::unix::tests::spawns_a_program_with_terminal_environment ... ok
+test pty::unix::tests::wait_readable_reports_pending_output ... ok
+test parser::ansi::tests::utf8_blocks_preserve_every_ascii_byte_and_graphics_boundaries ... ok
+test renderer::image_animation::tests::all_gapless_frames_have_no_timer_and_resume_when_a_timed_frame_is_added ... ok
+test renderer::image_animation::tests::alpha_blend_uses_straight_rgba_and_preserves_transparency ... ok
+test renderer::image_animation::tests::composition_uses_source_and_destination_rectangles_and_rejects_overlap ... ok
+test renderer::image_animation::tests::deleting_root_promotes_next_frame_and_oversized_selectors_delete_last ... ok
+test renderer::image_animation::tests::delta_frames_use_rgba_background_or_base_and_edits_preserve_other_pixels ... ok
+test renderer::image_animation::tests::finite_loops_stop_on_the_last_displayable_frame_after_suspension ... ok
+test renderer::image_animation::tests::loading_skips_gapless_frames_and_waits_until_a_new_frame_arrives ... ok
+test renderer::image_animation::tests::rejected_control_preserves_clock_frame_and_pixels ... ok
+test renderer::image_animation::tests::root_is_gapless_new_frames_default_to_40ms_and_zero_preserves_gap ... ok
+test renderer::image_animation::tests::running_uses_exact_deadlines_and_skips_a_billion_elapsed_cycles ... ok
+test renderer::image_animation::tests::stop_resets_loop_counter_and_selecting_a_frame_works_when_stopped ... ok
+test renderer::image_animation::tests::whole_cycle_arithmetic_matches_frame_interval_oracle ... ok
+test renderer::image_decode::tests::png_uses_embedded_dimensions_when_protocol_omits_them ... ok
+test renderer::image_decode::tests::raw_formats_still_require_dimensions ... ok
+test renderer::image_decode::tests::rejects_overflowing_raw_dimensions ... ok
+test renderer::image_decode::tests::rejects_png_larger_than_the_configured_limit ... ok
+test renderer::kitty_handler::tests::abort_clears_the_only_active_upload ... ok
+test renderer::kitty_handler::tests::accepts_exact_decompressed_limit_and_rejects_one_byte_over ... ok
+test renderer::kitty_handler::tests::accepts_matching_explicit_id_and_rejects_interleaving ... ok
+test renderer::kitty_handler::tests::all_delete_variants_only_remove_visible_kitty_placements ... ok
+test renderer::kitty_handler::tests::all_delete_variants_preserve_sixel_placements ... ok
+test renderer::kitty_handler::tests::applies_configured_image_limit_and_disables_file_access_early ... ok
+test renderer::kitty_handler::tests::aspect_ratio_delete_hit_tests_follow_effective_cells_after_cell_shrink ... ok
+test renderer::kitty_handler::tests::assembles_three_standard_chunks_without_reallocating_an_id ... ok
+test renderer::kitty_handler::tests::c1_keeps_inline_geometry_and_only_suppresses_cursor_advance ... ok
+test renderer::kitty_handler::tests::clamps_inline_dimensions_and_cursor_advance_to_the_grid ... ok
+test renderer::kitty_handler::tests::client_image_pruning_threshold_preserves_placement_bindings ... ok
+test renderer::kitty_handler::tests::client_placement_ids_never_match_synthetic_local_ids ... ok
+test renderer::kitty_handler::tests::column_and_row_deletes_use_one_based_intersection_coordinates ... ok
+test renderer::kitty_handler::tests::continuation_quiet_value_applies_to_completion_and_errors ... ok
+test renderer::kitty_handler::tests::cursor_delete_uses_command_time_coordinates ... ok
+test renderer::kitty_handler::tests::decompresses_valid_streams_across_multiple_output_chunks ... ok
+test renderer::kitty_handler::tests::decompression_errors_honor_quiet_level ... ok
+test renderer::kitty_handler::tests::delete_by_id_honors_the_optional_placement_id ... ok
+test renderer::kitty_handler::tests::deletes_only_safe_temporary_entries_after_reading ... ok
+test renderer::kitty_handler::tests::direct_query_validates_without_an_image_store ... ok
+test renderer::kitty_handler::tests::empty_final_chunk_completes_the_active_upload ... ok
+test renderer::kitty_handler::tests::enforces_exact_aggregate_limit_and_clears_rejected_upload ... ok
+test renderer::kitty_handler::tests::explicit_image_ids_are_isolated_between_handlers_sharing_a_store ... ok
+test renderer::kitty_handler::tests::follows_regular_file_symlinks_and_rejects_symlink_loops ... ok
+test renderer::kitty_handler::tests::grows_pending_storage_logarithmically_for_small_chunks ... ok
+test renderer::kitty_handler::tests::image_number_namespaces_are_isolated_per_handler ... ok
+test renderer::kitty_handler::tests::image_number_pruning_threshold_includes_store_size_and_stale_slack ... ok
+test renderer::kitty_handler::tests::image_numbers_translate_client_ids_and_retain_evicted_placements_for_delete ... ok
+test renderer::kitty_handler::tests::inline_offsets_do_not_expand_delete_bounds_beyond_explicit_cells ... ok
+test renderer::kitty_handler::tests::kitty_retransmission_in_alt_cleans_both_screens_but_preserves_sixel ... ok
+test renderer::kitty_handler::tests::missing_ids_and_image_numbers_never_alias_stored_image_ids ... ok
+test renderer::kitty_handler::tests::native_delete_hit_tests_recompute_effective_cells_after_cell_shrink ... ok
+test renderer::kitty_handler::tests::numbered_chunks_allocate_once_and_preserve_the_first_identity ... ok
+test renderer::kitty_handler::tests::numbered_chunks_reject_divergent_numbers_and_selector_switches ... ok
+test renderer::kitty_handler::tests::numbered_responses_include_both_identities_and_honor_quiet_levels ... ok
+test renderer::kitty_handler::tests::path_roots_are_component_aware_and_temp_errors_honor_quiet ... ok
+test renderer::kitty_handler::tests::placement_errors_honor_quiet_level_and_preserve_image_id ... ok
+test renderer::kitty_handler::tests::placement_offsets_must_stay_inside_positive_finite_cells ... ok
+test renderer::kitty_handler::tests::png_query_rejects_empty_and_corrupt_data ... ok
+test renderer::kitty_handler::tests::png_query_uses_embedded_dimensions ... ok
+test renderer::kitty_handler::tests::preserves_first_chunk_metadata_and_deferred_placement ... ok
+test renderer::kitty_handler::tests::query_quiet_levels_suppress_only_the_expected_responses ... ok
+test renderer::kitty_handler::tests::query_rejects_an_image_id_combined_with_an_image_number ... ok
+test renderer::kitty_handler::tests::query_rejects_empty_data_and_missing_raw_dimensions ... ok
+test renderer::kitty_handler::tests::query_requires_a_nonzero_image_id ... ok
+test renderer::kitty_handler::tests::query_requires_exact_raw_payload_sizes ... ok
+test renderer::kitty_handler::tests::reads_regular_files_at_the_exact_limit_and_rejects_larger_files ... ok
+test renderer::kitty_handler::tests::refuses_to_delete_a_replaced_temporary_entry ... ok
+test renderer::kitty_handler::tests::rejects_directories_and_fifos_without_blocking ... ok
+test renderer::kitty_handler::tests::rejects_invalid_truncated_and_trailing_zlib_data ... ok
+test pty::unix::tests::wait_readable_times_out_without_output ... ok
+test renderer::kitty_handler::tests::retransmission_cleanup_removes_only_matching_kitty_placements ... ok
+test renderer::kitty_handler::tests::retransmission_preserves_a_live_alias_but_id_reuse_clears_it ... ok
+test renderer::kitty_handler::tests::selective_kitty_deletes_preserve_sixel_placements_with_the_same_id ... ok
+test renderer::kitty_handler::tests::single_axis_render_size_keeps_the_requested_cells_after_grid_clamp ... ok
+test renderer::kitty_handler::tests::supports_non_utf8_unix_file_names ... ok
+test renderer::kitty_handler::tests::temporary_deletion_stays_bound_to_the_opened_parent_directory ... ok
+test renderer::kitty_handler::tests::temporary_symlink_deletion_removes_the_link_not_its_target ... ok
+test renderer::kitty_handler::tests::transmit_and_place_without_explicit_id_uses_allocated_id ... ok
+test renderer::kitty_handler::tests::uncompressed_data_is_borrowed_and_still_obeys_the_limit ... ok
+test renderer::kitty_handler::tests::uppercase_by_number_deletes_unreferenced_newest_generation_and_falls_back ... ok
+test renderer::kitty_handler::tests::uppercase_explicit_delete_can_candidate_an_unplaced_image ... ok
+test renderer::kitty_handler::tests::uppercase_id_delete_uses_the_same_safe_placement_filter ... ok
+test renderer::kitty_handler::tests::uppercase_z_index_delete_reports_only_removed_kitty_images ... ok
+test renderer::kitty_handler::tests::zero_image_id_uses_a_fresh_nonzero_allocation ... ok
+test renderer::kitty_handler::tests::zero_image_number_is_absent_from_chunk_errors ... ok
+test renderer::software_image_store::tests::animation_budget_counts_root_and_all_frames_and_never_evicts_own_image ... ok
+test renderer::software_image_store::tests::animation_frame_deletion_reclaims_budget_and_only_uppercase_removes_last_image ... ok
+test renderer::software_image_store::tests::converts_rgb_to_opaque_rgba_and_ignores_trailing_raw_bytes ... ok
+test renderer::software_image_store::tests::delta_opacity_accounts_for_background_pixels_and_alpha_composition ... ok
+test renderer::software_image_store::tests::editing_an_active_frame_replaces_its_arc_without_growing_cache_or_mutating_snapshots ... ok
+test renderer::software_image_store::tests::evicts_the_oldest_image_at_the_exact_byte_budget ... ok
+test renderer::software_image_store::tests::id_wrap_skips_zero_and_occupied_ids ... ok
+test renderer::software_image_store::tests::invalid_frame_uploads_and_compositions_preserve_entire_cache_and_snapshots ... ok
+test renderer::software_image_store::tests::invisible_animations_request_no_wakeups_and_catch_up_when_visible ... ok
+test renderer::software_image_store::tests::opacity_is_recomputed_after_frame_edits_composition_deletion_and_replacement ... ok
+test renderer::software_image_store::tests::opacity_tracks_decoded_pixels_and_the_frame_selected_by_the_clock ... ok
+test renderer::software_image_store::tests::png_uses_embedded_dimensions_and_preserves_alpha ... ok
+test renderer::software_image_store::tests::rejected_uploads_preserve_pixels_accounting_and_next_id ... ok
+test renderer::software_image_store::tests::removal_reclaims_budget_and_shared_pixels_survive_until_the_renderer_drops_them ... ok
+test renderer::software_image_store::tests::replacement_and_eviction_release_every_animation_frame_and_clock ... ok
+test renderer::software_image_store::tests::replacement_credits_old_pixels_before_evicting_other_images ... ok
+test renderer::software_image_store::tests::replacement_evicts_only_necessary_entries_and_becomes_newest ... ok
+test renderer::software_image_store::tests::static_images_need_no_animation_metadata_and_failed_commands_do_not_add_it ... ok
+test renderer::software_image_store::tests::per_image_and_global_frame_caps_include_roots ... ok
+test renderer::software_image_store::tests::zero_budget_rejects_images_and_megabyte_conversion_does_not_overflow ... ok
+test renderer::software_image_store::tests::zero_ids_and_zero_dimensions_are_rejected_without_allocating_ids ... ok
+test selection::tests::byte_budget_counts_interior_spaces_and_newlines_but_not_trailing_padding ... ok
+test selection::tests::copy_clips_columns_without_reading_the_next_physical_row ... ok
+test selection::tests::copy_clips_negative_and_extreme_rows_to_the_actual_grid ... ok
+test selection::tests::copy_joins_wrapped_urls_across_screen_and_history ... ok
+test selection::tests::copy_never_splits_a_compound_emoji_or_combining_cluster ... ok
+test selection::tests::copy_omits_wide_glyph_wrap_padding_and_keeps_partial_selection ... ok
+test selection::tests::copy_preserves_combining_graphemes_and_nonbreaking_spaces ... ok
+test selection::tests::copy_preserves_real_newlines_and_printed_spaces_at_wrap_boundaries ... ok
+test renderer::software_image_store::tests::tiny_images_obey_the_entry_cap_and_replacement_does_not_consume_a_slot ... ok
+test selection::tests::copy_preserves_wide_history_at_every_resized_width ... ok
+test selection::tests::either_half_of_a_wide_character_is_copied_and_highlighted_once ... ok
+test selection::tests::eviction_rebasing_preserves_the_same_text_until_its_rows_are_lost ... ok
+test selection::tests::legacy_contains_uses_saturating_viewport_arithmetic ... ok
+test selection::tests::normalizes_reverse_drag_order ... ok
+test selection::tests::orphaned_continuations_and_nuls_never_enter_clipboard_text ... ok
+test selection::tests::reverse_selection_clips_only_the_part_lost_to_eviction ... ok
+test selection::tests::utf8_byte_budget_rejects_before_copying_past_the_limit ... ok
+test selection::tests::viewport_points_clamp_and_snap_wide_continuations ... ok
+test software_graphics::tests::animation_transparency_restores_the_covered_image_on_frame_selection ... ok
+test software_graphics::tests::bounded_occluders_keep_thousands_of_nonoverlapping_images ... ok
+test software_graphics::tests::anonymous_opaque_video_frames_reduce_draws_without_deleting_images ... ok
+test software_graphics::tests::consecutive_sixels_keep_native_pixels_and_move_text_in_event_order ... ok
+test software_graphics::tests::culling_does_not_clip_away_pixels_in_a_partial_cell_surface_margin ... ok
+test software_graphics::tests::culling_keeps_scaled_source_sampling_unchanged_after_negative_origin_clipping ... ok
+test software_graphics::tests::culling_respects_all_image_and_text_layers ... ok
+test software_graphics::tests::deleting_alt_screen_placement_preserves_pixels_referenced_by_primary_screen ... ok
+test software_graphics::tests::disabled_graphics_leave_no_images_responses_or_cursor_advance ... ok
+test software_graphics::tests::fragmented_png_transmission_preserves_embedded_size_alpha_and_cursor_policy ... ok
+test software_graphics::tests::frame_chunk_errors_keep_the_target_identity_and_pending_quiet_mode ... ok
+test software_graphics::tests::frame_composition_and_deletion_update_existing_placements ... ok
+test software_graphics::tests::hidden_animation_has_no_deadline_and_catches_up_when_visible ... ok
+test software_graphics::tests::integer_coverage_preserves_small_extents_at_large_float_origins ... ok
+test software_graphics::tests::malformed_and_interleaved_frames_preserve_the_existing_image ... ok
+test software_graphics::tests::numbered_animation_uploads_continue_without_selectors_and_control_is_silent ... ok
+test software_graphics::tests::pixel_center_coverage_culls_only_pixels_the_later_image_actually_draws ... ok
+test software_graphics::tests::raw_kitty_image_is_acknowledged_placed_and_drawn_before_trailing_text ... ok
+test software_graphics::tests::cache_eviction_removes_dangling_placements_without_invalidating_a_frame ... ok
+test software_graphics::tests::retransmission_on_alt_screen_invalidates_hidden_primary_placements ... ok
+test software_graphics::tests::retransmitting_a_lower_client_id_does_not_raise_it_above_a_higher_id ... ok
+test software_graphics::tests::transparent_partial_and_nonoverlapping_images_never_hide_required_draws ... ok
+test software_raster::image_tests::alpha_blends_in_softbuffer_channel_order ... ok
+test software_raster::image_tests::invalid_and_extreme_images_cannot_overrun_the_frame ... ok
+test software_raster::image_tests::scales_and_clips_without_shifting_the_source ... ok
+test software_raster::tests::blends_zero_half_and_full_a8_coverage ... ok
+test software_raster::tests::clipped_rows_match_scalar_reference_for_every_alpha ... ok
+test software_raster::tests::clips_extreme_rectangle_coordinates_without_overflow ... ok
+test software_raster::tests::clips_glyphs_on_all_four_edges_and_preserves_tail_sentinels ... ok
+test software_raster::tests::colored_grapheme_clips_to_frame_and_preserves_rgb_and_alpha ... ok
+test software_raster::tests::fills_clipped_rectangles_with_alpha_and_preserves_tail_sentinels ... ok
+test software_raster::tests::rejects_impossible_declared_dimensions ... ok
+test software_raster::tests::rejects_malformed_frames_and_atlases_without_partial_writes ... ok
+test software_raster::tests::supports_opaque_and_transparent_rectangles ... ok
+test software_raster::tests::uses_the_glyph_subrectangle_within_the_atlas ... ok
+test terminal_colors::tests::bold_bright_and_reverse_are_resolved_before_faint ... ok
+test terminal_colors::tests::faint_blending_rounds_safely_at_channel_extremes ... ok
+test terminal_colors::tests::preserves_the_existing_ansi_and_bold_bright_palette ... ok
+test terminal_colors::tests::resolves_default_indexed_and_truecolor_faint_foregrounds ... ok
+test terminal_colors::tests::resolves_defaults_and_truecolor_by_semantic_role ... ok
+test terminal_colors::tests::resolves_xterm_color_cube_and_grayscale_boundaries ... ok
+test terminal_decoder::tests::consecutive_sixel_events_observe_each_previous_cursor_advance ... ok
+test terminal_decoder::tests::disabled_graphics_do_not_queue_images_or_commands ... ok
+test terminal_decoder::tests::preserves_parser_state_across_reads ... ok
+test terminal_decoder::tests::sixel_advance_precedes_following_response_and_kitty_snapshot ... ok
+test terminal_decoder::tests::sixel_event_precedes_trailing_text_and_captures_its_cursor ... ok
+test terminal_decoder::tests::stops_at_an_event_before_decoding_trailing_input ... ok
+test terminal_decoder::tests::title_revisions_survive_a_sixel_event_boundary ... ok
+test terminal_reader::tests::cancelled_response_write_exits_before_trailing_text ... ok
+test terminal_reader::tests::cancelled_wait_exits_without_reading ... ok
+test terminal_reader::tests::disabled_graphics_skip_callbacks_and_keep_text_and_capability_responses ... ok
+test terminal_reader::tests::drop_requests_shutdown_for_a_waiting_reader ... ok
+test terminal_reader::tests::final_update_precedes_exit_callback ... ok
+test terminal_reader::tests::final_update_precedes_read_error_callback ... ok
+test terminal_reader::tests::graphics_callback_error_stops_before_trailing_text_and_releases_grid ... ok
+test terminal_reader::tests::graphics_callbacks_advance_before_later_events_and_write_replies_without_grid_lock ... ok
+test terminal_reader::tests::graphics_reply_cancellation_or_failure_stops_before_trailing_text ... ok
+test terminal_reader::tests::idle_reader_stays_asleep_until_shutdown_and_joins ... ok
+test terminal_reader::tests::limits_and_coalesces_reads_per_batch ... ok
+test terminal_reader::tests::preserves_utf8_and_ansi_state_across_reads ... ok
+test terminal_reader::tests::preserves_wait_read_and_response_write_errors ... ok
+test terminal_reader::tests::rejects_unexpected_graphics_events ... ok
+test terminal_reader::tests::rejects_unexpected_sixel_events ... ok
+test terminal_reader::tests::reports_poisoned_grid_without_panicking ... ok
+test terminal_reader::tests::request_shutdown_cancels_a_blocked_response_before_trailing_text ... ok
+test terminal_reader::tests::request_shutdown_flushes_the_batch_before_exiting ... ok
+test terminal_reader::tests::would_block_and_cancellation_do_not_emit_false_updates ... ok
+test terminal_reader::tests::writes_responses_outside_the_grid_lock_before_trailing_text ... ok
+test terminal_writer::tests::an_unexpected_sender_disconnect_is_distinct_from_shutdown ... ok
+test terminal_writer::tests::byte_budget_counts_in_flight_and_queued_allocations ... ok
+test terminal_writer::tests::byte_reservation_rejects_arithmetic_overflow ... ok
+test terminal_writer::tests::completed_write_releases_budget_for_the_next_input ... ok
+test terminal_writer::tests::drop_cancels_and_joins_a_blocked_write ... ok
+test terminal_writer::tests::lossless_queue_accepts_one_in_flight_plus_all_channel_slots ... ok
+test terminal_writer::tests::native_write_error_reaches_the_callback_and_join_result ... ok
+test terminal_writer::tests::nonfatal_byte_limit_preserves_configured_headroom_for_lossless_input ... ok
+test terminal_writer::tests::nonfatal_queue_leaves_physical_capacity_for_lossless_input ... ok
+test terminal_writer::tests::oversized_capacity_is_rejected_without_consuming_budget_or_slot ... ok
+test terminal_writer::tests::panic_unwind_releases_in_flight_and_queued_budgets ... ok
+test terminal_writer::tests::production_nonfatal_limits_reserve_one_slot_and_64_kib ... ok
+test terminal_writer::tests::queued_writes_reach_the_worker_in_fifo_order ... ok
+test terminal_writer::tests::shutdown_cancels_a_blocked_write_and_joins ... ok
+test terminal_writer::tests::shutdown_wakes_an_idle_writer_and_disconnects_enqueue ... ok
+test terminal_writer::tests::write_failure_releases_in_flight_and_queued_budget ... ok
+test window_title::tests::normalization_honors_the_exact_utf8_byte_limit ... ok
+test window_title::tests::sync_applies_osc_changes_once_and_restores_the_default ... ok
+test window_title::tests::sync_removes_controls_and_truncates_on_utf8_boundaries ... ok
+test software_graphics::tests::repeated_tiny_placements_evict_oldest_metadata_at_the_limit ... ok
+test pty::unix::tests::drop_cleans_descendants_after_the_shell_has_already_exited ... ok
+test pty::unix::tests::drop_terminates_and_reaps_a_child_that_ignores_hup_and_term ... ok
+
+test result: ok. 703 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.35s
+
+     Running unittests examples/graphics.rs (/build/target/release/examples/graphics-30f6a88133411d78)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/terminal-throughput.rs (/build/target/release/examples/terminal_throughput-01a8dd9ec51bc8c3)
+
+running 241 tests
+test graphics::tests::aspect_ratio_footprint_rounds_up_and_saturates ... ok
+test graphics::tests::automatic_cell_footprint_includes_offsets_without_expanding_explicit_sizes ... ok
+test graphics::tests::generated_image_ids_skip_live_entries_and_zero_after_wrap ... ok
+test graphics::tests::client_image_registry_retains_bindings_until_explicit_pruning ... ok
+test graphics::tests::client_image_ids_are_namespaced_from_shared_store_ids ... ok
+test graphics::tests::image_number_reassignment_never_leaves_an_old_alias ... ok
+test graphics::tests::image_number_registry_prunes_evicted_generations_across_all_numbers ... ok
+test graphics::tests::image_numbers_resolve_the_newest_live_generation_and_fall_back ... ok
+test graphics::tests::inline_offsets_stay_inside_cells_after_cell_size_shrinks ... ok
+test graphics::tests::inline_pixel_rect_tracks_cell_size_and_preserves_offsets ... ok
+test graphics::tests::kitty_auto_size_normalizes_missing_and_zero_cell_counts ... ok
+test graphics::tests::kitty_layout_resolves_auto_and_single_axis_requests_together ... ok
+test graphics::tests::native_pixel_size_is_independent_from_its_effective_cell_footprint ... ok
+test graphics::tests::scrolled_image_keeps_negative_pixel_origin_and_clips_cell_hit_testing ... ok
+test graphics::tests::single_axis_pixel_rect_preserves_aspect_ratio_after_cell_resize ... ok
+test graphics::tests::single_axis_visual_rect_and_effective_footprint_are_distinct ... ok
+test graphics::tests::hard_delete_candidates_require_zero_references_across_kitty_sixel_and_panes ... ok
+test grid::boundary_pages::tests::mixed_pages_and_contextual_successors_keep_the_fallback ... ok
+test grid::boundary_pages::tests::official_unicode_17_grapheme_break_corpus_matches_streaming ... ok
+test grid::boundary_pages::tests::long_cluster_contexts_match_the_full_segmenter ... ok
+test grid::buffer::tests::clearing_uniform_rows_compares_graphemes_and_wide_flags ... ok
+test grid::buffer::tests::extracting_compound_suffixes_preserves_each_arc_owner ... ok
+test grid::buffer::tests::extracted_rows_preserve_styles_and_own_their_compound_prefix ... ok
+test grid::buffer::tests::extraction_preserves_empty_and_single_column_rows ... ok
+test grid::buffer::tests::partial_scrolls_normalize_the_ring_before_editing_the_region ... ok
+test grid::buffer::tests::partial_writes_keep_blank_suffixes_and_release_erased_graphemes ... ok
+test grid::buffer::tests::rejected_mutable_access_cannot_invalidate_another_rows_suffix ... ok
+test grid::buffer::tests::ring_access_rejects_out_of_range_rows_and_keeps_empty_buffers_valid ... ok
+test grid::buffer::tests::ring_scrolls_release_only_removed_graphemes ... ok
+test grid::buffer::tests::row_offset_rotation_keeps_graphemes_lengths_and_wrap_flags_together ... ok
+test grid::buffer::tests::scrolling_preserves_cells_outside_the_region_and_fills_exposed_rows ... ok
+test grid::buffer::tests::suffix_tracking_matches_full_row_reference_after_mixed_edits ... ok
+test grid::buffer::tests::whole_screen_scrolls_wrap_without_rotating_row_vectors ... ok
+test grid::cell::tests::hidden_uses_the_last_unassigned_cell_flag_bit ... ok
+test grid::marks::tests::erase_saved_lines_drops_history_and_rebases_screen_marks ... ok
+test grid::tests::alt_screen_hides_and_restores_primary_image_placements ... ok
+test grid::tests::alt_screen_image_lifecycle_ignores_repeated_transitions ... ok
+test grid::tests::alt_screen_round_trip_preserves_pending_wrap ... ok
+test grid::tests::alternate_images_scroll_out_without_moving_hidden_primary_images ... ok
+test grid::tests::appended_graphemes_preserve_multibyte_scalars_at_stack_boundaries ... ok
+test grid::tests::appended_graphemes_retain_large_clusters_without_truncation ... ok
+test grid::tests::ascii_batches_preserve_delayed_wrap_across_resize_and_wide_overwrites ... ok
+test grid::tests::ascii_batches_repair_wide_pairs_at_both_ends_of_each_run ... ok
+test grid::tests::auto_wrap_defaults_to_delayed_wrap ... ok
+test grid::tests::auto_wrap_toggle_preserves_pending_margin_until_next_printable ... ok
+test grid::tests::combining_at_delayed_wrap_does_not_start_a_new_row ... ok
+test grid::tests::combining_marks_extend_wide_glyphs_without_overwriting_them ... ok
+test grid::tests::construction_rejects_zero_dimensions - should panic ... ok
+test grid::tests::csi_1049_round_trip_restores_primary_image_placements ... ok
+test grid::tests::delayed_wrap_scrolls_exactly_once_after_the_next_printable ... ok
+test grid::tests::disabled_auto_wrap_after_grow_appends_to_preserved_content ... ok
+test grid::tests::disabled_auto_wrap_consumes_pending_margin_without_wrapping ... ok
+test grid::tests::disabled_auto_wrap_ignores_wide_char_at_right_margin ... ok
+test grid::tests::disabled_auto_wrap_keeps_wide_margin_cells_valid ... ok
+test grid::tests::disabled_auto_wrap_overwrites_right_margin_without_scrolling ... ok
+test grid::tests::disabled_auto_wrap_remains_bounded_after_resize_and_insert ... ok
+test grid::tests::emoji_presentation_at_nowrap_margin_clips_only_occupied_width ... ok
+test grid::tests::emoji_presentation_growth_at_scroll_bottom_preserves_history ... ok
+test grid::tests::emoji_presentation_growth_moves_the_complete_cluster_at_margin ... ok
+test grid::tests::endless_soft_wrapping_respects_the_history_cell_budget ... ok
+test grid::tests::erase_display_all_clears_primary_image_placements ... ok
+test grid::tests::erase_display_all_on_alt_screen_preserves_primary_image_placements ... ok
+test grid::tests::erase_display_all_preserves_saved_lines ... ok
+test grid::tests::erase_saved_lines_at_bottom_does_not_dirty_unchanged_screen ... ok
+test grid::tests::erase_saved_lines_preserves_screen_and_rebases_current_marks ... ok
+test grid::tests::erase_screen_and_saved_lines_keep_the_other_image_set ... ok
+test grid::tests::explicit_line_and_cursor_controls_cancel_pending_wrap ... ok
+test grid::tests::extended_graphemes_are_single_cells_across_scalar_writes ... ok
+test grid::tests::fragmented_grapheme_growth_preserves_snapshots_style_and_pending_wrap ... ok
+test grid::tests::grapheme_boundary_uses_complete_unicode_context ... ok
+test grid::tests::image_cursor_advance_moves_right_and_down ... ok
+test grid::tests::images_follow_newlines_into_bounded_primary_history ... ok
+test grid::tests::insert_delete_lines_move_images_and_leave_saved_history_in_place ... ok
+test grid::tests::insert_mode_can_shift_a_wide_character_by_two_cells ... ok
+test grid::tests::insert_mode_is_applied_after_delayed_wrap ... ok
+test grid::tests::insert_mode_preserves_a_shifted_wide_character ... ok
+test grid::tests::insert_mode_repairs_wide_pairs_split_at_the_cursor_or_margin ... ok
+test grid::tests::leaving_alt_screen_discards_alternate_image_placements ... ok
+test grid::tests::one_column_emoji_presentation_keeps_natural_width ... ok
+test grid::tests::one_column_grid_retains_wide_characters ... ok
+test grid::tests::one_column_wide_char_consumes_pending_margin ... ok
+test grid::tests::partial_and_scrollback_erases_preserve_active_image_placements ... ok
+test grid::tests::partial_region_scroll_preserves_fixed_images_and_discards_crossing_images ... ok
+test grid::tests::pending_sixel_queue_bounds_per_image_metadata ... ok
+test grid::tests::pending_sixel_queue_enforces_and_resets_its_byte_budget ... ok
+test grid::tests::presentation_width_recovers_after_reflow_from_one_column ... ok
+test grid::tests::primary_pending_margin_obeys_auto_wrap_changed_on_alt_screen ... ok
+test grid::tests::reset_discards_active_and_hidden_image_placements ... ok
+test grid::tests::resize_maps_pending_wrap_to_the_end_of_reflowed_content ... ok
+test grid::tests::resize_preserves_cursor_rows_and_clamps_unused_columns ... ok
+test grid::tests::resize_preserves_primary_logical_cursor_under_alt_screen ... ok
+test grid::tests::resize_preserves_screen_specific_image_placements ... ok
+test grid::tests::resize_reflows_every_scrollback_glyph_without_hidden_clipping ... ok
+test grid::tests::resize_reflows_wide_chars_in_active_and_saved_buffers ... ok
+test grid::tests::resize_rejects_zero_dimensions - should panic ... ok
+test grid::tests::restored_pending_margin_obeys_disabled_auto_wrap ... ok
+test grid::tests::retransmission_cleanup_removes_hidden_kitty_but_preserves_sixel ... ok
+test grid::tests::row_lengths_distinguish_printed_spaces_from_wide_wrap_padding ... ok
+test grid::tests::save_restore_preserves_pending_wrap ... ok
+test grid::tests::saved_and_alternate_cursors_follow_reflowed_content ... ok
+test grid::tests::scalar_boundaries_use_cluster_context_and_written_content ... ok
+test grid::tests::screen_cursor_projects_pending_wrap_and_rejects_invalid_columns ... ok
+test grid::tests::scroll_retention_uses_current_native_pixel_height ... ok
+test grid::tests::selection_and_paste_revisions_distinguish_repaint_from_screen_changes ... ok
+test grid::tests::selection_revision_survives_history_reset_and_partial_scroll ... ok
+test grid::tests::soft_wrap_metadata_follows_scrollback_and_explicit_newlines ... ok
+test grid::tests::split_grapheme_boundaries_match_concatenation ... ok
+test grid::tests::text_presentation_shrinks_wide_cells_without_erasing_following_text ... ok
+test grid::tests::wide_aware_editing_never_leaves_an_orphaned_half ... ok
+test grid::tests::wide_wrap_at_scroll_bottom_preserves_the_margin_before_scrolling ... ok
+test grid::tests::wide_wrap_from_a_continuation_keeps_both_rows_valid ... ok
+test grid::tests::wide_wrap_preserves_existing_right_margin_content ... ok
+test grid::tests::zero_and_oversized_scroll_counts_match_image_and_text_movement ... ok
+test grid::boundary_pages::tests::fast_decisions_match_concatenation_at_property_endpoints_with_context ... ok
+test grid::buffer::tests::repeated_region_scrolls_preserve_row_edits_and_reconstruction_order ... ok
+test grid::utf8_spans_tests::mixed_utf8_spans_repair_wide_pairs_and_release_arcs_at_staging_edges ... ok
+test grid::utf8_spans_tests::utf8_spans_fall_back_for_insert_and_dec_special_modes ... ok
+test grid::utf8_spans_tests::utf8_spans_keep_the_uniform_suffix_frontier_at_the_written_end ... ok
+test grid::utf8_spans_tests::utf8_spans_match_scalars_for_widths_and_alternating_runs ... ok
+test grid::boundary_pages::tests::every_classified_scalar_and_predicate_matches_the_original_table ... ok
+test grid::utf8_spans_tests::utf8_spans_preserve_history_alternate_screen_and_regional_scrolls ... ok
+test grid::utf8_spans_tests::utf8_spans_preserve_margins_disabled_wrap_and_resized_saved_wrap ... ok
+test grid::utf8_spans_tests::utf8_spans_repair_wide_edges_preserve_styles_and_release_arcs ... ok
+test input::keyboard::tests::encodes_backtab_editing_and_function_keys ... ok
+test input::keyboard::tests::encodes_cursor_keys_in_normal_and_application_modes ... ok
+test input::keyboard::tests::encodes_every_xterm_modifier_parameter ... ok
+test input::keyboard::tests::encodes_modified_cursor_editing_and_function_key_families ... ok
+test input::keyboard::tests::modified_cursor_keys_use_csi_in_both_cursor_modes ... ok
+test input::keyboard::tests::non_parameterized_named_keys_keep_traditional_alt_prefixes ... ok
+test parser::ansi::tests::aborted_osc_cannot_steal_later_apc_terminator ... ok
+test parser::ansi::tests::accepts_large_kitten_packets_across_pty_reads_then_unpadded_tail ... ok
+test parser::ansi::tests::accepts_parameter_limit_and_ignores_excess_sequence ... ok
+test parser::ansi::tests::advances_window_title_revision_only_when_the_title_changes ... ok
+test parser::ansi::tests::applies_remaining_queue_budget_before_decoding_sixel ... ok
+test grid::utf8_spans_tests::utf8_spans_preserve_prepend_combining_and_contextual_clusters ... ok
+test grid::utf8_spans_tests::mixed_utf8_spans_preserve_prepend_near_staging_and_row_boundaries ... ok
+test parser::ansi::tests::bounds_kitty_apc_without_dispatching_truncated_command ... ok
+test parser::ansi::tests::bounds_osc_and_discards_overflow_for_bell_and_st ... ok
+test parser::ansi::tests::bounds_sixel_dcs_without_decoding_truncated_payload ... ok
+test parser::ansi::tests::colon_truecolor_channels_do_not_apply_sgr_attributes ... ok
+test parser::ansi::tests::complete_utf8_preserves_control_strings_and_event_boundaries ... ok
+test parser::ansi::tests::ascii_controls_and_printable_edges_match_byte_decoding_at_every_split ... ok
+test parser::ansi::tests::conceal_is_cell_scoped_and_sgr_28_preserves_other_attributes ... ok
+test parser::ansi::tests::conceal_resets_with_sgr_zero_empty_sgr_and_ris_without_revealing_written_cells ... ok
+test parser::ansi::tests::consecutive_inline_placements_observe_previous_advance ... ok
+test grid::utf8_spans_tests::mixed_utf8_spans_preserve_text_across_staging_capacity_and_row_edges ... ok
+test parser::ansi::tests::consumes_equal_private_csi_and_recovers_for_text_and_valid_csi ... ok
+test parser::ansi::tests::consumes_less_than_private_csi_at_every_read_boundary ... ok
+test parser::ansi::tests::csi_3j_on_alt_screen_preserves_primary_history_and_marks ... ok
+test parser::ansi::tests::csi_3j_erases_scrollback_without_erasing_the_screen ... ok
+test parser::ansi::tests::csi_3j_preserves_delayed_wrap ... ok
+test parser::ansi::tests::cursor_position_report_projects_pending_wrap_to_the_right_margin ... ok
+test parser::ansi::tests::decawm_participates_in_multi_parameter_private_modes ... ok
+test parser::ansi::tests::decawm_toggle_without_printable_preserves_pending_wrap ... ok
+test parser::ansi::tests::decckm_mode_drives_cursor_key_encoding ... ok
+test parser::ansi::tests::escape_restarts_csi_from_the_intermediate_state_at_every_read_boundary ... ok
+test parser::ansi::tests::extended_color_modes_do_not_leak_faint_from_value_two ... ok
+test parser::ansi::tests::extended_color_value_eight_does_not_enable_conceal ... ok
+test parser::ansi::tests::faint_intensity_is_independent_and_resets_with_sgr_and_ris ... ok
+test parser::ansi::tests::graphics_support_gates_parsing_buffering_and_da1 ... ok
+test parser::ansi::tests::horizontal_tab_preserves_pending_wrap_at_the_right_margin ... ok
+test parser::ansi::tests::horizontal_tab_uses_the_reflowed_cursor_after_growing ... ok
+test parser::ansi::tests::ignores_excess_intermediates_and_recovers ... ok
+test parser::ansi::tests::incomplete_semicolon_truecolors_do_not_leak_channels_as_attributes ... ok
+test parser::ansi::tests::keeps_utf8_inside_bell_terminated_osc ... ok
+test parser::ansi::tests::keeps_utf8_inside_st_terminated_osc_split_across_reads ... ok
+test parser::ansi::tests::kitty_event_boundary_precedes_trailing_text ... ok
+test parser::ansi::tests::kitty_events_project_pending_wrap_to_the_right_margin ... ok
+test parser::ansi::tests::malformed_colon_color_preserves_following_sgr ... ok
+test parser::ansi::tests::malformed_intermediate_parameters_are_ignored_across_read_boundaries ... ok
+test parser::ansi::tests::malformed_private_markers_do_not_leak_or_enable_ansi_modes ... ok
+test parser::ansi::tests::mixed_utf8_blocks_keep_ascii_recovery_and_stop_before_escape_events ... ok
+test parser::ansi::tests::malformed_and_partial_utf8_keep_byte_decoding_recovery ... ok
+test parser::ansi::tests::non_moving_sequences_preserve_pending_wrap ... ok
+test parser::ansi::tests::parses_colon_truecolor_for_background_and_underline ... ok
+test parser::ansi::tests::parses_colon_truecolor_with_empty_color_space ... ok
+test parser::ansi::tests::preserves_existing_extended_color_forms ... ok
+test parser::ansi::tests::preserves_supported_private_and_intermediate_csi_routes ... ok
+test parser::ansi::tests::preserves_terminal_event_order_and_kitty_cursor_snapshots ... ok
+test parser::ansi::tests::prints_utf8_split_across_reads ... ok
+test parser::ansi::tests::private_csi_namespaces_cannot_reach_standard_handlers ... ok
+test parser::ansi::tests::rejects_out_of_range_extended_colors_without_leaking_channels ... ok
+test parser::ansi::tests::saturates_oversized_numeric_parameters_across_reads ... ok
+test parser::ansi::tests::screen_editing_controls_cancel_pending_wrap_before_the_next_printable ... ok
+test parser::ansi::tests::screen_scroll_controls_preserve_pending_wrap ... ok
+test parser::ansi::tests::sixel_events_project_pending_wrap_to_the_right_margin ... ok
+test parser::ansi::tests::subparameters_count_toward_limit_without_dispatching_prefix ... ok
+test parser::ansi::tests::terminal_pixel_extent_saturates_at_the_u64_limit ... ok
+test parser::ansi::tests::terminal_pixel_report_preserves_extents_larger_than_u16 ... ok
+test parser::ansi::tests::toggles_alternate_scroll_independently_and_preserves_it_across_ris ... ok
+test parser::ansi::tests::toggles_application_cursor_keys_with_decckm ... ok
+test parser::ansi::tests::toggles_auto_wrap_with_decawm_and_resets_it_with_ris ... ok
+test parser::ansi::tests::toggles_focus_reporting_with_dec_private_mode_and_ris ... ok
+test parser::ansi::tests::toggles_mouse_tracking_and_encoding_with_dec_private_modes_and_ris ... ok
+test parser::ansi::tests::mixed_utf8_blocks_preserve_pending_prefixes_and_long_mixed_chunks ... ok
+test parser::ansi::tests::complete_utf8_scalars_match_byte_decoding_at_every_split ... ok
+test parser::ansi::tests::utf8_blocks_match_byte_decoding_across_grid_modes_and_chunks ... ok
+test parser::ansi::tests::utf8_blocks_keep_long_malformed_suffixes_and_partial_read_state ... ok
+test parser::ansi::tests::ascii_batches_match_scalar_decoding_across_modes_and_read_boundaries ... ok
+test parser::kitty_graphics::tests::accepts_padded_and_unpadded_payloads_but_rejects_invalid_base64 ... ok
+test parser::kitty_graphics::tests::composition_maps_asymmetric_rectangles_to_released_kitty_behavior ... ok
+test parser::kitty_graphics::tests::delete_id_selectors_are_order_independent ... ok
+test parser::kitty_graphics::tests::delete_capitalization_and_coordinates_are_preserved ... ok
+test parser::kitty_graphics::tests::delete_number_selectors_are_order_independent ... ok
+test parser::kitty_graphics::tests::distinguishes_omitted_action_chunks_from_explicit_transmission ... ok
+test parser::kitty_graphics::tests::frame_delete_selectors_preserve_root_default_and_hard_delete_policy ... ok
+test parser::kitty_graphics::tests::incomplete_or_unknown_delete_selectors_never_expand_to_all ... ok
+test parser::kitty_graphics::tests::invalid_delete_identifiers_become_safe_noop_events ... ok
+test parser::kitty_graphics::tests::enforces_the_kitty_encoded_chunk_limit ... ok
+test parser::kitty_graphics::tests::invalid_image_selectors_are_preserved_for_every_action ... ok
+test parser::kitty_graphics::tests::malformed_animation_numbers_never_become_default_operations ... ok
+test parser::kitty_graphics::tests::normalizes_zero_animation_keys_without_assigning_runtime_defaults ... ok
+test parser::kitty_graphics::tests::overloaded_keys_are_validated_in_their_final_action_namespace ... ok
+test parser::kitty_graphics::tests::parses_frame_rectangle_base_and_edit_after_final_action_is_known ... ok
+test parser::kitty_graphics::tests::parses_loading_running_stop_and_wire_loop_count ... ok
+test parser::kitty_graphics::tests::released_icat_composition_key_takes_precedence_for_frame_uploads ... ok
+test parser::kitty_graphics::tests::valid_isolated_image_selectors_are_not_marked_invalid ... ok
+test parser::sixel::tests::allocation_capacity_never_rejects_a_valid_logical_canvas ... ok
+test parser::sixel::tests::alternating_axis_growth_uses_bounded_reallocations ... ok
+test parser::sixel::tests::caller_byte_budget_is_applied_before_canvas_allocation ... ok
+test parser::sixel::tests::decodes_minimal_and_repeated_sixels ... ok
+test parser::sixel::tests::enforces_input_limit_and_valid_output_invariants ... ok
+test parser::sixel::tests::geometric_growth_preserves_existing_colors ... ok
+test parser::ansi::tests::utf8_blocks_preserve_malformed_suffix_recovery_and_event_boundaries ... ok
+test parser::sixel::tests::only_quoted_prefix_is_treated_as_raster_attributes ... ok
+test parser::sixel::tests::production_budget_accepts_4k_but_rejects_larger_canvases ... ok
+test parser::sixel::tests::raster_attributes_preserve_a_minimum_canvas ... ok
+test parser::sixel::tests::raster_height_allows_a_partial_final_sixel_band ... ok
+test parser::sixel::tests::rejects_dynamic_width_and_height_instead_of_clamping ... ok
+test parser::sixel::tests::rejects_incomplete_or_zero_repeats ... ok
+test parser::sixel::tests::rejects_raster_attributes_outside_exact_limits ... ok
+test parser::sixel::tests::rejects_repeat_before_it_can_exceed_budgets ... ok
+test terminal_decoder::tests::consecutive_sixel_events_observe_each_previous_cursor_advance ... ok
+test terminal_decoder::tests::disabled_graphics_do_not_queue_images_or_commands ... ok
+test terminal_decoder::tests::preserves_parser_state_across_reads ... ok
+test terminal_decoder::tests::sixel_advance_precedes_following_response_and_kitty_snapshot ... ok
+test terminal_decoder::tests::sixel_event_precedes_trailing_text_and_captures_its_cursor ... ok
+test terminal_decoder::tests::stops_at_an_event_before_decoding_trailing_input ... ok
+test terminal_decoder::tests::title_revisions_survive_a_sixel_event_boundary ... ok
+test parser::sixel::tests::allocation_work_budget_rejects_near_limit_resize_churn ... ok
+test parser::ansi::tests::utf8_blocks_preserve_every_ascii_byte_and_graphics_boundaries ... ok
+
+test result: ok. 241 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+

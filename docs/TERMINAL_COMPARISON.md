@@ -66,6 +66,80 @@ não são enviados, mas seus tamanhos e hashes permitem verificar a reprodução
 Esse ambiente permite comparar processamento no mesmo sistema; não reproduz
 GPU, monitor, Hyprland ou todas as versões instaladas no Omarchy.
 
+## Revisão `74eaad8`: spans UTF-8 de larguras mistas em 2026-09-12
+
+O [run `34721599354`](https://github.com/guicybercode/kokuban.rs/actions/runs/34721599354)
+compara os quatro terminais após a escrita de spans UTF-8 de larguras mistas.
+Fonte e executor são `74eaad83dbf813cb15bd883b45d52adf0dc729bd`.
+O merge posterior `58b8d1c`, que incorpora mudanças de temas Omarchy, exige
+medição própria. Foram cinco amostras por terminal, quatro cargas de
+aproximadamente 32 MiB e oito pré-voos excluídos das estatísticas.
+
+A sessão usou Ubuntu 26.04 amd64 em container, **AMD EPYC 9V74**, afinidade
+nas quatro CPUs e Weston 14.0.2 headless com Pixman. Todos usaram tela
+alternativa sem histórico, DejaVu Sans Mono a 14 pixels lógicos
+(10,5 pontos nos concorrentes), células de 9×17 pixels e grade de 80×24.
+As 80 cargas mantiveram 720×408 pixels. A calibração adicionou 1 pixel à
+largura dos três concorrentes e 1 pixel à altura do Ghostty. Noto CJK e
+Noto Color Emoji estavam instaladas.
+
+| Carga | Kokuban, mediana MiB/s | Ghostty | Alacritty | Kitty |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 72,74 | 26,82 | 56,43 | 81,97 |
+| ANSI | 60,57 | 22,94 | 49,82 | 18,09 |
+| Unicode | 39,26 | 27,68 | 57,54 | 59,63 |
+| Linhas curtas | 31,59 | 23,73 | 53,10 | 28,76 |
+
+Neste ensaio, Kokuban ficou acima de Ghostty nas quatro cargas e teve a
+maior mediana em ANSI. As faixas ANSI de Kokuban (59,51–60,83 MiB/s) e
+Alacritty (49,67–59,60) têm pequena sobreposição; duas amostras do Alacritty
+ficaram em 58,77 e 59,60 MiB/s. Em Unicode, Kokuban permaneceu abaixo de
+Alacritty e Kitty, com faixas sem sobreposição: 38,99–39,39, 57,14–57,75 e
+58,37–61,26 MiB/s, respectivamente. Em ASCII ficou abaixo de Kitty; em
+linhas curtas superou Ghostty e Kitty, permanecendo abaixo de Alacritty.
+A meta de superar todos os concorrentes continua sem comprovação.
+
+O RTT mediano DSR foi de 0,054 ms no Kokuban, 0,080 no Ghostty, 0,080 no
+Alacritty e 3,153 no Kitty, com 150 observações por terminal. O
+[relatório bruto](linux-evidence/2026-09-12-mixed-terminals/ci-report.json)
+preserva os bytes originais. O
+[manifesto](linux-evidence/2026-09-12-mixed-terminals/manifest.json)
+registra 28 processos distintos, 80 cargas, 600 RTT cronometrados,
+payloads reproduzidos do Git, configurações/argumentos conferidos e
+estatísticas recalculadas, incluindo CPU e dispersão. Passaram 703 testes
+Linux do executável e 241 do exemplo, com um benchmark ignorado, além do
+lançamento Wayland com diretório com espaços, argumentos literais e DSR.
+
+As versões foram Alacritty `0.16.1` (pacote `0.16.1-2ubuntu1`), Kitty
+`0.45.0` (pacote `0.45.0-1build1`) e Ghostty `1.3.0-dev+0000000`, canal
+`tip` (pacote `1.3.0~us1-0ubuntu1.1`). O hash do binário Kokuban registrado
+no CI é `439c327e36c3b0234460159ed12134236c0f1377a41db9a3e9fda98b0b7ccbc2`.
+Os bytes dos executáveis e fontes não foram retidos para rehash independente.
+Os logs originais incluem timeout do portal de aparência no Kokuban,
+avisos GTK/Adwaita/DPI no Ghostty e indisponibilidade de serviços
+D-Bus/systemd no Kitty. Essas observações foram preservadas no pacote.
+
+Os runs anteriores são observações históricas em sessões distintas, mesmo
+quando informam o mesmo modelo de CPU; a diferença entre suas tabelas não
+isola o efeito desta alteração. Os ensaios antes/depois estão em
+[medições pareadas Linux](LINUX_PERFORMANCE.md). Pixman foi observado;
+llvmpipe foi solicitado, mas o renderer OpenGL efetivo de cada terminal
+não foi registrado. Geometria igual e fontes instaladas não comprovam
+fidelidade visual equivalente. Este ensaio mede processamento/DSR;
+faltam apresentação, teclado até a tela e uma sessão física
+Omarchy/Hyprland com GPU e monitor.
+
+Para conferir novamente o pacote retido em um checkout com a revisão
+medida disponível no Git:
+
+```sh
+python3 -B docs/linux-evidence/2026-09-12-mixed-terminals/audit.py \
+  --artifact docs/linux-evidence/2026-09-12-mixed-terminals \
+  --ci-run docs/linux-evidence/2026-09-12-mixed-terminals/ci-run.json \
+  --ci-log docs/linux-evidence/2026-09-12-mixed-terminals/ci.log \
+  --repo .
+```
+
 ## Revisão `8dafe9e`: páginas Unicode em 2026-09-11
 
 O [run `34626179771`](https://github.com/guicybercode/kokuban.rs/actions/runs/34626179771)
