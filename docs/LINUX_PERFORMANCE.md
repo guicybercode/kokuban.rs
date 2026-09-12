@@ -31,6 +31,57 @@ python3 scripts/compare-kokuban-revisions.py \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
 
+## Fronteiras Unicode por páginas: dois perfis em 2026-09-11
+
+A revisão `8dafe9e` classifica casos simples de fronteira de grafema com
+páginas Unicode verificadas, mantendo o segmentador completo para os casos
+que precisam de contexto. Contra `34ab430`, **Unicode ganhou 41,26% na tela
+alternativa e 35,63% na principal**, com melhora nos cinco pares de cada run.
+
+Na [tela alternativa, sem histórico](https://github.com/guicybercode/kokuban.rs/actions/runs/34626144701):
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas | Pares mais lentos depois |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 75,206 | 76,463 | +1,67% | 2/5 |
+| ANSI | 66,858 | 67,928 | +1,60% | 1/5 |
+| Unicode | 23,007 | 32,499 | +41,26% | 0/5 |
+| Linhas curtas | 30,585 | 30,716 | +0,43% | 2/5 |
+
+Na [tela principal, com histórico de 10.000 linhas](https://github.com/guicybercode/kokuban.rs/actions/runs/34626168671):
+
+| Carga | Anterior, mediana MiB/s | Atual, mediana MiB/s | Variação entre medianas | Pares mais lentos depois |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 61,626 | 61,297 | −0,53% | 4/5 |
+| ANSI | 63,892 | 64,034 | +0,22% | 2/5 |
+| Unicode | 24,523 | 33,260 | +35,63% | 0/5 |
+| Linhas curtas | 12,848 | 12,819 | −0,23% | 3/5 |
+
+As perdas de ASCII e linhas curtas na tela principal permanecem registradas.
+Na alternativa, ASCII caiu 8,30% no quinto par, apesar da mediana maior.
+Unicode passou de 22,052–23,045 para 32,242–32,721 MiB/s na alternativa
+e de 24,082–24,775 para 32,544–33,792 na principal. As faixas das demais
+cargas se sobrepõem; isso não demonstra equivalência nem elimina as perdas.
+As razões por par, mínimos, máximos e MAD estão no
+[pacote auditado](linux-evidence/2026-09-11-boundary-pairs/README.md).
+
+Cada perfil usou cinco pares AB/BA/AB/BA/AB, cerca de 32 MiB por carga,
+Ubuntu 24.04, Rust 1.94.1 release, Weston 13 headless com Pixman e DejaVu
+Sans Mono 14. A afinidade do executor foi `[0]`, herdada pelos filhos.
+O runner alternativo foi AMD EPYC 7763; o principal, EPYC 9V74. Compare
+antes/depois dentro de cada run: a diferença entre os perfis não isola
+o efeito do histórico. As vinte instâncias mantiveram 80×24 células e
+720×408 pixels.
+
+Ambos os workflows passaram. A auditoria conferiu 20 processos, 80 cargas,
+600 RTTs, payloads reproduzidos e builds separados das revisões exatas.
+O [manifesto](linux-evidence/2026-09-11-boundary-pairs/manifest.json) relaciona
+os relatórios brutos, idênticos aos artefatos oficiais; arquivos Cargo, árvores de dependências
+e scripts iguais já retidos são referenciados por hash. Os binários não
+foram retidos para rehash independente. Esses workflows testam o executor
+Python e compilam as duas revisões; não executam testes Rust. Os resultados
+cobrem processamento PTY/DSR, sem medir fidelidade visual, apresentação,
+teclado até a tela ou uma sessão física Omarchy/Hyprland com GPU e monitor.
+
 ## Classificação de controles ASCII: resultado misto em 2026-09-11
 
 A revisão `5c1f436` separa controles ASCII antes da busca de texto imprimível
