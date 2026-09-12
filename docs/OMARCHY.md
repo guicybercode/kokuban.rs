@@ -206,6 +206,14 @@ child PID and start time remain unchanged and that terminal input still works.
 This checks the palette path and renderer under X11; changing themes in a
 physical Omarchy/Hyprland session remains a separate on-device validation.
 
+The [2026-09-12 CI run](https://github.com/guicybercode/kokuban.rs/actions/runs/34719320120)
+passed both automatic-theme and explicit-override scenarios on revision
+`4b05e08`. The [retained evidence](linux-evidence/2026-09-12-omarchy-theme/manifest.json)
+includes the original artifact with all seven frame phases per scenario and
+the [session report](linux-evidence/2026-09-12-omarchy-theme/report.json).
+The same revision passed 702 Linux and 588 macOS executable tests, plus 225
+example tests on each platform, all-target checks and Clippy.
+
 ## Validation scope
 
 On 2026-09-10, the launcher was checked against `xdg-terminal-exec` commit
