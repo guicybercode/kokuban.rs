@@ -1,0 +1,11 @@
+{
+  "payloads": {
+    "ascii": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/ascii.bin",
+    "ansi": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/ansi.bin",
+    "unicode": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/unicode.bin",
+    "short_lines": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/short_lines.bin"
+  },
+  "screen": "alternate",
+  "terminal_pid": 10333,
+  "settle_seconds": 1.0
+}

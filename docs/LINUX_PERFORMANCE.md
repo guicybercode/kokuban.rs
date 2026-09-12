@@ -826,3 +826,62 @@ por `ENOSPC`; o [CI 34719026097](https://github.com/guicybercode/kokuban.rs/acti
 concluiu **845 testes Rust macOS e 944 Linux, com um ignorado no Linux**, além de
 check, Clippy e verificação das tabelas Unicode. A validação funcional e a
 triagem local devem ser lidas separadamente das medições Linux completas.
+
+## Spans mistos UTF-8: comparação pareada Linux de 2026-09-12
+
+O agrupamento de texto misto aumentou a mediana de processamento Unicode em
+**18,44% na tela alternativa e 17,60% na principal**, com ganho nos cinco pares
+de cada cenário. A comparação usa a base `469b2ac3fb88509a5ac4bf1769e4b2b3512c1008`
+e o candidato `74eaad83dbf813cb15bd883b45d52adf0dc729bd`, também revisão do
+harness. As mudanças posteriores de tema e fonte Omarchy não fazem parte destes
+binários medidos.
+
+Os runs [alternate 34721333020](https://github.com/guicybercode/kokuban.rs/actions/runs/34721333020)
+e [primary 34721365964](https://github.com/guicybercode/kokuban.rs/actions/runs/34721365964)
+compilaram cada fonte em diretórios e targets separados, com Rust 1.94.1,
+`--release --locked`, mesmos manifests/locks e hashes de executáveis distintos.
+Cada run mediu cinco pares AB/BA em Ubuntu 24.04, EPYC 7763, CPU 0 e Weston 13
+headless/Pixman, com DejaVu Sans Mono 14 px e geometria 80×24/720×408.
+Foram solicitados 32 MiB por carga; os tamanhos exatos e hashes estão preservados.
+A tela principal mantém 10.000 linhas de histórico; a alternativa usa zero.
+Embora o modelo de CPU coincida, são sessões diferentes: os deltas abaixo
+comparam fontes dentro de cada run.
+
+| Tela | Carga | Antes MiB/s | Depois MiB/s | Delta das medianas | Pares mais lentos |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Alternativa | ASCII | 75,023 | 79,956 | +6,58% | 0/5 |
+| Alternativa | ANSI | 65,094 | 68,926 | +5,89% | 0/5 |
+| Alternativa | Unicode | 33,540 | 39,726 | +18,44% | 0/5 |
+| Alternativa | Linhas curtas | 30,933 | 34,258 | +10,75% | 0/5 |
+| Principal | ASCII | 54,206 | 55,740 | +2,83% | 2/5 |
+| Principal | ANSI | 47,774 | 47,767 | −0,015% | 1/5 |
+| Principal | Unicode | 26,979 | 31,727 | +17,60% | 0/5 |
+| Principal | Linhas curtas | 7,319 | 7,631 | +4,26% | 0/5 |
+
+As faixas Unicode não se sobrepõem: 32,701–33,717 → 38,889–40,518 MiB/s
+na alternativa e 26,774–27,597 → 29,949–32,193 na principal. ANSI tem faixas
+sobrepostas nos dois cenários; ASCII também na principal. A pequena perda da
+mediana ANSI principal e os pares desfavoráveis permanecem registrados; cinco
+pares não demonstram equivalência ou ausência de regressão.
+
+O DSR mediano foi de 50,795 para 49,368 µs na alternativa e de 59,256 para
+50,023 µs na principal. **O máximo da alternativa aumentou de 127,559 µs para
+3,052 ms**, no terceiro par do candidato. Esses RTTs medem processamento de
+protocolo; não sustentam uma conclusão geral sobre latência de apresentação.
+Os 20 logs de terminal conservam o timeout de 100 ms do portal XDG durante a
+inicialização, apesar de todos os processos concluírem os testes.
+
+O [pacote pareado](linux-evidence/2026-09-12-mixed-utf8-pairs/README.md) conserva
+174 arquivos originais, logs completos de CI, fontes do harness, inventários,
+auditor reproduzível e estatísticas dos 20 processos, 80 cargas e 600 RTTs.
+Os hashes dos binários foram registrados no CI; os executáveis e ZIPs não foram
+recalculados localmente. O CI funcional do candidato passou separadamente,
+conforme a seção anterior. Geometria e DSR não verificam os pixels ou toda a
+renderização Unicode, e este ensaio não mede Omarchy/Hyprland em hardware físico
+nem estabelece uma classificação geral entre terminais.
+
+A integração com os temas e a fonte de sistema do Omarchy foi validada depois,
+no commit `58b8d1cf5ddf2943fcc65e96876d13e8bd76a0de`:
+[CI 34722125349](https://github.com/guicybercode/kokuban.rs/actions/runs/34722125349),
+com **845 testes Rust macOS e 959 Linux, mais um ignorado no Linux**. Esse CI
+verifica a combinação funcional; as medições acima continuam referentes a `74eaad8`.

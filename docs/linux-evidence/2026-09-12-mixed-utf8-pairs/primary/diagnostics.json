@@ -1,0 +1,123 @@
+{
+  "terminal_logs": {
+    "measurements/01-before/terminal.log": [
+      "[2026-09-12T22:03:50Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/02-before/terminal.log": [
+      "[2026-09-12T22:04:33Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/03-before/terminal.log": [
+      "[2026-09-12T22:04:48Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/04-before/terminal.log": [
+      "[2026-09-12T22:05:32Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/05-before/terminal.log": [
+      "[2026-09-12T22:05:47Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/01-after/terminal.log": [
+      "[2026-09-12T22:04:04Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/02-after/terminal.log": [
+      "[2026-09-12T22:04:19Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/03-after/terminal.log": [
+      "[2026-09-12T22:05:03Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/04-after/terminal.log": [
+      "[2026-09-12T22:05:18Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ],
+    "measurements/05-after/terminal.log": [
+      "[2026-09-12T22:06:02Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+    ]
+  },
+  "ci_log_matching_lines": [
+    "72: measure\tCheck out measurement harness and revision history\t2026-09-12T22:00:29.2042017Z hint: to use in all of your new repositories, which will suppress this warning,",
+    "1261: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6114214Z warning: fields `descent` and `font` are never read",
+    "1272: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6118798Z    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default",
+    "1274: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6119515Z warning: method `clear_and_resize` is never used",
+    "1283: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6124156Z warning: field `blinking` is never read",
+    "1294: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6129858Z warning: methods `title_revision`, `scrollback_cell`, `clear_dirty`, and `is_any_dirty` are never used",
+    "1311: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6137922Z warning: method `text` is never used",
+    "1319: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6163564Z warning: field `kind` is never read",
+    "1329: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6170090Z warning: methods `prev_prompt`, `next_prompt`, `visible_prompt_rows`, and `is_empty` are never used",
+    "1347: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6188757Z warning: struct `KeyBind` is never constructed",
+    "1353: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6190553Z warning: enum `PaneAction` is never used",
+    "1359: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6192391Z warning: struct `KeybindMap` is never constructed",
+    "1365: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6194600Z warning: associated items `from_config` and `lookup` are never used",
+    "1376: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6199474Z warning: function `parse_keybind` is never used",
+    "1382: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6201497Z warning: function `key_name_to_code` is never used",
+    "1388: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6203775Z warning: type alias `PaneId` is never used",
+    "1394: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6205524Z warning: constant `DIVIDER_THICKNESS` is never used",
+    "1400: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6207455Z warning: enum `SplitDirection` is never used",
+    "1406: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6209313Z warning: struct `PixelRect` is never constructed",
+    "1412: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6211293Z warning: associated items `ZERO`, `split`, and `contains` are never used",
+    "1426: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6217468Z warning: struct `DividerInfo` is never constructed",
+    "1432: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6219291Z warning: function `compute_layout` is never used",
+    "1438: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6221101Z warning: function `node_contains` is never used",
+    "1444: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6223588Z warning: enum `PaneNode` is never used",
+    "1450: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6225847Z warning: associated items `split_leaf`, `remove_leaf`, `adjust_ratio`, `contains`, `collect_leaf_ids`, and `is_single_leaf` are never used",
+    "1474: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6235878Z warning: enum `Action` is never used",
+    "1480: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6237594Z warning: method `feed` is never used",
+    "1489: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6240987Z warning: methods `master_fd` and `resize` are never used",
+    "1501: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6250202Z warning: struct `PaneRenderData` is never constructed",
+    "1507: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6252247Z warning: struct `ConfirmOverlayInfo` is never constructed",
+    "1513: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6254830Z warning: struct `ChromeColors` is never constructed",
+    "1519: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6256806Z warning: methods `contains` and `get_text` are never used",
+    "1531: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6261084Z warning: variant `UnexpectedProtocolEvent` is never constructed",
+    "1542: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6266226Z warning: associated functions `spawn_text` and `spawn_with_io` are never used",
+    "1553: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6270353Z warning: struct `Vertex` is never constructed",
+    "1559: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6272495Z warning: associated function `new` is never used",
+    "1567: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6275793Z warning: function `box_drawing_lines` is never used",
+    "1573: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6278229Z warning: function `is_box_drawing` is never used",
+    "1579: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6280495Z warning: function `is_braille` is never used",
+    "1585: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6282398Z warning: function `braille_dots` is never used",
+    "1591: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:17.6284678Z warning: variant `Unsupported` is never constructed",
+    "1601: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:02:25.7602568Z warning: `kokuban` (bin \"kokuban\") generated 39 warnings",
+    "1757: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2613644Z warning: fields `descent` and `font` are never read",
+    "1768: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2618791Z    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default",
+    "1770: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2619487Z warning: method `clear_and_resize` is never used",
+    "1779: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2623763Z warning: field `blinking` is never read",
+    "1790: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2629539Z warning: methods `title_revision`, `scrollback_cell`, `clear_dirty`, and `is_any_dirty` are never used",
+    "1807: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2638148Z warning: method `text` is never used",
+    "1815: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2641011Z warning: field `kind` is never read",
+    "1825: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2655557Z warning: methods `prev_prompt`, `next_prompt`, `visible_prompt_rows`, and `is_empty` are never used",
+    "1843: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2660065Z warning: struct `KeyBind` is never constructed",
+    "1849: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2661408Z warning: enum `PaneAction` is never used",
+    "1855: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2662571Z warning: struct `KeybindMap` is never constructed",
+    "1861: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2664088Z warning: associated items `from_config` and `lookup` are never used",
+    "1872: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2666983Z warning: function `parse_keybind` is never used",
+    "1878: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2668296Z warning: function `key_name_to_code` is never used",
+    "1884: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2669586Z warning: type alias `PaneId` is never used",
+    "1890: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2670702Z warning: constant `DIVIDER_THICKNESS` is never used",
+    "1896: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2672053Z warning: enum `SplitDirection` is never used",
+    "1902: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2673505Z warning: struct `PixelRect` is never constructed",
+    "1908: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2674751Z warning: associated items `ZERO`, `split`, and `contains` are never used",
+    "1922: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2678386Z warning: struct `DividerInfo` is never constructed",
+    "1928: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2679568Z warning: function `compute_layout` is never used",
+    "1934: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2680714Z warning: function `node_contains` is never used",
+    "1940: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2682020Z warning: enum `PaneNode` is never used",
+    "1946: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2683663Z warning: associated items `split_leaf`, `remove_leaf`, `adjust_ratio`, `contains`, `collect_leaf_ids`, and `is_single_leaf` are never used",
+    "1970: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2689895Z warning: enum `Action` is never used",
+    "1976: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2690968Z warning: method `feed` is never used",
+    "1985: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2693251Z warning: methods `master_fd` and `resize` are never used",
+    "1997: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2696213Z warning: struct `PaneRenderData` is never constructed",
+    "2003: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2697465Z warning: struct `ConfirmOverlayInfo` is never constructed",
+    "2009: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2698759Z warning: struct `ChromeColors` is never constructed",
+    "2015: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2699984Z warning: methods `contains` and `get_text` are never used",
+    "2027: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2702670Z warning: variant `UnexpectedProtocolEvent` is never constructed",
+    "2038: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2705984Z warning: associated functions `spawn_text` and `spawn_with_io` are never used",
+    "2049: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2708801Z warning: struct `Vertex` is never constructed",
+    "2055: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2709954Z warning: associated function `new` is never used",
+    "2063: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2711992Z warning: function `box_drawing_lines` is never used",
+    "2069: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2713656Z warning: function `is_box_drawing` is never used",
+    "2075: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2714941Z warning: function `is_braille` is never used",
+    "2081: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2716170Z warning: function `braille_dots` is never used",
+    "2087: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:41.2717455Z warning: variant `Unsupported` is never constructed",
+    "2097: measure\tBuild both exact revisions sequentially with the same toolchain\t2026-09-12T22:03:49.3793303Z warning: `kokuban` (bin \"kokuban\") generated 39 warnings",
+    "2125: measure\tMeasure five alternating pairs in one native Wayland session\t2026-09-12T22:03:49.5405096Z \u001b[36;1m    --timeout 120 --environment-note \\\u001b[0m",
+    "2196: measure\tUpload reports, configurations, logs and build provenance\t2026-09-12T22:06:16.6192372Z (Use `node --trace-deprecation ...` to show where the warning was created)",
+    "2242: measure\tComplete job\t2026-09-12T22:06:17.9876020Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/"
+  ],
+  "notes": "Pattern-based excerpts for review; full original logs retained. Diagnostics are not inferred test failures."
+}
