@@ -15,6 +15,8 @@ mod launch_options;
 mod linux_window;
 #[cfg(target_os = "linux")]
 mod linux_clipboard;
+#[cfg(target_os = "linux")]
+mod omarchy_theme;
 #[cfg(target_os = "macos")]
 mod pane;
 mod parser;

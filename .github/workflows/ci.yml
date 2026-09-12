@@ -220,6 +220,24 @@ jobs:
             timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py \
               "$PWD/target/debug/kokuban"
 
+      - name: Verify live Omarchy theme reload and session preservation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 90s python3 scripts/linux-theme-smoke.py \
+              "$PWD/target/debug/kokuban" \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-theme-artifacts"
+
+      - name: Upload Linux theme smoke evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-theme-smoke
+          path: ${{ runner.temp }}/kokuban-theme-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify real mpv Kitty video and pause under Xvfb
         if: runner.os == 'Linux'
         shell: bash
