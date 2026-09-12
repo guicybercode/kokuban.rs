@@ -4142,6 +4142,7 @@ mod themed_cursor_tests {
             let mut snapshot = snapshot_locked_grid(&grid);
             let columns = if snapshot.cell(1, 0).unwrap().flags.contains(CellFlags::WIDE) { 2 } else { 1 };
             let baseline = render(&snapshot, &mut atlas, false);
+            let mut grapheme_ink_pixels = 0;
             for column in 0..columns {
                 snapshot.cursor.as_mut().unwrap().column = column;
                 atlas.dirty = false;
@@ -4165,7 +4166,7 @@ mod themed_cursor_tests {
                         ink_pixels += usize::from(ink[index] != cursor_rgb);
                     }
                 }
-                assert!(ink_pixels > 0, "fixture must contain ink under {text} cell {column}");
+                grapheme_ink_pixels += ink_pixels;
                 assert_eq!(actual, expected, "cursor erased ink or repainted outside {text} cell {column}");
 
                 // A partial repaint clips against both the cursor and the
@@ -4182,6 +4183,77 @@ mod themed_cursor_tests {
                 assert_eq!(&partial[..start], &baseline[..start]);
                 assert_eq!(&partial[end..], &baseline[end..]);
             }
+            // A missing CJK font may draw a narrow replacement glyph inside a
+            // two-cell cluster. Both halves still require exact pixel equality.
+            assert!(grapheme_ink_pixels > 0, "fixture must contain ink for {text}");
+        }
+    }
+
+    #[test]
+    fn opaque_block_cursor_preserves_ink_in_both_halves_of_a_synthetic_wide_glyph() {
+        let mut atlas = atlas();
+        let (cell_width, cell_height) = atlas_cell_dimensions(&atlas).unwrap();
+        let (width, height) = (usize::from(cell_width), usize::from(cell_height));
+        let glyph = crate::glyph_atlas::GlyphEntry {
+            atlas_x: atlas.width.checked_sub(u32::from(cell_width) * 2).unwrap(),
+            atlas_y: atlas.height.checked_sub(u32::from(cell_height)).unwrap(),
+            pixel_w: u32::from(cell_width) * 2,
+            pixel_h: u32::from(cell_height),
+            bearing_x: 0,
+            bearing_y: -rounded_f64_i32(f64::from(atlas.ascent)).unwrap(),
+        };
+        assert!(!atlas.is_color(glyph));
+        // Distinct stripes in each half expose a wrong source origin when the
+        // cursor is on WIDE_CONT, without requiring an installed CJK font.
+        let has_ink = |x: usize, y: usize| {
+            let stripe = if x < width { width / 3 } else { width * 2 / 3 };
+            x % width == stripe || y == height / 2
+        };
+        for y in 0..height {
+            for x in 0..width * 2 {
+                let index = (glyph.atlas_y as usize + y) * atlas.width as usize
+                    + glyph.atlas_x as usize + x;
+                atlas.pixels[index] = if has_ink(x, y) { 255 } else { 0 };
+            }
+        }
+        atlas.glyphs.insert(GlyphKey { c: '日', bold: false, italic: false }, glyph);
+        let mut grid = Grid::new(4, 2, 0);
+        grid.cursor_row = 1;
+        grid.put_char('日');
+        let mut snapshot = snapshot_locked_grid(&grid);
+        assert!(snapshot.cell(1, 1).unwrap().flags.contains(CellFlags::WIDE_CONT));
+        let baseline = render(&snapshot, &mut atlas, false);
+        for column in 0..2 {
+            snapshot.cursor.as_mut().unwrap().column = column;
+            let mut expected = baseline.clone();
+            let mut ink_pixels = 0;
+            for y in 0..height {
+                for x in column * width..(column + 1) * width {
+                    let ink = has_ink(x, y);
+                    ink_pixels += usize::from(ink);
+                    expected[(height + y) * width * 4 + x] = if ink {
+                        rgb_to_xrgb(7, 25, 55)
+                    } else {
+                        rgb_to_xrgb(CURSOR.0, CURSOR.1, CURSOR.2)
+                    };
+                }
+            }
+            assert!(ink_pixels > 0, "synthetic glyph must cover wide cell {column}");
+            atlas.dirty = false;
+            let actual = render(&snapshot, &mut atlas, true);
+            assert!(!atlas.dirty, "synthetic glyph must stay cached");
+            assert_eq!(actual, expected, "wide cell {column}: lost ink or modified neighboring pixels");
+            let size = ((width * 4) as u32, (height * 2) as u32);
+            let band = (height + height / 3) as u32..(height * 2 - 2) as u32;
+            let start = band.start as usize * width * 4;
+            let end = band.end as usize * width * 4;
+            let mut partial = baseline.clone();
+            partial[start..end].fill(rgb_to_xrgb(7, 25, 55));
+            draw_grid_snapshot_in_band(&mut partial, size, &mut atlas, &colors(),
+                (cell_width, cell_height), &snapshot, true, &[], band);
+            assert_eq!(&partial[start..end], &expected[start..end], "wide cell {column}: damaged band");
+            assert_eq!(&partial[..start], &baseline[..start]);
+            assert_eq!(&partial[end..], &baseline[end..]);
         }
     }
 
