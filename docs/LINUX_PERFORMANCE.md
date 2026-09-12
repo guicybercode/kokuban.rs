@@ -82,6 +82,11 @@ Python e compilam as duas revisões; não executam testes Rust. Os resultados
 cobrem processamento PTY/DSR, sem medir fidelidade visual, apresentação,
 teclado até a tela ou uma sessão física Omarchy/Hyprland com GPU e monitor.
 
+Um [experimento local posterior de rejeição antecipada](linux-evidence/2026-09-11-scalar-shortcut-experiment/README.md)
+ficou fora da implementação: apresentou resultados mistos e comparou binários
+que também diferiam na rota de clipboard, sem isolar o efeito da otimização.
+O pacote preserva o patch e as observações para orientar uma medição futura.
+
 ## Classificação de controles ASCII: resultado misto em 2026-09-11
 
 A revisão `5c1f436` separa controles ASCII antes da busca de texto imprimível
