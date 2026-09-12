@@ -260,7 +260,7 @@ impl Default for Config {
 impl Default for FontConfig {
     fn default() -> Self {
         Self {
-            family: "Menlo".to_string(),
+            family: if cfg!(target_os = "linux") { "monospace" } else { "Menlo" }.to_string(),
             size: 14.0,
             zoom_step: 1.0,
             min_size: 6.0,

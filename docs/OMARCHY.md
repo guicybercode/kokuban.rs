@@ -191,9 +191,10 @@ enabled = false
 ```
 
 The Omarchy palette reloads live; edits to Kokuban's own configuration are read
-when opening a new window. Font settings retain their existing behavior.
+when opening a new window.
 
-Run the Linux integration check with `xdotool` and `xwd` installed:
+Run the Linux integration check with `xdotool`, `xwd`, Fontconfig's command-line
+tools and DejaVu fonts installed:
 
 ```sh
 xvfb-run -a python3 scripts/linux-theme-smoke.py target/release/kokuban
@@ -213,6 +214,20 @@ includes the original artifact with all seven frame phases per scenario and
 the [session report](linux-evidence/2026-09-12-omarchy-theme/report.json).
 The same revision passed 702 Linux and 588 macOS executable tests, plus 225
 example tests on each platform, all-target checks and Clippy.
+
+## Follow the system font
+
+Linux development builds use Fontconfig's `monospace` family when `font.family`
+is omitted. Omarchy's [font selector at `f4378f0`](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/bin/omarchy-font-set)
+updates that alias in `$HOME/.config/fontconfig/fonts.conf`. Open a new Kokuban
+window after changing the Omarchy font; existing windows keep their loaded font.
+An explicit `font.family` continues to select the requested family. The default
+size remains 14, and macOS retains Menlo as its default family.
+
+The integration check also compares four windows under a private Fontconfig
+configuration. It verifies that the omitted family matches the monospace
+control, explicit families take priority, and no missing-font fallback hides
+an incorrect default.
 
 ## Validation scope
 

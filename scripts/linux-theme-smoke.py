@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify live Omarchy colors in a real X11 window under xvfb-run.
+"""Verify live Omarchy colors and Fontconfig defaults under xvfb-run.
 
 Requires xdotool and xwd, and only the Python standard library. The PTY child
 prints its fixture once. Theme reload must update an idle window, including an
@@ -7,6 +7,8 @@ existing selection, before any subsequent terminal output or input is sent.
 """
 
 import argparse
+import hashlib
+from html import escape
 import json
 import os
 from pathlib import Path
@@ -147,6 +149,17 @@ class Frame:
         self.order = "little" if order == 0 else "big"
         self.mask = self.masks[0] | self.masks[1] | self.masks[2]
         self.data = data
+
+    def signature(self) -> dict:
+        # Ignore the XWD window name, padding and unused pixel bits.
+        digest = hashlib.sha256()
+        for y in range(self.height):
+            row = self.offset + y * self.stride
+            for x in range(self.width):
+                offset = row + x * self.pixel_bytes
+                pixel = int.from_bytes(self.data[offset:offset + self.pixel_bytes], self.order)
+                digest.update((pixel & self.mask).to_bytes(4, "big"))
+        return {"width": self.width, "height": self.height, "rgb_sha256": digest.hexdigest()}
 
     def count(self, color: str, region: tuple[int, int, int, int]) -> int:
         rgb = bytes.fromhex(color.removeprefix("#"))
@@ -369,7 +382,8 @@ def theme_text(colors: dict[str, str]) -> str:
     return "".join(f'{name} = "{value}"\n' for name, value in colors.items())
 
 
-def check(binary: Path, overrides: bool, artifacts: Path | None) -> dict:
+def check(binary: Path, overrides: bool, artifacts: Path | None, *,
+          font_case: tuple[str, str | None] | None = None, fontconfig: Path | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="kokuban-theme-") as temporary:
         directory = Path(temporary)
         home = directory / "home"
@@ -379,8 +393,11 @@ def check(binary: Path, overrides: bool, artifacts: Path | None) -> dict:
         (theme / "colors.toml").write_text(theme_text(colors), encoding="utf-8")
         xdg = directory / "xdg"
         (xdg / "kokuban").mkdir(parents=True)
-        config = ('[font]\nfamily = "DejaVu Sans Mono"\nsize = 14.0\n'
-                  '[window]\ncolumns = 40\nrows = 16\n')
+        family = font_case[1] if font_case else "DejaVu Sans Mono"
+        config = '[font]\nsize = 14.0\n'
+        if family is not None:
+            config += f'family = {json.dumps(family)}\n'
+        config += '[window]\ncolumns = 40\nrows = 16\n'
         if overrides:
             config += ('[colors]\n' + theme_text({name: colors[name] for name in
                        ("foreground", "background", "cursor")})
@@ -394,8 +411,14 @@ def check(binary: Path, overrides: bool, artifacts: Path | None) -> dict:
                      "KOKUBAN_EXIT_AFTER_FIRST_FRAME", "KOKUBAN_SHELL"):
             environment.pop(name, None)
         environment.update(HOME=str(home), XDG_CONFIG_HOME=str(xdg), WINIT_X11_SCALE_FACTOR="1")
+        if fontconfig:
+            environment["FONTCONFIG_FILE"] = str(fontconfig)
+            environment.pop("FONTCONFIG_PATH", None)
+            # env_logger otherwise defaults to errors, hiding fallback warnings.
+            environment["RUST_LOG"] = "warn,kokuban::glyph_atlas=info"
         if artifacts:
-            artifacts = artifacts / ("overrides" if overrides else "automatic")
+            artifacts = artifacts / (font_case[0] if font_case else
+                                     "overrides" if overrides else "automatic")
             artifacts.mkdir(parents=True, exist_ok=True)
         log_path = directory / "terminal.log"
         with log_path.open("wb") as log:
@@ -405,13 +428,24 @@ def check(binary: Path, overrides: bool, artifacts: Path | None) -> dict:
             )
             smoke = ThemeSmoke(directory, terminal, artifacts)
             try:
-                result = smoke.exercise(overrides)
+                if font_case:
+                    smoke.locate()
+                    smoke.check_frame(colors, "initial", selected=False)
+                    smoke.check_defaults(colors)
+                    result = {"result": "passed", "case": font_case[0],
+                              "configured_family": family,
+                              "cell": [smoke.cell_width, smoke.cell_height],
+                              "frame": smoke.capture().signature()}
+                else:
+                    result = smoke.exercise(overrides)
                 (directory / "stop").touch()
                 if terminal.wait(timeout=5) != 0:
                     raise AssertionError(f"terminal failed after child exit: {terminal.returncode}")
+                if font_case and "falling back" in log_path.read_text(errors="replace"):
+                    raise AssertionError("configured/default font unexpectedly used a fallback")
                 return result
             except Exception as error:
-                raise AssertionError(f"Linux theme smoke (overrides={overrides}): {error}\n"
+                raise AssertionError(f"Linux theme smoke (overrides={overrides}, font={font_case}): {error}\n"
                                      + log_path.read_text(errors="replace")[-4000:]) from error
             finally:
                 smoke.cleanup()
@@ -419,6 +453,64 @@ def check(binary: Path, overrides: bool, artifacts: Path | None) -> dict:
                     shutil.copyfile(log_path, artifacts / "terminal.log")
                     if (directory / "frame.xwd").exists():
                         shutil.copyfile(directory / "frame.xwd", artifacts / "last-frame.xwd")
+
+
+def check_fontconfig(binary: Path, artifacts: Path | None) -> dict:
+    with tempfile.TemporaryDirectory(prefix="kokuban-fontconfig-") as temporary:
+        directory = Path(temporary)
+        fonts = directory / "fonts"
+        fonts.mkdir()
+        environment = os.environ.copy()
+        environment.pop("FONTCONFIG_FILE", None)
+        environment.pop("FONTCONFIG_PATH", None)
+        sources = {}
+        for family in ("DejaVu Sans", "DejaVu Sans Mono"):
+            matched = subprocess.run(
+                ["fc-match", "-f", "%{family}|%{file}", family],
+                env=environment, check=True, capture_output=True, text=True, timeout=3,
+            ).stdout.split("|", 1)
+            if len(matched) != 2 or family not in matched[0].split(","):
+                raise AssertionError(f"required installed font {family}: {matched}")
+            path = Path(matched[1]).resolve(strict=True)
+            (fonts / path.name).symlink_to(path)
+            sources[family] = {"file": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        fontconfig = directory / "fonts.conf"
+        # font-kit lists explicit families without pattern substitution. A scan
+        # alias makes Menlo genuinely selectable, so its old default cannot pass
+        # by falling back to monospace when Menlo is absent on Linux.
+        fontconfig.write_text(
+            '<?xml version="1.0"?>\n<fontconfig>\n'
+            f'<dir>{escape(str(fonts))}</dir><cachedir>{escape(str(directory / "cache"))}</cachedir>\n'
+            '<match target="scan"><test name="family"><string>DejaVu Sans</string></test>'
+            '<edit name="family" mode="append"><string>Menlo</string></edit></match>\n'
+            '<alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family>'
+            '</prefer></alias>\n</fontconfig>\n', encoding="utf-8",
+        )
+        environment["FONTCONFIG_FILE"] = str(fontconfig)
+        matches = {}
+        for requested, expected in (("Menlo", "DejaVu Sans"), ("monospace", "DejaVu Sans Mono")):
+            matched = subprocess.run(
+                ["fc-match", "-f", "%{file}", requested], env=environment,
+                check=True, capture_output=True, text=True, timeout=3,
+            ).stdout
+            if Path(matched).resolve() != Path(sources[expected]["file"]):
+                raise AssertionError(f"Fontconfig did not map {requested} to {expected}: {matched}")
+            matches[requested] = expected
+        listed = subprocess.run(
+            ["fc-list", "Menlo", "-f", "%{file}\n"], env=environment,
+            check=True, capture_output=True, text=True, timeout=3,
+        ).stdout.splitlines()
+        if {str(Path(path).resolve()) for path in listed} != {sources["DejaVu Sans"]["file"]}:
+            raise AssertionError(f"Menlo must be an explicit family, not a missing-font fallback: {listed}")
+        cases = [check(binary, False, artifacts, font_case=case, fontconfig=fontconfig) for case in (
+            ("font-default", None), ("font-monospace-control", "DejaVu Sans Mono"),
+            ("font-explicit-override", "DejaVu Sans"), ("font-menlo-control", "Menlo"),
+        )]
+        default, monospace, explicit, menlo = [case["frame"] for case in cases]
+        if default != monospace or explicit != menlo or explicit == monospace:
+            raise AssertionError(f"default must follow monospace and explicit family must win: {cases}")
+        return {"result": "passed", "case": "fontconfig-default-and-override",
+                "sources": sources, "fontconfig_matches": matches, "cases": cases}
 
 
 def main() -> None:
@@ -431,6 +523,7 @@ def main() -> None:
     arguments = parser.parse_args()
     binary = arguments.binary.resolve(strict=True)
     results = [check(binary, overrides, arguments.artifacts_dir) for overrides in (False, True)]
+    results.append(check_fontconfig(binary, arguments.artifacts_dir))
     encoded = json.dumps(results, indent=2) + "\n"
     if arguments.artifacts_dir:
         (arguments.artifacts_dir / "report.json").write_text(encoded, encoding="utf-8")

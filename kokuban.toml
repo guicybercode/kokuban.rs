@@ -1,5 +1,6 @@
 [font]
-family = "Menlo"
+# Omit family to use system monospace on Linux or Menlo on macOS.
+# family = "DejaVu Sans Mono"
 size = 14.0
 zoom_step = 1.0
 min_size = 6.0

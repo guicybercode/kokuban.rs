@@ -126,8 +126,13 @@ impl GlyphAtlas {
         properties.style = Style::Normal;
         properties.weight = Weight::NORMAL;
 
+        let family = if font_family.eq_ignore_ascii_case("monospace") {
+            FamilyName::Monospace
+        } else {
+            FamilyName::Title(font_family.to_string())
+        };
         let requested_font = source
-            .select_best_match(&[FamilyName::Title(font_family.to_string())], &properties)
+            .select_best_match(&[family], &properties)
             .map_err(|error| format!("selection failed: {error}"))
             .and_then(|handle| {
                 ShapingFont::load(&handle)
