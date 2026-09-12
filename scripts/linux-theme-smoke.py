@@ -7,6 +7,7 @@ existing selection, before any subsequent terminal output or input is sent.
 """
 
 import argparse
+import fcntl
 import hashlib
 from html import escape
 import json
@@ -20,11 +21,13 @@ import struct
 import subprocess
 import sys
 import tempfile
+import termios
 import time
 import tty
 
 
 DSR_REPLY = re.compile(rb"\x1b\[([0-9]+);([0-9]+)R")
+CELL_REPLY = re.compile(rb"\x1b\[6;([0-9]+);([0-9]+)t")
 OSC_REPLY = re.compile(
     rb"\x1b\](10|11);rgb:([0-9a-fA-F]{4})/([0-9a-fA-F]{4})/([0-9a-fA-F]{4})(?:\x07|\x1b\\)"
 )
@@ -76,7 +79,7 @@ def child() -> None:
     atomic_text(directory / "child.json", json.dumps({
         "pid": os.getpid(), "identity": identity(os.getpid()), "parent_pid": os.getppid(),
     }))
-    os.write(1, fixture())
+    rendered = False
     phase = None
     pending = None
     response = bytearray()
@@ -86,12 +89,16 @@ def child() -> None:
         while not (directory / "stop").exists():
             if time.monotonic() > deadline:
                 raise AssertionError("theme smoke driver timed out")
+            if not rendered and (directory / "render").exists():
+                os.write(1, fixture())
+                rendered = True
+                atomic_text(directory / "rendered", "1")
             requested = (directory / "phase").read_text()
             if requested != phase:
                 if pending is not None:
                     raise AssertionError("probe changed before its replies arrived")
                 phase = pending = requested
-                os.write(1, b"\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b[6n")
+                os.write(1, b"\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b[6n\x1b[16t")
             if not select.select([0], [], [], 0.02)[0]:
                 continue
             incoming = os.read(0, 4096)
@@ -105,14 +112,18 @@ def child() -> None:
                 continue
             response.extend(incoming)
             cursor = DSR_REPLY.search(response)
+            cell = CELL_REPLY.search(response)
             colors = list(OSC_REPLY.finditer(response))
-            if cursor is None or {match[1] for match in colors} != {b"10", b"11"}:
+            if cursor is None or cell is None or {match[1] for match in colors} != {b"10", b"11"}:
                 continue
-            extras = DSR_REPLY.sub(b"", OSC_REPLY.sub(b"", response))
+            extras = CELL_REPLY.sub(b"", DSR_REPLY.sub(b"", OSC_REPLY.sub(b"", response)))
             incoming_file.write(extras)
-            size = os.get_terminal_size(0)
+            rows, columns, pixel_width, pixel_height = struct.unpack(
+                "HHHH", fcntl.ioctl(0, termios.TIOCGWINSZ, bytes(8)))
             atomic_text(directory / "ready.json", json.dumps({
-                "phase": pending, "columns": size.columns, "rows": size.lines,
+                "phase": pending, "columns": columns, "rows": rows,
+                "pixels": [pixel_width, pixel_height],
+                "cell": [int(cell[2]), int(cell[1])],
                 "cursor": [int(value) for value in cursor.groups()],
                 "colors": {match[1].decode(): [int(value, 16) for value in match.groups()[1:]]
                            for match in colors},
@@ -189,6 +200,7 @@ class ThemeSmoke:
         self.probes = 0
         self.cell_width = self.cell_height = 0
         self.child = None
+        self.fixture_rendered = False
         self.last_mismatch = ""
 
     def wait(self, condition, description: str, timeout: float = 8):
@@ -216,7 +228,7 @@ class ThemeSmoke:
             return None
 
         result = self.wait(ready, "OSC10/11 and cursor replies")
-        if result["cursor"] != [9, 2]:
+        if result["cursor"] != ([9, 2] if self.fixture_rendered else [1, 1]):
             raise AssertionError(f"theme reload changed the cursor/content: {result}")
         if self.child is None:
             self.child = json.loads((self.directory / "child.json").read_text())
@@ -244,17 +256,29 @@ class ThemeSmoke:
 
         self.window = self.wait(search, "Kokuban X11 window")[0]
         xdo("windowfocus", "--sync", self.window)
-        # Do not replace phase zero while the initial OSC/DSR bytes are still
-        # arriving: a visible window alone does not acknowledge the PTY fixture.
+        # A visible window can still have its provisional 10x20 cell estimate.
+        # Wait for atlas metrics, the PTY and the X11 surface to agree before
+        # printing the fixture once; a temporary narrower grid could wrap it.
         self.wait(lambda: (self.directory / "ready.json").exists(), "initial PTY replies")
-        status = self.probe()
-        geometry = dict(line.split("=", 1) for line in xdo(
-            "getwindowgeometry", "--shell", self.window).decode().splitlines() if "=" in line)
-        self.cell_width = int(geometry["WIDTH"]) // status["columns"]
-        self.cell_height = int(geometry["HEIGHT"]) // status["rows"]
-        if (status["columns"] < 32 or status["rows"] < 12
-                or self.cell_width < 4 or self.cell_height < 4):
-            raise AssertionError(f"invalid fixture geometry: {status}, {geometry}")
+
+        def ready_geometry():
+            status = self.probe()
+            frame = self.capture()
+            width, height = status["cell"]
+            if (status["columns"] != 40 or status["rows"] != 16
+                    or width < 4 or height < 4
+                    or status["pixels"] != [width * 40, height * 16]
+                    or status["pixels"] != [frame.width, frame.height]):
+                self.last_mismatch = f"initial geometry still settling: {status}, frame={frame.width}x{frame.height}"
+                return False
+            self.cell_width, self.cell_height = width, height
+            return True
+
+        self.wait(ready_geometry, "matching font metrics, PTY and X11 geometry")
+        (self.directory / "render").touch()
+        self.wait(lambda: (self.directory / "rendered").exists(), "initial fixture write")
+        self.fixture_rendered = True
+        self.probe()
 
     def region(self, column: int, row: int, columns: int = 1) -> tuple[int, int, int, int]:
         return (column * self.cell_width, row * self.cell_height,
