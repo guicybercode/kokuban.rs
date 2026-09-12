@@ -1,0 +1,100 @@
+[
+  {
+    "result": "passed",
+    "explicit_overrides": false,
+    "child": {
+      "pid": 2808,
+      "identity": "42998",
+      "parent_pid": 2805
+    },
+    "probes": 7,
+    "input_hex": "7468656d652d73657373696f6e2d7375727669766564"
+  },
+  {
+    "result": "passed",
+    "explicit_overrides": true,
+    "child": {
+      "pid": 2912,
+      "identity": "43169",
+      "parent_pid": 2906
+    },
+    "probes": 7,
+    "input_hex": "7468656d652d73657373696f6e2d7375727669766564"
+  },
+  {
+    "result": "passed",
+    "case": "fontconfig-default-and-override",
+    "sources": {
+      "DejaVu Sans": {
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "sha256": "abdc775b21b1bc470d50c97e790d276f2054b7504e56e5bd3e64f48d68582322"
+      },
+      "DejaVu Sans Mono": {
+        "file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "sha256": "0f5db4f1749979d961019838b160bec74abdf7f9eca69553fe1aa856bbff49a4"
+      }
+    },
+    "fontconfig_matches": {
+      "Menlo": "DejaVu Sans",
+      "monospace": "DejaVu Sans Mono"
+    },
+    "cases": [
+      {
+        "result": "passed",
+        "case": "font-default",
+        "configured_family": null,
+        "cell": [
+          9,
+          17
+        ],
+        "frame": {
+          "width": 360,
+          "height": 272,
+          "rgb_sha256": "3ed9728cf3682954b7ccb2bb000be148c0566717ce5453c8ce17c6fcd9546e3e"
+        }
+      },
+      {
+        "result": "passed",
+        "case": "font-monospace-control",
+        "configured_family": "DejaVu Sans Mono",
+        "cell": [
+          9,
+          17
+        ],
+        "frame": {
+          "width": 360,
+          "height": 272,
+          "rgb_sha256": "3ed9728cf3682954b7ccb2bb000be148c0566717ce5453c8ce17c6fcd9546e3e"
+        }
+      },
+      {
+        "result": "passed",
+        "case": "font-explicit-override",
+        "configured_family": "DejaVu Sans",
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        }
+      },
+      {
+        "result": "passed",
+        "case": "font-menlo-control",
+        "configured_family": "Menlo",
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        }
+      }
+    ]
+  }
+]

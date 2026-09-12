@@ -1,0 +1,144 @@
+{
+  "result": "passed",
+  "method": "Independent XWD decoder: TrueColor 24-bit, 32-bit pixels; SHA-256 of row-major masked RGB pixels encoded as big-endian u32, excluding XWD metadata/padding. Geometry is compared separately.",
+  "checked_frames": 8,
+  "checked_terminal_logs": 8,
+  "columns": 40,
+  "rows": 16,
+  "font_size": 14,
+  "scale": 1,
+  "before": {
+    "expected_result": "failure: omitted family selects Menlo instead of system monospace",
+    "cases": [
+      {
+        "result": "passed",
+        "case": "font-default",
+        "configured_family": null,
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        },
+        "selected_font_log": "DejaVu Sans"
+      },
+      {
+        "result": "passed",
+        "case": "font-monospace-control",
+        "configured_family": "DejaVu Sans Mono",
+        "cell": [
+          9,
+          17
+        ],
+        "frame": {
+          "width": 360,
+          "height": 272,
+          "rgb_sha256": "3ed9728cf3682954b7ccb2bb000be148c0566717ce5453c8ce17c6fcd9546e3e"
+        },
+        "selected_font_log": "DejaVu Sans Mono"
+      },
+      {
+        "result": "passed",
+        "case": "font-explicit-override",
+        "configured_family": "DejaVu Sans",
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        },
+        "selected_font_log": "DejaVu Sans"
+      },
+      {
+        "result": "passed",
+        "case": "font-menlo-control",
+        "configured_family": "Menlo",
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        },
+        "selected_font_log": "DejaVu Sans"
+      }
+    ]
+  },
+  "after": {
+    "expected_result": "passed: default equals monospace; explicit family wins",
+    "cases": [
+      {
+        "result": "passed",
+        "case": "font-default",
+        "configured_family": null,
+        "cell": [
+          9,
+          17
+        ],
+        "frame": {
+          "width": 360,
+          "height": 272,
+          "rgb_sha256": "3ed9728cf3682954b7ccb2bb000be148c0566717ce5453c8ce17c6fcd9546e3e"
+        },
+        "selected_font_log": "DejaVu Sans Mono"
+      },
+      {
+        "result": "passed",
+        "case": "font-monospace-control",
+        "configured_family": "DejaVu Sans Mono",
+        "cell": [
+          9,
+          17
+        ],
+        "frame": {
+          "width": 360,
+          "height": 272,
+          "rgb_sha256": "3ed9728cf3682954b7ccb2bb000be148c0566717ce5453c8ce17c6fcd9546e3e"
+        },
+        "selected_font_log": "DejaVu Sans Mono"
+      },
+      {
+        "result": "passed",
+        "case": "font-explicit-override",
+        "configured_family": "DejaVu Sans",
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        },
+        "selected_font_log": "DejaVu Sans"
+      },
+      {
+        "result": "passed",
+        "case": "font-menlo-control",
+        "configured_family": "Menlo",
+        "cell": [
+          13,
+          17
+        ],
+        "frame": {
+          "width": 520,
+          "height": 272,
+          "rgb_sha256": "30b1369f3eb48099059e04a8502d5ccc03f5bb2c4561406b2be42bc29527b9b7"
+        },
+        "selected_font_log": "DejaVu Sans"
+      }
+    ]
+  },
+  "cross_revision_controls_identical": true,
+  "initial_and_last_capture_rgb_identical": true,
+  "retention": "Only initial captures are archived; later RGB-identical captures and theme scenarios are omitted.",
+  "warnings": "No falling back warning in any font launch. Existing font-kit invalid platform ID warnings remain in raw logs."
+}

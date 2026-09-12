@@ -229,6 +229,13 @@ configuration. It verifies that the omitted family matches the monospace
 control, explicit families take priority, and no missing-font fallback hides
 an incorrect default.
 
+The [retained before/after evidence](linux-evidence/2026-09-12-system-font/README.md)
+shows the old default failing this check at `4799708` and the corrected default
+passing at `ccbbb6e` on Linux aarch64/Xvfb. Full-frame pixel comparisons confirm
+the default follows `monospace` and explicit families remain respected.
+The [CI run at `1c90e0c`](https://github.com/guicybercode/kokuban.rs/actions/runs/34722785959)
+also passed after the harness was synchronized with the actual font geometry.
+
 ## Validation scope
 
 On 2026-09-10, the launcher was checked against `xdg-terminal-exec` commit

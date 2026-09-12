@@ -1,0 +1,169 @@
+{
+  "description": "Local Linux release-binary regression evidence: default Fontconfig family and explicit override.",
+  "date": "2026-09-12",
+  "platform": "Debian 12 aarch64 Linux under X11/Xvfb; rustc 1.94.1; Fontconfig 2.14.1; FreeType 2.12.1; DejaVu 2.37",
+  "before": {
+    "commit": "4799708f0dcf507799e9bd30ab1fc2c665137c24",
+    "binary_sha256": "df3f07f9f90732bf5a35fa7cd7be77122b332cf04488e763301fab224b5ff104",
+    "expected_smoke_result": "failure"
+  },
+  "after": {
+    "commit": "ccbbb6e1a6c96969491f33349c30e361c39a68e6",
+    "binary_sha256": "32fc38ebd05cfc5b0fd4914ecf0ce82ffd37c2d910300d983abfa8a514b3c3bf",
+    "expected_smoke_result": "passed"
+  },
+  "harness": {
+    "commit": "ccbbb6e1a6c96969491f33349c30e361c39a68e6",
+    "path": "scripts/linux-theme-smoke.py",
+    "sha256": "798afe31944ec3b7fe89d846c8cad7806be435fdf07af1aa47296392d1759444",
+    "url": "https://github.com/guicybercode/kokuban.rs/blob/ccbbb6e1a6c96969491f33349c30e361c39a68e6/scripts/linux-theme-smoke.py",
+    "same_harness_for_both": true
+  },
+  "source_sha256_at_git_revision": {
+    "4799708f0dcf507799e9bd30ab1fc2c665137c24": {
+      "src/config.rs": "e02f1601fe0e817cfe507bd28cfa0fcc3c74776428a630b01e2ab4fe981b66ec",
+      "src/glyph_atlas.rs": "91fc190f368a8c54b1c3085eca82bd0aec660ba8eb7d2b99bbeb5585284e0442",
+      "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+      "Cargo.toml": "0353ca37e520e2eb288b3f13d2ddf4ae92273a88931fdd134277dd09499ee3d5"
+    },
+    "ccbbb6e1a6c96969491f33349c30e361c39a68e6": {
+      "src/config.rs": "b553c1e960ce08c72c6d185915e6feaa41af060a3d267f153e819fba92290cf3",
+      "src/glyph_atlas.rs": "37746760e6773caeb7837e0e5ce66622119a563b30efb1bd87de76325a673831",
+      "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+      "Cargo.toml": "0353ca37e520e2eb288b3f13d2ddf4ae92273a88931fdd134277dd09499ee3d5"
+    }
+  },
+  "provenance_scope": "Binary hashes and after source hashes are captured in validation.txt. After source/harness hashes independently match Git. Source revisions are the build operator identification; binaries/full build trees are not archived. Cargo.toml and Cargo.lock match between revisions. Build logs confirm release profile; no clean-target claim.",
+  "archive_members": {
+    "after-build.log": {
+      "bytes": 10237,
+      "sha256": "5ce127a7b0256fe15505d3d5970b44dcd554cd95bf4ca22e8be44a44452cc392"
+    },
+    "after/font-default/initial.xwd": {
+      "bytes": 394866,
+      "sha256": "a23307696684171ca1e340d49c0f96842518999e61b73e7231162ce8b54f62c8"
+    },
+    "after/font-default/terminal.log": {
+      "bytes": 572,
+      "sha256": "6cd44d46c792345d2fc1547295501d35af635f6d51fa8b4b87a0ce7c74e9fe7b"
+    },
+    "after/font-explicit-override/initial.xwd": {
+      "bytes": 568946,
+      "sha256": "6efefff24323ed5dc4ec3db51d3caf6eed4f014aaf84cb2139b82bdd4be32356"
+    },
+    "after/font-explicit-override/terminal.log": {
+      "bytes": 568,
+      "sha256": "c9b21391b607f4b0defb003222a3da330101a73e92ca1a53e884f814c47ce9ec"
+    },
+    "after/font-menlo-control/initial.xwd": {
+      "bytes": 568946,
+      "sha256": "347aae5872a2b392ea027e6aa72036cf1ff7043b3ef10a94c8fc1d0bd66d08b9"
+    },
+    "after/font-menlo-control/terminal.log": {
+      "bytes": 568,
+      "sha256": "c9b21391b607f4b0defb003222a3da330101a73e92ca1a53e884f814c47ce9ec"
+    },
+    "after/font-monospace-control/initial.xwd": {
+      "bytes": 394866,
+      "sha256": "6b9af1619695d453dd513254f900eb232bac8ba11ed38aca324211eb14451dad"
+    },
+    "after/font-monospace-control/terminal.log": {
+      "bytes": 572,
+      "sha256": "6cd44d46c792345d2fc1547295501d35af635f6d51fa8b4b87a0ce7c74e9fe7b"
+    },
+    "before-build.log": {
+      "bytes": 11136,
+      "sha256": "5de41fac792d74832cbbcb4c38dbb23be115f8d2a30c3a3090779befe49e1579"
+    },
+    "before-smoke.log": {
+      "bytes": 1503,
+      "sha256": "ff7660cca84b573c43f2a5764beed3a1a03b6e663dc2f460dffcaa179797f2f0"
+    },
+    "before/font-default/initial.xwd": {
+      "bytes": 568946,
+      "sha256": "d28569fef0bc8e1ea5005d00dca6a8dd6f10697a52bd9c1ae3df44455c23e211"
+    },
+    "before/font-default/terminal.log": {
+      "bytes": 568,
+      "sha256": "e31df10415c9acf8655f106d7d89cc8db468368617cb496a24ea61de2af71089"
+    },
+    "before/font-explicit-override/initial.xwd": {
+      "bytes": 568946,
+      "sha256": "7587558ae383a9f3c5328d372e4519c1ed5c80faa06a712578c15814ed13dd43"
+    },
+    "before/font-explicit-override/terminal.log": {
+      "bytes": 568,
+      "sha256": "e31df10415c9acf8655f106d7d89cc8db468368617cb496a24ea61de2af71089"
+    },
+    "before/font-menlo-control/initial.xwd": {
+      "bytes": 568946,
+      "sha256": "68cbe581735e6e0a6ae601f724261e610216818681e6bb23a64137448a4f9d6b"
+    },
+    "before/font-menlo-control/terminal.log": {
+      "bytes": 568,
+      "sha256": "e31df10415c9acf8655f106d7d89cc8db468368617cb496a24ea61de2af71089"
+    },
+    "before/font-monospace-control/initial.xwd": {
+      "bytes": 394866,
+      "sha256": "6a3155b93d9c855381d7db81c700e75a5621aafa79e45286b967e89afdfc123d"
+    },
+    "before/font-monospace-control/terminal.log": {
+      "bytes": 572,
+      "sha256": "76d8b0e12c7bf4341d074c07bacbcc87593a2dfcbf50b869af54a466d59e4f86"
+    },
+    "environment.txt": {
+      "bytes": 454,
+      "sha256": "6f1d7f070946b2f272294d689caee7f6dc458df2607f43d41aa21161b9357fd1"
+    },
+    "validation.txt": {
+      "bytes": 499,
+      "sha256": "044f38fad9d035b4316b87530fb2622e5ae0862cb6d06049244fc634730650a9"
+    }
+  },
+  "archive": "font-evidence.tar.xz",
+  "ci_initial": {
+    "run_id": 34721807671,
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34721807671",
+    "head_sha": "ccbbb6e1a6c96969491f33349c30e361c39a68e6",
+    "status": "completed",
+    "conclusion": "failure",
+    "failed_step": "Verify live Omarchy theme reload and session preservation",
+    "scope": "Local release-binary evidence passed for the corrected font; this first CI attempt did not pass.",
+    "diagnosis": "The fixture could encounter provisional window geometry; synchronized before printing in 1c90e0c."
+  },
+  "files": {
+    "README.md": {
+      "bytes": 2355,
+      "sha256": "069a8099dc2fa0597d93c2bd673d806a040719e86accb0a6f6ddd6f9fd49bd3e"
+    },
+    "after-report.json": {
+      "bytes": 2483,
+      "sha256": "b4ffd186bead6f4589a44c755e9c8874e73e9c455060633943f54150f5ad82fa"
+    },
+    "font-evidence.tar.xz": {
+      "bytes": 8980,
+      "sha256": "dc4695b23ef696a255af2cc82ed1b5752192539c9460763912d9dd36fae2b633"
+    },
+    "pixel-audit.json": {
+      "bytes": 4099,
+      "sha256": "6989f04a5ad6b5b3d96554a2715dcd1a691521677467bd482e1888626f9cdeb4"
+    }
+  },
+  "ci_validation": {
+    "run_id": 34722785959,
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34722785959",
+    "head_sha": "1c90e0c8128cb7ee7c91c0ed5b6bb44058c86801",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": {
+      "Linux graphical shell": "success",
+      "macOS": "success"
+    },
+    "harness": {
+      "path": "scripts/linux-theme-smoke.py",
+      "sha256": "911222f6cf1b3a5c09cca2059e819d8b861a36b5c3412cc3c6533f7bfa5a80d4",
+      "url": "https://github.com/guicybercode/kokuban.rs/blob/1c90e0c8128cb7ee7c91c0ed5b6bb44058c86801/scripts/linux-theme-smoke.py"
+    },
+    "scope": "CI uses the later geometry-synchronized harness. Retained raw frames and logs are the local release run using ccbbb6e. src/config.rs and src/glyph_atlas.rs are byte-identical at both revisions."
+  }
+}
