@@ -1,0 +1,7 @@
+253: compare	Install fixed Rust toolchain and validate harness	2026-09-11T17:10:40.3216458Z Ran 23 tests in 0.737s
+2951: compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T17:12:52.1252361Z    Compiling kokuban v0.1.0 (/source)
+3293: compare	Build, verify native launch, calibrate cells and compare processing	2026-09-11T17:12:59.2938714Z     Finished `release` profile [optimized] target(s) in 1m 04s
+3396: compare	Upload comparisons and provenance even on failure	2026-09-11T17:15:50.0414015Z SHA256 digest of uploaded artifact zip is ffe3ba2594ceec2e1362d1192bbd83ed03b3873f2579114c0b225209479a6c66
+3398: compare	Upload comparisons and provenance even on failure	2026-09-11T17:15:50.2478847Z Artifact linux-four-terminal-comparison.zip successfully finalized. Artifact ID 10274745098
+3399: compare	Upload comparisons and provenance even on failure	2026-09-11T17:15:50.2479842Z Artifact linux-four-terminal-comparison has been successfully uploaded! Final size is 1937953 bytes. Artifact ID is 10274745098
+3400: compare	Upload comparisons and provenance even on failure	2026-09-11T17:15:50.2484037Z Artifact download URL: https://github.com/guicybercode/kokuban.rs/actions/runs/34626179771/artifacts/10274745098

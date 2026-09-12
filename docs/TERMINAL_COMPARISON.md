@@ -66,6 +66,57 @@ não são enviados, mas seus tamanhos e hashes permitem verificar a reprodução
 Esse ambiente permite comparar processamento no mesmo sistema; não reproduz
 GPU, monitor, Hyprland ou todas as versões instaladas no Omarchy.
 
+## Revisão `8dafe9e`: páginas Unicode em 2026-09-11
+
+O [run `34626179771`](https://github.com/guicybercode/kokuban.rs/actions/runs/34626179771)
+mede o caminho conservador de fronteiras de grafemas após a reutilização de
+larguras e a construção de grafemas curtos na pilha. Fonte e executor são
+`8dafe9e`. Foram cinco amostras por terminal, quatro cargas de aproximadamente
+32 MiB e oito pré-voos de calibração fora das estatísticas.
+
+A sessão usou Ubuntu 26.04 amd64 em container, **AMD EPYC 9V74**, afinidade
+nas quatro CPUs disponíveis e Weston 14.0.2 headless com Pixman. Todos
+usaram tela alternativa sem histórico, DejaVu Sans Mono a 14 pixels lógicos
+(10,5 pontos nos concorrentes), células de 9×17 pixels e grade de 80×24.
+As 80 cargas mantiveram 720×408 pixels. Noto CJK e Noto Color Emoji estavam
+instaladas. O runner anterior de `5c1f436` era EPYC 7763: a diferença entre
+os números desses dois runs não mede isoladamente o efeito do código.
+
+| Carga | Kokuban, mediana MiB/s | Ghostty | Alacritty | Kitty |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 89,64 | 37,27 | 73,12 | 101,31 |
+| ANSI | 77,19 | 31,71 | 75,85 | 22,91 |
+| Unicode | 40,73 | 38,45 | 73,60 | 87,27 |
+| Linhas curtas | 38,87 | 32,62 | 66,42 | 35,17 |
+
+Neste ensaio, a mediana do Kokuban ficou acima de Ghostty nas quatro cargas,
+acima dos três concorrentes em ANSI e abaixo de Alacritty e Kitty em Unicode.
+A faixa de Unicode do Kokuban, 39,70–40,83 MiB/s, se sobrepôs à do Ghostty,
+36,95–40,01. Em ASCII, Kokuban permaneceu abaixo de Kitty; em linhas curtas,
+ficou acima de Ghostty e Kitty e abaixo de Alacritty. Esses resultados
+continuam sem comprovar a meta de superar todos os concorrentes.
+
+O RTT mediano DSR foi 0,044 ms no Kokuban, 0,067 no Ghostty, 0,066 no
+Alacritty e 3,141 no Kitty, com 150 observações por terminal. O
+[relatório bruto](linux-evidence/2026-09-11-boundary-terminals/ci-report.json)
+preserva amostras, pré-voos e configurações completas. O
+[manifesto](linux-evidence/2026-09-11-boundary-terminals/manifest.json)
+registra a verificação dos 28 processos, payloads reproduzidos, geometria,
+fontes, builds exatos e estatísticas recalculadas. Passaram 685 testes Linux
+do executável e 224 do exemplo, com um benchmark ignorado, além do
+lançamento Wayland com argumentos literais, diretório com espaços e DSR.
+
+As versões foram Alacritty `0.16.1`, Kitty `0.45.0` e Ghostty
+`1.3.0-dev+0000000`, canal `tip`, pacote Ubuntu `1.3.0~us1-0ubuntu1.1`.
+O hash do binário Kokuban registrado no CI é
+`b629d8b5200d9d71eced1712bc196b2063337023f4b68523846ddff26d66adef`.
+Os bytes dos executáveis e fontes não foram retidos para rehash independente.
+Pixman foi observado no log; llvmpipe foi solicitado, mas o renderer OpenGL
+efetivo de cada terminal não foi registrado. Geometria igual e fontes de
+fallback instaladas não demonstram fidelidade visual equivalente. O ensaio
+mede processamento/DSR, sem medir apresentação, teclado até a tela ou uma
+sessão física Omarchy/Hyprland com GPU e monitor.
+
 ## Revisão `5c1f436`: comparação atualizada em 2026-09-11
 
 O [run `34620294348`](https://github.com/guicybercode/kokuban.rs/actions/runs/34620294348)
