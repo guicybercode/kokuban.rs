@@ -145,6 +145,90 @@ For persistent settings use `${XDG_CONFIG_HOME:-$HOME/.config}/kokuban/kokuban.t
 A `kokuban.toml` in the directory where Kokuban itself was launched takes priority;
 the CLI working directory is applied after configuration loading.
 
+## Follow the Omarchy palette
+
+On Linux, Kokuban automatically reads
+`$HOME/.config/omarchy/current/theme/colors.toml` when the Omarchy `current`
+directory exists at launch. Omarchy uses this HOME-based path even if Kokuban's
+own configuration uses a different `XDG_CONFIG_HOME`.
+
+The [palette format at Omarchy `f4378f0`](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/themes/tokyo-night/colors.toml)
+provides foreground, background, cursor, selection foreground/background, and
+`color0` through `color15`. Kokuban applies all of these roles, including the
+bright ANSI colors. Truecolor and indexed colors 16–255 retain their terminal
+meaning. Theme colors are used as supplied.
+
+Changing the Omarchy theme updates existing Kokuban windows without restarting
+their shells, clearing text, or changing keyboard bindings. Kokuban observes
+filesystem events in the stable `current` directory and the active `theme`
+directory, including Omarchy's [directory replacement during theme changes](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/bin/omarchy-theme-set).
+The observer sleeps until a filesystem event or shutdown; it does not poll on a
+timer. No additional theme hook or terminal restart command is required.
+
+Only complete regular UTF-8 files of at most 64 KiB are accepted. Every required
+color must use `#RRGGBB` notation. Missing, partial, or invalid replacements keep
+the last valid palette; a later valid publication is applied. If no valid theme
+is available initially, Kokuban uses its ordinary colors and explicit settings.
+
+Explicit colors in the selected `kokuban.toml` take priority over the system
+theme, including values equal to Kokuban's defaults. Omit the settings you want
+Omarchy to control. In particular, copying the repository's sample `[colors]`
+and `[selection]` sections pins those colors. These settings can be overridden
+independently:
+
+| Setting | Value |
+|---------|-------|
+| `colors.foreground`, `colors.background` | Text and background colors |
+| `colors.cursor` | Cursor color |
+| `colors.ansi` | Array of exactly 16 colors, ordered 0–15 |
+| `selection.foreground`, `selection.background` | Selected text and background colors |
+
+To disable Omarchy palette loading and observation, add:
+
+```toml
+[omarchy]
+enabled = false
+```
+
+The Omarchy palette reloads live; edits to Kokuban's own configuration are read
+when opening a new window.
+
+Run the Linux integration check with `xdotool`, `xwd`, Fontconfig's command-line
+tools and DejaVu fonts installed:
+
+```sh
+xvfb-run -a python3 scripts/linux-theme-smoke.py target/release/kokuban
+```
+
+The check compares actual X11 pixels and OSC 10/11 color replies before and after
+directory replacements, including an existing selection, cursor, all 16 ANSI
+colors, explicit overrides, and invalid-file recovery. It verifies that the
+child PID and start time remain unchanged and that terminal input still works.
+This checks the palette path and renderer under X11; changing themes in a
+physical Omarchy/Hyprland session remains a separate on-device validation.
+
+The [2026-09-12 CI run](https://github.com/guicybercode/kokuban.rs/actions/runs/34719320120)
+passed both automatic-theme and explicit-override scenarios on revision
+`4b05e08`. The [retained evidence](linux-evidence/2026-09-12-omarchy-theme/manifest.json)
+includes the original artifact with all seven frame phases per scenario and
+the [session report](linux-evidence/2026-09-12-omarchy-theme/report.json).
+The same revision passed 702 Linux and 588 macOS executable tests, plus 225
+example tests on each platform, all-target checks and Clippy.
+
+## Follow the system font
+
+Linux development builds use Fontconfig's `monospace` family when `font.family`
+is omitted. Omarchy's [font selector at `f4378f0`](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/bin/omarchy-font-set)
+updates that alias in `$HOME/.config/fontconfig/fonts.conf`. Open a new Kokuban
+window after changing the Omarchy font; existing windows keep their loaded font.
+An explicit `font.family` continues to select the requested family. The default
+size remains 14, and macOS retains Menlo as its default family.
+
+The integration check also compares four windows under a private Fontconfig
+configuration. It verifies that the omitted family matches the monospace
+control, explicit families take priority, and no missing-font fallback hides
+an incorrect default.
+
 ## Validation scope
 
 On 2026-09-10, the launcher was checked against `xdg-terminal-exec` commit

@@ -1,0 +1,135 @@
+{
+  "date": "2026-09-12",
+  "revision": "4b05e0807e269fd83c38dbef5644e8d71ccee955",
+  "ci_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34719320120",
+  "ci_conclusion": "success",
+  "artifact_id": 10306003266,
+  "artifact_file": "linux-theme-smoke.zip",
+  "artifact_sha256": "8899770c44e5f81c59275321b389bec08f1a5e81c733702b44230bd5b09e1bb8",
+  "artifact_bytes": 65340,
+  "harness": "scripts/linux-theme-smoke.py",
+  "harness_sha256": "5a321ec28556c700b20cf1d7dd2db8a43e86600d4b1106bff41a61d556a76089",
+  "checks": {
+    "linux": {
+      "unit_tests_passed": 702,
+      "example_tests_passed": 225,
+      "ignored_benchmark": 1,
+      "check_all_targets": "passed",
+      "clippy_all_targets": "passed"
+    },
+    "macos": {
+      "unit_tests_passed": 588,
+      "example_tests_passed": 225,
+      "check_all_targets": "passed",
+      "clippy_all_targets": "passed"
+    },
+    "theme_profiles": [
+      "automatic",
+      "explicit_overrides"
+    ],
+    "phases": [
+      "initial",
+      "selected",
+      "reloaded",
+      "incomplete",
+      "invalid",
+      "recovered",
+      "input-survived"
+    ],
+    "harness_assertions": [
+      "Actual X11 pixels for default colors, selection, cursor, ANSI 0–15, fixed indexed/truecolor patches",
+      "OSC 10/11 and cursor replies for all seven probes per child",
+      "Same child PID/start time across reloads and exact subsequent PTY input",
+      "Normal terminal exit after child exit"
+    ]
+  },
+  "limitations": [
+    "Xvfb X11 check, not a physical Omarchy/Hyprland/GPU session",
+    "Report retains child identity and probe counts; individual OSC replies and intermediate identity readings were asserted during execution but not retained",
+    "Cursor on nonblank text, wide continuations, combining characters and emoji is separately covered by unit tests"
+  ],
+  "archive_inventory": {
+    "automatic/incomplete.xwd": {
+      "bytes": 394866,
+      "sha256": "4c1279581049122ed643e4a34f9c61ee575d3681ee6b6479966a8763a27a0a96"
+    },
+    "automatic/input-survived.xwd": {
+      "bytes": 394866,
+      "sha256": "a4311fd35d00bc28c854a1ee6c0e8843e511f2c272da096f4cd79668a1df768d"
+    },
+    "automatic/initial.xwd": {
+      "bytes": 394866,
+      "sha256": "a4311fd35d00bc28c854a1ee6c0e8843e511f2c272da096f4cd79668a1df768d"
+    },
+    "automatic/invalid.xwd": {
+      "bytes": 394866,
+      "sha256": "4c1279581049122ed643e4a34f9c61ee575d3681ee6b6479966a8763a27a0a96"
+    },
+    "automatic/last-frame.xwd": {
+      "bytes": 394866,
+      "sha256": "a4311fd35d00bc28c854a1ee6c0e8843e511f2c272da096f4cd79668a1df768d"
+    },
+    "automatic/reloaded.xwd": {
+      "bytes": 394866,
+      "sha256": "4c1279581049122ed643e4a34f9c61ee575d3681ee6b6479966a8763a27a0a96"
+    },
+    "automatic/recovered.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "automatic/selected.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "automatic/terminal.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "overrides/incomplete.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "overrides/initial.xwd": {
+      "bytes": 394866,
+      "sha256": "a4311fd35d00bc28c854a1ee6c0e8843e511f2c272da096f4cd79668a1df768d"
+    },
+    "overrides/input-survived.xwd": {
+      "bytes": 394866,
+      "sha256": "a4311fd35d00bc28c854a1ee6c0e8843e511f2c272da096f4cd79668a1df768d"
+    },
+    "overrides/invalid.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "overrides/last-frame.xwd": {
+      "bytes": 394866,
+      "sha256": "a4311fd35d00bc28c854a1ee6c0e8843e511f2c272da096f4cd79668a1df768d"
+    },
+    "overrides/recovered.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "overrides/reloaded.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "overrides/selected.xwd": {
+      "bytes": 394866,
+      "sha256": "998dbd7795f186bf13c0601f8eef272fc4d1b5622b960c3e5f2f9be4bac03e59"
+    },
+    "overrides/terminal.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "report.json": {
+      "bytes": 484,
+      "sha256": "5802cac741289067521d4c9de54d88c2a0b8058786c80f4925e986b913507f32"
+    }
+  },
+  "offline_pixel_audit": {
+    "file": "offline-pixel-audit.json",
+    "sha256": "b2352abdf36b954fa7bdb453167aa6b18e1d789b32506949e15f1f6c316c4141",
+    "checks": 538,
+    "frames": 14
+  }
+}

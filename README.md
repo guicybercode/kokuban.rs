@@ -210,11 +210,16 @@ is applied. Published v0.1 binaries only read the local file. Missing, unreadabl
 or invalid configuration falls back to defaults; parse/read errors are logged.
 Review local configuration before launching from an unfamiliar directory.
 
+In development builds, omitting `font.family` uses the system monospace font on
+Linux and Menlo on macOS. An explicit family overrides that choice. Open a new
+window after changing the system font or Kokuban's font settings.
+
 Example configuration:
 
 ```toml
 [font]
-family = "Menlo"
+# Optional explicit font; omit to keep the platform default.
+# family = "DejaVu Sans Mono"
 size = 14.0
 zoom_step = 1.0
 

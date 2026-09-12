@@ -31,6 +31,56 @@ python3 scripts/compare-kokuban-revisions.py \
   --artifacts-dir /tmp/kokuban-paired --backend wayland
 ```
 
+## Reuso de linhas do histórico: alocações e regressão em 2026-09-12
+
+A revisão `794d03d` reutiliza a alocação de uma linha descartada quando o
+histórico está cheio. **A otimização foi rejeitada para a versão final
+após a regressão medida abaixo.** Contra `4d382d8`, um fixture headless macOS passou de
+10.000 para zero chamadas `alloc`/`realloc` ao escrever 10.000 linhas numa
+grade de 80 colunas, após aquecer o histórico de 1.000 linhas. As solicitações
+cumulativas passaram de 32.000.000 para zero bytes; **isso não mede RSS
+nem redução de memória retida**.
+
+O [ensaio Linux público com histórico de 10.000 linhas](https://github.com/guicybercode/kokuban.rs/actions/runs/34718883607)
+encontrou **regressão de 5,57% em linhas curtas, com perda nos cinco pares**:
+
+| Carga | Antes, mediana MiB/s | Depois, mediana MiB/s | Variação entre medianas | Pares mais lentos depois |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 54,954 | 55,782 | +1,51% | 2/5 |
+| ANSI | 48,046 | 48,303 | +0,53% | 2/5 |
+| Unicode | 26,959 | 26,018 | −3,49% | 4/5 |
+| Linhas curtas | 7,203 | 6,802 | −5,57% | 5/5 |
+
+A vazão de linhas curtas caiu de 7,140–7,358 para 6,781–6,820 MiB/s, sem sobreposição
+das faixas. A mediana da variação por par foi −5,36%, um cálculo distinto
+da razão entre medianas. O run usou AMD EPYC 7763, Ubuntu 24.04 x86_64,
+Rust 1.94.1 release, Weston 13 headless/Pixman, afinidade na CPU 0 e
+cinco pares alternados de aproximadamente 32 MiB por carga. Todas as
+instâncias mantiveram 80×24 células e 720×408 pixels.
+
+Na [tela alternativa, sem histórico](https://github.com/guicybercode/kokuban.rs/actions/runs/34718885163),
+o runner foi AMD EPYC 9V74, com os mesmos parâmetros de amostragem e geometria:
+
+| Carga | Antes, mediana MiB/s | Depois, mediana MiB/s | Variação entre medianas | Pares mais lentos depois |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 93,277 | 93,593 | +0,34% | 1/5 |
+| ANSI | 84,666 | 85,551 | +1,05% | 0/5 |
+| Unicode | 42,357 | 42,630 | +0,64% | 0/5 |
+| Linhas curtas | 40,718 | 41,097 | +0,93% | 2/5 |
+
+As faixas se sobrepõem nas quatro cargas. Os perfis usam CPUs diferentes:
+suas diferenças não podem ser atribuídas apenas ao histórico. O resultado
+alternativo não anula a regressão principal; o revert está registrado em
+`4b05e0807e269fd83c38dbef5644e8d71ccee955`.
+
+O [pacote auditado](linux-evidence/2026-09-12-history-reuse/README.md)
+preserva os relatórios públicos, as perdas e a proveniência dos builds
+separados, além do fixture e dos logs de alocação macOS. Somente os dois
+arquivos do grid diferem entre as revisões; mudanças de tema não entram.
+A redução de alocações não demonstrou ganho geral de vazão. O escopo
+continua sendo processamento PTY/DSR e contadores do teste isolado, sem
+medir apresentação, teclado até a tela ou uso físico no Omarchy.
+
 ## Fronteiras Unicode por páginas: dois perfis em 2026-09-11
 
 A revisão `8dafe9e` classifica casos simples de fronteira de grafema com

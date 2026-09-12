@@ -30,6 +30,10 @@ const XTERM_COLOR_CUBE_LEVELS: [u8; 6] = [0, 95, 135, 175, 215, 255];
 pub(crate) struct TerminalColors {
     default_foreground: Rgb,
     default_background: Rgb,
+    ansi: [Rgb; 16],
+    selection_foreground: Option<Rgb>,
+    selection_background: Option<Rgb>,
+    cursor: Option<Rgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,28 +47,32 @@ impl TerminalColors {
         Self {
             default_foreground,
             default_background,
+            ansi: ANSI_COLORS,
+            selection_foreground: None,
+            selection_background: None,
+            cursor: None,
         }
     }
 
-    pub(crate) fn resolve_foreground(self, color: Color, bold: bool) -> Rgb {
+    pub(crate) fn resolve_foreground(&self, color: Color, bold: bool) -> Rgb {
         match color {
             Color::Default => self.default_foreground,
-            Color::Indexed(index) if bold && index < 8 => ANSI_COLORS[(index + 8) as usize],
-            Color::Indexed(index) => indexed_color(index),
+            Color::Indexed(index) if bold && index < 8 => self.ansi[(index + 8) as usize],
+            Color::Indexed(index) => indexed_color(&self.ansi, index),
             Color::Rgb(red, green, blue) => (red, green, blue),
         }
     }
 
-    pub(crate) fn resolve_background(self, color: Color) -> Rgb {
+    pub(crate) fn resolve_background(&self, color: Color) -> Rgb {
         match color {
             Color::Default => self.default_background,
-            Color::Indexed(index) => indexed_color(index),
+            Color::Indexed(index) => indexed_color(&self.ansi, index),
             Color::Rgb(red, green, blue) => (red, green, blue),
         }
     }
 
     pub(crate) fn resolve_cell_colors(
-        self,
+        &self,
         foreground: Color,
         background: Color,
         flags: CellFlags,
@@ -88,8 +96,42 @@ impl TerminalColors {
         }
     }
 
-    pub(crate) fn default_background(self) -> Rgb {
+    pub(crate) fn default_background(&self) -> Rgb {
         self.default_background
+    }
+
+    pub(crate) fn with_defaults(mut self, foreground: Rgb, background: Rgb) -> Self {
+        self.default_foreground = foreground;
+        self.default_background = background;
+        self
+    }
+
+    pub(crate) fn with_ansi(mut self, ansi: [Rgb; 16]) -> Self {
+        self.ansi = ansi;
+        self
+    }
+
+    pub(crate) fn with_selection(mut self, foreground: Option<Rgb>, background: Option<Rgb>) -> Self {
+        self.selection_foreground = foreground;
+        self.selection_background = background;
+        self
+    }
+
+    pub(crate) fn selection_foreground(&self) -> Rgb {
+        self.selection_foreground.unwrap_or(self.default_background)
+    }
+
+    pub(crate) fn selection_background(&self) -> Rgb {
+        self.selection_background.unwrap_or(self.default_foreground)
+    }
+
+    pub(crate) fn with_cursor(mut self, cursor: Rgb) -> Self {
+        self.cursor = Some(cursor);
+        self
+    }
+
+    pub(crate) fn cursor(&self) -> Option<Rgb> {
+        self.cursor
     }
 }
 
@@ -111,9 +153,9 @@ fn blend_channel(foreground: u8, background: u8, opacity: u8) -> u8 {
     u8::try_from(rounded).unwrap_or(u8::MAX)
 }
 
-fn indexed_color(index: u8) -> Rgb {
+fn indexed_color(ansi: &[Rgb; 16], index: u8) -> Rgb {
     match index {
-        0..=15 => ANSI_COLORS[index as usize],
+        0..=15 => ansi[index as usize],
         16..=231 => {
             let cube_index = index - 16;
             let red = XTERM_COLOR_CUBE_LEVELS[(cube_index / 36) as usize];

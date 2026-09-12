@@ -1,0 +1,55 @@
+{
+  "revision": "794d03dd5a2679f95b3c3c588e2616bee2a04b52",
+  "logs": {
+    "macos-v2-check.log": {
+      "bytes": 10237,
+      "sha256": "61a9e4f3aed89b63e33dbdad64088e529aab972c5c88a761f6c0e3c36ddee134",
+      "selected_lines": [
+        {
+          "line": 337,
+          "text": "    Finished `release` profile [optimized] target(s) in 1.96s"
+        }
+      ]
+    },
+    "macos-v2-all-tests.log": {
+      "bytes": 76116,
+      "sha256": "fdef32430a18e5949eaa2a7642948e6688507b9cb1798e8019df44732af0e00a",
+      "selected_lines": [
+        {
+          "line": 1,
+          "text": "   Compiling kokuban v0.1.0 (/tmp/kokuban-history-reuse/source-after)"
+        },
+        {
+          "line": 64,
+          "text": "    Finished `release` profile [optimized] target(s) in 8.93s"
+        },
+        {
+          "line": 663,
+          "text": "test result: ok. 594 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s"
+        },
+        {
+          "line": 669,
+          "text": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        },
+        {
+          "line": 906,
+          "text": "test result: ok. 231 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+        }
+      ]
+    },
+    "macos-v2-clippy.log": {
+      "bytes": 23439,
+      "sha256": "c95ff75b18938b2f462d6dbbf46d7e53d0c4a5642b0be0b2ef905350f3c6e5a0",
+      "selected_lines": [
+        {
+          "line": 646,
+          "text": "    Finished `release` profile [optimized] target(s) in 2.71s"
+        }
+      ]
+    }
+  },
+  "executable_tests_passed": 594,
+  "example_tests_passed": 231,
+  "ignored": 0,
+  "warnings_present": true
+}

@@ -14,6 +14,7 @@ pub struct Config {
     pub prompt_marks: PromptMarksConfig,
     pub images: ImagesConfig,
     pub confirm: ConfirmConfig,
+    pub omarchy: OmarchyConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,17 +37,79 @@ pub struct WindowConfig {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(default)]
+#[serde(from = "SelectionSettings")]
 pub struct SelectionConfig {
     pub foreground: String,
     pub background: String,
+    pub(crate) explicit_foreground: bool,
+    pub(crate) explicit_background: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(from = "ColorSettings")]
+pub struct ColorConfig {
+    pub foreground: String,
+    pub background: String,
+    pub cursor: Option<String>,
+    pub ansi: Option<[String; 16]>,
+    pub(crate) explicit_foreground: bool,
+    pub(crate) explicit_background: bool,
+}
+
+// Retain whether a color was explicitly configured, including values equal to
+// the defaults. An Omarchy theme fills omitted settings only.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct ColorSettings {
+    foreground: Option<String>,
+    background: Option<String>,
+    cursor: Option<String>,
+    ansi: Option<[String; 16]>,
+}
+
+impl From<ColorSettings> for ColorConfig {
+    fn from(settings: ColorSettings) -> Self {
+        let defaults = Self::default();
+        Self {
+            explicit_foreground: settings.foreground.is_some(),
+            explicit_background: settings.background.is_some(),
+            foreground: settings.foreground.unwrap_or(defaults.foreground),
+            background: settings.background.unwrap_or(defaults.background),
+            cursor: settings.cursor,
+            ansi: settings.ansi,
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct SelectionSettings {
+    foreground: Option<String>,
+    background: Option<String>,
+}
+
+impl From<SelectionSettings> for SelectionConfig {
+    fn from(settings: SelectionSettings) -> Self {
+        let defaults = Self::default();
+        Self {
+            explicit_foreground: settings.foreground.is_some(),
+            explicit_background: settings.background.is_some(),
+            foreground: settings.foreground.unwrap_or(defaults.foreground),
+            background: settings.background.unwrap_or(defaults.background),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct ColorConfig {
-    pub foreground: String,
-    pub background: String,
+pub struct OmarchyConfig {
+    pub enabled: bool,
+}
+
+impl Default for OmarchyConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,6 +252,7 @@ impl Default for Config {
             prompt_marks: PromptMarksConfig::default(),
             images: ImagesConfig::default(),
             confirm: ConfirmConfig::default(),
+            omarchy: OmarchyConfig::default(),
         }
     }
 }
@@ -196,7 +260,7 @@ impl Default for Config {
 impl Default for FontConfig {
     fn default() -> Self {
         Self {
-            family: "Menlo".to_string(),
+            family: if cfg!(target_os = "linux") { "monospace" } else { "Menlo" }.to_string(),
             size: 14.0,
             zoom_step: 1.0,
             min_size: 6.0,
@@ -221,6 +285,8 @@ impl Default for SelectionConfig {
         Self {
             foreground: "#000000".to_string(),
             background: "#b4d5fe".to_string(),
+            explicit_foreground: false,
+            explicit_background: false,
         }
     }
 }
@@ -230,6 +296,10 @@ impl Default for ColorConfig {
         Self {
             foreground: "#c0c0c0".to_string(),
             background: "#1a1a2e".to_string(),
+            cursor: None,
+            ansi: None,
+            explicit_foreground: false,
+            explicit_background: false,
         }
     }
 }
