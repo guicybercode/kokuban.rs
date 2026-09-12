@@ -168,38 +168,16 @@ impl Buffer {
     }
 
     pub fn extract_row(&self, row: usize) -> Vec<Cell> {
-        self.extract_row_into(row, Vec::new())
-    }
-
-    /// Reuse an evicted history row without retaining capacity from wider grids.
-    pub(crate) fn extract_row_into(&self, row: usize, mut extracted: Vec<Cell>) -> Vec<Cell> {
         let row = self.row_index(row);
         let start = self.row_starts[row];
         let cells = &self.cells[start..start + self.cols];
         let suffix = self.uniform_suffix_start[row];
-        if extracted.len() == self.cols && extracted.capacity() == self.cols {
-            // Replace initialized cells in one pass, releasing their old
-            // graphemes as each new cell is written.
-            if suffix == self.cols || cells[self.cols - 1].grapheme.is_some() {
-                extracted.clone_from_slice(cells);
-            } else {
-                extracted[..suffix].clone_from_slice(&cells[..suffix]);
-                extracted[suffix..].fill(cells[self.cols - 1].clone());
-            }
-            return extracted;
-        }
-        if extracted.capacity() > self.cols {
-            extracted = Vec::with_capacity(self.cols);
-        } else {
-            extracted.clear();
-            extracted.reserve_exact(self.cols);
-        }
         if suffix == self.cols || cells[self.cols - 1].grapheme.is_some() {
-            extracted.extend_from_slice(cells);
-            return extracted;
+            return cells.to_vec();
         }
         // Preserve the complete row, including styled trailing cells, while
         // reading the known scalar suffix from a single repeated template.
+        let mut extracted = Vec::with_capacity(self.cols);
         extracted.extend_from_slice(&cells[..suffix]);
         let template = &cells[self.cols - 1];
         extracted.resize_with(self.cols, || Cell {
@@ -460,57 +438,6 @@ mod tests {
     }
 
     #[test]
-    fn reused_row_storage_releases_old_graphemes_and_preserves_styled_content() {
-        let mut buffer = Buffer::new(8, 1);
-        let template = Cell {
-            fg: Color::Rgb(1, 2, 3), bg: Color::Indexed(4), flags: CellFlags::ITALIC,
-            underline_style: UnderlineStyle::Curly, underline_color: Color::Indexed(5),
-            ..Cell::default()
-        };
-        buffer.clear_row(0, template.clone());
-        let current: std::sync::Arc<str> = "e\u{301}".into();
-        let current_owner = std::sync::Arc::downgrade(&current);
-        let prefix = Cell { c: 'e', grapheme: Some(current), ..template.clone() };
-        *buffer.cell_mut(0, 0) = prefix;
-
-        let old: std::sync::Arc<str> = "👩🏽\u{200d}💻".into();
-        let old_owner = std::sync::Arc::downgrade(&old);
-        let reusable = vec![Cell { c: '👩', grapheme: Some(old), ..Cell::default() }; 8];
-        let allocation = reusable.as_ptr();
-        let extracted = buffer.extract_row_into(0, reusable);
-
-        assert_eq!(extracted.as_ptr(), allocation, "same-width rows must reuse their storage");
-        assert!(old_owner.upgrade().is_none(), "replaced cells must release their Arc owners");
-        assert_eq!(extracted[0].text(), "e\u{301}");
-        assert_eq!(&extracted[0], buffer.cell(0, 0));
-        assert_eq!(extracted[1..], vec![template; 7]);
-        buffer.clear_row(0, Cell::default());
-        assert_eq!(current_owner.strong_count(), 1, "the extracted row owns its grapheme");
-        drop(extracted);
-        assert!(current_owner.upgrade().is_none());
-    }
-
-    #[test]
-    fn recycled_rows_release_capacity_from_wider_grids_even_with_zero_columns() {
-        for cols in [0, 1, 4] {
-            let mut buffer = Buffer::new(cols, 1);
-            let template = Cell { c: 'z', bg: Color::Indexed(7), ..Cell::default() };
-            buffer.clear_row(0, template.clone());
-            let old: std::sync::Arc<str> = "e\u{301}".into();
-            let old_owner = std::sync::Arc::downgrade(&old);
-            let mut reusable = Vec::with_capacity(256);
-            reusable.push(Cell { c: 'e', grapheme: Some(old), ..Cell::default() });
-            let previous_capacity = reusable.capacity();
-
-            let extracted = buffer.extract_row_into(0, reusable);
-
-            assert_eq!(extracted, vec![template; cols]);
-            assert!(extracted.capacity() < previous_capacity, "cols={cols}");
-            assert!(old_owner.upgrade().is_none(), "cols={cols}");
-        }
-    }
-
-    #[test]
     fn extracting_compound_suffixes_preserves_each_arc_owner() {
         let mut buffer = Buffer::new(3, 1);
         let first: std::sync::Arc<str> = "e\u{301}".into();
@@ -522,10 +449,7 @@ mod tests {
         // Clearing with an equal template keeps the old suffix allocations.
         buffer.clear_row(0, replacement);
         assert_eq!(buffer.uniform_suffix_start[buffer.row_index(0)], 0);
-        let reusable = vec![Cell::default(); 3];
-        let allocation = reusable.as_ptr();
-        let extracted = buffer.extract_row_into(0, reusable);
-        assert_eq!(extracted.as_ptr(), allocation);
+        let extracted = buffer.extract_row(0);
         assert!(std::sync::Arc::ptr_eq(extracted[0].grapheme.as_ref().unwrap(), &second));
         for cell in &extracted[1..] {
             assert!(std::sync::Arc::ptr_eq(cell.grapheme.as_ref().unwrap(), &first));
