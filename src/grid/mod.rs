@@ -2450,7 +2450,10 @@ mod tests {
 
     #[test]
     fn extended_graphemes_are_single_cells_across_scalar_writes() {
-        for (text, width) in [("e\u{301}", 1), ("👩🏽‍💻", 2), ("🇧🇷", 2), ("1️⃣", 2)] {
+        for (text, width) in [
+            ("e\u{301}", 1), ("👩🏽‍💻", 2), ("🇧🇷", 2), ("1️⃣", 2),
+            ("\u{600}日", 2), ("\u{1100}\u{1161}", 2),
+        ] {
             let mut grid = Grid::new(8, 2, 10);
             for scalar in text.chars() { grid.put_char(scalar); }
             assert_eq!(grid.buffer.cell(0, 0).text(), text);
@@ -2458,6 +2461,24 @@ mod tests {
             grid.put_char('X');
             assert_eq!(grid.buffer.cell(0, width).c, 'X');
         }
+    }
+
+    #[test]
+    fn scalar_boundaries_use_cluster_context_and_written_content() {
+        let mut grid = Grid::new(8, 2, 10);
+        for scalar in "\u{600}\u{301}日".chars() { grid.put_char(scalar); }
+        assert_eq!(grid.buffer.cell(0, 0).text(), "\u{600}\u{301}");
+        assert_eq!(grid.buffer.cell(0, 1).text(), "日");
+        assert!(grid.buffer.cell(0, 2).flags.contains(CellFlags::WIDE_CONT));
+        assert_eq!(grid.cursor_col, 3);
+
+        let mut grid = Grid::new(8, 2, 10);
+        grid.cursor_col = 2;
+        grid.put_char('\u{301}');
+        assert_eq!(grid.buffer.cell(0, 1).text(), " ");
+        assert_eq!(grid.buffer.cell(0, 2).text(), "\u{301}");
+        assert_eq!(grid.cursor_col, 3);
+        assert_eq!(grid.retained_row_len(0), 3);
     }
 
     #[test]
