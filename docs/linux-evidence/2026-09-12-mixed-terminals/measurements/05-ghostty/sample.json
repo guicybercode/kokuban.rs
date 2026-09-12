@@ -1,0 +1,159 @@
+{
+  "command": [
+    "/usr/bin/ghostty",
+    "--config-default-files=false",
+    "--config-file=/evidence/measurements/05-ghostty/ghostty.config",
+    "-e",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/05-ghostty"
+  ],
+  "config": {
+    "filename": "ghostty.config",
+    "text": "font-family = DejaVu Sans Mono\nfont-size = 10.5\nscrollback-limit = 0\nwindow-width = 80\nwindow-height = 24\nwindow-padding-x = 0\nwindow-padding-y = 0\nwindow-decoration = none\nshell-integration = none\ngtk-single-instance = false\nadjust-cell-width = 1\nadjust-cell-height = 1\n",
+    "sha256": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "history_limit": 0,
+    "history_unit": "bytes"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      9.757699996271185e-05,
+      8.231399999658606e-05,
+      0.0027653170000121463,
+      0.00010215899999366229,
+      8.653999998387008e-05,
+      0.0008098089999748481,
+      7.32209999796396e-05,
+      6.818200000680008e-05,
+      7.425199999033794e-05,
+      6.563900001310685e-05,
+      9.546900002987968e-05,
+      7.452699998111711e-05,
+      0.00010139699998035212,
+      0.0013764710000145897,
+      0.0001295249999770931,
+      8.966000001464636e-05,
+      8.787299998402887e-05,
+      7.821799999874202e-05,
+      8.05310000373538e-05,
+      8.593299997983195e-05,
+      8.887899997489512e-05,
+      7.538299996667774e-05,
+      7.857899998953144e-05,
+      8.72859999958564e-05,
+      8.336099995176482e-05,
+      9.370599997282625e-05,
+      8.40919999518519e-05,
+      7.777199999736695e-05,
+      7.485799994810804e-05,
+      7.981499999232256e-05
+    ],
+    "workloads": {
+      "ascii": {
+        "bytes": 33554380,
+        "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+        "write_seconds": 1.1882945689999929,
+        "drain_rtt_seconds": 0.0001505160000192518,
+        "write_and_dsr_seconds": 1.1884450850000121,
+        "mib_per_second": 26.925897387118415,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 2.88,
+        "terminal_rss_before_kib": 255276,
+        "terminal_rss_after_kib": 255276
+      },
+      "ansi": {
+        "bytes": 33554392,
+        "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+        "write_seconds": 1.3942148599999769,
+        "drain_rtt_seconds": 0.0005242340000108925,
+        "write_and_dsr_seconds": 1.3947390939999877,
+        "mib_per_second": 22.943331832231287,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 3.0700000000000003,
+        "terminal_rss_before_kib": 255540,
+        "terminal_rss_after_kib": 256128
+      },
+      "unicode": {
+        "bytes": 33554400,
+        "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+        "write_seconds": 1.1558319070000493,
+        "drain_rtt_seconds": 0.0002911979999566938,
+        "write_and_dsr_seconds": 1.156123105000006,
+        "mib_per_second": 27.678686935697655,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 2.6700000000000017,
+        "terminal_rss_before_kib": 258916,
+        "terminal_rss_after_kib": 258916
+      },
+      "short_lines": {
+        "bytes": 33554430,
+        "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+        "write_seconds": 1.3733504369999991,
+        "drain_rtt_seconds": 0.00035538000003043635,
+        "write_and_dsr_seconds": 1.3737058170000296,
+        "mib_per_second": 23.294651370505683,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 2.9299999999999997,
+        "terminal_rss_before_kib": 258916,
+        "terminal_rss_after_kib": 258916
+      }
+    },
+    "term": "xterm-ghostty"
+  },
+  "status": "passed"
+}

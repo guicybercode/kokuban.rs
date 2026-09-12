@@ -1,0 +1,271 @@
+{
+  "run_id": 34719026097,
+  "run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34719026097",
+  "source_revision": "74eaad83dbf813cb15bd883b45d52adf0dc729bd",
+  "rust_test_suites": [
+    {
+      "job": "macOS",
+      "passed": 604,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "job": "macOS",
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "job": "macOS",
+      "passed": 241,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "job": "Linux graphical shell",
+      "passed": 703,
+      "failed": 0,
+      "ignored": 1
+    },
+    {
+      "job": "Linux graphical shell",
+      "passed": 0,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "job": "Linux graphical shell",
+      "passed": 241,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "macos_rust_passed": 845,
+  "linux_rust_passed": 944,
+  "linux_rust_ignored": 1,
+  "harness_suites": [
+    {
+      "job": "macOS",
+      "passed": 23
+    },
+    {
+      "job": "Linux graphical shell",
+      "passed": 23
+    }
+  ],
+  "raw_log": {
+    "path": "ci.log",
+    "bytes": 825355,
+    "sha256": "27a0397f211d0f72d8efd4d2a487f3224305d1e3876207d72dba26cfb0b0cfae",
+    "retained_in_full": true
+  },
+  "warning_colon_occurrences": 275,
+  "notes": [
+    "Test totals independently recalculated from original CI log; completed status/head and individual gate conclusions verified against supplied GitHub run metadata.",
+    "Correctness CI is distinct from paired performance workflows; these totals are not benchmark results.",
+    "The correctness gates use cargo check/test/clippy --locked --all-targets; do not label these CI test suites as release-profile tests."
+  ],
+  "source_ci_metadata": "ci-run.json",
+  "source_ci_metadata_sha256": "78c5f55b8e96d355c5ca7669bd23406776d63fb8aedb3abcfc36a239674ee6fe",
+  "source_ci_head": "74eaad83dbf813cb15bd883b45d52adf0dc729bd",
+  "source_ci_status": "completed",
+  "source_ci_conclusion": "success",
+  "gates_by_job": {
+    "macOS": [
+      {
+        "name": "Set up job",
+        "conclusion": "success"
+      },
+      {
+        "name": "Check out repository",
+        "conclusion": "success"
+      },
+      {
+        "name": "Install Rust 1.94.1",
+        "conclusion": "success"
+      },
+      {
+        "name": "Install Linux display and font dependencies",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Check all targets",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify generated Unicode grapheme tables",
+        "conclusion": "success"
+      },
+      {
+        "name": "Test all targets",
+        "conclusion": "success"
+      },
+      {
+        "name": "Test benchmark reports and process cleanup",
+        "conclusion": "success"
+      },
+      {
+        "name": "Run Clippy",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify macOS dependency isolation",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify Linux dependency isolation",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify clean Linux display failure",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Smoke test the first Linux frame under Xvfb",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify the embedded Linux application icon",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify Omarchy launch arguments under X11",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify native Wayland frame and command launch",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify presented Linux images and frame replacement",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify Linux clipboard and mouse selection",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify real mpv Kitty video and pause under Xvfb",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Upload Linux video smoke evidence",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify Linux SSH and interactive development applications",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Upload Linux application smoke evidence",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Post Check out repository",
+        "conclusion": "success"
+      },
+      {
+        "name": "Complete job",
+        "conclusion": "success"
+      }
+    ],
+    "Linux graphical shell": [
+      {
+        "name": "Set up job",
+        "conclusion": "success"
+      },
+      {
+        "name": "Check out repository",
+        "conclusion": "success"
+      },
+      {
+        "name": "Install Rust 1.94.1",
+        "conclusion": "success"
+      },
+      {
+        "name": "Install Linux display and font dependencies",
+        "conclusion": "success"
+      },
+      {
+        "name": "Check all targets",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify generated Unicode grapheme tables",
+        "conclusion": "success"
+      },
+      {
+        "name": "Test all targets",
+        "conclusion": "success"
+      },
+      {
+        "name": "Test benchmark reports and process cleanup",
+        "conclusion": "success"
+      },
+      {
+        "name": "Run Clippy",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify macOS dependency isolation",
+        "conclusion": "skipped"
+      },
+      {
+        "name": "Verify Linux dependency isolation",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify clean Linux display failure",
+        "conclusion": "success"
+      },
+      {
+        "name": "Smoke test the first Linux frame under Xvfb",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify the embedded Linux application icon",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify Omarchy launch arguments under X11",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify native Wayland frame and command launch",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify presented Linux images and frame replacement",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify Linux clipboard and mouse selection",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify real mpv Kitty video and pause under Xvfb",
+        "conclusion": "success"
+      },
+      {
+        "name": "Upload Linux video smoke evidence",
+        "conclusion": "success"
+      },
+      {
+        "name": "Verify Linux SSH and interactive development applications",
+        "conclusion": "success"
+      },
+      {
+        "name": "Upload Linux application smoke evidence",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Check out repository",
+        "conclusion": "success"
+      },
+      {
+        "name": "Complete job",
+        "conclusion": "success"
+      }
+    ]
+  }
+}

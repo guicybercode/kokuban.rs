@@ -1,0 +1,9 @@
+[font]
+family = "DejaVu Sans Mono"
+size = 14.0
+[window]
+columns = 80
+rows = 24
+scrollback_lines = 10000
+[images]
+enabled = false

@@ -1,0 +1,139 @@
+{
+  "initial_geometry": [
+    24,
+    80,
+    720,
+    408
+  ],
+  "protocol_rtt_seconds": [
+    0.0031641620000186776,
+    0.00315538799998194,
+    0.003148579000026075,
+    0.003143400999988444,
+    0.0031570109999847773,
+    0.003160836000006384,
+    0.00814221300004192,
+    0.003156850999971539,
+    0.0031412179999961154,
+    0.003149320000034095,
+    0.003141336999988198,
+    0.0031613479999919036,
+    0.0080802009999843,
+    0.0031473770000047807,
+    0.0031622790000369605,
+    0.0031445519999806493,
+    0.0031910920000086662,
+    0.003194188000009035,
+    0.003197140999986914,
+    0.00872801499997422,
+    0.003179315000011229,
+    0.0031528949999710676,
+    0.0031500800000117124,
+    0.0031510720000369474,
+    0.0031909870000390583,
+    0.00794154699997307,
+    0.003161187999978665,
+    0.003121408000026804,
+    0.0031442819999938365,
+    0.0031443319999766572
+  ],
+  "workloads": {
+    "ascii": {
+      "bytes": 33554380,
+      "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+      "write_seconds": 0.406685557000003,
+      "drain_rtt_seconds": 0.0039201390000016545,
+      "write_and_dsr_seconds": 0.4106056960000046,
+      "mib_per_second": 77.93352776317839,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 0.72,
+      "terminal_rss_before_kib": 189308,
+      "terminal_rss_after_kib": 189308
+    },
+    "ansi": {
+      "bytes": 33554392,
+      "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+      "write_seconds": 1.8026114040000039,
+      "drain_rtt_seconds": 0.056912851999982195,
+      "write_and_dsr_seconds": 1.859524255999986,
+      "mib_per_second": 17.208682139948156,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 2.42,
+      "terminal_rss_before_kib": 189332,
+      "terminal_rss_after_kib": 189332
+    },
+    "unicode": {
+      "bytes": 33554400,
+      "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+      "write_seconds": 0.5165711180000017,
+      "drain_rtt_seconds": 0.005806324999980461,
+      "write_and_dsr_seconds": 0.5223774429999821,
+      "mib_per_second": 61.258329415313156,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 0.8799999999999999,
+      "terminal_rss_before_kib": 191672,
+      "terminal_rss_after_kib": 191672
+    },
+    "short_lines": {
+      "bytes": 33554430,
+      "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+      "write_seconds": 1.0823939080000287,
+      "drain_rtt_seconds": 0.03035464099997398,
+      "write_and_dsr_seconds": 1.1127485490000026,
+      "mib_per_second": 28.7576183508924,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 1.3699999999999992,
+      "terminal_rss_before_kib": 192872,
+      "terminal_rss_after_kib": 192872
+    }
+  },
+  "term": "xterm-kitty"
+}

@@ -1,0 +1,321 @@
+kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-before)
+├── arboard v3.6.1
+│   ├── log v0.4.29
+│   ├── parking_lot v0.12.5
+│   │   ├── lock_api v0.4.14
+│   │   │   └── scopeguard v1.2.0
+│   │   └── parking_lot_core v0.9.12
+│   │       ├── cfg-if v1.0.4
+│   │       ├── libc v0.2.183
+│   │       └── smallvec v1.15.2
+│   ├── percent-encoding v2.3.2
+│   ├── wl-clipboard-rs v0.9.3
+│   │   ├── libc v0.2.183
+│   │   ├── log v0.4.29
+│   │   ├── os_pipe v1.2.3
+│   │   │   └── libc v0.2.183
+│   │   ├── rustix v1.1.4
+│   │   │   ├── bitflags v2.11.0
+│   │   │   └── linux-raw-sys v0.12.1
+│   │   ├── thiserror v2.0.18
+│   │   │   └── thiserror-impl v2.0.18 (proc-macro)
+│   │   │       ├── proc-macro2 v1.0.106
+│   │   │       │   └── unicode-ident v1.0.24
+│   │   │       ├── quote v1.0.45
+│   │   │       │   └── proc-macro2 v1.0.106 (*)
+│   │   │       └── syn v2.0.117
+│   │   │           ├── proc-macro2 v1.0.106 (*)
+│   │   │           ├── quote v1.0.45 (*)
+│   │   │           └── unicode-ident v1.0.24
+│   │   ├── tree_magic_mini v3.2.2
+│   │   │   ├── memchr v2.8.0
+│   │   │   ├── nom v8.0.0
+│   │   │   │   └── memchr v2.8.0
+│   │   │   └── petgraph v0.8.3
+│   │   │       ├── fixedbitset v0.5.7
+│   │   │       ├── hashbrown v0.15.5
+│   │   │       │   └── foldhash v0.1.5
+│   │   │       └── indexmap v2.13.0
+│   │   │           ├── equivalent v1.0.2
+│   │   │           └── hashbrown v0.16.1
+│   │   ├── wayland-backend v0.3.17
+│   │   │   ├── downcast-rs v1.2.1
+│   │   │   ├── rustix v1.1.4 (*)
+│   │   │   ├── scoped-tls v1.0.1
+│   │   │   ├── smallvec v1.15.2
+│   │   │   └── wayland-sys v0.31.11
+│   │   │       ├── dlib v0.5.3
+│   │   │       │   └── libloading v0.8.9
+│   │   │       │       └── cfg-if v1.0.4
+│   │   │       ├── log v0.4.29
+│   │   │       └── once_cell v1.21.4
+│   │   │       [build-dependencies]
+│   │   │       └── pkg-config v0.3.32
+│   │   │   [build-dependencies]
+│   │   │   └── cc v1.2.57
+│   │   │       ├── find-msvc-tools v0.1.9
+│   │   │       └── shlex v1.3.0
+│   │   ├── wayland-client v0.31.15
+│   │   │   ├── bitflags v2.11.0
+│   │   │   ├── rustix v1.1.4 (*)
+│   │   │   ├── wayland-backend v0.3.17 (*)
+│   │   │   └── wayland-scanner v0.31.11 (proc-macro)
+│   │   │       ├── proc-macro2 v1.0.106 (*)
+│   │   │       ├── quick-xml v0.41.0
+│   │   │       │   └── memchr v2.8.0
+│   │   │       └── quote v1.0.45 (*)
+│   │   ├── wayland-protocols v0.32.13
+│   │   │   ├── bitflags v2.11.0
+│   │   │   ├── wayland-backend v0.3.17 (*)
+│   │   │   ├── wayland-client v0.31.15 (*)
+│   │   │   └── wayland-scanner v0.31.11 (proc-macro) (*)
+│   │   └── wayland-protocols-wlr v0.3.12
+│   │       ├── bitflags v2.11.0
+│   │       ├── wayland-backend v0.3.17 (*)
+│   │       ├── wayland-client v0.31.15 (*)
+│   │       ├── wayland-protocols v0.32.13 (*)
+│   │       └── wayland-scanner v0.31.11 (proc-macro) (*)
+│   └── x11rb v0.13.2
+│       ├── as-raw-xcb-connection v1.0.1
+│       ├── gethostname v1.1.0
+│       │   └── rustix v1.1.4 (*)
+│       ├── libc v0.2.183
+│       ├── libloading v0.8.9 (*)
+│       ├── once_cell v1.21.4
+│       ├── rustix v1.1.4 (*)
+│       └── x11rb-protocol v0.13.2
+├── base64 v0.22.1
+├── bitflags v2.11.0
+├── env_logger v0.11.9
+│   ├── anstream v0.6.21
+│   │   ├── anstyle v1.0.14
+│   │   ├── anstyle-parse v0.2.7
+│   │   │   └── utf8parse v0.2.2
+│   │   ├── anstyle-query v1.1.5
+│   │   ├── colorchoice v1.0.5
+│   │   ├── is_terminal_polyfill v1.70.2
+│   │   └── utf8parse v0.2.2
+│   ├── anstyle v1.0.14
+│   ├── env_filter v1.0.0
+│   │   ├── log v0.4.29
+│   │   └── regex v1.12.3
+│   │       ├── aho-corasick v1.1.4
+│   │       │   └── memchr v2.8.0
+│   │       ├── memchr v2.8.0
+│   │       ├── regex-automata v0.4.14
+│   │       │   ├── aho-corasick v1.1.4 (*)
+│   │       │   ├── memchr v2.8.0
+│   │       │   └── regex-syntax v0.8.10
+│   │       └── regex-syntax v0.8.10
+│   ├── jiff v0.2.23
+│   └── log v0.4.29
+├── flate2 v1.1.9
+│   ├── crc32fast v1.5.0
+│   │   └── cfg-if v1.0.4
+│   └── miniz_oxide v0.8.9
+│       ├── adler2 v2.0.1
+│       └── simd-adler32 v0.3.8
+├── font-kit v0.14.3
+│   ├── bitflags v2.11.0
+│   ├── byteorder v1.5.0
+│   ├── dirs v6.0.0
+│   │   └── dirs-sys v0.5.0
+│   │       ├── libc v0.2.183
+│   │       └── option-ext v0.2.0
+│   ├── float-ord v0.3.2
+│   ├── freetype-sys v0.20.1
+│   │   └── libc v0.2.183
+│   │   [build-dependencies]
+│   │   ├── cc v1.2.57 (*)
+│   │   └── pkg-config v0.3.32
+│   ├── lazy_static v1.5.0
+│   ├── libc v0.2.183
+│   ├── log v0.4.29
+│   ├── pathfinder_geometry v0.5.1
+│   │   ├── log v0.4.29
+│   │   └── pathfinder_simd v0.5.5
+│   │       [build-dependencies]
+│   │       └── rustc_version v0.4.1
+│   │           └── semver v1.0.27
+│   ├── pathfinder_simd v0.5.5 (*)
+│   ├── walkdir v2.5.0
+│   │   └── same-file v1.0.6
+│   └── yeslogic-fontconfig-sys v6.0.0
+│       ├── dlib v0.5.3 (*)
+│       └── once_cell v1.21.4
+│       [build-dependencies]
+│       └── pkg-config v0.3.32
+├── log v0.4.29
+├── nix v0.29.0
+│   ├── bitflags v2.11.0
+│   ├── cfg-if v1.0.4
+│   └── libc v0.2.183
+│   [build-dependencies]
+│   └── cfg_aliases v0.2.1
+├── pathfinder_geometry v0.5.1 (*)
+├── png v0.17.16
+│   ├── bitflags v1.3.2
+│   ├── crc32fast v1.5.0 (*)
+│   ├── fdeflate v0.3.7
+│   │   └── simd-adler32 v0.3.8
+│   ├── flate2 v1.1.9 (*)
+│   └── miniz_oxide v0.8.9 (*)
+├── rustybuzz v0.20.1
+│   ├── bitflags v2.11.0
+│   ├── bytemuck v1.25.2
+│   ├── core_maths v0.1.1
+│   │   └── libm v0.2.16
+│   ├── log v0.4.29
+│   ├── smallvec v1.15.2
+│   ├── ttf-parser v0.25.1
+│   │   └── core_maths v0.1.1 (*)
+│   ├── unicode-bidi-mirroring v0.4.0
+│   ├── unicode-ccc v0.4.0
+│   ├── unicode-properties v0.1.4
+│   └── unicode-script v0.5.8
+├── serde v1.0.228
+│   ├── serde_core v1.0.228
+│   └── serde_derive v1.0.228 (proc-macro)
+│       ├── proc-macro2 v1.0.106 (*)
+│       ├── quote v1.0.45 (*)
+│       └── syn v2.0.117 (*)
+├── softbuffer v0.4.8
+│   ├── as-raw-xcb-connection v1.0.1
+│   ├── bytemuck v1.25.2
+│   ├── fastrand v2.5.0
+│   ├── memmap2 v0.9.11
+│   │   └── libc v0.2.183
+│   ├── raw-window-handle v0.6.2
+│   ├── rustix v1.1.4 (*)
+│   ├── tiny-xlib v0.2.5
+│   │   ├── as-raw-xcb-connection v1.0.1
+│   │   ├── ctor v0.10.1
+│   │   ├── libloading v0.8.9 (*)
+│   │   └── tracing v0.1.44
+│   │       ├── pin-project-lite v0.2.17
+│   │       └── tracing-core v0.1.36
+│   │   [build-dependencies]
+│   │   └── pkg-config v0.3.32
+│   ├── tracing v0.1.44 (*)
+│   ├── wayland-backend v0.3.17 (*)
+│   ├── wayland-client v0.31.15 (*)
+│   ├── wayland-sys v0.31.11 (*)
+│   └── x11rb v0.13.2 (*)
+├── thiserror v2.0.18 (*)
+├── toml v1.0.7+spec-1.1.0
+│   ├── serde_core v1.0.228
+│   ├── serde_spanned v1.0.4
+│   │   └── serde_core v1.0.228
+│   ├── toml_datetime v1.0.1+spec-1.1.0
+│   │   └── serde_core v1.0.228
+│   ├── toml_parser v1.0.10+spec-1.1.0
+│   │   └── winnow v1.0.0
+│   ├── toml_writer v1.0.7+spec-1.1.0
+│   └── winnow v1.0.0
+├── unicode-segmentation v1.13.3
+├── unicode-width v0.2.2
+└── winit v0.30.13
+    ├── ahash v0.8.12
+    │   ├── cfg-if v1.0.4
+    │   ├── getrandom v0.3.4
+    │   │   ├── cfg-if v1.0.4
+    │   │   └── libc v0.2.183
+    │   ├── once_cell v1.21.4
+    │   └── zerocopy v0.8.56
+    │   [build-dependencies]
+    │   └── version_check v0.9.5
+    ├── bitflags v2.11.0
+    ├── bytemuck v1.25.2
+    ├── calloop v0.13.0
+    │   ├── bitflags v2.11.0
+    │   ├── log v0.4.29
+    │   ├── polling v3.11.0
+    │   │   ├── cfg-if v1.0.4
+    │   │   └── rustix v1.1.4 (*)
+    │   ├── rustix v0.38.44
+    │   │   ├── bitflags v2.11.0
+    │   │   └── linux-raw-sys v0.4.15
+    │   ├── slab v0.4.12
+    │   └── thiserror v1.0.69
+    │       └── thiserror-impl v1.0.69 (proc-macro)
+    │           ├── proc-macro2 v1.0.106 (*)
+    │           ├── quote v1.0.45 (*)
+    │           └── syn v2.0.117 (*)
+    ├── cursor-icon v1.2.0
+    ├── dpi v0.1.2
+    ├── libc v0.2.183
+    ├── memmap2 v0.9.11 (*)
+    ├── percent-encoding v2.3.2
+    ├── raw-window-handle v0.6.2
+    ├── rustix v0.38.44 (*)
+    ├── sctk-adwaita v0.10.1
+    │   ├── ab_glyph v0.2.32
+    │   │   ├── ab_glyph_rasterizer v0.1.10
+    │   │   └── owned_ttf_parser v0.25.1
+    │   │       └── ttf-parser v0.25.1 (*)
+    │   ├── log v0.4.29
+    │   ├── memmap2 v0.9.11 (*)
+    │   ├── smithay-client-toolkit v0.19.2
+    │   │   ├── bitflags v2.11.0
+    │   │   ├── calloop v0.13.0 (*)
+    │   │   ├── calloop-wayland-source v0.3.0
+    │   │   │   ├── calloop v0.13.0 (*)
+    │   │   │   ├── rustix v0.38.44 (*)
+    │   │   │   ├── wayland-backend v0.3.17 (*)
+    │   │   │   └── wayland-client v0.31.15 (*)
+    │   │   ├── cursor-icon v1.2.0
+    │   │   ├── libc v0.2.183
+    │   │   ├── log v0.4.29
+    │   │   ├── memmap2 v0.9.11 (*)
+    │   │   ├── rustix v0.38.44 (*)
+    │   │   ├── thiserror v1.0.69 (*)
+    │   │   ├── wayland-backend v0.3.17 (*)
+    │   │   ├── wayland-client v0.31.15 (*)
+    │   │   ├── wayland-csd-frame v0.3.0
+    │   │   │   ├── bitflags v2.11.0
+    │   │   │   ├── cursor-icon v1.2.0
+    │   │   │   └── wayland-backend v0.3.17 (*)
+    │   │   ├── wayland-cursor v0.31.14
+    │   │   │   ├── rustix v1.1.4 (*)
+    │   │   │   ├── wayland-client v0.31.15 (*)
+    │   │   │   └── xcursor v0.3.11
+    │   │   ├── wayland-protocols v0.32.13 (*)
+    │   │   ├── wayland-protocols-wlr v0.3.12 (*)
+    │   │   ├── wayland-scanner v0.31.11 (proc-macro) (*)
+    │   │   └── xkeysym v0.2.1
+    │   └── tiny-skia v0.11.4
+    │       ├── arrayref v0.3.9
+    │       ├── arrayvec v0.7.8
+    │       ├── bytemuck v1.25.2
+    │       ├── cfg-if v1.0.4
+    │       ├── log v0.4.29
+    │       └── tiny-skia-path v0.11.4
+    │           ├── arrayref v0.3.9
+    │           ├── bytemuck v1.25.2
+    │           └── strict-num v0.1.1
+    ├── smithay-client-toolkit v0.19.2 (*)
+    ├── smol_str v0.2.2
+    ├── tracing v0.1.44 (*)
+    ├── wayland-backend v0.3.17 (*)
+    ├── wayland-client v0.31.15 (*)
+    ├── wayland-protocols v0.32.13 (*)
+    ├── wayland-protocols-plasma v0.3.12
+    │   ├── bitflags v2.11.0
+    │   ├── wayland-backend v0.3.17 (*)
+    │   ├── wayland-client v0.31.15 (*)
+    │   ├── wayland-protocols v0.32.13 (*)
+    │   └── wayland-scanner v0.31.11 (proc-macro) (*)
+    ├── x11-dl v2.21.0
+    │   ├── libc v0.2.183
+    │   └── once_cell v1.21.4
+    │   [build-dependencies]
+    │   └── pkg-config v0.3.32
+    ├── x11rb v0.13.2 (*)
+    └── xkbcommon-dl v0.4.2
+        ├── bitflags v2.11.0
+        ├── dlib v0.5.3 (*)
+        ├── log v0.4.29
+        ├── once_cell v1.21.4
+        └── xkeysym v0.2.1
+    [build-dependencies]
+    └── cfg_aliases v0.2.1
