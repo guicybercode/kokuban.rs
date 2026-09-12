@@ -264,13 +264,15 @@ Linux supports these clipboard and selection actions:
 |--------|-------------|
 | Select text | Left-button drag |
 | Select text while an application captures the mouse | `Shift` + left-button drag |
-| Copy selection | `Ctrl+Shift+C` |
+| Copy selection | `Ctrl+Shift+C` or `Ctrl+Insert` |
 | Paste clipboard | `Ctrl+Shift+V` or `Shift+Insert` |
 | Select all retained text | `Ctrl+Shift+A` |
 | Scroll history | `Shift+PageUp` / `Shift+PageDown` |
 | Oldest/newest retained view | `Shift+Home` / `Shift+End` |
 
 Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
+
+Omarchy maps `Super+C` and `Super+V` to the supported Insert shortcuts; see [Omarchy clipboard bindings](docs/OMARCHY.md#use-the-existing-omarchy-bindings) for the integration and validation scope.
 
 The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](docs/TERMINAL_TEXT.md) and [Linux application validation](docs/LINUX_APPS.md). OSC 52 remote clipboard commands remain pending.
 

@@ -273,17 +273,21 @@ class ClipboardSmoke:
         before = self.row_pixels()
         self.drag(len(expected), shift)
         self.verify_highlight(before, len(expected))
-        self.key("ctrl+shift+c")
-        try:
-            self.wait(lambda: self.clipboard() == expected, "copied selection text")
-        except AssertionError as error:
-            raise AssertionError(f"{error}\nexpected: {expected!r}\n"
-                                 f"actual: {self.clipboard()!r}\n"
-                                 f"cell: {self.cell_width}x{self.cell_height}") from error
-        self.verify_input()
-        # A second independent client proves the copy owner was retained.
-        if self.clipboard() != expected:
-            raise AssertionError("clipboard owner was dropped after copying")
+        for keys in ("ctrl+shift+c", "ctrl+Insert"):
+            # Reuse the selection, but require each shortcut to replace an
+            # external owner so a previous successful copy cannot satisfy it.
+            self.set_clipboard(f"clipboard sentinel before {keys}".encode())
+            self.key(keys)
+            try:
+                self.wait(lambda: self.clipboard() == expected, f"selection copied by {keys}")
+            except AssertionError as error:
+                raise AssertionError(f"{error}\nexpected: {expected!r}\n"
+                                     f"actual: {self.clipboard()!r}\n"
+                                     f"cell: {self.cell_width}x{self.cell_height}") from error
+            self.verify_input()
+            # A second independent client proves the copy owner was retained.
+            if self.clipboard() != expected:
+                raise AssertionError(f"clipboard owner was dropped after {keys}")
 
     def copy_content(self, expected: bytes) -> None:
         size = self.probe()
@@ -422,7 +426,7 @@ def main() -> None:
         if graphemes_only:
             print("PASS clipboard: exact compound graphemes through real X11 drag copy", flush=True)
         else:
-            print("PASS clipboard: CtrlShiftV, ShiftInsert, exact UTF-8 paste bytes, "
+            print("PASS clipboard: CtrlShiftC, CtrlInsert, CtrlShiftV, ShiftInsert, exact UTF-8 paste bytes, "
                   "drag copy, retained owner, visible highlight, Shift mouse override, "
                   "compound graphemes, wrapped URL and exact copy after four no-redraw resizes",
                   flush=True)

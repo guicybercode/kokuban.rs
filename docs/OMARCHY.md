@@ -127,6 +127,20 @@ should inherit that directory. Kokuban's shell is its direct child, which matche
 the process relationship inspected by
 [omarchy-cmd-terminal-cwd](https://github.com/basecamp/omarchy/blob/master/bin/omarchy-cmd-terminal-cwd).
 
+Omarchy's [clipboard bindings at `f4378f0`](https://github.com/omacom/omarchy/blob/f4378f0de5b44d331ee943746a97872b718a6c18/default/hypr/bindings/clipboard.conf),
+inspected on 2026-09-11, forward `Super+C` as `Ctrl+Insert` and `Super+V` as
+`Shift+Insert` to the active window. Kokuban handles those as copy selection and
+paste, alongside `Ctrl+Shift+C` and `Ctrl+Shift+V`. The compositor owns the Super
+bindings; no additional Kokuban binding is needed. Ordinary `Ctrl+C` and `Ctrl+V`
+remain terminal input, and extra modifiers on Insert are not clipboard shortcuts.
+
+The X11 clipboard smoke injects both copy shortcuts and both paste shortcuts,
+checks clipboard content against a fresh external owner, and verifies that copy
+sends no bytes to the PTY. This tests Kokuban's input routes, not Hyprland's
+physical-key remapping. In an Omarchy session, select text and use `Super+C`,
+paste it into another application, then copy text there and paste into Kokuban
+with `Super+V` to validate the full compositor path.
+
 For persistent settings use `${XDG_CONFIG_HOME:-$HOME/.config}/kokuban/kokuban.toml`.
 A `kokuban.toml` in the directory where Kokuban itself was launched takes priority;
 the CLI working directory is applied after configuration loading.

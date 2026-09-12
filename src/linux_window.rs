@@ -169,8 +169,13 @@ fn clipboard_action(key: Key<&str>, modifiers: ModifiersState) -> Option<Clipboa
             }
         }
     }
-    if modifiers == ModifiersState::SHIFT && key == Key::Named(NamedKey::Insert) {
-        return Some(ClipboardAction::Paste);
+    if key == Key::Named(NamedKey::Insert) {
+        if modifiers == ModifiersState::CONTROL {
+            return Some(ClipboardAction::Copy);
+        }
+        if modifiers == ModifiersState::SHIFT {
+            return Some(ClipboardAction::Paste);
+        }
     }
     None
 }
@@ -9128,10 +9133,6 @@ mod selection_clipboard_tests {
                 Some(expected)
             );
         }
-        assert_eq!(
-            clipboard_action(Key::Named(NamedKey::Insert), ModifiersState::SHIFT),
-            Some(ClipboardAction::Paste)
-        );
         for key in ["x", "cv", "ç", "", "\u{3}", "\u{16}"] {
             assert_eq!(
                 clipboard_action(Key::Character(key), clipboard_modifiers),
@@ -9164,16 +9165,36 @@ mod selection_clipboard_tests {
                 );
             }
         }
-        for modifiers in [
-            ModifiersState::empty(),
-            ModifiersState::CONTROL,
-            ModifiersState::ALT,
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
-            ModifiersState::ALT | ModifiersState::SHIFT,
-        ] {
+    }
+
+    #[test]
+    fn insert_clipboard_shortcuts_leave_all_other_modifier_combinations_for_apps() {
+        for combination in 0..16 {
+            let mut modifiers = ModifiersState::empty();
+            for (bit, modifier) in [
+                ModifiersState::CONTROL,
+                ModifiersState::SHIFT,
+                ModifiersState::ALT,
+                ModifiersState::SUPER,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if combination & (1 << bit) != 0 {
+                    modifiers |= modifier;
+                }
+            }
+            let expected = if modifiers == ModifiersState::CONTROL {
+                Some(ClipboardAction::Copy)
+            } else if modifiers == ModifiersState::SHIFT {
+                Some(ClipboardAction::Paste)
+            } else {
+                None
+            };
             assert_eq!(
                 clipboard_action(Key::Named(NamedKey::Insert), modifiers),
-                None
+                expected,
+                "Insert with {modifiers:?} must route only the documented clipboard shortcuts"
             );
         }
     }
