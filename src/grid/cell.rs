@@ -35,17 +35,35 @@ pub enum UnderlineStyle {
 
 /// Immutable UTF-8 text for a compound cell. Short clusters need no allocation.
 /// The private representation keeps length-based storage and zeroed inline tails
-/// canonical, so derived equality is also textual equality.
+/// canonical, so representation equality is also textual equality.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Grapheme(GraphemeRepr);
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Eq)]
 enum GraphemeRepr {
-    Inline {
-        len: u8,
-        bytes: [u8; Grapheme::INLINE_CAPACITY],
-    },
+    // Length followed by UTF-8 bytes and a zeroed tail.
+    Inline([u8; Grapheme::INLINE_CAPACITY + 1]),
     Heap(Arc<String>),
+}
+
+impl PartialEq for GraphemeRepr {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Inline(left), Self::Inline(right)) => {
+                // Two overlapping words cover all 15 initialized bytes, including
+                // length, without fragmented loads or reading enum padding.
+                u64::from_ne_bytes(left[..8].try_into().expect("eight-byte inline prefix"))
+                    == u64::from_ne_bytes(right[..8].try_into().expect("eight-byte inline prefix"))
+                    && u64::from_ne_bytes(left[7..15].try_into().expect("eight-byte inline suffix"))
+                        == u64::from_ne_bytes(
+                            right[7..15].try_into().expect("eight-byte inline suffix"),
+                        )
+            }
+            (Self::Heap(left), Self::Heap(right)) => left == right,
+            _ => false,
+        }
+    }
 }
 
 impl Grapheme {
@@ -56,13 +74,11 @@ impl Grapheme {
     pub(super) fn from_appended(previous: &str, c: char) -> Self {
         let len = previous.len() + c.len_utf8();
         if len <= Self::INLINE_CAPACITY {
-            let mut bytes = [0; Self::INLINE_CAPACITY];
-            bytes[..previous.len()].copy_from_slice(previous.as_bytes());
-            c.encode_utf8(&mut bytes[previous.len()..len]);
-            Self(GraphemeRepr::Inline {
-                len: len as u8,
-                bytes,
-            })
+            let mut bytes = [0; Self::INLINE_CAPACITY + 1];
+            bytes[0] = len as u8;
+            bytes[1..1 + previous.len()].copy_from_slice(previous.as_bytes());
+            c.encode_utf8(&mut bytes[1 + previous.len()..1 + len]);
+            Self(GraphemeRepr::Inline(bytes))
         } else {
             let mut text = String::with_capacity(len);
             text.push_str(previous);
@@ -74,7 +90,7 @@ impl Grapheme {
     #[cfg(test)]
     pub(crate) fn heap_weak(&self) -> Option<std::sync::Weak<String>> {
         match &self.0 {
-            GraphemeRepr::Inline { .. } => None,
+            GraphemeRepr::Inline(_) => None,
             GraphemeRepr::Heap(text) => Some(Arc::downgrade(text)),
         }
     }
@@ -83,12 +99,10 @@ impl Grapheme {
 impl From<&str> for Grapheme {
     fn from(text: &str) -> Self {
         if text.len() <= Self::INLINE_CAPACITY {
-            let mut bytes = [0; Self::INLINE_CAPACITY];
-            bytes[..text.len()].copy_from_slice(text.as_bytes());
-            Self(GraphemeRepr::Inline {
-                len: text.len() as u8,
-                bytes,
-            })
+            let mut bytes = [0; Self::INLINE_CAPACITY + 1];
+            bytes[0] = text.len() as u8;
+            bytes[1..1 + text.len()].copy_from_slice(text.as_bytes());
+            Self(GraphemeRepr::Inline(bytes))
         } else {
             Self(GraphemeRepr::Heap(Arc::new(text.to_owned())))
         }
@@ -110,8 +124,10 @@ impl Deref for Grapheme {
 
     fn deref(&self) -> &str {
         match &self.0 {
-            GraphemeRepr::Inline { len, bytes } => std::str::from_utf8(&bytes[..usize::from(*len)])
-                .expect("inline graphemes are constructed from valid UTF-8"),
+            GraphemeRepr::Inline(bytes) => {
+                std::str::from_utf8(&bytes[1..1 + usize::from(bytes[0])])
+                    .expect("inline graphemes are constructed from valid UTF-8")
+            }
             GraphemeRepr::Heap(text) => text,
         }
     }
@@ -212,13 +228,39 @@ mod tests {
             assert_eq!(borrowed.as_bytes(), text.as_bytes());
             assert_eq!(format!("{borrowed:?}"), format!("{text:?}"));
             assert_eq!(borrowed.heap_weak().is_none(), text.len() <= 14);
-            if let GraphemeRepr::Inline { len, bytes } = &borrowed.0 {
-                assert_eq!(usize::from(*len), text.len());
-                assert!(bytes[text.len()..].iter().all(|&byte| byte == 0));
+            if let GraphemeRepr::Inline(bytes) = &borrowed.0 {
+                assert_eq!(usize::from(bytes[0]), text.len());
+                assert!(bytes[1 + text.len()..].iter().all(|&byte| byte == 0));
             }
         }
         assert_ne!(Grapheme::from("e\u{301}"), Grapheme::from("e\u{308}"));
         assert_ne!(Grapheme::from("e\u{301}"), Grapheme::from("e\u{301}\0"));
+    }
+
+    #[test]
+    fn grapheme_equality_checks_every_byte_and_distinguishes_nul_lengths() {
+        for len in [Grapheme::INLINE_CAPACITY, Grapheme::INLINE_CAPACITY + 1, 65] {
+            let text = "a".repeat(len);
+            let original = Grapheme::from(text.as_str());
+            assert_eq!(original, Grapheme::from(text.clone()));
+            assert_eq!(original, original.clone());
+            for index in 0..len {
+                let mut changed = text.clone();
+                changed.replace_range(index..index + 1, "b");
+                let different = Grapheme::from(changed);
+                assert_ne!(original, different, "byte {index} of {len}");
+                assert_ne!(different, original, "byte {index} of {len}");
+            }
+        }
+        // All text and tail bytes are zero: only length distinguishes inline values.
+        for left in 0..=Grapheme::INLINE_CAPACITY + 1 {
+            for right in 0..=Grapheme::INLINE_CAPACITY + 1 {
+                assert_eq!(
+                    Grapheme::from("\0".repeat(left)) == Grapheme::from("\0".repeat(right)),
+                    left == right,
+                );
+            }
+        }
     }
 
     #[test]
@@ -250,10 +292,10 @@ mod tests {
                 assert_eq!(actual.as_bytes(), expected.as_bytes());
                 assert_eq!(actual, Grapheme::from(expected.as_str()));
                 match &actual.0 {
-                    GraphemeRepr::Inline { len, bytes } => {
+                    GraphemeRepr::Inline(bytes) => {
                         assert!(expected.len() <= Grapheme::INLINE_CAPACITY);
-                        assert_eq!(usize::from(*len), expected.len());
-                        assert!(bytes[expected.len()..].iter().all(|&byte| byte == 0));
+                        assert_eq!(usize::from(bytes[0]), expected.len());
+                        assert!(bytes[1 + expected.len()..].iter().all(|&byte| byte == 0));
                     }
                     GraphemeRepr::Heap(text) => {
                         assert!(expected.len() > Grapheme::INLINE_CAPACITY);
