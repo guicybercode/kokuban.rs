@@ -1,0 +1,10 @@
+b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a  /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+5d9c31a059600193c9d7968a998bde886ccdc77e934006ad243b41794c496a7d  /usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc
+e1d733afbbfce842a1b43dced0c9885a76a4e67290dc7e690c4e9b76ebfc7d23  /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+b4c632e3cdf9acc7f28758fb5a323c8524d7fc6660d46904d9b6cbe2809c419c  /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+2d67eed9b325ee2e69f906ce4f3f6264d5105230a13352c8494daad4f17b12c8  /usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
+a033f17e7e42934146337ab2858f7bae5e10c59708d810f1fca0bc81dd543cae  /usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf
+a54dca07c76d6289e717e75e0a58c0128f6d7269ef3faf76417c9d7d3bba37ab  /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+3f704f75238454f68a8202e5098cb0687887480dd63d3dc20b34bdbdfa9d9f3f  /usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf
+a52c2a69dfc93d0b511b98c1019a57eb3d6a62d328bdf1387f00851b02e3a315  /usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf
+9fd0a3d0ce84d77e3185dfbae77bd1abf3926aa49a032e354d076c4f17151f10  /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf
