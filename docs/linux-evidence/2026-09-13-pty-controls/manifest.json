@@ -1,0 +1,1683 @@
+{
+  "schema": 1,
+  "description": "Lossless original observations and audit provenance; archives contain safe relative regular files only. SHA256 binds compressed archives and each raw file.",
+  "runs": {
+    "34749172188": {
+      "archive": "runs/run-34749172188.tar.xz",
+      "archive_bytes": 84256,
+      "archive_sha256": "32116216a79cf5ca7647853929da3d4cd79fffe1effac81d73ac4648a50141b5",
+      "uncompressed_tar_bytes": 901120,
+      "uncompressed_tar_sha256": "935be2669b239fd09e6d62bcfc039e4faeffff2a42eadd385230da486a489262",
+      "raw_files": {
+        "download-integrity.json": {
+          "bytes": 13281,
+          "sha256": "ddb64abc9c4de45d9f8fbd4ae019d5b51c877758dba4a780f8bfc450ea955759"
+        },
+        "github-artifacts.json": {
+          "bytes": 739,
+          "sha256": "17ad12e1ce510a4a6f9cdf05670c20450a40c0fe53a183769723b834f39aefb9"
+        },
+        "github-run.json": {
+          "bytes": 2227,
+          "sha256": "b22bb496c9ffa59a558b48c0d7251632fa916b2612947b4a30a52d407ca84600"
+        },
+        "github-run.log": {
+          "bytes": 321044,
+          "sha256": "babcf7ec980ec6a1ab9c25b8029e1606217a93f4b574878aa0569bd720950e7d"
+        },
+        "independent-primary-dsr-audit.json": {
+          "bytes": 43196,
+          "sha256": "3b360a0055d62f592a9adbbacd7395017d42cae812cc4d3223c534f749e5a932"
+        },
+        "linux-paired-revision-measurements/after-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/after-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/after-build/binary-sha256.txt": {
+          "bytes": 120,
+          "sha256": "6b2230a012b98baed84bca4dd97e415e583a1823b716c02d626530b5e2df1110"
+        },
+        "linux-paired-revision-measurements/after-build/cargo-tree.txt": {
+          "bytes": 13319,
+          "sha256": "d3e1c5bcb33cdbbb3832b0dd3b1a6428bcc9a67bc28601f2ebbfd3181e6196b9"
+        },
+        "linux-paired-revision-measurements/after-revision.txt": {
+          "bytes": 41,
+          "sha256": "4acd7edfaf2ec4b3c9f26fbadc2c70b234f31f3b3dc924dc5dd5149f3104da16"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/before-build/binary-sha256.txt": {
+          "bytes": 121,
+          "sha256": "ec57a085b4c7872742b6e94129c21385fa4516eeb131162cbd7ff15cc6eb9d9e"
+        },
+        "linux-paired-revision-measurements/before-build/cargo-tree.txt": {
+          "bytes": 13320,
+          "sha256": "5eb7ec42c86ba62a8f75101959fc59129957a74461c3bb977a872e7c7cd0683f"
+        },
+        "linux-paired-revision-measurements/before-revision.txt": {
+          "bytes": 41,
+          "sha256": "ae92d4b598d687ff1cff584894bcd6ab229b571335509d0167ec4fcf731a1895"
+        },
+        "linux-paired-revision-measurements/cpu.txt": {
+          "bytes": 3189,
+          "sha256": "4476e601951bb5e5dc85ca4b9d2e3bc795bb83c0d4e62b8d9f2bdec6659b0e7a"
+        },
+        "linux-paired-revision-measurements/harness-revision.txt": {
+          "bytes": 41,
+          "sha256": "d48a11a7cb0cb39321a4fa1ccb934138c71fda6a94b376e6bf1128cc49acd99c"
+        },
+        "linux-paired-revision-measurements/kernel.txt": {
+          "bytes": 113,
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/case.json": {
+          "bytes": 458,
+          "sha256": "4884c7b2a55444e56a805fef4bf9467651ed9bb7f00917c618c2d959ddd17b01"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/child.json": {
+          "bytes": 178,
+          "sha256": "a60122b56ee9a02405be0f6e18ae587e01d8ac3565cbe40697bdf1b0093829fa"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/result.json": {
+          "bytes": 3542,
+          "sha256": "228ee46c714066c8eb02104b098e327956b810300c278765661238b8644561a0"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/sample.json": {
+          "bytes": 4504,
+          "sha256": "4b5713a176ae52848fd9b529b6e486cc7e9dbed5e7a42bbead6d9d87dbb1ecb9"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "622324e572e2dd2edafcdbdd7077e9b5caef6c56b047706a4bab535bf4ff71a2"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/case.json": {
+          "bytes": 458,
+          "sha256": "37c880631b56116e73ebcf01875457951ed1aa269d30702291a2cf682193b38a"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/child.json": {
+          "bytes": 178,
+          "sha256": "f5b06ee29d1be1e2d77fcf895637301490cf529a6adcf140b18837f193e29eed"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/result.json": {
+          "bytes": 3548,
+          "sha256": "30e4c6767d4c99849d40bfe65597a74bacf83ce7bc00402b4cd8e0441389c93c"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/sample.json": {
+          "bytes": 4512,
+          "sha256": "9d77f86822a1a0c6fccf7d33188883b778f6f37cc97caab4b37a6bc862ffa1e9"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "77f00a7f2bd75997bf04f77ecc70efe422702136fa414f49c8ad5c59725ff3b3"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/case.json": {
+          "bytes": 458,
+          "sha256": "d977cd75fa649747242ba8f9c20e7ad12db5a6cabad3cee19f33fd9f89dca15e"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/child.json": {
+          "bytes": 178,
+          "sha256": "eb3ad0f4fcf9fa2720201b551e4ec09a0784c7a9ab529f04a9a2bc7c28053546"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/result.json": {
+          "bytes": 3538,
+          "sha256": "436cfb2ff1693b0abc8f341600be885e589254ea6d9f82604d6a3f33efe405c7"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/sample.json": {
+          "bytes": 4500,
+          "sha256": "e9c039faa4f48c886ac142674cf223c76513e7c937c09fca43e1d14f48e8490e"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "5b4f3e661e65148b71613cfea3036a90d956790ee9128d72cf455cdd0faffef8"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/case.json": {
+          "bytes": 458,
+          "sha256": "540cb43d927b14e6e09548c17fa8e68d552cd836c4329617bbec75f5a224a7e1"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/child.json": {
+          "bytes": 178,
+          "sha256": "87e4076b26409aee9e025377e7a2f8f92e55ebb9082f437e7bc40e5dfe3ba8ed"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/result.json": {
+          "bytes": 3541,
+          "sha256": "1ad5811ecc7d26eed87b0d7dafd2e5fef10cd9b4136feeca44670adf94482ba5"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/sample.json": {
+          "bytes": 4505,
+          "sha256": "65532190537675d7e63146d27f3aadd50a425a2a5ccf724da657705c1cbae74d"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "8a04e228d469df84e0613547759eb95bed4301313d1cd7c6dab7f463a3108d00"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/case.json": {
+          "bytes": 458,
+          "sha256": "d157a46bad4bb2bb9a7efd91c0f158967cd58980aa21f20751037ec85dae8d12"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/child.json": {
+          "bytes": 178,
+          "sha256": "432043f3758510a350078f317c60d72b26c747cf7bfddc7987b9163ec04ffb61"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/result.json": {
+          "bytes": 3547,
+          "sha256": "e5e14046a2a7d527aa55b215effa029f9504177482d4c15f0b28cbaf5ff1e163"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/sample.json": {
+          "bytes": 4509,
+          "sha256": "6812130812ad038d138751f5002c673a6e122beeb5f5ec23dfe0dd63325750bf"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "65218de4228c4054fd1e4020e5ed168d7754c81ca2f8eb096a901b46b22e8c67"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/case.json": {
+          "bytes": 458,
+          "sha256": "82de898fc05d68e8fea2f0a0460fd268da14201593e31fead349dc1ef95481f9"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/child.json": {
+          "bytes": 178,
+          "sha256": "e26c5c11e47db03314323d996d39d287a37cfae9717b18b76674bc28985780f3"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/result.json": {
+          "bytes": 3541,
+          "sha256": "6c3525e43531a9d8a37151bc7f304e79f7073c5f1b277f9f0952d59179de5021"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/sample.json": {
+          "bytes": 4505,
+          "sha256": "c6bdf28113612989b8506c1cbff494992afd0f2407e8ea5f70c05f202366cb68"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "41e36fc02d4cdf926a32960608a1908a3696015b258c289cbf6a5fdf466ed8d9"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/case.json": {
+          "bytes": 458,
+          "sha256": "b4ab3a411d01cae2f685efa29cc7ed210bba01372b86b5ee20308312b5111dc1"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/child.json": {
+          "bytes": 178,
+          "sha256": "07315db44003151cdbeef826eec0d553f93b1f4de9e0d1f0618e36911f122ab1"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/result.json": {
+          "bytes": 3533,
+          "sha256": "b87a84a295e09db155d66e3a111864401d8b9193264d589fa8955aaae82dc06a"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/sample.json": {
+          "bytes": 4495,
+          "sha256": "99dd4e58b52024a79fb4b52aed9837a118d2e4c087648baefee24f59a5744c7e"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "4213f33dd3f82aaad9f80ea7e7eba20a903e0ea1b1d91d4d79bee4026eb06446"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/case.json": {
+          "bytes": 458,
+          "sha256": "f5bcb1bf929cda29ced0993d389545cdf02ff2819f134639095a0a35e11d3c26"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/child.json": {
+          "bytes": 178,
+          "sha256": "175d6bed604c8822d61dff3dd65358444cf073ec70b58b5c81403d134b3e5139"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/result.json": {
+          "bytes": 3536,
+          "sha256": "65c1b90e98154e47628a4c29755d47c1ec05afcd410bb0dcba2f7884eade193f"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/sample.json": {
+          "bytes": 4500,
+          "sha256": "be0532ca6fa96530e7e88382d9489dc5c28dde00452ad833a795808b815fedb4"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "bce0d53c04eb2c22cf579d14035d3b2509fb0d19b8b0116a701982cb62a537cb"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/case.json": {
+          "bytes": 458,
+          "sha256": "3fcec8a1cec88f06c4f9c61693a72579dc7e961740b72cde05263d7ec1e907f2"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/child.json": {
+          "bytes": 178,
+          "sha256": "f805c5a3c3b5667a87d2eaea6a3a753109e71ee48c9555e6ddbd63835bd549b8"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/result.json": {
+          "bytes": 3549,
+          "sha256": "925a738a2f5a47377ffe8616b4063e5d14d907900e8838b4d4ea91115395b316"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/sample.json": {
+          "bytes": 4511,
+          "sha256": "ecbbbba2f8875a01b2c14b1adc5e6445333b55521af6df5dd8b6b213276e0bd5"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "ae6bef9136b0964df0d142faa89798398a2d412219ac6590472c83c03f2121bb"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/case.json": {
+          "bytes": 458,
+          "sha256": "12a0e40da7a2f1b4edf2cc16234037d76c065999f2514890769eeb22fedaaf18"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/child.json": {
+          "bytes": 178,
+          "sha256": "c620a3e9be40bafea41fdca4841ad507f1bdee5dbb0553c6e2d62e84d2d31dd3"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/result.json": {
+          "bytes": 3534,
+          "sha256": "12a9640e597555fb26faa5541992daa152be2ba063d54d55dea26aaa7497b707"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/sample.json": {
+          "bytes": 4498,
+          "sha256": "7dc717d802a8117ad4a197124c230d232a50159da4ed5ae9ca7f1cfe41a731c2"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "8f976b7e217c28e35496eed7b764977274250df6306ce8a0bfb4ae2d60e40d2c"
+        },
+        "linux-paired-revision-measurements/measurements/report.json": {
+          "bytes": 92743,
+          "sha256": "97bc116f22a7a87fd3adf3406e4df646082acfd7d68eaf6f04a5a50d50cdae5a"
+        },
+        "linux-paired-revision-measurements/rustc.txt": {
+          "bytes": 196,
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+        },
+        "linux-paired-revision-measurements/system-packages.txt": {
+          "bytes": 213,
+          "sha256": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4"
+        },
+        "linux-paired-revision-measurements/weston.log": {
+          "bytes": 1836,
+          "sha256": "f6a9c6e2977f5ea1135edef9cc56b05feaf2ab7ba986042b5a83880c34e1c482"
+        },
+        "local-manifest.json": {
+          "bytes": 16860,
+          "sha256": "6122a15aa52ff11a1021677e2b2247ccdb6638b2ff542ca4e9f1ef381ddb4edd"
+        },
+        "source-reference/compare-kokuban-revisions.py": {
+          "bytes": 13551,
+          "sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd"
+        },
+        "source-reference/compare-terminal-performance.py": {
+          "bytes": 28687,
+          "sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12"
+        },
+        "source-reference/linux-paired-performance.yml": {
+          "bytes": 5858,
+          "sha256": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4"
+        },
+        "source-reference/linux-resource-smoke.py": {
+          "bytes": 17732,
+          "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281"
+        }
+      },
+      "omitted_files": {
+        "artifact.zip": {
+          "bytes": 97606,
+          "sha256": "482867d329b590ca9c00b8f0ca0078aabf66539e6a1a0a305a4223a253184367",
+          "reason": "Large or redundant original bytes omitted from Git; independently verified during original audit and download. For the A/A ELF and source archive, see source_proof in its audit."
+        }
+      },
+      "not_retained_by_workflow": [
+        "Executed ELF bytes for both revisions (only runner-reported SHA256 retained).",
+        "Source archives and Cargo compiler-artifact JSON (Git source refs, Cargo inputs, build logs and harness are retained)."
+      ]
+    },
+    "34749322755": {
+      "archive": "runs/run-34749322755.tar.xz",
+      "archive_bytes": 89028,
+      "archive_sha256": "ca9b907524759c1842ad53b3a28e0f4c006da6dbf3a9b450475e468be1150944",
+      "uncompressed_tar_bytes": 921600,
+      "uncompressed_tar_sha256": "6a2199278947b95ada43d66ececee5ca765cde050a4cd6e89cd50a799507c0af",
+      "raw_files": {
+        "download-integrity.json": {
+          "bytes": 13281,
+          "sha256": "c1b7fbee4828c88076cba5c08a5b67e2bcc0d9c965c41d2f82085492f5a6a887"
+        },
+        "github-artifacts.json": {
+          "bytes": 739,
+          "sha256": "da6a46adcec638e714f4f35afe31e5214c729a5eb3bd74e94ac4339ebb7b734d"
+        },
+        "github-run.json": {
+          "bytes": 2227,
+          "sha256": "47fc87c12224499b7a44473689b93ea7fe58d330fde43d050278a777aeff1ecb"
+        },
+        "github-run.log": {
+          "bytes": 321222,
+          "sha256": "24aa5e746e23f186c743ccdf2071a75242f1eff03f7be92cc8cf0eb4280ae172"
+        },
+        "independent-alternate-dsr-audit.json": {
+          "bytes": 44363,
+          "sha256": "a5422691e233922b7d8bbb87e9aa77b735157cc983704d6654e8ffd1870c3277"
+        },
+        "linux-paired-revision-measurements/after-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/after-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/after-build/binary-sha256.txt": {
+          "bytes": 120,
+          "sha256": "6b2230a012b98baed84bca4dd97e415e583a1823b716c02d626530b5e2df1110"
+        },
+        "linux-paired-revision-measurements/after-build/cargo-tree.txt": {
+          "bytes": 13319,
+          "sha256": "d3e1c5bcb33cdbbb3832b0dd3b1a6428bcc9a67bc28601f2ebbfd3181e6196b9"
+        },
+        "linux-paired-revision-measurements/after-revision.txt": {
+          "bytes": 41,
+          "sha256": "4acd7edfaf2ec4b3c9f26fbadc2c70b234f31f3b3dc924dc5dd5149f3104da16"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/before-build/binary-sha256.txt": {
+          "bytes": 121,
+          "sha256": "ec57a085b4c7872742b6e94129c21385fa4516eeb131162cbd7ff15cc6eb9d9e"
+        },
+        "linux-paired-revision-measurements/before-build/cargo-tree.txt": {
+          "bytes": 13320,
+          "sha256": "5eb7ec42c86ba62a8f75101959fc59129957a74461c3bb977a872e7c7cd0683f"
+        },
+        "linux-paired-revision-measurements/before-revision.txt": {
+          "bytes": 41,
+          "sha256": "ae92d4b598d687ff1cff584894bcd6ab229b571335509d0167ec4fcf731a1895"
+        },
+        "linux-paired-revision-measurements/cpu.txt": {
+          "bytes": 3189,
+          "sha256": "4476e601951bb5e5dc85ca4b9d2e3bc795bb83c0d4e62b8d9f2bdec6659b0e7a"
+        },
+        "linux-paired-revision-measurements/harness-revision.txt": {
+          "bytes": 41,
+          "sha256": "7567fb5bbdea5adb1dfafcf4e7bf437d1e9f5ae5a32446a5e3a30f25c053ab95"
+        },
+        "linux-paired-revision-measurements/kernel.txt": {
+          "bytes": 113,
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/case.json": {
+          "bytes": 460,
+          "sha256": "d576223db4ce4ccd0271cbd38068a8a49f2c294bbb8c708682485b25de450969"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/child.json": {
+          "bytes": 178,
+          "sha256": "27daace9624350a239da2de6a28fe16b4604bd861c4b0a47f8231512a2bc6308"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/result.json": {
+          "bytes": 3579,
+          "sha256": "3fba6716ca3e5df3a472f3613a55ee3a654731ed08734271eb87ccfdd3f914ae"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/sample.json": {
+          "bytes": 4533,
+          "sha256": "a34796192510a9146afc7e970a544aca08838a7eeeb124aaf285eab0f32d7a85"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "a43340e053e588e3b6344561697c2a3cc66e94ce2171a6e61c898a618305598a"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/case.json": {
+          "bytes": 460,
+          "sha256": "64248ae3f228bd2bf6581c177b8f490963fff149aab2b7e972ebb08bc91374d3"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/child.json": {
+          "bytes": 178,
+          "sha256": "ab4bf160b73b92c21d2bf35cf346f2ed189765da15beb08fa3716297dcec2884"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/result.json": {
+          "bytes": 3536,
+          "sha256": "72e61a2f292b9dafb05ffe580348c24b898ad1c5d595c8d631778ae5657c2bab"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/sample.json": {
+          "bytes": 4492,
+          "sha256": "dcdbd6eb4f6461709886d09cf8b583e74b820a6b65f25057bae0404a62cb4709"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "7f781f93b3519db7f0d458e8b85632c7a2f4ebfe43c4a1107baf9564e3b43175"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/case.json": {
+          "bytes": 460,
+          "sha256": "e6ba04e3d87e0c5e0a620fc247b936452d32436477b18eb18e7aeec2ca8e20c2"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/child.json": {
+          "bytes": 178,
+          "sha256": "7a9176edfe292f45d6fe1985cc0b40cee7425c48a52fb8f0ae23f72a0369f15c"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/result.json": {
+          "bytes": 3544,
+          "sha256": "304e61d5bc72b1373f396951931000e44419fc3acb7cdc04b9c1c4c876f61264"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/sample.json": {
+          "bytes": 4498,
+          "sha256": "7d32eea1dececbe963237157f3b523897076a33ddf49cb1f0424dfd6ccfff274"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "8fb84ea19f197e641088139f1136e22d4f67e778df87fc263d803c43cc7d9bb1"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/case.json": {
+          "bytes": 460,
+          "sha256": "6be3017ab65f1ff9f910c33c9bc5b2d53ce07e90f6c22388216fa0083b246f30"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/child.json": {
+          "bytes": 178,
+          "sha256": "dcc1a18c46e3949db4bd7ed6bec11b236107e8b9dfe2c570a160a76e5d3926e6"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/result.json": {
+          "bytes": 3543,
+          "sha256": "df339a92918f15d40b76b9bd3c23e1f280db95f650df7eacca40f594d8619c0e"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/sample.json": {
+          "bytes": 4499,
+          "sha256": "ed27e43dde454e64f318c036fdf9639bb0bff7c797c722082353e8c8548b4308"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "a4434699792cf6b93bd5554933053e1a69e4fe28600d105d14962fdffb411b85"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/case.json": {
+          "bytes": 460,
+          "sha256": "197a40450a33611b56ec9f64d8dac5dad9bf7a34ab33d95c12a09d1b4bf14a52"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/child.json": {
+          "bytes": 178,
+          "sha256": "ffe35c469cc5919c769f09e434ada246b4e5a83c7f7076ace80f4e0ab5814ea4"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/result.json": {
+          "bytes": 3549,
+          "sha256": "e833b30cbf5995b508e8c1ad69957db332ca4eb0fcf33e1513432665bf442b7f"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/sample.json": {
+          "bytes": 4503,
+          "sha256": "2458d808f488636cc9c1377d7872542e933bf0ecf40223f84cd9bf0a1e9674cf"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "f61cc82064ef79d746a3958bd190de59c97b214d1ceaaf2945e1d2280c0b1756"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/case.json": {
+          "bytes": 460,
+          "sha256": "46d7ea084f51bd3387c8fc9c3cb9cb00f27f5bc8526cbd849762d3593819b3bb"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/child.json": {
+          "bytes": 178,
+          "sha256": "49fa08d7668b71ce2d55801e6087e983457c0354dd4afeddfe26d4dcde03c81d"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/result.json": {
+          "bytes": 3570,
+          "sha256": "05a6e7a2eef50fddb7a7c15c7366845f0801344a2482b29272bc21c87f58e322"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/sample.json": {
+          "bytes": 4526,
+          "sha256": "449b0d1a19f02b851bfd91119f1e361af39be13d726b15a824928e114e8cd1f7"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "bf3df6990ef40b3e799dba21e0600675224de162093ca9644574f7794a6e74aa"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/case.json": {
+          "bytes": 460,
+          "sha256": "168aa855aa2e96c04cd142ed244dac76d28418a88b4a586ba6f6fa30d9699529"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/child.json": {
+          "bytes": 178,
+          "sha256": "80288c245f93369b5e73e7c5e8b1eec6780ab1609252dc505df71ba4ec5bbb53"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/result.json": {
+          "bytes": 3550,
+          "sha256": "a0fa3de93261744d36055be51ce0d166ed1883795cb4664a7f5b609dd09c0cbd"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/sample.json": {
+          "bytes": 4504,
+          "sha256": "fd4e4103a3329db9914db0206e0b998d8d15fbc233c4bdeb15f3776e94bee1c7"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "37017dc68ae663c8fc9a3578a87b4f8356d6e6ab4cacd8c492c1938011dc7393"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/case.json": {
+          "bytes": 460,
+          "sha256": "2c8d416109badf183ef164fd80ecdfbee2f9d818bd5a135bb01553ec92d31c55"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/child.json": {
+          "bytes": 178,
+          "sha256": "c592d9b76d767fb620f30505e0ef17fe07b5ce23c512f239bf40c56a413860c6"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/result.json": {
+          "bytes": 3560,
+          "sha256": "21560371f0e277387ed1185681344f7e2b3cb26894b55d5599aac7be983053f7"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/sample.json": {
+          "bytes": 4516,
+          "sha256": "db557f00c321a7be01d93891bb3a8ceec850ebf82d1bbca770a3d6226c8ed7e4"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "c8549b0ada8ce062d0e158a743244533968a060cc710fb49ed3fcbb9d7749368"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/case.json": {
+          "bytes": 460,
+          "sha256": "6796628d6628a95c643430438e8f23d5367d1640f46ed03a92151250e0862bf6"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/child.json": {
+          "bytes": 178,
+          "sha256": "5d448f7ab274414fe14b68c55197071d0bb722e6c8bffaa24f2e7e507eb1f8f8"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/result.json": {
+          "bytes": 3543,
+          "sha256": "52813676bf93801c88d9f3332dde971f8a2847d968848a8cb0ff50fa0dcafbf1"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/sample.json": {
+          "bytes": 4497,
+          "sha256": "b9bde8acf7ce98c3e8bb36743f07b3a389c569b07c7f5b6942cdc4e76d1ea6f6"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "a53c0c72c1ae4d7db0cd6e021c772b7440bb4b47e6fd24af48de8dd19c8d45cf"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/case.json": {
+          "bytes": 460,
+          "sha256": "e8b10ac2f63b37f0966ee708e1fba79dac132dbddf1fc7fb0e9be94b5006f983"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/child.json": {
+          "bytes": 178,
+          "sha256": "250014b206a8290f4d55254459a7527d886625a542c86bc59448d6aa91491ad0"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/result.json": {
+          "bytes": 3547,
+          "sha256": "e48d0f512472dd5ac221a7fbcb8e273ce7bb14cccd1ad24c227adcd4a395a62f"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/sample.json": {
+          "bytes": 4503,
+          "sha256": "51624de8318a14f3b059e39c12a98f769d3b61c4e3923a21e3d0047714009236"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "c97b90dfb2a9a2010adefa03d021f54a79fe38e278d349798227c52a03be9dca"
+        },
+        "linux-paired-revision-measurements/measurements/report.json": {
+          "bytes": 92907,
+          "sha256": "94bd3f5960265722807eef825faff3c2f73d336307de818edb9068e0f417b4ce"
+        },
+        "linux-paired-revision-measurements/rustc.txt": {
+          "bytes": 196,
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+        },
+        "linux-paired-revision-measurements/system-packages.txt": {
+          "bytes": 213,
+          "sha256": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4"
+        },
+        "linux-paired-revision-measurements/weston.log": {
+          "bytes": 1836,
+          "sha256": "7c88aef90290a81a6402c07ad88a13857fadcf3cced6e0b991d96ae68297c53c"
+        },
+        "local-manifest.json": {
+          "bytes": 17302,
+          "sha256": "a8af81a79e36f95bff3ce76ce5b33b06bfe8ed576e7e87abe4fd26bb4c3f91de"
+        },
+        "scheduling-note.json": {
+          "bytes": 390,
+          "sha256": "214eba7e55d33900d477ef46ff9539bdffb9864e5f27e623aa49568a6e4773f1"
+        },
+        "source-reference/audit-alternate-dsr.py": {
+          "bytes": 15210,
+          "sha256": "0dc3130c89fc98160ff98c3c7da9e5b930e988e029b00f342b3ce622bce27a7b"
+        },
+        "source-reference/compare-kokuban-revisions.py": {
+          "bytes": 13551,
+          "sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd"
+        },
+        "source-reference/compare-terminal-performance.py": {
+          "bytes": 28687,
+          "sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12"
+        },
+        "source-reference/download-alternate-dsr.py": {
+          "bytes": 2729,
+          "sha256": "c81530a60adbbd8b8a0d26bd7eb097a81fa592368023983adc3d679ee88640c6"
+        },
+        "source-reference/linux-paired-performance.yml": {
+          "bytes": 5858,
+          "sha256": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4"
+        },
+        "source-reference/linux-resource-smoke.py": {
+          "bytes": 17732,
+          "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281"
+        }
+      },
+      "omitted_files": {
+        "artifact.zip": {
+          "bytes": 97408,
+          "sha256": "51b1eb7ab10b3705a174774cdbf48afbf6aad634fb11fdde069158057b09157f",
+          "reason": "Large or redundant original bytes omitted from Git; independently verified during original audit and download. For the A/A ELF and source archive, see source_proof in its audit."
+        }
+      },
+      "not_retained_by_workflow": [
+        "Executed ELF bytes for both revisions (only runner-reported SHA256 retained).",
+        "Source archives and Cargo compiler-artifact JSON (Git source refs, Cargo inputs, build logs and harness are retained)."
+      ]
+    },
+    "34749492893": {
+      "archive": "runs/run-34749492893.tar.xz",
+      "archive_bytes": 89068,
+      "archive_sha256": "9fc8df958399fa86a097444839c61b2b6dddd1773ca4e6806c02f8d9d98b0205",
+      "uncompressed_tar_bytes": 921600,
+      "uncompressed_tar_sha256": "13a41f6d1414e7050b2d3c3e127766c5452a5f54143fb0aa4621b5a78a8d5a4b",
+      "raw_files": {
+        "download-integrity.json": {
+          "bytes": 13281,
+          "sha256": "2553f3f038cba4d60168b85e440f2d4f3857b3ca78d1b23e2e8b299fa7806b87"
+        },
+        "github-artifacts.json": {
+          "bytes": 763,
+          "sha256": "ebdfd991eba3e124d7e107924a53d618ca9580d926180f33a75ca44d3a7a54e6"
+        },
+        "github-run.json": {
+          "bytes": 2227,
+          "sha256": "b6f8ffdf5a0e1f58a852991d65fead53f940e05ca3e704da5596e45f443542ef"
+        },
+        "github-run.log": {
+          "bytes": 321583,
+          "sha256": "f571f296642f0b6045820d9983761d95a581fd9cd41fb3855bb850ed2ce53d62"
+        },
+        "independent-alternate-dsr-audit.json": {
+          "bytes": 44467,
+          "sha256": "a4ba264b27f2086058d7c48a554e0c58e1533620fc1c0fe885aca8bf5bc20ece"
+        },
+        "linux-paired-revision-measurements/after-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/after-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/after-build/binary-sha256.txt": {
+          "bytes": 120,
+          "sha256": "6b2230a012b98baed84bca4dd97e415e583a1823b716c02d626530b5e2df1110"
+        },
+        "linux-paired-revision-measurements/after-build/cargo-tree.txt": {
+          "bytes": 13319,
+          "sha256": "d3e1c5bcb33cdbbb3832b0dd3b1a6428bcc9a67bc28601f2ebbfd3181e6196b9"
+        },
+        "linux-paired-revision-measurements/after-revision.txt": {
+          "bytes": 41,
+          "sha256": "4acd7edfaf2ec4b3c9f26fbadc2c70b234f31f3b3dc924dc5dd5149f3104da16"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/before-build/binary-sha256.txt": {
+          "bytes": 121,
+          "sha256": "ec57a085b4c7872742b6e94129c21385fa4516eeb131162cbd7ff15cc6eb9d9e"
+        },
+        "linux-paired-revision-measurements/before-build/cargo-tree.txt": {
+          "bytes": 13320,
+          "sha256": "5eb7ec42c86ba62a8f75101959fc59129957a74461c3bb977a872e7c7cd0683f"
+        },
+        "linux-paired-revision-measurements/before-revision.txt": {
+          "bytes": 41,
+          "sha256": "ae92d4b598d687ff1cff584894bcd6ab229b571335509d0167ec4fcf731a1895"
+        },
+        "linux-paired-revision-measurements/cpu.txt": {
+          "bytes": 3189,
+          "sha256": "c266f95186cbc82e1e665253bebbf5d12d28d9162f62968979f48b7863ca0c96"
+        },
+        "linux-paired-revision-measurements/harness-revision.txt": {
+          "bytes": 41,
+          "sha256": "9cb8f9e97c59a2b31fff1a0fef24c17c119b6c0cfaa09104b96dee6b7b278485"
+        },
+        "linux-paired-revision-measurements/kernel.txt": {
+          "bytes": 113,
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/case.json": {
+          "bytes": 460,
+          "sha256": "46d05b9876f5c8480a422e35d0f1598247439f862f01311a612de5c548b4bd3c"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/child.json": {
+          "bytes": 178,
+          "sha256": "1691d133851510f770f138498f1a6a05ea4282276ab3629730b46ce68b4cdb6a"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/result.json": {
+          "bytes": 3543,
+          "sha256": "3d06fd2d41fd0d6393bc02f7016a1c0d5ac8879d6fa1f1b970b07ebe30a2fbc4"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/sample.json": {
+          "bytes": 4497,
+          "sha256": "3fadcaa73d634429ccd771459c346c24d97272489b8912a3d8abf35cc95bea6c"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "f45fb0ee4b703ed248bcdbefa71c75a98a0cb778b0a58c0e7b48a4d83142a0b4"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/case.json": {
+          "bytes": 460,
+          "sha256": "0b1a2a3427c3b56a3e4e76da0a201dc4659a0f01c683e840d6ab3c4d6c1934c9"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/child.json": {
+          "bytes": 178,
+          "sha256": "7dda024d62629556d45bcff577652e801f6ca4c335fbfe8a127d15dda985b5b5"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/result.json": {
+          "bytes": 3557,
+          "sha256": "960632fe6e3b52df479f51ebbc704060c45ca7198e1258b3a7cb5fa32f00209d"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/sample.json": {
+          "bytes": 4513,
+          "sha256": "2ebfc9fdf541c1d95f4c521e5e67e0c3acd2c86e4ad8e90db3a2037b135964c5"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "defe2b027e414e4aae39de021f7f430da110edabeb4c86e40e8a7db969de3895"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/case.json": {
+          "bytes": 460,
+          "sha256": "1f054f88a2c781fea3f650a4647d1e7198b60e973798d25be7ca96b4a8c5c161"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/child.json": {
+          "bytes": 178,
+          "sha256": "86d7ab1925d11914cdf0a9cdda84856c064e409ac016d4b5cadfeefd17e8f78c"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/result.json": {
+          "bytes": 3546,
+          "sha256": "3242eff3e65739fd9dca3707d4d263906a234cff7090ddd921a46dfcae83d9d1"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/sample.json": {
+          "bytes": 4500,
+          "sha256": "3fa11913f9d42a8d9dca6c5bf7cc681184d10637aefe54985d6f0800c7b49d44"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "3e5cbac4c89b2d773146133eb9c7ef5a84def210b7910c31b5e16f8fb516a049"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/case.json": {
+          "bytes": 460,
+          "sha256": "41065ceeb6f269a55e97059e5cb226d08f8afbc8772d50a04d20ecc3793cdbd6"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/child.json": {
+          "bytes": 178,
+          "sha256": "560e0610ff10af225c07edf958a5efc2aa4e85222f9d1e24e74a7688b8bed828"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/result.json": {
+          "bytes": 3549,
+          "sha256": "53e2581b9c3edad4b952d7fa044b15540bf1ceafa48b42eec667b19ede8d11c2"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/sample.json": {
+          "bytes": 4505,
+          "sha256": "6f7ef183a2b5217c073918ab85c56f57d870fbc97e8101890dc5d5b350a71256"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "f5bbf4b64cb8b1c2759246d3fa207818582f83d043aaade3057eee376eb261b6"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/case.json": {
+          "bytes": 460,
+          "sha256": "792538af3f19f7d9a5b28d01b80b2c518527b6259ae4c8028973a59718bae0e1"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/child.json": {
+          "bytes": 177,
+          "sha256": "ab6fdcff0cc9da5d7011958670a219c5b5910639ae55526e5ea1b0cd11d6701a"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/result.json": {
+          "bytes": 3534,
+          "sha256": "00b54bff8a6679f6bdac4fb2fe420df3c74c8000b3359f7eef21695a0b080b97"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/sample.json": {
+          "bytes": 4488,
+          "sha256": "6ae5bca90f4ee5b40641d1503d408d2a9f40c2b1f8c392cd18a2b174a292ae41"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "2b7ec3d7865ea928aa351dfa3128958544e9cbc09671de6e6195ea5f82768df9"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/case.json": {
+          "bytes": 460,
+          "sha256": "c30f0f3f59b4c8d4e3a73a5d9638a3dd3dd6efcc2fd53d351a3ccb4b97974d0c"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/child.json": {
+          "bytes": 178,
+          "sha256": "29fc222506dc824d5a4d486cc06f56762e54a26657e43ea5c14c4819955638c7"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/result.json": {
+          "bytes": 3567,
+          "sha256": "2667649c7e4bcd93e0aaa5217401185465065f901b2bc6ead9cf23c0947012d1"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/sample.json": {
+          "bytes": 4523,
+          "sha256": "2a3458db3adef4dbcf353ab49092b4a87b50e65d9fcd63a27a724462907386bc"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "a3dce154e0f628a59a3f51340c8b72608313681f8b0ee447950b371543a9e718"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/case.json": {
+          "bytes": 460,
+          "sha256": "2c40972f74e558be4a6c327cb6a9da765ae885c1f3ee57ab4655022d9b776764"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/child.json": {
+          "bytes": 178,
+          "sha256": "d521644f348e1865ed65ab249986d3c1a3e9821d56e50a72ab56f3d0cd5d10c0"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/result.json": {
+          "bytes": 3571,
+          "sha256": "3bf19aa64866c43a489d097b21ae0e0c5f9932aa8ca9896a4b70e93cf6eed5d9"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/sample.json": {
+          "bytes": 4525,
+          "sha256": "2eb742028bf3824207579e8a69d81491ae36080f5c09f10e2110f5258f36866e"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "323544349916029dfda051dd52f4a8434689d328970e8bb3507e0462fef37868"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/case.json": {
+          "bytes": 460,
+          "sha256": "52fce906720af85f3b791964973a0fd69def41402640d548f8089252472b6643"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/child.json": {
+          "bytes": 177,
+          "sha256": "164e22f30984653fe96e26178182ed7065402796d0681dbc88fc80277a3689e5"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/result.json": {
+          "bytes": 3565,
+          "sha256": "357201828f7b453fc3f28b9a3618d29647c89051aaa78d30fd89a2797e6e7d48"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/sample.json": {
+          "bytes": 4521,
+          "sha256": "0d4064019e154894fab986421be73956502e266f3a145cb1b48e51f315d6ab85"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "e9aa037ecf41c5e24ad3eedce9e2edf05f404011718f8ee3bd1fb0b0574188da"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/case.json": {
+          "bytes": 460,
+          "sha256": "7de010455ca49695f3d9a0a748c9e331edf00d0471495bac01c9c4672564c292"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/child.json": {
+          "bytes": 178,
+          "sha256": "b2f10eb283b406027adaaca64eef8074e71e7a8fe42330865bdd452cb93872c8"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/result.json": {
+          "bytes": 3565,
+          "sha256": "060281dce87a968b092286c06364e69af1e47ab53a5f6b583cd4a0e8e71d5018"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/sample.json": {
+          "bytes": 4519,
+          "sha256": "3511a72c7855ed3ced3577b5bb8395725109b32d2c4e87bdaea19bc967c800d2"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "65b5a0d1e876e3dd005e952eea09fe661719e10bb39250ff2242f870bc21c28b"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/case.json": {
+          "bytes": 460,
+          "sha256": "96d3cc9c907abfe8cc7e5b27e9af07f40ce54ababe2f48133f90639052ad7980"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/child.json": {
+          "bytes": 178,
+          "sha256": "d0e5079f22dd9647320ee0d35f67aa6e7975473c78e1771ab2be93c1dedbe627"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/kokuban.toml": {
+          "bytes": 125,
+          "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/result.json": {
+          "bytes": 3538,
+          "sha256": "f9aed557a1801d750475d22f37797e5936859f892a64c70c10bee320b4390d66"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/sample.json": {
+          "bytes": 4494,
+          "sha256": "90ad24f6553757e286f11ad61367f4e2212231d133001c47bda603033a958710"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "0a82864c0387dbd9846d64f2ba01551d02b2fb1340fc1d66b24d96ed3aa035aa"
+        },
+        "linux-paired-revision-measurements/measurements/report.json": {
+          "bytes": 92957,
+          "sha256": "80c00bbd5e80869bfeb7ca2da63bbdf36d233dea9483ee7b0521591dc8342f03"
+        },
+        "linux-paired-revision-measurements/rustc.txt": {
+          "bytes": 196,
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+        },
+        "linux-paired-revision-measurements/system-packages.txt": {
+          "bytes": 213,
+          "sha256": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4"
+        },
+        "linux-paired-revision-measurements/weston.log": {
+          "bytes": 1836,
+          "sha256": "81662b7afda9cafa1323c6e44698045774698766ded537036747234b558fbc1b"
+        },
+        "local-manifest.json": {
+          "bytes": 17302,
+          "sha256": "0a3c80ef787d94e8f1824b499a04b5dce3436884f862c341cbb66d08d2f4cf88"
+        },
+        "scheduling-note.json": {
+          "bytes": 390,
+          "sha256": "f9eef631e1001638e017a2ca130d65359f65cd80333a06d623aef7fecea39225"
+        },
+        "source-reference/audit-alternate-dsr.py": {
+          "bytes": 15210,
+          "sha256": "0dc3130c89fc98160ff98c3c7da9e5b930e988e029b00f342b3ce622bce27a7b"
+        },
+        "source-reference/compare-kokuban-revisions.py": {
+          "bytes": 13551,
+          "sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd"
+        },
+        "source-reference/compare-terminal-performance.py": {
+          "bytes": 28687,
+          "sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12"
+        },
+        "source-reference/download-alternate-dsr.py": {
+          "bytes": 2729,
+          "sha256": "c81530a60adbbd8b8a0d26bd7eb097a81fa592368023983adc3d679ee88640c6"
+        },
+        "source-reference/linux-paired-performance.yml": {
+          "bytes": 5858,
+          "sha256": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4"
+        },
+        "source-reference/linux-resource-smoke.py": {
+          "bytes": 17732,
+          "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281"
+        }
+      },
+      "omitted_files": {
+        "artifact.zip": {
+          "bytes": 97341,
+          "sha256": "83e0a7b1c0648255f68d0b93a5404828483a8564fab65f82aa2433b570ccc167",
+          "reason": "Large or redundant original bytes omitted from Git; independently verified during original audit and download. For the A/A ELF and source archive, see source_proof in its audit."
+        }
+      },
+      "not_retained_by_workflow": [
+        "Executed ELF bytes for both revisions (only runner-reported SHA256 retained).",
+        "Source archives and Cargo compiler-artifact JSON (Git source refs, Cargo inputs, build logs and harness are retained)."
+      ]
+    },
+    "34749802898": {
+      "archive": "runs/run-34749802898.tar.xz",
+      "archive_bytes": 129736,
+      "archive_sha256": "fdf0a1e794ae2d757a53dc958c296af3c8956c3839616493fa5b14d26c925425",
+      "uncompressed_tar_bytes": 1095680,
+      "uncompressed_tar_sha256": "6b64025f57f7187bcf743d56ba32fd9878bc2408b9aa5ccf905d09617e80a877",
+      "raw_files": {
+        "download-integrity.json": {
+          "bytes": 13565,
+          "sha256": "e895138dd032b59a83d701551c54ae84013d6212ffa27642d906c5edb6d8d3a6"
+        },
+        "github-artifacts.json": {
+          "bytes": 766,
+          "sha256": "24a0f4742daa7e96da8e51b1183e612e3c6adc5d8b57316c8bcb0566753ecd5e"
+        },
+        "github-run.json": {
+          "bytes": 2216,
+          "sha256": "94a5eafdf1c51e4323ec904ad0e9bfdbde08f8a050c9b24b069ac6301434959a"
+        },
+        "github-run.log": {
+          "bytes": 174619,
+          "sha256": "73c850756c78b7c04be30cf2516dfe49ccf77638b0bbfdb1018b5b0e147fcf3d"
+        },
+        "independent-primary-aa-dsr-audit.json": {
+          "bytes": 43666,
+          "sha256": "2e3fce558d7d9d84ad387b2a68f98fcf3395e41960245fef46fc9c812bd1cefc"
+        },
+        "linux-paired-revision-measurements/after-revision.txt": {
+          "bytes": 41,
+          "sha256": "ae92d4b598d687ff1cff584894bcd6ab229b571335509d0167ec4fcf731a1895"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.lock": {
+          "bytes": 69307,
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        },
+        "linux-paired-revision-measurements/before-build/Cargo.toml": {
+          "bytes": 2084,
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+        },
+        "linux-paired-revision-measurements/before-build/binary-sha256.txt": {
+          "bytes": 121,
+          "sha256": "ec57a085b4c7872742b6e94129c21385fa4516eeb131162cbd7ff15cc6eb9d9e"
+        },
+        "linux-paired-revision-measurements/before-build/build.log": {
+          "bytes": 10128,
+          "sha256": "67fc2911d10b554b02cdbe9a1b6d6d28670f2848c7c61acec6a476a381ad5df3"
+        },
+        "linux-paired-revision-measurements/before-build/cargo-messages.jsonl": {
+          "bytes": 221286,
+          "sha256": "d801080b1f9654184d28646c1c6a3b2fad838bd2635deb25eedee2a5b3ecf594"
+        },
+        "linux-paired-revision-measurements/before-build/cargo-tree.txt": {
+          "bytes": 13320,
+          "sha256": "5eb7ec42c86ba62a8f75101959fc59129957a74461c3bb977a872e7c7cd0683f"
+        },
+        "linux-paired-revision-measurements/before-revision.txt": {
+          "bytes": 41,
+          "sha256": "ae92d4b598d687ff1cff584894bcd6ab229b571335509d0167ec4fcf731a1895"
+        },
+        "linux-paired-revision-measurements/before-source-sha256.txt": {
+          "bytes": 135,
+          "sha256": "96600fe65187adba40484d420f1724545f33fbd88b8496192cff0bca8ba2c042"
+        },
+        "linux-paired-revision-measurements/comparison.txt": {
+          "bytes": 12,
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac"
+        },
+        "linux-paired-revision-measurements/cpu.txt": {
+          "bytes": 3394,
+          "sha256": "75c95633bd223bb6e2da85bec5695882347e8aa32cf76a2537b31d416ff477d7"
+        },
+        "linux-paired-revision-measurements/harness-revision.txt": {
+          "bytes": 41,
+          "sha256": "247229e098f8b5ff59bbf7cba57e1c95371ad21a93666a1bdb7019ccccc01e46"
+        },
+        "linux-paired-revision-measurements/kernel.txt": {
+          "bytes": 113,
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/case.json": {
+          "bytes": 457,
+          "sha256": "063a6b725b0f767aaa5cd54ec799ab4afa6d23dfaebd7830c2c46a70cbb5802e"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/child.json": {
+          "bytes": 177,
+          "sha256": "1752116f99eedb9b4dc7deb3c4abec8219b612d7113053c3980cd9f136d88fac"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/result.json": {
+          "bytes": 3553,
+          "sha256": "4f8fb853e4b2d584380f6898137c7ec0d347a829877c4791f47ce8eceb750473"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/sample.json": {
+          "bytes": 4516,
+          "sha256": "e6d683d38ab37790d029e23f318592e115740aaf185aea2b0c9a7f3309b98b50"
+        },
+        "linux-paired-revision-measurements/measurements/01-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "ba4761ce4269bf03f8a27b84e6458627f500c8acbc604a2d69f7a30701bf15c5"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/case.json": {
+          "bytes": 457,
+          "sha256": "218eba977be34b23613a6704c6725bb0740c579b3434cff477dc6489b061ae01"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/child.json": {
+          "bytes": 177,
+          "sha256": "5203c6edcc00f7a0e04c638c544f0b07063997db1cd87b6ecefb6cda8d98db50"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/result.json": {
+          "bytes": 3555,
+          "sha256": "a5aa6fb7a5da71c939504902e0f5ccf93b4aaea7ce491b31c9a2d5b7f708fe03"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/sample.json": {
+          "bytes": 4519,
+          "sha256": "67edf3a0105c75436a6fc95b2211a28b7553b40747bbf891dd6be24b2e309b1d"
+        },
+        "linux-paired-revision-measurements/measurements/01-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "f0c4b5a25a838aa6f6e8060889ce6849650cbe3364929d537ebc2e79f3c88214"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/case.json": {
+          "bytes": 457,
+          "sha256": "b3da983c152d8e6b541bacf637ceec8a5596c6a782eb248820de7d54c2780711"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/child.json": {
+          "bytes": 177,
+          "sha256": "1d27f9164c1a45468f22fc921182b419fab8d932301ec5dadf135f784937d69c"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/result.json": {
+          "bytes": 3538,
+          "sha256": "5ce6126c9c4cb048a24208929def46812d5fdf65da002507685e7fcc4c576bd6"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/sample.json": {
+          "bytes": 4501,
+          "sha256": "800dabd60da3ccd862b33e4cdefcd61ad00540b5e01b76ee963a4a53cb5a7a4d"
+        },
+        "linux-paired-revision-measurements/measurements/02-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "9d6865f910aea4e546316d56dee5e0c582e528d9ef65b86d0f539127d18105ca"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/case.json": {
+          "bytes": 457,
+          "sha256": "68a9edeeab07dba317f73ca404401b32af18fe6e5b400c0fd2f3cfa8abf347e3"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/child.json": {
+          "bytes": 177,
+          "sha256": "240fb9ee19068111270056bf400c19671fe07b53cc1b6da5c9e6ef5ab9358848"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/result.json": {
+          "bytes": 3554,
+          "sha256": "eff36de74cabb04e8f97abb128930899d494b7cf377e57f2845a4e70c6394a5e"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/sample.json": {
+          "bytes": 4518,
+          "sha256": "b70bfe63dac4464bd8b835f502e0a8b020967583cc832114666b06c01cafd7a4"
+        },
+        "linux-paired-revision-measurements/measurements/02-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "cd1daba6a4e407950b7dc63e17986add29940e8399f1d881bb9ced41bc154455"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/case.json": {
+          "bytes": 457,
+          "sha256": "c434c199020ae6650c109e9d2e4b4c9f8f3111cfd52ab9c5a51ba0777bf6a6d8"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/child.json": {
+          "bytes": 177,
+          "sha256": "e46b7af4ae1bd7696624897c6ba9ff5b19eaee0d72ddcfff839aeb5509942fd5"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/result.json": {
+          "bytes": 3543,
+          "sha256": "c48daf3f9b7947cdfce91f95c379704b4c3c8f1d8466ee6314d5c91de88307cf"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/sample.json": {
+          "bytes": 4506,
+          "sha256": "fd8d3c469e7f33c6f45781aaf0ec8d9859f17ab20ee4cb92ac95d3d686fdcec0"
+        },
+        "linux-paired-revision-measurements/measurements/03-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "71358eb352aa03ef849d23d36d2ab59234e43ccc1ba43e6c2bdf562ec31c9ee3"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/case.json": {
+          "bytes": 457,
+          "sha256": "eca80bf2bcdc342d7143cec824b1b856b03d3db7027c005f256100eebffaaf91"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/child.json": {
+          "bytes": 177,
+          "sha256": "6e8f897cdd6002bbeef414d96212b715469846fd6cda67542fe62f3b37f9c90c"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/result.json": {
+          "bytes": 3562,
+          "sha256": "4f3c537cc05bc0c9ebff30d1b12b68eb4ab0270d0d84d37a2ad82a6f1b6f62a0"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/sample.json": {
+          "bytes": 4526,
+          "sha256": "a6fadf46bf737ce15fccf7d74272cac557dedc15572ef315e1570a7cec345c20"
+        },
+        "linux-paired-revision-measurements/measurements/03-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "8e5ed42ea1fa7030b4ec90015fcd3cade5a94e98bbf596afdc0cf91813074be5"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/case.json": {
+          "bytes": 457,
+          "sha256": "d26f2d1cadc51bd4399b9d70bd9ece12ffc3adedd5a025dc7d89850da4a1a731"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/child.json": {
+          "bytes": 177,
+          "sha256": "d58fbd2a627a87c32aa56b951c055322d0854f3dc3f8e1d0409d063c08ed02bf"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/result.json": {
+          "bytes": 3547,
+          "sha256": "6c6853b7db957f42a151e70ba17e35811db01df7e04dc94a3c68dd3e5ab351db"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/sample.json": {
+          "bytes": 4510,
+          "sha256": "63123ff6c0fdbce22ea743aa27dd3957c25d2366435e4ce7a04ccadfeef7bbef"
+        },
+        "linux-paired-revision-measurements/measurements/04-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "2fa40a13891f29b52287615c6575babd5054a9fc2b85c3994e200b6bfb3a3cc8"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/case.json": {
+          "bytes": 457,
+          "sha256": "25e4ace72765b17b43afc69004251651cdeee1a96358bc75e78a2e79315cbde0"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/child.json": {
+          "bytes": 177,
+          "sha256": "50528121317d09e6c3720c0019076ac75f8dd3948717aa3d9d6c8def7da35aca"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/result.json": {
+          "bytes": 3547,
+          "sha256": "84a1c8b8071649340656e13ba0462cd3783d47c4c215f440c1ecfe61b9a60257"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/sample.json": {
+          "bytes": 4511,
+          "sha256": "540c045020721d739188b381b04fc63a8fd3511f58bad17771cf155461d0df2d"
+        },
+        "linux-paired-revision-measurements/measurements/04-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "8e92d56b8d83d8977bfb57d28c61178f352c8198986a2aefed40597ca7ac0860"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/case.json": {
+          "bytes": 457,
+          "sha256": "25ae9c5823c6bb53dbd1c5c3d3a2babbb8641eea53475b6e342f26b2c2819d52"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/child.json": {
+          "bytes": 176,
+          "sha256": "e18ad5d14fef7343a0bf3dbb5462a682181c379f283377eb75aae4996db82f4f"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/result.json": {
+          "bytes": 3575,
+          "sha256": "07d65d2cb95e5542d08694ce3acfa2e3cbfef0efee7f21e866ccc1e3d6964d88"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/sample.json": {
+          "bytes": 4538,
+          "sha256": "36f76fef75cdb04646e389f97381ff00eec95198400d747445598de69d76b069"
+        },
+        "linux-paired-revision-measurements/measurements/05-after/terminal.log": {
+          "bytes": 137,
+          "sha256": "800460a86e410cd6451271dce3a63ab9f98c7a34601b663804c2064887c21a4f"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/case.json": {
+          "bytes": 457,
+          "sha256": "00796316d701b9d0e146b6612ce332fffa1d0107f74b1a39b794581e1621f75e"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/child.json": {
+          "bytes": 177,
+          "sha256": "a119b4bc32060b77b8fc3664006596023a38d24e78a10be1ff37ce48917632f9"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/finish": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/kokuban.toml": {
+          "bytes": 129,
+          "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/result.json": {
+          "bytes": 3539,
+          "sha256": "accca444cce9d4ce3c8ba2a18b14247142aaa14bd215a6c9e879fa388dc1f537"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/sample.json": {
+          "bytes": 4503,
+          "sha256": "e736f0b39e4e3fe8dd8dc3e62fec851028d5222bbc3d92a886a901e0190add0a"
+        },
+        "linux-paired-revision-measurements/measurements/05-before/terminal.log": {
+          "bytes": 137,
+          "sha256": "a10f34b352d7434c1ff695a8e83f80d0711833442be98147d137811eebedc53a"
+        },
+        "linux-paired-revision-measurements/measurements/report.json": {
+          "bytes": 93357,
+          "sha256": "84dbdac8f93741ea36d93ebdca1757410244f5cfab37565d846aba4def85d812"
+        },
+        "linux-paired-revision-measurements/rustc.txt": {
+          "bytes": 196,
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+        },
+        "linux-paired-revision-measurements/source-git-manifest.json": {
+          "bytes": 206025,
+          "sha256": "a7b7213d28a4d54c5cda7180f20af60e46275c0228fdb837e8c919a310d97692"
+        },
+        "linux-paired-revision-measurements/system-packages.txt": {
+          "bytes": 213,
+          "sha256": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4"
+        },
+        "linux-paired-revision-measurements/weston.log": {
+          "bytes": 1836,
+          "sha256": "49b091a062921e7581cac48951e380d04853516d565646b68f85f970988cbed8"
+        },
+        "source-reference/compare-kokuban-revisions.py": {
+          "bytes": 13551,
+          "sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd"
+        },
+        "source-reference/compare-terminal-performance.py": {
+          "bytes": 28687,
+          "sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12"
+        },
+        "source-reference/linux-paired-performance.yml": {
+          "bytes": 7437,
+          "sha256": "bfe4434ace400631c4787a8fe66f069e16c7029327cafcc9283e99fed68762f4"
+        },
+        "source-reference/linux-resource-smoke.py": {
+          "bytes": 17732,
+          "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281"
+        }
+      },
+      "omitted_files": {
+        "artifact.zip": {
+          "bytes": 9506391,
+          "sha256": "b32946d2c9a179e95557d6e81e2f00feb72f6828f9c7b2f8faaca0278c0d726d",
+          "reason": "Large or redundant original bytes omitted from Git; independently verified during original audit and download. For the A/A ELF and source archive, see source_proof in its audit."
+        },
+        "linux-paired-revision-measurements/before-build/kokuban": {
+          "bytes": 10612800,
+          "sha256": "6296d5f9574276e3194e65bbab33212b2965520f0aa1d64bba121692d9c3f9ae",
+          "reason": "Large or redundant original bytes omitted from Git; independently verified during original audit and download. For the A/A ELF and source archive, see source_proof in its audit."
+        },
+        "linux-paired-revision-measurements/before-source.tar.gz": {
+          "bytes": 4783001,
+          "sha256": "5141363f470e15b87014b271478bd6ef1c111f0717b75845bb153a929e87a2b4",
+          "reason": "Large or redundant original bytes omitted from Git; independently verified during original audit and download. For the A/A ELF and source archive, see source_proof in its audit."
+        }
+      },
+      "not_retained_by_workflow": []
+    }
+  },
+  "audit_source": {
+    "audit-source/audit-primary-dsr-34749172188.py": {
+      "bytes": 15309,
+      "sha256": "029ade2bdf258b1ad890a7d1401422b96ec7e17a7a7e09cffce404bfc2c15c67"
+    },
+    "audit-source/audit-alternate-dsr.py": {
+      "bytes": 15210,
+      "sha256": "0dc3130c89fc98160ff98c3c7da9e5b930e988e029b00f342b3ce622bce27a7b"
+    },
+    "audit-source/audit-primary-aa-dsr-34749802898.py": {
+      "bytes": 17509,
+      "sha256": "7d4720ee3482f544ec0afed3fe5526e5f4e95b534081fba966b789edb0161ec9"
+    }
+  }
+}
