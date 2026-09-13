@@ -91,7 +91,7 @@ jobs:
             "${affinity_command[@]}" python3 -B scripts/benchmark-software-raster.py \
               --baseline "$before" --candidate "$comparison_after" \
               --widths 1 7 8 9 15 16 17 32 --modes glyphs rgba opaque alpha image \
-              --samples 7 --frames 100 --warmup-frames 3 \
+              --samples 8 --frames 100 --warmup-frames 3 \
               --artifacts-dir "$evidence_directory/$comparison" \
               2>&1 | tee "$evidence_directory/$comparison.log"
           done
