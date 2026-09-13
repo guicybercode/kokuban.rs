@@ -51,6 +51,8 @@ Window discovery ignores auxiliary windows and requires a unique calibrated wind
 
 Default settings collect 120 measured key/frame pairs per terminal across three processes, plus five warmup events per process. The interval between unsuccessful captures defaults to 1 ms, in addition to capture and validation overhead; `--poll-interval` records any adjustment. The observer can perturb the workload, especially through synchronous X11 readback. Its measured overhead is reported and is **not subtracted** from the upper bound.
 
+The workflow exposes the same setting as `poll_interval`, accepting 0 to 0.1 seconds. Zero starts the next capture immediately after an unsuccessful validation. This removes the explicit sleep but increases readback traffic and can perturb the terminal; retain the chosen interval when interpreting or comparing results.
+
 ## Read the evidence
 
 `report.json` includes binary versions and hashes, configuration and helper hashes, environment observations, cell calibration, execution order and per-terminal summaries. Each process directory contains its configuration, terminal log, controlled-child event records, `sample.json`, and initial, first-transition and final XWD snapshots. The first-transition snapshot preserves the second color even if an even event count finishes on the initial color. A color timeout also retains its final unmatched snapshot and partial capture observations. Every successful target capture has an XWD SHA-256 in the raw sample; only these selected captures are retained as files, outside their timed intervals.
