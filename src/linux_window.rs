@@ -3671,14 +3671,11 @@ fn draw_grid_snapshot_in_band(
 
     for row in 0..snapshot.rows {
         // Ink can overhang any number of rows, so keep looking up its actual
-        // bounds. Full repaints do not need these extra intersection checks.
-        let baseline = if partial {
-            cell_origin(row, 0, cell_dimensions).and_then(|(_, y)| {
-                rounded_f64_i32(f64::from(y) + f64::from(atlas.ascent))
-            })
-        } else {
-            None
-        };
+        // bounds. Reuse one rounded baseline for filtering and painting every
+        // glyph on this row; inserting a glyph does not change font metrics.
+        let baseline = cell_origin(row, 0, cell_dimensions).and_then(|(_, y)| {
+            rounded_f64_i32(f64::from(y) + f64::from(atlas.ascent))
+        });
         let underline_row = !partial || background_rows.contains(&row);
         for column in 0..snapshot.columns {
             let Some(cell) = snapshot.cell(row, column) else {
@@ -3713,19 +3710,19 @@ fn draw_grid_snapshot_in_band(
                 continue;
             }
             let resolved = resolve_cell_colors(colors, cell);
-            if let Some(glyph) = glyph {
+            if let (Some(glyph), Some(baseline)) = (glyph, baseline) {
                 let source = GlyphSource {
                     pixels: &atlas.pixels,
                     rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
                     size: (atlas.width, atlas.height),
                     ascent: atlas.ascent,
                 };
-                draw_cell_glyph_in_band(
+                draw_cell_glyph_at_baseline(
                     frame,
                     frame_size,
                     source,
                     glyph,
-                    origin,
+                    (origin.0, baseline),
                     resolved.foreground,
                     offset,
                 );
@@ -4095,14 +4092,27 @@ fn draw_cell_glyph_in_band(
     foreground: u32,
     vertical_offset: i32,
 ) {
-    let Some(destination_x) = cell_origin.0.checked_add(glyph.bearing_x) else {
-        return;
-    };
     let Some(baseline) = rounded_f64_i32(f64::from(cell_origin.1) + f64::from(source.ascent))
     else {
         return;
     };
-    let Some(destination_y) = baseline.checked_add(glyph.bearing_y)
+    draw_cell_glyph_at_baseline(frame, frame_size, source, glyph,
+        (cell_origin.0, baseline), foreground, vertical_offset);
+}
+
+fn draw_cell_glyph_at_baseline(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    source: GlyphSource<'_>,
+    glyph: crate::glyph_atlas::GlyphEntry,
+    cell_baseline: (i32, i32),
+    foreground: u32,
+    vertical_offset: i32,
+) {
+    let Some(destination_x) = cell_baseline.0.checked_add(glyph.bearing_x) else {
+        return;
+    };
+    let Some(destination_y) = cell_baseline.1.checked_add(glyph.bearing_y)
         .and_then(|y| y.checked_sub(vertical_offset)) else {
         return;
     };
@@ -10117,6 +10127,47 @@ mod damage_tests {
             paint(&mut frame, &current, &mut atlas, damage);
             assert_matches_full(&frame, &current, &mut atlas);
             previous = current;
+        }
+    }
+
+    #[test]
+    fn row_baselines_preserve_rounding_across_zero_for_a8_and_color_glyphs() {
+        let mut atlas = atlas();
+        let mut grid = Grid::new(2, 3, 0);
+        grid.cursor_visible = false;
+        for row in 0..3 {
+            for column in 0..2 {
+                grid.buffer.cell_mut(row, column).c = 'A';
+            }
+        }
+        let scene = PresentedScene {
+            snapshot: snapshot_locked_grid(&grid),
+            frame_size: (4, 24),
+            cell_dimensions: (2, 8),
+            has_overlays: false,
+        };
+        atlas.pixels[0] = 255;
+        atlas.rgba_pixels[..4].copy_from_slice(&[17, 83, 149, 255]);
+        for color in [false, true] {
+            atlas.glyphs.insert(GlyphKey { c: 'A', bold: false, italic: false },
+                crate::glyph_atlas::GlyphEntry {
+                    atlas_x: 0, atlas_y: 0, pixel_w: 1, pixel_h: 1,
+                    bearing_x: 0, bearing_y: 1, color,
+                });
+            // Rounding ascent first would place the later rows one pixel too
+            // high at -0.5. A negative baseline can still have visible ink.
+            for (ascent, ink_rows) in [(-0.5, [0, 9, 17]), (0.5, [2, 10, 18]), (1.5, [3, 11, 19])] {
+                atlas.ascent = ascent;
+                let mut frame = vec![0; 4 * 24];
+                paint(&mut frame, &scene, &mut atlas, 0..24);
+                let mut expected = vec![0x0010_2030; frame.len()];
+                for y in ink_rows {
+                    for x in [0, 2] {
+                        expected[y * 4 + x] = if color { 0x0011_5395 } else { 0x00e0_c0a0 };
+                    }
+                }
+                assert_eq!(frame, expected, "color={color} ascent={ascent}");
+            }
         }
     }
 
