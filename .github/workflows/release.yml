@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Version label for the selected ref (for example v0.1; tag may be created after review)
+        description: Version label for the selected ref (for example v0.2; tag may be created after review)
         required: true
         type: string
 
@@ -80,6 +80,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
+            fontconfig \
             fonts-dejavu-core \
             libfontconfig1-dev \
             libfreetype6-dev \
@@ -90,7 +91,9 @@ jobs:
             libxkbcommon-x11-0 \
             pkg-config \
             x11-apps \
+            x11-utils \
             xauth \
+            xclip \
             xdotool \
             xvfb
 
@@ -140,6 +143,28 @@ jobs:
           done
           xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
             timeout --kill-after=5s 90s python3 scripts/linux-graphics-smoke.py "$release_binary"
+
+      - name: Validate Linux release launch, clipboard and Omarchy integration
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          release_binary="$PWD/target/$RELEASE_TARGET/release/kokuban"
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=5s 40s python3 scripts/linux-launch-smoke.py "$release_binary"
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py "$release_binary"
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 90s python3 scripts/linux-theme-smoke.py "$release_binary" \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-release-theme-artifacts"
+
+      - name: Upload Linux release theme and font evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: kokuban-${{ env.RELEASE_TAG }}-linux-theme-smoke
+          path: ${{ runner.temp }}/kokuban-release-theme-artifacts
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Collect third-party license texts for this target
         shell: bash

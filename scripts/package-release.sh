@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Package an already-built release or candidate. This does not compile or publish.
-# Usage: bash scripts/package-release.sh v0.1 TARGET --notices FILE --sources-dir DIR [--output-dir DIR]
-# Validation only: bash scripts/package-release.sh --check-tag v0.1
+# Usage: bash scripts/package-release.sh v0.2 TARGET --notices FILE --sources-dir DIR [--output-dir DIR]
+# Validation only: bash scripts/package-release.sh --check-tag v0.2
 # Candidate before tagging: add --candidate; BUILD-INFO.json records the source commit.
 set -euo pipefail
 
@@ -62,19 +62,30 @@ binary = root / "target" / arguments.target / "release" / "kokuban"
 if not binary.is_file() or not os.access(binary, os.X_OK):
     raise SystemExit(f"built executable is missing: {binary}")
 files = {name: root / name for name in (
-    "LICENSE", "README.md", "SECURITY.md", "ABOUT.md", "CONTRIBUTING.md", "CHANGELOG.md", "kokuban.toml",
+    "LICENSE", "README.md", "SECURITY.md", "ABOUT.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
+    "CITATION.cff", "CHANGELOG.md", "kokuban.toml",
     "assets/kokuban-icon.png", "assets/io.github.guicybercode.kokuban.desktop", "assets/README.md")}
 files["THIRD_PARTY_LICENSES.txt"] = arguments.notices.resolve()
-documentation = root / "docs"
-if not documentation.is_dir():
-    raise SystemExit("the docs directory is required for packaged README links")
-for path in sorted(documentation.rglob("*")):
-    if path.is_symlink():
-        raise SystemExit(f"packaged documentation must not contain symbolic links: {path}")
-    if path.is_file():
-        files[path.relative_to(root).as_posix()] = path
+required_nonempty = set(files)
+# Ship versioned documentation and vendored-source notices, not local metadata
+# or personal files that happen to be present in the checkout.
+for directory in ("docs", "THIRD_PARTY_LICENSES"):
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z", "--", directory], cwd=root).decode().split("\0")
+    names = sorted(name for name in tracked if name)
+    if not (root / directory).is_dir() or not names:
+        raise SystemExit(f"required distribution directory is missing or untracked: {directory}")
+    for name in names:
+        path = root / name
+        if path.is_symlink():
+            raise SystemExit(f"packaged documentation must not contain symbolic links: {path}")
+        files[name] = path
+        if directory == "THIRD_PARTY_LICENSES":
+            required_nonempty.add(name)
 for name, path in files.items():
-    if not path.is_file() or path.stat().st_size == 0:
+    # An empty captured stderr log is valid evidence, but a license or policy
+    # must contain its required text.
+    if not path.is_file() or (name in required_nonempty and path.stat().st_size == 0):
         raise SystemExit(f"required distribution text is missing or empty: {name} ({path})")
 sources = arguments.sources_dir.resolve()
 if not sources.is_dir():

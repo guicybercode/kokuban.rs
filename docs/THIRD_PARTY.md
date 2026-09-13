@@ -1,9 +1,20 @@
 # Third-party software in release packages
 
-Kokuban's own code is offered under the [MIT license](../LICENSE). Dependencies
+Kokuban's own code is offered under the [project license](../LICENSE). Dependencies
 keep their own licenses. Each release archive includes
 `THIRD_PARTY_LICENSES.txt` and `THIRD_PARTY_SOURCES/option-ext-0.2.0.crate` beside
 the executable. Keep these files when redistributing that archive.
+
+The generated Unicode boundary tables also contain code derived from
+`unicode-segmentation`, under its MIT option. Release archives retain that
+code's original copyright and permission notice in
+`THIRD_PARTY_LICENSES/unicode-segmentation/`. See the
+[table provenance](UNICODE_GRAPHEME_TABLES.md) for the pinned source and checks.
+Changing Kokuban's project license does not change these third-party terms.
+
+The [Code of Conduct](../CODE_OF_CONDUCT.md) adapts Contributor Covenant 2.0
+and retains its separate Creative Commons Attribution 4.0 International
+license and attribution. It is not relicensed under Kokuban's project license.
 
 ## Generation and scope
 
@@ -52,7 +63,7 @@ at release time.
 
 ## Current dependency observations
 
-The v0.1 lockfile inventory selects **148 packages for Linux x86_64** and **86
+The v0.2 lockfile inventory selects **156 packages for Linux x86_64** and **97
 packages for each macOS architecture**, excluding Kokuban itself and including
 the conservative build dependency closure described above.
 
@@ -78,7 +89,7 @@ The package includes its original published `.crate` source archive, the full
 MPL text, a relative path to that source, and its SHA-256. Recipients can unpack
 the archive with `tar -xzf THIRD_PARTY_SOURCES/option-ext-0.2.0.crate` and exercise
 the rights granted by the MPL on that covered source. Kokuban does not change
-those source files or relicense them under MIT.
+those source files or relicense them under Kokuban's project license.
 
 Before copying the archive, the generator checks its SHA-256 against the exact
 package entry in `Cargo.lock`, compares every archived file with the extracted
