@@ -1,0 +1,2845 @@
+{
+  "status": "PASS",
+  "run": 34751544546,
+  "harness": "8c1762e58bec79e71d991d3d7bd7a49e57c3abb0",
+  "source_refs": {
+    "before": "d54f801e9dec41a6eb4f159397e45939c367531d",
+    "after": "62c99adc6fc1dbf12d89ee717f5823644c162d47"
+  },
+  "samples": 10,
+  "workload_observations": 40,
+  "snapshots": 80,
+  "raw_stats_reparsed": 320,
+  "thread_deltas_verified": 160,
+  "new_disappeared_unavailable_or_reused_threads": 0,
+  "ticks_per_second": 100,
+  "tick_ms": 10,
+  "payloads_reconstructed": {
+    "ascii": {
+      "bytes": 33554380,
+      "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a"
+    },
+    "ansi": {
+      "bytes": 33554392,
+      "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e"
+    },
+    "unicode": {
+      "bytes": 33554400,
+      "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5"
+    },
+    "short_lines": {
+      "bytes": 33554430,
+      "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b"
+    }
+  },
+  "config_sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a",
+  "cpu_affinity": [
+    0
+  ],
+  "hardware_source": "linux-paired-revision-measurements/cpu.txt",
+  "font_match": {
+    "command": [
+      "fc-match",
+      "-f",
+      "%{family}\n%{file}\n",
+      "DejaVu Sans Mono"
+    ],
+    "status": 0,
+    "output": "DejaVu Sans Mono\n/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+  },
+  "summaries": {
+    "ascii": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "AB",
+          "elapsed_change_percent": -1.9205987630964594,
+          "process_cpu_change_ms": -20.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 0
+        },
+        {
+          "pair": 2,
+          "order": "BA",
+          "elapsed_change_percent": 0.2560044919751592,
+          "process_cpu_change_ms": 0.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": -10
+        },
+        {
+          "pair": 3,
+          "order": "AB",
+          "elapsed_change_percent": -0.0877413258555948,
+          "process_cpu_change_ms": 10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 0
+        },
+        {
+          "pair": 4,
+          "order": "BA",
+          "elapsed_change_percent": -1.299864787095073,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": -10,
+          "reader_cpu_change_ms": -10
+        },
+        {
+          "pair": 5,
+          "order": "AB",
+          "elapsed_change_percent": 1.202636099701082,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 10
+        }
+      ],
+      "paired_elapsed_change_percent": {
+        "samples": [
+          -1.9205987630964594,
+          0.2560044919751592,
+          -0.0877413258555948,
+          -1.299864787095073,
+          1.202636099701082
+        ],
+        "median": -0.0877413258555948,
+        "minimum": -1.9205987630964594,
+        "maximum": 1.202636099701082,
+        "median_absolute_deviation": 1.2121234612394782
+      },
+      "ab_median_percent": -0.0877413258555948,
+      "ba_median_percent": -0.5219301475599569,
+      "after_slower_count": 2,
+      "sides": {
+        "before": {
+          "wall_ms": {
+            "samples": [
+              447.7430249999941,
+              442.70980999999665,
+              443.14010100001155,
+              443.5575189999952,
+              441.074819000022
+            ],
+            "median": 443.14010100001155,
+            "minimum": 441.074819000022,
+            "maximum": 447.7430249999941,
+            "median_absolute_deviation": 0.43029100001490406
+          },
+          "process_cpu_ms": {
+            "samples": [
+              420.0,
+              400.0,
+              400.0,
+              410.0,
+              410.0
+            ],
+            "median": 410.0,
+            "minimum": 400.0,
+            "maximum": 420.0,
+            "median_absolute_deviation": 10.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              0,
+              0,
+              0,
+              10,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 10,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              400,
+              410,
+              400,
+              400,
+              390
+            ],
+            "median": 400,
+            "minimum": 390,
+            "maximum": 410,
+            "median_absolute_deviation": 0
+          }
+        },
+        "after": {
+          "wall_ms": {
+            "samples": [
+              439.14367799999354,
+              443.84316700001136,
+              442.7512839999963,
+              437.7918710000017,
+              446.37934400000745
+            ],
+            "median": 442.7512839999963,
+            "minimum": 437.7918710000017,
+            "maximum": 446.37934400000745,
+            "median_absolute_deviation": 3.607606000002761
+          },
+          "process_cpu_ms": {
+            "samples": [
+              400.0,
+              400.0,
+              410.0,
+              400.0,
+              400.0
+            ],
+            "median": 400.0,
+            "minimum": 400.0,
+            "maximum": 410.0,
+            "median_absolute_deviation": 0.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 0,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              400,
+              400,
+              400,
+              390,
+              400
+            ],
+            "median": 400,
+            "minimum": 390,
+            "maximum": 400,
+            "median_absolute_deviation": 0
+          }
+        }
+      }
+    },
+    "ansi": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "AB",
+          "elapsed_change_percent": -3.181693674081698,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 10,
+          "reader_cpu_change_ms": -10
+        },
+        {
+          "pair": 2,
+          "order": "BA",
+          "elapsed_change_percent": -1.487309842294926,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": -20
+        },
+        {
+          "pair": 3,
+          "order": "AB",
+          "elapsed_change_percent": -4.329092988568394,
+          "process_cpu_change_ms": 0.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": -30
+        },
+        {
+          "pair": 4,
+          "order": "BA",
+          "elapsed_change_percent": -2.9784231515114556,
+          "process_cpu_change_ms": -30.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": -20
+        },
+        {
+          "pair": 5,
+          "order": "AB",
+          "elapsed_change_percent": -3.9124642061908244,
+          "process_cpu_change_ms": -20.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": -10
+        }
+      ],
+      "paired_elapsed_change_percent": {
+        "samples": [
+          -3.181693674081698,
+          -1.487309842294926,
+          -4.329092988568394,
+          -2.9784231515114556,
+          -3.9124642061908244
+        ],
+        "median": -3.181693674081698,
+        "minimum": -4.329092988568394,
+        "maximum": -1.487309842294926,
+        "median_absolute_deviation": 0.7307705321091262
+      },
+      "ab_median_percent": -3.9124642061908244,
+      "ba_median_percent": -2.232866496903191,
+      "after_slower_count": 0,
+      "sides": {
+        "before": {
+          "wall_ms": {
+            "samples": [
+              401.67273500000533,
+              398.78361799998174,
+              400.5398369999966,
+              399.5158980000042,
+              399.3903120000084
+            ],
+            "median": 399.5158980000042,
+            "minimum": 398.78361799998174,
+            "maximum": 401.67273500000533,
+            "median_absolute_deviation": 0.7322800000224561
+          },
+          "process_cpu_ms": {
+            "samples": [
+              360.0,
+              370.0,
+              350.0,
+              370.0,
+              360.0
+            ],
+            "median": 360.0,
+            "minimum": 350.0,
+            "maximum": 370.0,
+            "median_absolute_deviation": 10.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 0,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              360,
+              360,
+              370,
+              370,
+              360
+            ],
+            "median": 360,
+            "minimum": 360,
+            "maximum": 370,
+            "median_absolute_deviation": 0
+          }
+        },
+        "after": {
+          "wall_ms": {
+            "samples": [
+              388.8927389999992,
+              392.8524700000082,
+              383.2000950000065,
+              387.6166240000032,
+              383.76430900001424
+            ],
+            "median": 387.6166240000032,
+            "minimum": 383.2000950000065,
+            "maximum": 392.8524700000082,
+            "median_absolute_deviation": 3.8523149999889483
+          },
+          "process_cpu_ms": {
+            "samples": [
+              350.0,
+              360.0,
+              350.0,
+              340.0,
+              340.0
+            ],
+            "median": 350.0,
+            "minimum": 340.0,
+            "maximum": 360.0,
+            "median_absolute_deviation": 10.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 10,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              350,
+              340,
+              340,
+              350,
+              350
+            ],
+            "median": 350,
+            "minimum": 340,
+            "maximum": 350,
+            "median_absolute_deviation": 0
+          }
+        }
+      }
+    },
+    "unicode": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "AB",
+          "elapsed_change_percent": 0.020902149637591627,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 0
+        },
+        {
+          "pair": 2,
+          "order": "BA",
+          "elapsed_change_percent": 0.458832283872157,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 10
+        },
+        {
+          "pair": 3,
+          "order": "AB",
+          "elapsed_change_percent": 0.72672575736763,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 0
+        },
+        {
+          "pair": 4,
+          "order": "BA",
+          "elapsed_change_percent": 0.12849184916376988,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 0
+        },
+        {
+          "pair": 5,
+          "order": "AB",
+          "elapsed_change_percent": 0.4798212576518024,
+          "process_cpu_change_ms": 0.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 10
+        }
+      ],
+      "paired_elapsed_change_percent": {
+        "samples": [
+          0.020902149637591627,
+          0.458832283872157,
+          0.72672575736763,
+          0.12849184916376988,
+          0.4798212576518024
+        ],
+        "median": 0.458832283872157,
+        "minimum": 0.020902149637591627,
+        "maximum": 0.72672575736763,
+        "median_absolute_deviation": 0.267893473495473
+      },
+      "ab_median_percent": 0.4798212576518024,
+      "ba_median_percent": 0.29366206651796345,
+      "after_slower_count": 5,
+      "sides": {
+        "before": {
+          "wall_ms": {
+            "samples": [
+              676.5093660000048,
+              673.9554100000191,
+              674.906999000001,
+              675.4615219999778,
+              678.4541009999998
+            ],
+            "median": 675.4615219999778,
+            "minimum": 673.9554100000191,
+            "maximum": 678.4541009999998,
+            "median_absolute_deviation": 1.0478440000269984
+          },
+          "process_cpu_ms": {
+            "samples": [
+              640.0,
+              640.0,
+              640.0,
+              640.0,
+              630.0
+            ],
+            "median": 640.0,
+            "minimum": 630.0,
+            "maximum": 640.0,
+            "median_absolute_deviation": 0.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              0,
+              0,
+              0,
+              10,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 10,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              640,
+              620,
+              630,
+              630,
+              630
+            ],
+            "median": 630,
+            "minimum": 620,
+            "maximum": 640,
+            "median_absolute_deviation": 0
+          }
+        },
+        "after": {
+          "wall_ms": {
+            "samples": [
+              676.6507709999985,
+              677.0477350000021,
+              679.8117220000108,
+              676.3294349999853,
+              681.7094680000082
+            ],
+            "median": 677.0477350000021,
+            "minimum": 676.3294349999853,
+            "maximum": 681.7094680000082,
+            "median_absolute_deviation": 0.7183000000168249
+          },
+          "process_cpu_ms": {
+            "samples": [
+              630.0,
+              630.0,
+              630.0,
+              630.0,
+              630.0
+            ],
+            "median": 630.0,
+            "minimum": 630.0,
+            "maximum": 630.0,
+            "median_absolute_deviation": 0.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              0,
+              0,
+              0,
+              10,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 10,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              640,
+              630,
+              630,
+              630,
+              640
+            ],
+            "median": 630,
+            "minimum": 630,
+            "maximum": 640,
+            "median_absolute_deviation": 0
+          }
+        }
+      }
+    },
+    "short_lines": {
+      "pairs": [
+        {
+          "pair": 1,
+          "order": "AB",
+          "elapsed_change_percent": -2.9169079483555627,
+          "process_cpu_change_ms": -40.0,
+          "main_cpu_change_ms": 10,
+          "reader_cpu_change_ms": -20
+        },
+        {
+          "pair": 2,
+          "order": "BA",
+          "elapsed_change_percent": 0.23626588745071508,
+          "process_cpu_change_ms": 10.0,
+          "main_cpu_change_ms": -10,
+          "reader_cpu_change_ms": -10
+        },
+        {
+          "pair": 3,
+          "order": "AB",
+          "elapsed_change_percent": 1.3827029852264472,
+          "process_cpu_change_ms": 30.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 20
+        },
+        {
+          "pair": 4,
+          "order": "BA",
+          "elapsed_change_percent": -0.4242260948826626,
+          "process_cpu_change_ms": -10.0,
+          "main_cpu_change_ms": 0,
+          "reader_cpu_change_ms": 0
+        },
+        {
+          "pair": 5,
+          "order": "AB",
+          "elapsed_change_percent": 0.09802217235230781,
+          "process_cpu_change_ms": 10.0,
+          "main_cpu_change_ms": -10,
+          "reader_cpu_change_ms": -10
+        }
+      ],
+      "paired_elapsed_change_percent": {
+        "samples": [
+          -2.9169079483555627,
+          0.23626588745071508,
+          1.3827029852264472,
+          -0.4242260948826626,
+          0.09802217235230781
+        ],
+        "median": 0.09802217235230781,
+        "minimum": -2.9169079483555627,
+        "maximum": 1.3827029852264472,
+        "median_absolute_deviation": 0.5222482672349704
+      },
+      "ab_median_percent": 0.09802217235230781,
+      "ba_median_percent": -0.09398010371597376,
+      "after_slower_count": 3,
+      "sides": {
+        "before": {
+          "wall_ms": {
+            "samples": [
+              915.2770150000151,
+              888.0757279999898,
+              890.4997770000023,
+              897.5949490000232,
+              896.3196580000101
+            ],
+            "median": 896.3196580000101,
+            "minimum": 888.0757279999898,
+            "maximum": 915.2770150000151,
+            "median_absolute_deviation": 5.819881000007854
+          },
+          "process_cpu_ms": {
+            "samples": [
+              880.0,
+              840.0,
+              840.0,
+              860.0,
+              850.0
+            ],
+            "median": 850.0,
+            "minimum": 840.0,
+            "maximum": 880.0,
+            "median_absolute_deviation": 10.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              0,
+              10,
+              0,
+              0,
+              10
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 10,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              860,
+              850,
+              840,
+              850,
+              850
+            ],
+            "median": 850,
+            "minimum": 840,
+            "maximum": 860,
+            "median_absolute_deviation": 0
+          }
+        },
+        "after": {
+          "wall_ms": {
+            "samples": [
+              888.5792270000081,
+              890.1739479999833,
+              902.8127440000162,
+              893.7871170000165,
+              897.1982500000024
+            ],
+            "median": 893.7871170000165,
+            "minimum": 888.5792270000081,
+            "maximum": 902.8127440000162,
+            "median_absolute_deviation": 3.6131690000331673
+          },
+          "process_cpu_ms": {
+            "samples": [
+              840.0,
+              850.0,
+              870.0,
+              850.0,
+              860.0
+            ],
+            "median": 850.0,
+            "minimum": 840.0,
+            "maximum": 870.0,
+            "median_absolute_deviation": 10.0
+          },
+          "main_cpu_ms": {
+            "samples": [
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "median": 0,
+            "minimum": 0,
+            "maximum": 10,
+            "median_absolute_deviation": 0
+          },
+          "reader_cpu_ms": {
+            "samples": [
+              840,
+              840,
+              860,
+              850,
+              840
+            ],
+            "median": 840,
+            "minimum": 840,
+            "maximum": 860,
+            "median_absolute_deviation": 0
+          }
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "pair": 1,
+      "side": "before",
+      "workload": "ascii",
+      "pid": 10042,
+      "wall_ms": 447.7430249999941,
+      "process_cpu_ms": 420.0,
+      "process_read_timestamp_window_ms": 447.93255700000145,
+      "process_percent_of_one_cpu_approx": 93.76411547598194,
+      "before_sweep_ms": 0.3636389999996936,
+      "after_sweep_ms": 0.18555500000161373,
+      "threads": {
+        "main": {
+          "tid": 10042,
+          "start_ticks": 18474,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 448.1879450000008,
+          "window_max_ms": 448.3527600000059
+        },
+        "kokuban-clipboa": {
+          "tid": 10044,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 448.1800430000078,
+          "window_max_ms": 448.26510999999414
+        },
+        "terminal-writer": {
+          "tid": 10045,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 448.1784310000023,
+          "window_max_ms": 448.2453399999997
+        },
+        "terminal-reader": {
+          "tid": 10046,
+          "start_ticks": 18475,
+          "cpu_ms": 400,
+          "user_ms": 310,
+          "system_ms": 90,
+          "window_min_ms": 448.1759669999974,
+          "window_max_ms": 448.2386109999936
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "before",
+      "workload": "ansi",
+      "pid": 10042,
+      "wall_ms": 401.67273500000533,
+      "process_cpu_ms": 360.0,
+      "process_read_timestamp_window_ms": 401.87544599999114,
+      "process_percent_of_one_cpu_approx": 89.57999389691699,
+      "before_sweep_ms": 0.31430600000703635,
+      "after_sweep_ms": 0.18153900001038892,
+      "threads": {
+        "main": {
+          "tid": 10042,
+          "start_ticks": 18474,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 402.1117560000107,
+          "window_max_ms": 402.26253000000156
+        },
+        "kokuban-clipboa": {
+          "tid": 10044,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 402.11141499997893,
+          "window_max_ms": 402.187768999994
+        },
+        "terminal-writer": {
+          "tid": 10045,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 402.10839100001294,
+          "window_max_ms": 402.175370000009
+        },
+        "terminal-reader": {
+          "tid": 10046,
+          "start_ticks": 18475,
+          "cpu_ms": 360,
+          "user_ms": 270,
+          "system_ms": 90,
+          "window_min_ms": 402.10692900001277,
+          "window_max_ms": 402.16872999999964
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "before",
+      "workload": "unicode",
+      "pid": 10042,
+      "wall_ms": 676.5093660000048,
+      "process_cpu_ms": 640.0,
+      "process_read_timestamp_window_ms": 676.6943089999984,
+      "process_percent_of_one_cpu_approx": 94.5774172307989,
+      "before_sweep_ms": 0.29900399999860383,
+      "after_sweep_ms": 0.2168710000205465,
+      "threads": {
+        "main": {
+          "tid": 10042,
+          "start_ticks": 18474,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 676.9432190000089,
+          "window_max_ms": 677.0780690000038
+        },
+        "kokuban-clipboa": {
+          "tid": 10044,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 676.9487170000161,
+          "window_max_ms": 677.0238979999874
+        },
+        "terminal-writer": {
+          "tid": 10045,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 676.9504499999925,
+          "window_max_ms": 677.0125710000059
+        },
+        "terminal-reader": {
+          "tid": 10046,
+          "start_ticks": 18475,
+          "cpu_ms": 640,
+          "user_ms": 530,
+          "system_ms": 110,
+          "window_min_ms": 676.9494990000169,
+          "window_max_ms": 677.0204639999804
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "before",
+      "workload": "short_lines",
+      "pid": 10042,
+      "wall_ms": 915.2770150000151,
+      "process_cpu_ms": 880.0,
+      "process_read_timestamp_window_ms": 915.4883890000178,
+      "process_percent_of_one_cpu_approx": 96.12355662546615,
+      "before_sweep_ms": 0.28624500001228625,
+      "after_sweep_ms": 0.18588599999702637,
+      "threads": {
+        "main": {
+          "tid": 10042,
+          "start_ticks": 18474,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 915.7192909999878,
+          "window_max_ms": 915.8498150000014
+        },
+        "kokuban-clipboa": {
+          "tid": 10044,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 915.722905999985,
+          "window_max_ms": 915.7972470000004
+        },
+        "terminal-writer": {
+          "tid": 10045,
+          "start_ticks": 18475,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 915.7240879999904,
+          "window_max_ms": 915.7877119999966
+        },
+        "terminal-reader": {
+          "tid": 10046,
+          "start_ticks": 18475,
+          "cpu_ms": 860,
+          "user_ms": 760,
+          "system_ms": 100,
+          "window_min_ms": 915.7242390000135,
+          "window_max_ms": 915.7860699999958
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "before",
+      "workload": "ascii",
+      "pid": 10076,
+      "wall_ms": 442.70980999999665,
+      "process_cpu_ms": 400.0,
+      "process_read_timestamp_window_ms": 442.90127300001814,
+      "process_percent_of_one_cpu_approx": 90.31358101334327,
+      "before_sweep_ms": 0.33242300000324576,
+      "after_sweep_ms": 0.1883890000158317,
+      "threads": {
+        "main": {
+          "tid": 10076,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.1583639999985,
+          "window_max_ms": 443.29486699999165
+        },
+        "kokuban-clipboa": {
+          "tid": 10078,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.1555600000081,
+          "window_max_ms": 443.2358690000058
+        },
+        "terminal-writer": {
+          "tid": 10079,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.15323600000056,
+          "window_max_ms": 443.2216889999836
+        },
+        "terminal-reader": {
+          "tid": 10080,
+          "start_ticks": 20319,
+          "cpu_ms": 410,
+          "user_ms": 320,
+          "system_ms": 90,
+          "window_min_ms": 443.1504129999837,
+          "window_max_ms": 443.2136060000005
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "before",
+      "workload": "ansi",
+      "pid": 10076,
+      "wall_ms": 398.78361799998174,
+      "process_cpu_ms": 370.0,
+      "process_read_timestamp_window_ms": 398.9730090000023,
+      "process_percent_of_one_cpu_approx": 92.73810299282623,
+      "before_sweep_ms": 0.3092290000097364,
+      "after_sweep_ms": 0.19196499999907246,
+      "threads": {
+        "main": {
+          "tid": 10076,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.2082670000059,
+          "window_max_ms": 399.35437399998364
+        },
+        "kokuban-clipboa": {
+          "tid": 10078,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.21094100000687,
+          "window_max_ms": 399.29122000000916
+        },
+        "terminal-writer": {
+          "tid": 10079,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.21633899999165,
+          "window_max_ms": 399.2813360000014
+        },
+        "terminal-reader": {
+          "tid": 10080,
+          "start_ticks": 20319,
+          "cpu_ms": 360,
+          "user_ms": 250,
+          "system_ms": 110,
+          "window_min_ms": 399.2158080000081,
+          "window_max_ms": 399.2775300000062
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "before",
+      "workload": "unicode",
+      "pid": 10076,
+      "wall_ms": 673.9554100000191,
+      "process_cpu_ms": 640.0,
+      "process_read_timestamp_window_ms": 674.166874000008,
+      "process_percent_of_one_cpu_approx": 94.93198563772691,
+      "before_sweep_ms": 0.27795200000468867,
+      "after_sweep_ms": 0.19537000000013904,
+      "threads": {
+        "main": {
+          "tid": 10076,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 674.3998590000047,
+          "window_max_ms": 674.5267569999953
+        },
+        "kokuban-clipboa": {
+          "tid": 10078,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 674.4010900000035,
+          "window_max_ms": 674.4774130000053
+        },
+        "terminal-writer": {
+          "tid": 10079,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 674.4017620000022,
+          "window_max_ms": 674.4652050000184
+        },
+        "terminal-reader": {
+          "tid": 10080,
+          "start_ticks": 20319,
+          "cpu_ms": 620,
+          "user_ms": 540,
+          "system_ms": 80,
+          "window_min_ms": 674.4015010000055,
+          "window_max_ms": 674.4729570000061
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "before",
+      "workload": "short_lines",
+      "pid": 10076,
+      "wall_ms": 888.0757279999898,
+      "process_cpu_ms": 840.0,
+      "process_read_timestamp_window_ms": 888.260540999994,
+      "process_percent_of_one_cpu_approx": 94.56684848955884,
+      "before_sweep_ms": 0.2872060000242982,
+      "after_sweep_ms": 0.22068800001306954,
+      "threads": {
+        "main": {
+          "tid": 10076,
+          "start_ticks": 20319,
+          "cpu_ms": 10,
+          "user_ms": 10,
+          "system_ms": 0,
+          "window_min_ms": 888.4933969999906,
+          "window_max_ms": 888.6235200000101
+        },
+        "kokuban-clipboa": {
+          "tid": 10078,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 888.495120000016,
+          "window_max_ms": 888.6009560000048
+        },
+        "terminal-writer": {
+          "tid": 10079,
+          "start_ticks": 20319,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 888.5265469999979,
+          "window_max_ms": 888.5967800000003
+        },
+        "terminal-reader": {
+          "tid": 10080,
+          "start_ticks": 20319,
+          "cpu_ms": 850,
+          "user_ms": 730,
+          "system_ms": 120,
+          "window_min_ms": 888.5314030000018,
+          "window_max_ms": 888.594175999998
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "before",
+      "workload": "ascii",
+      "pid": 10086,
+      "wall_ms": 443.14010100001155,
+      "process_cpu_ms": 400.0,
+      "process_read_timestamp_window_ms": 443.3171129999778,
+      "process_percent_of_one_cpu_approx": 90.22886513294155,
+      "before_sweep_ms": 0.35971400001244547,
+      "after_sweep_ms": 0.1896209999756593,
+      "threads": {
+        "main": {
+          "tid": 10086,
+          "start_ticks": 20927,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.5781399999996,
+          "window_max_ms": 443.71766699998716
+        },
+        "kokuban-clipboa": {
+          "tid": 10088,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.5738029999925,
+          "window_max_ms": 443.65513399998235
+        },
+        "terminal-writer": {
+          "tid": 10089,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.5703389999901,
+          "window_max_ms": 443.6405929999978
+        },
+        "terminal-reader": {
+          "tid": 10090,
+          "start_ticks": 20928,
+          "cpu_ms": 400,
+          "user_ms": 320,
+          "system_ms": 80,
+          "window_min_ms": 443.5631679999972,
+          "window_max_ms": 443.63397199998644
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "before",
+      "workload": "ansi",
+      "pid": 10086,
+      "wall_ms": 400.5398369999966,
+      "process_cpu_ms": 350.0,
+      "process_read_timestamp_window_ms": 400.7323129999918,
+      "process_percent_of_one_cpu_approx": 87.3400992747014,
+      "before_sweep_ms": 0.3210860000137927,
+      "after_sweep_ms": 0.18439299998362912,
+      "threads": {
+        "main": {
+          "tid": 10086,
+          "start_ticks": 20927,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 400.98413600000526,
+          "window_max_ms": 401.12391299999217
+        },
+        "kokuban-clipboa": {
+          "tid": 10088,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 400.9837760000039,
+          "window_max_ms": 401.0592169999825
+        },
+        "terminal-writer": {
+          "tid": 10089,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 400.9839750000026,
+          "window_max_ms": 401.04886200001033
+        },
+        "terminal-reader": {
+          "tid": 10090,
+          "start_ticks": 20928,
+          "cpu_ms": 370,
+          "user_ms": 260,
+          "system_ms": 110,
+          "window_min_ms": 400.9658889999912,
+          "window_max_ms": 401.0472089999837
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "before",
+      "workload": "unicode",
+      "pid": 10086,
+      "wall_ms": 674.906999000001,
+      "process_cpu_ms": 640.0,
+      "process_read_timestamp_window_ms": 675.0945480000041,
+      "process_percent_of_one_cpu_approx": 94.80153585835151,
+      "before_sweep_ms": 0.3014970000094763,
+      "after_sweep_ms": 0.19659200000887722,
+      "threads": {
+        "main": {
+          "tid": 10086,
+          "start_ticks": 20927,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 675.327282000012,
+          "window_max_ms": 675.4593590000013
+        },
+        "kokuban-clipboa": {
+          "tid": 10088,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 675.3291850000096,
+          "window_max_ms": 675.4045579999968
+        },
+        "terminal-writer": {
+          "tid": 10089,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 675.3311790000112,
+          "window_max_ms": 675.3936810000027
+        },
+        "terminal-reader": {
+          "tid": 10090,
+          "start_ticks": 20928,
+          "cpu_ms": 630,
+          "user_ms": 530,
+          "system_ms": 100,
+          "window_min_ms": 675.3307070000005,
+          "window_max_ms": 675.4043370000034
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "before",
+      "workload": "short_lines",
+      "pid": 10086,
+      "wall_ms": 890.4997770000023,
+      "process_cpu_ms": 840.0,
+      "process_read_timestamp_window_ms": 890.6982620000008,
+      "process_percent_of_one_cpu_approx": 94.30803178102522,
+      "before_sweep_ms": 0.2929439999945771,
+      "after_sweep_ms": 0.18574499998180727,
+      "threads": {
+        "main": {
+          "tid": 10086,
+          "start_ticks": 20927,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 890.9310260000041,
+          "window_max_ms": 891.0618010000064
+        },
+        "kokuban-clipboa": {
+          "tid": 10088,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 890.9346519999986,
+          "window_max_ms": 891.0091729999863
+        },
+        "terminal-writer": {
+          "tid": 10089,
+          "start_ticks": 20928,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 890.9361139999987,
+          "window_max_ms": 890.999848000007
+        },
+        "terminal-reader": {
+          "tid": 10090,
+          "start_ticks": 20928,
+          "cpu_ms": 840,
+          "user_ms": 750,
+          "system_ms": 90,
+          "window_min_ms": 890.9345120000012,
+          "window_max_ms": 890.998556999989
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "before",
+      "workload": "ascii",
+      "pid": 10118,
+      "wall_ms": 443.5575189999952,
+      "process_cpu_ms": 410.0,
+      "process_read_timestamp_window_ms": 443.7372349999862,
+      "process_percent_of_one_cpu_approx": 92.3970241082006,
+      "before_sweep_ms": 0.3340849999915463,
+      "after_sweep_ms": 0.21004100000254766,
+      "threads": {
+        "main": {
+          "tid": 10118,
+          "start_ticks": 22759,
+          "cpu_ms": 10,
+          "user_ms": 0,
+          "system_ms": 10,
+          "window_min_ms": 444.0246000000059,
+          "window_max_ms": 444.16630099999566
+        },
+        "kokuban-clipboa": {
+          "tid": 10120,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 444.0234290000262,
+          "window_max_ms": 444.10299699998745
+        },
+        "terminal-writer": {
+          "tid": 10121,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 444.0210760000127,
+          "window_max_ms": 444.10372799998754
+        },
+        "terminal-reader": {
+          "tid": 10122,
+          "start_ticks": 22759,
+          "cpu_ms": 400,
+          "user_ms": 320,
+          "system_ms": 80,
+          "window_min_ms": 444.0347860000031,
+          "window_max_ms": 444.0991209999936
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "before",
+      "workload": "ansi",
+      "pid": 10118,
+      "wall_ms": 399.5158980000042,
+      "process_cpu_ms": 370.0,
+      "process_read_timestamp_window_ms": 399.69834799998694,
+      "process_percent_of_one_cpu_approx": 92.5698096705699,
+      "before_sweep_ms": 0.3018479999923329,
+      "after_sweep_ms": 0.18137899999715046,
+      "threads": {
+        "main": {
+          "tid": 10118,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.95259600001987,
+          "window_max_ms": 400.09350400001154
+        },
+        "kokuban-clipboa": {
+          "tid": 10120,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.9545380000029,
+          "window_max_ms": 400.02869799999985
+        },
+        "terminal-writer": {
+          "tid": 10121,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.9567310000032,
+          "window_max_ms": 400.0189139999861
+        },
+        "terminal-reader": {
+          "tid": 10122,
+          "start_ticks": 22759,
+          "cpu_ms": 370,
+          "user_ms": 270,
+          "system_ms": 100,
+          "window_min_ms": 399.9559700000077,
+          "window_max_ms": 400.0172110000051
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "before",
+      "workload": "unicode",
+      "pid": 10118,
+      "wall_ms": 675.4615219999778,
+      "process_cpu_ms": 640.0,
+      "process_read_timestamp_window_ms": 675.6740259999958,
+      "process_percent_of_one_cpu_approx": 94.72023126133962,
+      "before_sweep_ms": 0.29219300000704607,
+      "after_sweep_ms": 0.1988749999952688,
+      "threads": {
+        "main": {
+          "tid": 10118,
+          "start_ticks": 22759,
+          "cpu_ms": 10,
+          "user_ms": 0,
+          "system_ms": 10,
+          "window_min_ms": 675.9075029999906,
+          "window_max_ms": 676.039467999999
+        },
+        "kokuban-clipboa": {
+          "tid": 10120,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 675.9095959999968,
+          "window_max_ms": 675.9852379999813
+        },
+        "terminal-writer": {
+          "tid": 10121,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 675.9101469999962,
+          "window_max_ms": 675.9782880000103
+        },
+        "terminal-reader": {
+          "tid": 10122,
+          "start_ticks": 22759,
+          "cpu_ms": 630,
+          "user_ms": 540,
+          "system_ms": 90,
+          "window_min_ms": 675.9122999999931,
+          "window_max_ms": 675.9851679999827
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "before",
+      "workload": "short_lines",
+      "pid": 10118,
+      "wall_ms": 897.5949490000232,
+      "process_cpu_ms": 860.0,
+      "process_read_timestamp_window_ms": 897.7893980000147,
+      "process_percent_of_one_cpu_approx": 95.79083935673586,
+      "before_sweep_ms": 0.2584829999818794,
+      "after_sweep_ms": 0.19928499997945437,
+      "threads": {
+        "main": {
+          "tid": 10118,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 898.0397690000075,
+          "window_max_ms": 898.1548190000126
+        },
+        "kokuban-clipboa": {
+          "tid": 10120,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 898.0411409999931,
+          "window_max_ms": 898.1157110000026
+        },
+        "terminal-writer": {
+          "tid": 10121,
+          "start_ticks": 22759,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 898.0434940000066,
+          "window_max_ms": 898.1190070000196
+        },
+        "terminal-reader": {
+          "tid": 10122,
+          "start_ticks": 22759,
+          "cpu_ms": 850,
+          "user_ms": 740,
+          "system_ms": 110,
+          "window_min_ms": 898.0571249999798,
+          "window_max_ms": 898.1212499999742
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "before",
+      "workload": "ascii",
+      "pid": 10130,
+      "wall_ms": 441.074819000022,
+      "process_cpu_ms": 410.0,
+      "process_read_timestamp_window_ms": 441.28612200000816,
+      "process_percent_of_one_cpu_approx": 92.9102411246897,
+      "before_sweep_ms": 0.5765349999933278,
+      "after_sweep_ms": 0.19561999999950785,
+      "threads": {
+        "main": {
+          "tid": 10130,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 441.5751010000122,
+          "window_max_ms": 441.89508599998817
+        },
+        "kokuban-clipboa": {
+          "tid": 10132,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 441.5497530000039,
+          "window_max_ms": 441.65555999998674
+        },
+        "terminal-writer": {
+          "tid": 10133,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 441.5445249999834,
+          "window_max_ms": 441.6182440000114
+        },
+        "terminal-reader": {
+          "tid": 10134,
+          "start_ticks": 23373,
+          "cpu_ms": 390,
+          "user_ms": 330,
+          "system_ms": 60,
+          "window_min_ms": 441.5435840000157,
+          "window_max_ms": 441.6078700000128
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "before",
+      "workload": "ansi",
+      "pid": 10130,
+      "wall_ms": 399.3903120000084,
+      "process_cpu_ms": 360.0,
+      "process_read_timestamp_window_ms": 399.5751960000007,
+      "process_percent_of_one_cpu_approx": 90.09568251578844,
+      "before_sweep_ms": 0.29348600000389524,
+      "after_sweep_ms": 0.18531500001017776,
+      "threads": {
+        "main": {
+          "tid": 10130,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.80784099998345,
+          "window_max_ms": 399.94605600000455
+        },
+        "kokuban-clipboa": {
+          "tid": 10132,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.80791099998214,
+          "window_max_ms": 399.88375300001167
+        },
+        "terminal-writer": {
+          "tid": 10133,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 399.8090119999915,
+          "window_max_ms": 399.87422000001516
+        },
+        "terminal-reader": {
+          "tid": 10134,
+          "start_ticks": 23373,
+          "cpu_ms": 360,
+          "user_ms": 260,
+          "system_ms": 100,
+          "window_min_ms": 399.8103750000155,
+          "window_max_ms": 399.8724169999832
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "before",
+      "workload": "unicode",
+      "pid": 10130,
+      "wall_ms": 678.4541009999998,
+      "process_cpu_ms": 630.0,
+      "process_read_timestamp_window_ms": 678.6467069999844,
+      "process_percent_of_one_cpu_approx": 92.83180681520857,
+      "before_sweep_ms": 0.2824990000078742,
+      "after_sweep_ms": 0.19783300001563475,
+      "threads": {
+        "main": {
+          "tid": 10130,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 678.8818550000144,
+          "window_max_ms": 679.0135099999759
+        },
+        "kokuban-clipboa": {
+          "tid": 10132,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 678.8831060000007,
+          "window_max_ms": 678.9598109999986
+        },
+        "terminal-writer": {
+          "tid": 10133,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 678.8851899999884,
+          "window_max_ms": 678.9474920000202
+        },
+        "terminal-reader": {
+          "tid": 10134,
+          "start_ticks": 23373,
+          "cpu_ms": 630,
+          "user_ms": 540,
+          "system_ms": 90,
+          "window_min_ms": 678.8838280000107,
+          "window_max_ms": 678.9576580000016
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "before",
+      "workload": "short_lines",
+      "pid": 10130,
+      "wall_ms": 896.3196580000101,
+      "process_cpu_ms": 850.0,
+      "process_read_timestamp_window_ms": 896.5050329999826,
+      "process_percent_of_one_cpu_approx": 94.81263001453964,
+      "before_sweep_ms": 0.2891780000027211,
+      "after_sweep_ms": 0.18912099997692167,
+      "threads": {
+        "main": {
+          "tid": 10130,
+          "start_ticks": 23373,
+          "cpu_ms": 10,
+          "user_ms": 10,
+          "system_ms": 0,
+          "window_min_ms": 896.7427559999805,
+          "window_max_ms": 896.8748510000069
+        },
+        "kokuban-clipboa": {
+          "tid": 10132,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 896.7460709999955,
+          "window_max_ms": 896.8218629999853
+        },
+        "terminal-writer": {
+          "tid": 10133,
+          "start_ticks": 23373,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 896.7465720000121,
+          "window_max_ms": 896.8115779999835
+        },
+        "terminal-reader": {
+          "tid": 10134,
+          "start_ticks": 23373,
+          "cpu_ms": 850,
+          "user_ms": 740,
+          "system_ms": 110,
+          "window_min_ms": 896.7460110000047,
+          "window_max_ms": 896.808802999999
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "after",
+      "workload": "ascii",
+      "pid": 10053,
+      "wall_ms": 439.14367799999354,
+      "process_cpu_ms": 400.0,
+      "process_read_timestamp_window_ms": 439.3335099999831,
+      "process_percent_of_one_cpu_approx": 91.04700435894712,
+      "before_sweep_ms": 0.34043399998040513,
+      "after_sweep_ms": 0.19421799999008726,
+      "threads": {
+        "main": {
+          "tid": 10053,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 439.61997400000996,
+          "window_max_ms": 439.7612339999739
+        },
+        "kokuban-clipboa": {
+          "tid": 10055,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 439.61834300000646,
+          "window_max_ms": 439.70035399999574
+        },
+        "terminal-writer": {
+          "tid": 10056,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 439.61731100000634,
+          "window_max_ms": 439.6873249999942
+        },
+        "terminal-reader": {
+          "tid": 10057,
+          "start_ticks": 19100,
+          "cpu_ms": 400,
+          "user_ms": 270,
+          "system_ms": 130,
+          "window_min_ms": 439.61757100001364,
+          "window_max_ms": 439.6805739999934
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "after",
+      "workload": "ansi",
+      "pid": 10053,
+      "wall_ms": 388.8927389999992,
+      "process_cpu_ms": 350.0,
+      "process_read_timestamp_window_ms": 389.07944599998245,
+      "process_percent_of_one_cpu_approx": 89.95592123877337,
+      "before_sweep_ms": 0.3058130000113124,
+      "after_sweep_ms": 0.21507899998596258,
+      "threads": {
+        "main": {
+          "tid": 10053,
+          "start_ticks": 19100,
+          "cpu_ms": 10,
+          "user_ms": 10,
+          "system_ms": 0,
+          "window_min_ms": 389.31340300001693,
+          "window_max_ms": 389.482313000002
+        },
+        "kokuban-clipboa": {
+          "tid": 10055,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 389.34283700001515,
+          "window_max_ms": 389.42031099998076
+        },
+        "terminal-writer": {
+          "tid": 10056,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 389.3456200000003,
+          "window_max_ms": 389.4105469999829
+        },
+        "terminal-reader": {
+          "tid": 10057,
+          "start_ticks": 19100,
+          "cpu_ms": 350,
+          "user_ms": 260,
+          "system_ms": 90,
+          "window_min_ms": 389.3445589999942,
+          "window_max_ms": 389.40681100001484
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "after",
+      "workload": "unicode",
+      "pid": 10053,
+      "wall_ms": 676.6507709999985,
+      "process_cpu_ms": 630.0,
+      "process_read_timestamp_window_ms": 676.848122999985,
+      "process_percent_of_one_cpu_approx": 93.07848815590407,
+      "before_sweep_ms": 0.30348000001367836,
+      "after_sweep_ms": 0.19459899999674235,
+      "threads": {
+        "main": {
+          "tid": 10053,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 677.0774940000024,
+          "window_max_ms": 677.2114530000124
+        },
+        "kokuban-clipboa": {
+          "tid": 10055,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 677.0795459999874,
+          "window_max_ms": 677.1551590000229
+        },
+        "terminal-writer": {
+          "tid": 10056,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 677.0810090000055,
+          "window_max_ms": 677.1456550000039
+        },
+        "terminal-reader": {
+          "tid": 10057,
+          "start_ticks": 19100,
+          "cpu_ms": 640,
+          "user_ms": 550,
+          "system_ms": 90,
+          "window_min_ms": 677.0824310000023,
+          "window_max_ms": 677.154177999995
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "side": "after",
+      "workload": "short_lines",
+      "pid": 10053,
+      "wall_ms": 888.5792270000081,
+      "process_cpu_ms": 840.0,
+      "process_read_timestamp_window_ms": 888.7745769999924,
+      "process_percent_of_one_cpu_approx": 94.5121543457478,
+      "before_sweep_ms": 0.2922829999931764,
+      "after_sweep_ms": 0.18657699999380384,
+      "threads": {
+        "main": {
+          "tid": 10053,
+          "start_ticks": 19100,
+          "cpu_ms": 10,
+          "user_ms": 10,
+          "system_ms": 0,
+          "window_min_ms": 889.0108969999915,
+          "window_max_ms": 889.1406600000096
+        },
+        "kokuban-clipboa": {
+          "tid": 10055,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 889.0128200000049,
+          "window_max_ms": 889.0880010000046
+        },
+        "terminal-writer": {
+          "tid": 10056,
+          "start_ticks": 19100,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 889.0129809999792,
+          "window_max_ms": 889.0789579999989
+        },
+        "terminal-reader": {
+          "tid": 10057,
+          "start_ticks": 19100,
+          "cpu_ms": 840,
+          "user_ms": 740,
+          "system_ms": 100,
+          "window_min_ms": 889.0128699999877,
+          "window_max_ms": 889.0765839999801
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "after",
+      "workload": "ascii",
+      "pid": 10064,
+      "wall_ms": 443.84316700001136,
+      "process_cpu_ms": 400.0,
+      "process_read_timestamp_window_ms": 444.0218409999943,
+      "process_percent_of_one_cpu_approx": 90.08565864668921,
+      "before_sweep_ms": 0.33847200000991506,
+      "after_sweep_ms": 0.21533899999326422,
+      "threads": {
+        "main": {
+          "tid": 10064,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 444.2801640000198,
+          "window_max_ms": 444.4379789999857
+        },
+        "kokuban-clipboa": {
+          "tid": 10066,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 444.2955369999879,
+          "window_max_ms": 444.3851099999847
+        },
+        "terminal-writer": {
+          "tid": 10067,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 444.2968099999973,
+          "window_max_ms": 444.3721100000175
+        },
+        "terminal-reader": {
+          "tid": 10068,
+          "start_ticks": 19709,
+          "cpu_ms": 400,
+          "user_ms": 320,
+          "system_ms": 80,
+          "window_min_ms": 444.2968890000145,
+          "window_max_ms": 444.35970200001407
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "after",
+      "workload": "ansi",
+      "pid": 10064,
+      "wall_ms": 392.8524700000082,
+      "process_cpu_ms": 360.0,
+      "process_read_timestamp_window_ms": 393.02623800000447,
+      "process_percent_of_one_cpu_approx": 91.59693811587101,
+      "before_sweep_ms": 0.2971309999963978,
+      "after_sweep_ms": 0.1772119999827737,
+      "threads": {
+        "main": {
+          "tid": 10064,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 393.25491700000725,
+          "window_max_ms": 393.3934129999841
+        },
+        "kokuban-clipboa": {
+          "tid": 10066,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 393.2555480000133,
+          "window_max_ms": 393.3301479999898
+        },
+        "terminal-writer": {
+          "tid": 10067,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 393.25708100000156,
+          "window_max_ms": 393.31915200000367
+        },
+        "terminal-reader": {
+          "tid": 10068,
+          "start_ticks": 19709,
+          "cpu_ms": 340,
+          "user_ms": 240,
+          "system_ms": 100,
+          "window_min_ms": 393.2554079999875,
+          "window_max_ms": 393.31587699999204
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "after",
+      "workload": "unicode",
+      "pid": 10064,
+      "wall_ms": 677.0477350000021,
+      "process_cpu_ms": 630.0,
+      "process_read_timestamp_window_ms": 677.2267000000056,
+      "process_percent_of_one_cpu_approx": 93.02645628118246,
+      "before_sweep_ms": 0.2938860000085697,
+      "after_sweep_ms": 0.19042200000285447,
+      "threads": {
+        "main": {
+          "tid": 10064,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 677.4591340000029,
+          "window_max_ms": 677.5899590000165
+        },
+        "kokuban-clipboa": {
+          "tid": 10066,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 677.4588449999897,
+          "window_max_ms": 677.5341860000026
+        },
+        "terminal-writer": {
+          "tid": 10067,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 677.4590249999903,
+          "window_max_ms": 677.5208660000089
+        },
+        "terminal-reader": {
+          "tid": 10068,
+          "start_ticks": 19709,
+          "cpu_ms": 630,
+          "user_ms": 540,
+          "system_ms": 90,
+          "window_min_ms": 677.4575120000179,
+          "window_max_ms": 677.5283679999973
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "side": "after",
+      "workload": "short_lines",
+      "pid": 10064,
+      "wall_ms": 890.1739479999833,
+      "process_cpu_ms": 850.0,
+      "process_read_timestamp_window_ms": 890.3613659999792,
+      "process_percent_of_one_cpu_approx": 95.46685564521898,
+      "before_sweep_ms": 0.28793699999596356,
+      "after_sweep_ms": 0.20350200000507357,
+      "threads": {
+        "main": {
+          "tid": 10064,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 890.595052000009,
+          "window_max_ms": 890.7237440000131
+        },
+        "kokuban-clipboa": {
+          "tid": 10066,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 890.596343999988,
+          "window_max_ms": 890.6889719999924
+        },
+        "terminal-writer": {
+          "tid": 10067,
+          "start_ticks": 19709,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 890.6135000000006,
+          "window_max_ms": 890.6790679999972
+        },
+        "terminal-reader": {
+          "tid": 10068,
+          "start_ticks": 19709,
+          "cpu_ms": 840,
+          "user_ms": 730,
+          "system_ms": 110,
+          "window_min_ms": 890.614682000006,
+          "window_max_ms": 890.6765929999949
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "after",
+      "workload": "ascii",
+      "pid": 10098,
+      "wall_ms": 442.7512839999963,
+      "process_cpu_ms": 410.0,
+      "process_read_timestamp_window_ms": 442.9488559999868,
+      "process_percent_of_one_cpu_approx": 92.56147621702226,
+      "before_sweep_ms": 0.46781300000020565,
+      "after_sweep_ms": 0.1886400000046251,
+      "threads": {
+        "main": {
+          "tid": 10098,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.4810250000112,
+          "window_max_ms": 443.6659500000246
+        },
+        "kokuban-clipboa": {
+          "tid": 10100,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.44499300001416,
+          "window_max_ms": 443.5577189999833
+        },
+        "terminal-writer": {
+          "tid": 10101,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 443.418113000007,
+          "window_max_ms": 443.5117809999838
+        },
+        "terminal-reader": {
+          "tid": 10102,
+          "start_ticks": 21538,
+          "cpu_ms": 400,
+          "user_ms": 310,
+          "system_ms": 90,
+          "window_min_ms": 443.3962699999938,
+          "window_max_ms": 443.4799940000005
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "after",
+      "workload": "ansi",
+      "pid": 10098,
+      "wall_ms": 383.2000950000065,
+      "process_cpu_ms": 350.0,
+      "process_read_timestamp_window_ms": 383.3876440000097,
+      "process_percent_of_one_cpu_approx": 91.29141365859749,
+      "before_sweep_ms": 0.3061330000093676,
+      "after_sweep_ms": 0.18511400000420508,
+      "threads": {
+        "main": {
+          "tid": 10098,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 383.65225600000485,
+          "window_max_ms": 383.78783600001043
+        },
+        "kokuban-clipboa": {
+          "tid": 10100,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 383.65434900001105,
+          "window_max_ms": 383.7295400000187
+        },
+        "terminal-writer": {
+          "tid": 10101,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 383.65673200001993,
+          "window_max_ms": 383.7186339999903
+        },
+        "terminal-reader": {
+          "tid": 10102,
+          "start_ticks": 21538,
+          "cpu_ms": 340,
+          "user_ms": 220,
+          "system_ms": 120,
+          "window_min_ms": 383.628721000008,
+          "window_max_ms": 383.7178329999915
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "after",
+      "workload": "unicode",
+      "pid": 10098,
+      "wall_ms": 679.8117220000108,
+      "process_cpu_ms": 630.0,
+      "process_read_timestamp_window_ms": 679.9996410000233,
+      "process_percent_of_one_cpu_approx": 92.64710773574929,
+      "before_sweep_ms": 0.29253400001039154,
+      "after_sweep_ms": 0.22603499999718224,
+      "threads": {
+        "main": {
+          "tid": 10098,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 680.2326959999903,
+          "window_max_ms": 680.3848119999998
+        },
+        "kokuban-clipboa": {
+          "tid": 10100,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 680.2555900000016,
+          "window_max_ms": 680.3398649999792
+        },
+        "terminal-writer": {
+          "tid": 10101,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 680.2662159999784,
+          "window_max_ms": 680.3305610000052
+        },
+        "terminal-reader": {
+          "tid": 10102,
+          "start_ticks": 21538,
+          "cpu_ms": 630,
+          "user_ms": 520,
+          "system_ms": 110,
+          "window_min_ms": 680.2662059999989,
+          "window_max_ms": 680.3396449999752
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "side": "after",
+      "workload": "short_lines",
+      "pid": 10098,
+      "wall_ms": 902.8127440000162,
+      "process_cpu_ms": 870.0,
+      "process_read_timestamp_window_ms": 903.0301370000018,
+      "process_percent_of_one_cpu_approx": 96.34229959259912,
+      "before_sweep_ms": 0.2800450000108867,
+      "after_sweep_ms": 0.18395300000406678,
+      "threads": {
+        "main": {
+          "tid": 10098,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 903.2823100000087,
+          "window_max_ms": 903.4104600000035
+        },
+        "kokuban-clipboa": {
+          "tid": 10100,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 903.2850639999879,
+          "window_max_ms": 903.3589640000059
+        },
+        "terminal-writer": {
+          "tid": 10101,
+          "start_ticks": 21538,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 903.2858449999992,
+          "window_max_ms": 903.3487490000027
+        },
+        "terminal-reader": {
+          "tid": 10102,
+          "start_ticks": 21538,
+          "cpu_ms": 860,
+          "user_ms": 740,
+          "system_ms": 120,
+          "window_min_ms": 903.2854749999899,
+          "window_max_ms": 903.3468760000005
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "after",
+      "workload": "ascii",
+      "pid": 10108,
+      "wall_ms": 437.7918710000017,
+      "process_cpu_ms": 400.0,
+      "process_read_timestamp_window_ms": 437.98215199998936,
+      "process_percent_of_one_cpu_approx": 91.3279224218273,
+      "before_sweep_ms": 0.3536840000037955,
+      "after_sweep_ms": 0.18862000001718116,
+      "threads": {
+        "main": {
+          "tid": 10108,
+          "start_ticks": 22149,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 438.23419599999625,
+          "window_max_ms": 438.37304199999494
+        },
+        "kokuban-clipboa": {
+          "tid": 10110,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 438.2316029999913,
+          "window_max_ms": 438.31189200000154
+        },
+        "terminal-writer": {
+          "tid": 10111,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 438.2299500000215,
+          "window_max_ms": 438.29898199999207
+        },
+        "terminal-reader": {
+          "tid": 10112,
+          "start_ticks": 22150,
+          "cpu_ms": 390,
+          "user_ms": 270,
+          "system_ms": 120,
+          "window_min_ms": 438.229237999991,
+          "window_max_ms": 438.29262200000585
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "after",
+      "workload": "ansi",
+      "pid": 10108,
+      "wall_ms": 387.6166240000032,
+      "process_cpu_ms": 340.0,
+      "process_read_timestamp_window_ms": 387.8076759999942,
+      "process_percent_of_one_cpu_approx": 87.67232343281547,
+      "before_sweep_ms": 0.3006360000199493,
+      "after_sweep_ms": 0.21152400000801208,
+      "threads": {
+        "main": {
+          "tid": 10108,
+          "start_ticks": 22149,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 388.05741699999885,
+          "window_max_ms": 388.1986970000071
+        },
+        "kokuban-clipboa": {
+          "tid": 10110,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 388.05834799998706,
+          "window_max_ms": 388.15841699999964
+        },
+        "terminal-writer": {
+          "tid": 10111,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 388.0847679999988,
+          "window_max_ms": 388.153109000001
+        },
+        "terminal-reader": {
+          "tid": 10112,
+          "start_ticks": 22150,
+          "cpu_ms": 350,
+          "user_ms": 250,
+          "system_ms": 100,
+          "window_min_ms": 388.088042000021,
+          "window_max_ms": 388.15026400001784
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "after",
+      "workload": "unicode",
+      "pid": 10108,
+      "wall_ms": 676.3294349999853,
+      "process_cpu_ms": 630.0,
+      "process_read_timestamp_window_ms": 676.5132869999775,
+      "process_percent_of_one_cpu_approx": 93.12455676868635,
+      "before_sweep_ms": 0.29601899998965564,
+      "after_sweep_ms": 0.19516899999416637,
+      "threads": {
+        "main": {
+          "tid": 10108,
+          "start_ticks": 22149,
+          "cpu_ms": 10,
+          "user_ms": 10,
+          "system_ms": 0,
+          "window_min_ms": 676.7633770000145,
+          "window_max_ms": 676.8967959999941
+        },
+        "kokuban-clipboa": {
+          "tid": 10110,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 676.7654209999989,
+          "window_max_ms": 676.8411829999934
+        },
+        "terminal-writer": {
+          "tid": 10111,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 676.7660810000109,
+          "window_max_ms": 676.8294849999847
+        },
+        "terminal-reader": {
+          "tid": 10112,
+          "start_ticks": 22150,
+          "cpu_ms": 630,
+          "user_ms": 530,
+          "system_ms": 100,
+          "window_min_ms": 676.7644790000134,
+          "window_max_ms": 676.8370369999843
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "side": "after",
+      "workload": "short_lines",
+      "pid": 10108,
+      "wall_ms": 893.7871170000165,
+      "process_cpu_ms": 850.0,
+      "process_read_timestamp_window_ms": 893.9905389999865,
+      "process_percent_of_one_cpu_approx": 95.07930597909973,
+      "before_sweep_ms": 0.31856300000754345,
+      "after_sweep_ms": 0.1847640000107731,
+      "threads": {
+        "main": {
+          "tid": 10108,
+          "start_ticks": 22149,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 894.2484609999894,
+          "window_max_ms": 894.3787240000063
+        },
+        "kokuban-clipboa": {
+          "tid": 10110,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 894.2304850000085,
+          "window_max_ms": 894.3257560000006
+        },
+        "terminal-writer": {
+          "tid": 10111,
+          "start_ticks": 22150,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 894.2260780000026,
+          "window_max_ms": 894.2961120000064
+        },
+        "terminal-reader": {
+          "tid": 10112,
+          "start_ticks": 22150,
+          "cpu_ms": 850,
+          "user_ms": 730,
+          "system_ms": 120,
+          "window_min_ms": 894.2250169999966,
+          "window_max_ms": 894.2880500000001
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "after",
+      "workload": "ascii",
+      "pid": 10140,
+      "wall_ms": 446.37934400000745,
+      "process_cpu_ms": 400.0,
+      "process_read_timestamp_window_ms": 446.5961759999857,
+      "process_percent_of_one_cpu_approx": 89.56637371655705,
+      "before_sweep_ms": 0.3423470000143425,
+      "after_sweep_ms": 0.1990850000197497,
+      "threads": {
+        "main": {
+          "tid": 10140,
+          "start_ticks": 23987,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 446.8602370000099,
+          "window_max_ms": 447.0042310000224
+        },
+        "kokuban-clipboa": {
+          "tid": 10142,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 446.8618699999922,
+          "window_max_ms": 446.9423890000144
+        },
+        "terminal-writer": {
+          "tid": 10143,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 446.86108799999147,
+          "window_max_ms": 446.9289280000055
+        },
+        "terminal-reader": {
+          "tid": 10144,
+          "start_ticks": 23988,
+          "cpu_ms": 400,
+          "user_ms": 310,
+          "system_ms": 90,
+          "window_min_ms": 446.8541079999966,
+          "window_max_ms": 446.92320000001473
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "after",
+      "workload": "ansi",
+      "pid": 10140,
+      "wall_ms": 383.76430900001424,
+      "process_cpu_ms": 340.0,
+      "process_read_timestamp_window_ms": 383.9538200000163,
+      "process_percent_of_one_cpu_approx": 88.55231600508247,
+      "before_sweep_ms": 0.2991739999913534,
+      "after_sweep_ms": 0.18546499998706167,
+      "threads": {
+        "main": {
+          "tid": 10140,
+          "start_ticks": 23987,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 384.1859849999878,
+          "window_max_ms": 384.3282649999935
+        },
+        "kokuban-clipboa": {
+          "tid": 10142,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 384.18798799997944,
+          "window_max_ms": 384.26423999999315
+        },
+        "terminal-writer": {
+          "tid": 10143,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 384.19122299998776,
+          "window_max_ms": 384.2533650000064
+        },
+        "terminal-reader": {
+          "tid": 10144,
+          "start_ticks": 23988,
+          "cpu_ms": 350,
+          "user_ms": 260,
+          "system_ms": 90,
+          "window_min_ms": 384.1891889999829,
+          "window_max_ms": 384.252704000005
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "after",
+      "workload": "unicode",
+      "pid": 10140,
+      "wall_ms": 681.7094680000082,
+      "process_cpu_ms": 630.0,
+      "process_read_timestamp_window_ms": 681.9073709999941,
+      "process_percent_of_one_cpu_approx": 92.3879146629734,
+      "before_sweep_ms": 0.28469200000813544,
+      "after_sweep_ms": 0.21904499999436666,
+      "threads": {
+        "main": {
+          "tid": 10140,
+          "start_ticks": 23987,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 682.1763199999964,
+          "window_max_ms": 682.3118199999954
+        },
+        "kokuban-clipboa": {
+          "tid": 10142,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 682.181216999993,
+          "window_max_ms": 682.2571200000027
+        },
+        "terminal-writer": {
+          "tid": 10143,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 682.1823989999984,
+          "window_max_ms": 682.2452419999934
+        },
+        "terminal-reader": {
+          "tid": 10144,
+          "start_ticks": 23988,
+          "cpu_ms": 640,
+          "user_ms": 530,
+          "system_ms": 110,
+          "window_min_ms": 682.1807460000002,
+          "window_max_ms": 682.2541650000176
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "side": "after",
+      "workload": "short_lines",
+      "pid": 10140,
+      "wall_ms": 897.1982500000024,
+      "process_cpu_ms": 860.0,
+      "process_read_timestamp_window_ms": 897.3861199999931,
+      "process_percent_of_one_cpu_approx": 95.83388697832842,
+      "before_sweep_ms": 0.2928640000163796,
+      "after_sweep_ms": 0.1853349999976217,
+      "threads": {
+        "main": {
+          "tid": 10140,
+          "start_ticks": 23987,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 897.7600039999913,
+          "window_max_ms": 897.8928200000098
+        },
+        "kokuban-clipboa": {
+          "tid": 10142,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 897.7615659999856,
+          "window_max_ms": 897.8373779999913
+        },
+        "terminal-writer": {
+          "tid": 10143,
+          "start_ticks": 23988,
+          "cpu_ms": 0,
+          "user_ms": 0,
+          "system_ms": 0,
+          "window_min_ms": 897.7631890000168,
+          "window_max_ms": 897.8268830000218
+        },
+        "terminal-reader": {
+          "tid": 10144,
+          "start_ticks": 23988,
+          "cpu_ms": 840,
+          "user_ms": 740,
+          "system_ms": 100,
+          "window_min_ms": 897.7616960000034,
+          "window_max_ms": 897.8261520000217
+        }
+      }
+    }
+  ],
+  "limits": [
+    "Five pairs are three AB and two BA; preserve both order subsets.",
+    "No rendered-pixel validation: DSR checks the final done marker at row 1 column 5.",
+    "Process reads, individual thread reads and write-to-DSR use nearby, distinct windows.",
+    "CPU counters are quantized to 10 ms; a zero valid delta does not prove no work.",
+    "Threads can run between sequential reads. Do not require thread sums to equal process CPU.",
+    "Opt-in observation can perturb scheduling even though its reads are outside the elapsed clock.",
+    "This run does not reproduce the earlier short-lines loss; it does not disprove other hosts/runs or identify its cause."
+  ],
+  "github_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34751544546",
+  "builds": {
+    "before": {
+      "source_revision": "d54f801e9dec41a6eb4f159397e45939c367531d",
+      "archive_sha256": "5141363f470e15b87014b271478bd6ef1c111f0717b75845bb153a929e87a2b4",
+      "source_files_git_verified": 1379,
+      "binary_sha256": "6296d5f9574276e3194e65bbab33212b2965520f0aa1d64bba121692d9c3f9ae",
+      "binary_bytes": 10612800,
+      "elf_machine": "x86_64",
+      "elf_sections_bytes": {
+        ".text": 4936299,
+        ".rodata": 1778312,
+        ".data": 8152,
+        ".bss": 7392
+      },
+      "compiler_artifacts_fresh_false": 182,
+      "root_cargo_artifact": {
+        "reason": "compiler-artifact",
+        "package_id": "path+file:///home/runner/work/_temp/kokuban-paired-source-before#kokuban@0.2.0",
+        "manifest_path": "/home/runner/work/_temp/kokuban-paired-source-before/Cargo.toml",
+        "target": {
+          "kind": [
+            "bin"
+          ],
+          "crate_types": [
+            "bin"
+          ],
+          "name": "kokuban",
+          "src_path": "/home/runner/work/_temp/kokuban-paired-source-before/src/main.rs",
+          "edition": "2021",
+          "doc": true,
+          "doctest": false,
+          "test": true
+        },
+        "profile": {
+          "opt_level": "3",
+          "debuginfo": 0,
+          "debug_assertions": false,
+          "overflow_checks": false,
+          "test": false
+        },
+        "features": [],
+        "filenames": [
+          "/home/runner/work/_temp/kokuban-paired-build-before/release/kokuban"
+        ],
+        "executable": "/home/runner/work/_temp/kokuban-paired-build-before/release/kokuban",
+        "fresh": false
+      }
+    },
+    "after": {
+      "source_revision": "62c99adc6fc1dbf12d89ee717f5823644c162d47",
+      "archive_sha256": "f664e274e4004721a336d315e817ebbb2332b11184d9bada3b15f8f3f297a29e",
+      "source_files_git_verified": 1956,
+      "binary_sha256": "973afccb2061b80a591f2b364335d14900fb98a605a154d7973d7f89c032331f",
+      "binary_bytes": 10614800,
+      "elf_machine": "x86_64",
+      "elf_sections_bytes": {
+        ".text": 4937627,
+        ".rodata": 1778312,
+        ".data": 8152,
+        ".bss": 7392
+      },
+      "compiler_artifacts_fresh_false": 182,
+      "root_cargo_artifact": {
+        "reason": "compiler-artifact",
+        "package_id": "path+file:///home/runner/work/_temp/kokuban-paired-source-after#kokuban@0.2.0",
+        "manifest_path": "/home/runner/work/_temp/kokuban-paired-source-after/Cargo.toml",
+        "target": {
+          "kind": [
+            "bin"
+          ],
+          "crate_types": [
+            "bin"
+          ],
+          "name": "kokuban",
+          "src_path": "/home/runner/work/_temp/kokuban-paired-source-after/src/main.rs",
+          "edition": "2021",
+          "doc": true,
+          "doctest": false,
+          "test": true
+        },
+        "profile": {
+          "opt_level": "3",
+          "debuginfo": 0,
+          "debug_assertions": false,
+          "overflow_checks": false,
+          "test": false
+        },
+        "features": [],
+        "filenames": [
+          "/home/runner/work/_temp/kokuban-paired-build-after/release/kokuban"
+        ],
+        "executable": "/home/runner/work/_temp/kokuban-paired-build-after/release/kokuban",
+        "fresh": false
+      }
+    }
+  },
+  "runtime_source_changed_paths": [
+    "src/glyph_atlas.rs",
+    "src/linux_window.rs"
+  ],
+  "provenance_limit": "ELF/TAR bytes and Git blob identities independently checked; compiler linkage relies on retained CI build records, not a local rebuild. GitHub ZIP digest is API metadata because gh download unpacks it."
+}
