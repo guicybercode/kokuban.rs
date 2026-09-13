@@ -167,7 +167,6 @@ pub struct Grid {
     pub fg: Color,
     pub bg: Color,
     pub flags: CellFlags,
-    pub dirty: Vec<bool>,
     // Scrollback
     scrollback: VecDeque<Vec<Cell>>,
     scrollback_metadata: VecDeque<RowMetadata>,
@@ -245,7 +244,6 @@ impl Grid {
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),
-            dirty: vec![true; rows],
             scrollback: VecDeque::new(),
             scrollback_metadata: VecDeque::new(),
             resize_tail: Vec::new(),
@@ -548,7 +546,6 @@ impl Grid {
                 *cell = Cell { c: char::from(byte), ..template.clone() };
             }
             self.buffer.mark_written(row, col + count);
-            self.dirty[row] = true;
             self.cursor_col += count;
             self.wrap_pending = self.cursor_col >= cols;
             text = &text[count..];
@@ -651,7 +648,6 @@ impl Grid {
                 offset += usize::from(width);
             }
             self.buffer.mark_written(row, end);
-            self.dirty[row] = true;
             self.cursor_col = end;
             self.wrap_pending = end >= cols;
             text = &text[bytes..];
@@ -748,7 +744,6 @@ impl Grid {
             self.repair_wide_row(row);
         }
         self.buffer.mark_written(row, col + char_width.max(1));
-        self.dirty[row] = true;
         self.cursor_col += char_width;
         self.wrap_pending = self.cursor_col >= cols;
     }
@@ -787,7 +782,6 @@ impl Grid {
             let mut metadata = self.buffer.row_metadata(row);
             metadata.len = metadata.len.min(col);
             self.buffer.set_row_metadata(row, metadata);
-            self.dirty[row] = true;
             self.soft_wrap();
             self.write_cluster_cell(cell, new_width);
             return true;
@@ -812,7 +806,6 @@ impl Grid {
         self.buffer.mark_written(row, col + new_width);
         self.cursor_col = (col + new_width).min(self.cols());
         self.wrap_pending = self.cursor_col == self.cols();
-        self.dirty[row] = true;
         true
     }
 
@@ -830,7 +823,6 @@ impl Grid {
         self.buffer.mark_written(row, col + width);
         self.cursor_col += width;
         self.wrap_pending = self.cursor_col >= self.cols();
-        self.dirty[row] = true;
     }
 
     pub fn set_auto_wrap(&mut self, enabled: bool) {
@@ -976,9 +968,6 @@ impl Grid {
                 self.buffer.set_row_metadata(first_row + offset, retained.metadata);
             }
         }
-        for row in self.scroll_top..=self.scroll_bottom {
-            self.dirty[row] = true;
-        }
     }
 
     pub fn scroll_down(&mut self, count: usize) {
@@ -989,9 +978,6 @@ impl Grid {
         self.scroll_image_placements(count, false, false);
         let template = self.template_cell();
         self.buffer.scroll_down(self.scroll_top, self.scroll_bottom, count, template);
-        for row in self.scroll_top..=self.scroll_bottom {
-            self.dirty[row] = true;
-        }
     }
 
     fn scroll_image_placements(&mut self, count: usize, up: bool, save_scrollback: bool) {
@@ -1053,19 +1039,14 @@ impl Grid {
     pub fn scroll_viewport_up(&mut self, lines: usize) {
         let max = self.scrollback.len();
         self.scroll_offset = (self.scroll_offset + lines).min(max);
-        self.mark_all_dirty();
     }
 
     pub fn scroll_viewport_down(&mut self, lines: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
-        self.mark_all_dirty();
     }
 
     pub fn scroll_to_bottom(&mut self) {
-        if self.scroll_offset != 0 {
-            self.scroll_offset = 0;
-            self.mark_all_dirty();
-        }
+        self.scroll_offset = 0;
     }
 
     pub fn enter_alt_screen(&mut self) {
@@ -1108,7 +1089,6 @@ impl Grid {
         self.wrap_pending = false;
         self.scroll_top = 0;
         self.scroll_bottom = rows.saturating_sub(1);
-        self.mark_all_dirty();
     }
 
     pub fn leave_alt_screen(&mut self) {
@@ -1142,7 +1122,6 @@ impl Grid {
             .saved_primary_image_placements
             .take()
             .unwrap_or_default();
-        self.mark_all_dirty();
     }
 
     pub fn erase_in_line(&mut self, mode: u16) {
@@ -1186,7 +1165,6 @@ impl Grid {
             *self.buffer.cell_mut(row, destination) = cell;
         }
         self.repair_wide_row(row);
-        self.dirty[row] = true;
     }
 
     pub(crate) fn insert_blank_chars(&mut self, count: usize) {
@@ -1210,7 +1188,6 @@ impl Grid {
             *self.buffer.cell_mut(row, destination) = cell;
         }
         self.repair_wide_row(row);
-        self.dirty[row] = true;
     }
 
     fn erase_cell_range(&mut self, row: usize, start: usize, end: usize) {
@@ -1229,7 +1206,6 @@ impl Grid {
             *self.buffer.cell_mut(row, col) = template.clone();
         }
         self.repair_wide_row(row);
-        self.dirty[row] = true;
     }
 
     pub fn erase_in_display(&mut self, mode: u16) {
@@ -1241,7 +1217,6 @@ impl Grid {
                 self.erase_in_line(0);
                 for row in self.cursor_row + 1..self.rows() {
                     self.buffer.clear_row(row, template.clone());
-                    self.dirty[row] = true;
                 }
             }
             1 => {
@@ -1249,7 +1224,6 @@ impl Grid {
                 self.erase_in_line(1);
                 for row in 0..self.cursor_row {
                     self.buffer.clear_row(row, template.clone());
-                    self.dirty[row] = true;
                 }
             }
             2 => {
@@ -1258,7 +1232,6 @@ impl Grid {
                 self.selection_revision = self.selection_revision.wrapping_add(1);
                 for row in 0..self.rows() {
                     self.buffer.clear_row(row, template.clone());
-                    self.dirty[row] = true;
                 }
                 let cell_width = f32::from(self.cell_pixel_width);
                 let cell_height = f32::from(self.cell_pixel_height);
@@ -1271,7 +1244,6 @@ impl Grid {
                 if self.using_alt_screen {
                     return;
                 }
-                let viewport_changed = self.scroll_offset != 0;
                 self.selection_revision = self.selection_revision.wrapping_add(1);
                 self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(self.scrollback.len()));
                 self.scrollback.clear();
@@ -1287,9 +1259,6 @@ impl Grid {
                 self.scroll_offset = 0;
                 self.marks.erase_saved_lines(self.total_lines_pushed);
                 self.total_lines_pushed = 0;
-                if viewport_changed {
-                    self.mark_all_dirty();
-                }
             }
             _ => {}
         }
@@ -1406,7 +1375,6 @@ impl Grid {
             let PlacementMode::Inline { row, .. } = &mut placement.mode;
             *row += old_history as i64 - start as i64;
         }
-        self.mark_all_dirty();
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
@@ -1451,7 +1419,6 @@ impl Grid {
         self.scroll_offset = self.scroll_offset.min(self.scrollback.len());
         self.scroll_top = 0;
         self.scroll_bottom = rows - 1;
-        self.dirty = vec![true; rows];
     }
 
     fn recount_history(&mut self) {
@@ -1500,10 +1467,6 @@ impl Grid {
         reflowed.resize_with(rows, || RetainedRow::blank(cols));
         *buffer = Buffer::from_retained_rows(cols, &reflowed);
     }
-
-    pub fn mark_all_dirty(&mut self) { for d in &mut self.dirty { *d = true; } }
-    pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
-    pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
 }
 
 #[cfg(test)]
@@ -1574,7 +1537,6 @@ mod tests {
                         grid.cursor_col = col;
                         grid.set_auto_wrap(auto_wrap);
                         grid.resize(new_cols, 3);
-                        grid.clear_dirty();
                         grid
                     };
                     let mut batched = setup();
@@ -1601,7 +1563,6 @@ mod tests {
                         grid.put_char(c);
                     }
                     grid.set_cursor_pos(0, col);
-                    grid.clear_dirty();
                     grid
                 };
                 let mut batched = setup();
@@ -1900,7 +1861,6 @@ mod tests {
         assert_eq!(grid.total_lines_pushed, 1);
         grid.scroll_viewport_up(1);
         assert_eq!(grid.visible_cell(0, 0).c, 'o');
-        grid.clear_dirty();
         let cursor = (grid.cursor_row, grid.cursor_col);
         let attributes = (
             grid.fg,
@@ -1930,26 +1890,23 @@ mod tests {
             ),
             attributes
         );
-        assert!(grid.dirty.iter().all(|dirty| *dirty));
         assert_eq!(grid.marks.visible_prompt_rows(0, 0, grid.rows()), [0, 1]);
         assert_eq!(grid.marks.prev_prompt(2), Some(1));
         assert_eq!(grid.marks.next_prompt(0), Some(1));
     }
 
     #[test]
-    fn erase_saved_lines_at_bottom_does_not_dirty_unchanged_screen() {
+    fn erase_saved_lines_at_bottom_preserves_screen_contents() {
         let mut grid = Grid::new(3, 2, 10);
         grid.put_char('a');
         grid.scroll_up(1);
         grid.put_char('b');
-        grid.clear_dirty();
         let screen = [row_text(&grid, 0), row_text(&grid, 1)];
 
         grid.erase_in_display(3);
 
         assert_eq!(grid.scrollback_len(), 0);
         assert_eq!([row_text(&grid, 0), row_text(&grid, 1)], screen);
-        assert!(!grid.is_any_dirty());
     }
 
     #[test]
