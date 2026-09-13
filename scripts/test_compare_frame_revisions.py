@@ -14,6 +14,7 @@ RUNNER = runpy.run_path(str(Path(__file__).with_name("compare-frame-revisions.py
 GLOBALS = RUNNER["measure"].__globals__
 PREFIX = b"// preserved runtime\n#[cfg(test)]\nmod damage_tests {\n"
 BENCHMARK = RUNNER["MARKER"].encode() + b"        let fixture = 1;\n    }\n}\n"
+FRAME_CHECKSUMS = [RUNNER["frame_checksum"](bytes([index]) * 120 * 40 * 4) for index in (0, 1)]
 
 
 def sample_output(elapsed=600, steps=300, prefix=True):
@@ -25,7 +26,7 @@ def sample_output(elapsed=600, steps=300, prefix=True):
             lines.append(f"frame-repaint fixture content={content} change={change} cols=120 rows=40 "
                          f"width=120 height=40 cell_width=1 cell_height=1 warmup=30 samples=1 steps={steps} "
                          f"mono_cells=1000 color_cells={color} bands={bands} "
-                         "frame0=0000000000000001 frame1=0000000000000002")
+                         f"frame0={FRAME_CHECKSUMS[0]} frame1={FRAME_CHECKSUMS[1]}")
             for incremental in ("false", "true"):
                 lines.append(f"frame-repaint sample content={content} change={change} sample=0 "
                              f"incremental={incremental} frames={steps} elapsed_ns={elapsed} "
@@ -47,25 +48,30 @@ class FrameRevisionTests(unittest.TestCase):
             root = self.root / side
             (root / "src").mkdir(parents=True)
             (root / "src/linux_window.rs").write_bytes(PREFIX + BENCHMARK)
+            (root / "src/software_raster.rs").write_text("common raster\n")
             (root / "Cargo.toml").write_text("fixture manifest\n")
             (root / "Cargo.lock").write_text("fixture lock\n")
             roots[side] = root
         return roots
 
-    def prepared(self):
+    def prepared(self, comparison="revisions"):
         roots = self.sources()
         output = self.root / "injection"
+        if comparison == "raster-only":
+            (roots["after"] / "src/software_raster.rs").write_text("candidate raster\n")
         args = SimpleNamespace(before_source=roots["before"], after_source=roots["after"],
-                               harness_source=roots["harness"], output=output)
+                               harness_source=roots["harness"], output=output, comparison=comparison,
+                               common_source=roots["harness"], common_ref="common-revision")
         RUNNER["prepare"](args)
         return roots, output
 
-    def builds(self):
-        roots, injection = self.prepared()
+    def builds(self, comparison="revisions"):
+        roots, injection = self.prepared(comparison)
         args = SimpleNamespace(before_source=roots["before"], after_source=roots["after"],
                                injection=injection / "injection.json", output=self.root / "measurements",
-                               pairs=3, steps=300, warmup=30, timeout=1, environment_note="synthetic test")
-        for side in ("before", "after"):
+                               pairs=3, steps=300, warmup=30, timeout=1, environment_note="synthetic test",
+                               comparison=comparison)
+        for side in RUNNER["build_sides"](comparison):
             target = self.root / (side + " target")
             (target / "release/deps").mkdir(parents=True)
             binary = target / "release/deps/kokuban-fixture"
@@ -100,7 +106,7 @@ class FrameRevisionTests(unittest.TestCase):
         (roots["before"] / "src/linux_window.rs").write_bytes(original)
         output = self.root / "injection"
         RUNNER["prepare"](SimpleNamespace(before_source=roots["before"], after_source=roots["after"],
-                                           harness_source=roots["harness"], output=output))
+                                           harness_source=roots["harness"], output=output, comparison="revisions"))
         self.assertEqual((output / "before/original-linux_window.rs").read_bytes(), original)
         self.assertEqual((roots["before"] / "src/linux_window.rs").read_bytes(), PREFIX + BENCHMARK)
         self.assertEqual((output / "benchmark.rs.txt").read_bytes(), BENCHMARK)
@@ -113,7 +119,7 @@ class FrameRevisionTests(unittest.TestCase):
         malformed = (PREFIX + BENCHMARK)[:-2] + b"    fn unrelated() {}\n}\n"
         (roots["after"] / "src/linux_window.rs").write_bytes(malformed)
         args = SimpleNamespace(before_source=roots["before"], after_source=roots["after"],
-                               harness_source=roots["harness"], output=self.root / "injection")
+                               harness_source=roots["harness"], output=self.root / "injection", comparison="revisions")
         with self.assertRaisesRegex(ValueError, "final function"):
             RUNNER["prepare"](args)
         self.assertFalse(args.output.exists())
@@ -129,6 +135,47 @@ class FrameRevisionTests(unittest.TestCase):
         for roots in ([self.root, self.root], [self.root, child]):
             with self.subTest(roots=roots), self.assertRaisesRegex(ValueError, "non-overlapping"):
                 RUNNER["distinct_roots"](roots)
+
+    def test_raster_only_verifies_common_application_and_records_every_source(self):
+        roots, output = self.prepared("raster-only")
+        report = json.loads((output / "injection.json").read_text())
+        self.assertEqual(report["comparison"], "raster-only")
+        self.assertEqual(report["changed_source_files"], ["src/software_raster.rs"])
+        self.assertEqual(report["common_source"]["revision"], "common-revision")
+        for side in ("before", "after"):
+            manifest = json.loads((output / side / "prepared-source-manifest.json").read_text())
+            self.assertEqual(manifest, RUNNER["source_manifest"](roots[side]))
+            self.assertEqual(manifest, report["sources"][side]["manifest"])
+
+    def test_raster_only_rejects_unrelated_changes_before_injection(self):
+        roots = self.sources()
+        original = (roots["before"] / "src/linux_window.rs").read_bytes()
+        for changed in ("Cargo.lock", "src/software_raster.rs"):
+            path = roots["after"] / changed
+            if changed.endswith(".rs"):
+                path = roots["after"] / "src/unrelated.rs"
+            path.write_text("unrelated modification")
+            args = SimpleNamespace(comparison="raster-only", before_source=roots["before"],
+                                   after_source=roots["after"], harness_source=roots["harness"],
+                                   common_source=roots["harness"], common_ref="common-revision",
+                                   output=self.root / "injection")
+            with self.subTest(changed=path), self.assertRaisesRegex(ValueError, "outside software_raster"):
+                RUNNER["prepare"](args)
+            self.assertFalse(args.output.exists())
+            self.assertEqual((roots["before"] / "src/linux_window.rs").read_bytes(), original)
+            if changed == "Cargo.lock":
+                path.write_text("fixture lock\n")
+
+    def test_cli_rejects_ambiguous_modes_and_accepts_one_build_control(self):
+        base = ["prepare", "--harness-source", "harness", "--before-source", "before", "--output", "out"]
+        self.assertEqual(RUNNER["parse_args"](base + ["--after-source", "after"]).comparison, "revisions")
+        self.assertEqual(RUNNER["parse_args"](base + ["--comparison", "same-binary"]).comparison, "same-binary")
+        cases = [base, base + ["--comparison", "same-binary", "--after-source", "after"],
+                 base + ["--comparison", "raster-only", "--after-source", "after"],
+                 base + ["--after-source", "after", "--common-ref", "unrelated"]]
+        for argv in cases:
+            with self.subTest(argv=argv), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                RUNNER["parse_args"](argv)
 
     def test_accepts_first_fixture_with_libtest_prefix(self):
         fixtures, samples = RUNNER["parse_output"](sample_output(), 300, 30)
@@ -146,7 +193,7 @@ class FrameRevisionTests(unittest.TestCase):
                  output.replace("samples=1", "samples=2", 1),
                  output.replace("sample=0", "sample=1", 1),
                  output.replace("[(20, 21), (20, 21)]", "[(0, 40), (0, 40)]", 1),
-                 output.replace("frame0=0000000000000001", "frame0=0000000000000002", 1),
+                 output.replace(f"frame0={FRAME_CHECKSUMS[0]}", f"frame0={FRAME_CHECKSUMS[1]}", 1),
                  "\n".join(line for line in output.splitlines() if "incremental=true" not in line)]
         for case in cases:
             with self.subTest(case=case), self.assertRaises(ValueError):
@@ -178,6 +225,37 @@ class FrameRevisionTests(unittest.TestCase):
         image.unlink()
         with self.assertRaises(ValueError):
             RUNNER["verify_frames"](self.root, fixtures)
+
+    def test_frame_checksums_match_known_fnv1a_vectors(self):
+        self.assertEqual(RUNNER["frame_checksum"](b""), "cbf29ce484222325")
+        self.assertEqual(RUNNER["frame_checksum"](b"foobar"), "85944171f73967e8")
+
+    def test_frame_gate_rejects_identical_states_and_false_printed_checksums(self):
+        fixtures, _ = RUNNER["parse_output"](sample_output(), 300, 30)
+        for side in ("before", "after"):
+            self.images(self.root / (side + "-frames"))
+        first = self.root / "before-frames/ascii-single-row-0.xrgb8888le"
+        second = self.root / "before-frames/ascii-single-row-1.xrgb8888le"
+        original = second.read_bytes()
+        second.write_bytes(first.read_bytes())
+        with self.assertRaisesRegex(ValueError, "did not change visible pixels"):
+            RUNNER["verify_frames"](self.root, fixtures)
+        second.write_bytes(original)
+        fixtures[("ascii", "single-row")]["checksums"][0] = "0000000000000000"
+        with self.assertRaisesRegex(ValueError, "checksum does not match"):
+            RUNNER["verify_frames"](self.root, fixtures)
+
+    def test_paired_median_is_distinct_from_ratio_of_medians(self):
+        _, samples = RUNNER["parse_output"](sample_output(), 300, 30)
+        records = []
+        for pair, (before, after) in enumerate(((1, 2), (2, 100), (100, 1)), 1):
+            for side, value in (("before", before), ("after", after)):
+                records.extend({**sample, "side": side, "pair": pair, "ns_per_frame": value}
+                               for sample in samples)
+        for row in RUNNER["summarize"](records, 3):
+            self.assertEqual(row["latency_change_percent"], 0)
+            self.assertEqual(row["paired_latency_change_percent"], [100, 4900, -99])
+            self.assertEqual(row["median_paired_latency_change_percent"], 100)
 
     def test_alternating_pairs_publish_ratios_only_after_pixel_equivalence(self):
         args = self.builds()
@@ -225,6 +303,64 @@ class FrameRevisionTests(unittest.TestCase):
         self.assertEqual(report["status"], "failed")
         self.assertIsNone(report["summary"])
         self.assertEqual((args.output / "01-before.log").read_text(), "injected failure\n")
+
+    def test_same_binary_control_uses_one_build_and_exactly_one_executable_path(self):
+        args = self.builds("same-binary")
+        calls = []
+
+        def execute(command, env, stdout, **options):
+            calls.append(command[0])
+            if "KOKUBAN_FRAME_OUTPUT_DIR" in env:
+                self.images(Path(env["KOKUBAN_FRAME_OUTPUT_DIR"]))
+            stdout.write(sample_output())
+            return SimpleNamespace(returncode=0)
+
+        with patch.object(GLOBALS["platform"], "system", return_value="Linux"), \
+                patch.object(GLOBALS["platform"], "platform", return_value="test Linux"), \
+                patch.object(GLOBALS["os"], "sched_getaffinity", return_value={2}, create=True), \
+                patch.object(GLOBALS["subprocess"], "check_output", return_value="rustc 1.94.1"), \
+                patch.object(GLOBALS["subprocess"], "run", side_effect=execute), redirect_stdout(io.StringIO()):
+            self.assertEqual(RUNNER["measure"](args), 0)
+        report = json.loads((args.output / "report.json").read_text())
+        self.assertEqual(report["comparison"], "same-binary")
+        self.assertEqual(set(report["builds"]), {"before"})
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(len(set(calls)), 1)
+        self.assertEqual(report["execution_binaries"]["before"], report["execution_binaries"]["after"])
+        self.assertTrue(all(row["median_paired_latency_change_percent"] == 0 for row in report["summary"]))
+
+    def test_post_preparation_raster_change_is_rejected_before_execution(self):
+        args = self.builds("raster-only")
+        (args.before_source / "src/software_raster.rs").write_text("late modification")
+        with patch.object(GLOBALS["platform"], "system", return_value="Linux"), \
+                patch.object(GLOBALS["platform"], "platform", return_value="test Linux"), \
+                patch.object(GLOBALS["os"], "sched_getaffinity", return_value={2}, create=True), \
+                patch.object(GLOBALS["subprocess"], "check_output", return_value="rustc 1.94.1"), \
+                patch.object(GLOBALS["subprocess"], "run") as execute, redirect_stderr(io.StringIO()):
+            self.assertEqual(RUNNER["measure"](args), 1)
+        execute.assert_not_called()
+        report = json.loads((args.output / "report.json").read_text())
+        self.assertIn("application source changed", report["error"])
+
+    def test_raster_measure_records_common_application_and_kernel_revisions(self):
+        args = self.builds("raster-only")
+        args.pairs = 1
+
+        def execute(command, env, stdout, **options):
+            self.images(Path(env["KOKUBAN_FRAME_OUTPUT_DIR"]))
+            stdout.write(sample_output())
+            return SimpleNamespace(returncode=0)
+
+        with patch.object(GLOBALS["platform"], "system", return_value="Linux"), \
+                patch.object(GLOBALS["platform"], "platform", return_value="test Linux"), \
+                patch.object(GLOBALS["os"], "sched_getaffinity", return_value={2}, create=True), \
+                patch.object(GLOBALS["subprocess"], "check_output", return_value="rustc 1.94.1"), \
+                patch.object(GLOBALS["subprocess"], "run", side_effect=execute), redirect_stdout(io.StringIO()):
+            self.assertEqual(RUNNER["measure"](args), 0)
+        report = json.loads((args.output / "report.json").read_text())
+        for side in ("before", "after"):
+            self.assertEqual(report["builds"][side]["source_revision"], "common-revision")
+            self.assertEqual(report["builds"][side]["kernel_revision"], side + "-revision")
 
 
 if __name__ == "__main__":

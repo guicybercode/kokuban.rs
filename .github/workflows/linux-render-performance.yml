@@ -4,30 +4,45 @@ on:
   workflow_dispatch:
     inputs:
       before:
-        description: Baseline commit or ref (must contain the final ignored frame benchmark)
+        description: Baseline application, raster kernel, or sole build for same-binary
         required: true
         default: 24782c3
       after:
-        description: Candidate commit or ref
+        description: Candidate application or raster kernel (ignored by same-binary)
         required: true
         default: 965843d
+      comparison:
+        description: Full revisions, isolated raster kernels, or one exact executable as both sides
+        type: choice
+        options: [revisions, raster-only, same-binary]
+        default: revisions
+      common_source:
+        description: Common application for raster-only; empty uses this workflow revision
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-render-performance-${{ github.ref }}
+  group: linux-render-performance-${{ github.ref }}-${{ inputs.comparison || 'revisions' }}
   cancel-in-progress: false
 
 jobs:
   measure:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
       BEFORE_REF: ${{ inputs.before }}
       AFTER_REF: ${{ inputs.after }}
+      COMPARISON: ${{ inputs.comparison || 'revisions' }}
+      COMMON_REF: ${{ inputs.common_source || github.sha }}
 
     steps:
       - name: Check out common benchmark and revision history
@@ -38,7 +53,7 @@ jobs:
       - name: Install the same Rust and fonts for both builds
         shell: bash
         run: |
-          test "$(uname -m)" = x86_64
+          case "$(uname -m)" in x86_64|aarch64) ;; *) exit 1 ;; esac
           rustup toolchain install 1.94.1 --profile minimal
           rustup default 1.94.1
           sudo apt-get update
@@ -56,7 +71,28 @@ jobs:
           mkdir "$evidence_directory"
           git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
           git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
-          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          printf '%s\n' "$COMPARISON" > "$evidence_directory/comparison.txt"
+          sides=(before after)
+          prepare_options=(--comparison "$COMPARISON")
+          case "$COMPARISON" in
+            revisions) ;;
+            raster-only)
+              git rev-parse --verify --end-of-options "${COMMON_REF}^{commit}" > "$evidence_directory/common-revision.txt"
+              common_revision="$(cat "$evidence_directory/common-revision.txt")"
+              common_source="$RUNNER_TEMP/kokuban-frame-source-common"
+              mkdir "$common_source"
+              git archive --format=tar "$common_revision" > "$evidence_directory/common-original-source.tar"
+              sha256sum "$evidence_directory/common-original-source.tar" > "$evidence_directory/common-source-sha256.txt"
+              tar -xf "$evidence_directory/common-original-source.tar" -C "$common_source"
+              prepare_options+=(--common-source "$common_source" --common-ref "$common_revision")
+              ;;
+            same-binary) sides=(before) ;;
+            *) exit 1 ;;
+          esac
+          if [[ "$COMPARISON" != same-binary ]]; then
+            git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+            prepare_options+=(--after-source "$RUNNER_TEMP/kokuban-frame-source-after")
+          fi
           cp scripts/compare-frame-revisions.py scripts/test_compare_frame_revisions.py \
             .github/workflows/linux-render-performance.yml "$evidence_directory/"
           rustc --version --verbose > "$evidence_directory/rustc.txt"
@@ -74,25 +110,39 @@ jobs:
           hashes = {p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in sorted(set(paths))}
           pathlib.Path(sys.argv[1]).write_text(json.dumps(hashes, indent=2) + '\n')
           PY
-          for side in before after; do
+          for side in "${sides[@]}"; do
             revision="$(cat "$evidence_directory/$side-revision.txt")"
             source_directory="$RUNNER_TEMP/kokuban-frame-source-$side"
             mkdir "$source_directory"
-            git archive --format=tar "$revision" > "$evidence_directory/$side-original-source.tar"
+            source_revision="$revision"
+            if [[ "$COMPARISON" == raster-only ]]; then
+              source_revision="$common_revision"
+            fi
+            git archive --format=tar "$source_revision" > "$evidence_directory/$side-original-source.tar"
             sha256sum "$evidence_directory/$side-original-source.tar" > "$evidence_directory/$side-source-sha256.txt"
             tar -xf "$evidence_directory/$side-original-source.tar" -C "$source_directory"
+            if [[ "$COMPARISON" == raster-only ]]; then
+              git show "$revision:src/software_raster.rs" > "$source_directory/src/software_raster.rs"
+              cp "$source_directory/src/software_raster.rs" "$evidence_directory/$side-software_raster.rs"
+            fi
           done
           python3 -B scripts/compare-frame-revisions.py prepare \
             --harness-source "$GITHUB_WORKSPACE" \
             --before-source "$RUNNER_TEMP/kokuban-frame-source-before" \
-            --after-source "$RUNNER_TEMP/kokuban-frame-source-after" \
-            --output "$evidence_directory/injection"
+            --output "$evidence_directory/injection" "${prepare_options[@]}"
+          for side in "${sides[@]}"; do
+            tar -cf "$evidence_directory/$side-prepared-source.tar" \
+              -C "$RUNNER_TEMP/kokuban-frame-source-$side" .
+            sha256sum "$evidence_directory/$side-prepared-source.tar" > "$evidence_directory/$side-prepared-source-sha256.txt"
+          done
 
       - name: Build separate release test executables sequentially
         shell: bash
         run: |
           evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
-          for side in before after; do
+          sides=(before after)
+          if [[ "$COMPARISON" == same-binary ]]; then sides=(before); fi
+          for side in "${sides[@]}"; do
             source_directory="$RUNNER_TEMP/kokuban-frame-source-$side"
             target_directory="$RUNNER_TEMP/kokuban-frame-target-$side"
             # A new target is essential: archived source mtimes can otherwise
@@ -105,34 +155,52 @@ jobs:
               2> "$evidence_directory/$side-build.log"
             cargo tree --locked --manifest-path "$source_directory/Cargo.toml" \
               > "$evidence_directory/$side-cargo-tree.txt"
+            python3 -B - "$source_directory" "$target_directory" "$evidence_directory" "$side" <<'PY'
+          from pathlib import Path
+          import runpy, shutil, sys
+          source, target, evidence = [Path(value).resolve() for value in sys.argv[1:4]]
+          side = sys.argv[4]
+          runner = runpy.run_path('scripts/compare-frame-revisions.py')
+          binary = runner['test_artifact'](source, target, evidence / f'{side}-cargo-messages.jsonl')
+          retained = evidence / f'{side}-benchmark'
+          shutil.copy2(binary, retained)
+          assert runner['sha'](retained) == runner['sha'](binary)
+          (evidence / f'{side}-binary-sha256.txt').write_text(runner['sha'](retained) + '\n')
+          PY
           done
 
-      - name: Compare five alternating process pairs with exact frame pixels
+      - name: Compare six balanced process pairs with exact frame pixels
         shell: bash
         run: |
           evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
           benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
           printf '%s\n' "$benchmark_cpu" > "$evidence_directory/benchmark-cpu.txt"
+          measure_options=(--comparison "$COMPARISON")
+          if [[ "$COMPARISON" != same-binary ]]; then
+            measure_options+=(
+              --after-source "$RUNNER_TEMP/kokuban-frame-source-after"
+              --after-target "$RUNNER_TEMP/kokuban-frame-target-after"
+              --after-messages "$evidence_directory/after-cargo-messages.jsonl"
+              --after-ref "$(cat "$evidence_directory/after-revision.txt")"
+            )
+          fi
           timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
             python3 -B scripts/compare-frame-revisions.py measure \
               --before-source "$RUNNER_TEMP/kokuban-frame-source-before" \
-              --after-source "$RUNNER_TEMP/kokuban-frame-source-after" \
               --before-target "$RUNNER_TEMP/kokuban-frame-target-before" \
-              --after-target "$RUNNER_TEMP/kokuban-frame-target-after" \
               --before-messages "$evidence_directory/before-cargo-messages.jsonl" \
-              --after-messages "$evidence_directory/after-cargo-messages.jsonl" \
               --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
-              --after-ref "$(cat "$evidence_directory/after-revision.txt")" \
               --injection "$evidence_directory/injection/injection.json" \
-              --output "$evidence_directory/measurements" --pairs 5 --steps 300 --warmup 30 \
+              --output "$evidence_directory/measurements" --pairs 6 --steps 300 --warmup 30 \
               --environment-note \
-              "Native GitHub Ubuntu 24.04 x86_64 runner, one CPU, DejaVu Sans Mono 14px, Noto CJK and Noto Color Emoji; CPU damage calculation and paint only, no compositor or presentation measurement"
+              "Native GitHub Ubuntu 24.04 $(uname -m) runner, one CPU, DejaVu Sans Mono 14px, Noto CJK and Noto Color Emoji; CPU damage calculation and paint only, no compositor or presentation measurement" \
+              "${measure_options[@]}"
 
       - name: Upload source archives, injection, build provenance, raw samples and pixels
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: linux-paired-frame-measurements
+          name: linux-paired-frame-measurements-${{ matrix.runner }}
           path: ${{ runner.temp }}/kokuban-frame-evidence
           if-no-files-found: ignore
           retention-days: 7
