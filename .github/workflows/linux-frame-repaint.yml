@@ -1,0 +1,146 @@
+name: Linux raster kernels in real frame repaints
+
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: Revision supplying the baseline software_raster.rs only
+        required: true
+        default: 199b987281dbb97dd481c0ff752a3bf80dc996cd
+      after:
+        description: Revision supplying the candidate software_raster.rs only
+        required: true
+        default: 228bc1379cdf4f1ac179476b1fddba30bf2bba7a
+  push:
+    branches: [perf/frame-repaint-control]
+    paths:
+      - .github/workflows/linux-frame-repaint.yml
+      - scripts/compare-frame-repaint.py
+      - scripts/test_compare_frame_repaint.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-frame-repaint-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      BEFORE_REF: ${{ inputs.before || '199b987281dbb97dd481c0ff752a3bf80dc996cd' }}
+      AFTER_REF: ${{ inputs.after || '228bc1379cdf4f1ac179476b1fddba30bf2bba7a' }}
+
+    steps:
+      - name: Check out the common application and benchmark harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install fixed compiler and real font dependencies
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji \
+            libfontconfig1-dev libfreetype6-dev libxkbcommon-x11-0 pkg-config
+
+      - name: Validate timing parsing and reference pixel checks
+        run: python3 -B -m unittest discover -s scripts -p test_compare_frame_repaint.py
+
+      - name: Build one common application with each exact raster kernel
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-repaint"
+          mkdir -p "$evidence_directory"
+          git rev-parse HEAD > "$evidence_directory/common-source-revision.txt"
+          git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-kernel-revision.txt"
+          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-kernel-revision.txt"
+          rustc --version --verbose > "$evidence_directory/rustc.txt"
+          lscpu > "$evidence_directory/cpu.txt"
+          uname -a > "$evidence_directory/kernel.txt"
+          dpkg-query -W fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji \
+            libfontconfig1 libfreetype6 libxkbcommon-x11-0 > "$evidence_directory/packages.txt"
+          fc-list > "$evidence_directory/fonts.txt"
+          for font in 'DejaVu Sans Mono' 'sans:lang=ja' emoji; do
+            fc-match -f '%{family}|%{file}\n' "$font"
+          done > "$evidence_directory/font-matches.txt"
+          for side in before after; do
+            source_directory="$RUNNER_TEMP/kokuban-frame-source-$side"
+            side_evidence="$evidence_directory/$side-build"
+            mkdir "$source_directory" "$side_evidence"
+            git archive HEAD | tar -x -C "$source_directory"
+            kernel_revision="$(cat "$evidence_directory/$side-kernel-revision.txt")"
+            git show "$kernel_revision:src/software_raster.rs" > "$source_directory/src/software_raster.rs"
+            cp "$source_directory/src/software_raster.rs" "$source_directory/src/linux_window.rs" \
+              "$source_directory/Cargo.toml" "$source_directory/Cargo.lock" "$side_evidence/"
+            (cd "$source_directory" && find . -type f -print0 | sort -z | xargs -0 sha256sum) \
+              > "$side_evidence/source-sha256.txt"
+            cargo test --release --locked --bin kokuban --no-run --message-format=json-render-diagnostics \
+              --manifest-path "$source_directory/Cargo.toml" \
+              --target-dir "$RUNNER_TEMP/kokuban-frame-target-$side" \
+              > "$side_evidence/build.jsonl" 2> "$side_evidence/build.log"
+            python3 - "$side_evidence" <<'PY'
+          import json
+          from pathlib import Path
+          import shutil
+          import sys
+          directory = Path(sys.argv[1])
+          messages = [json.loads(line) for line in (directory / 'build.jsonl').read_text().splitlines()]
+          paths = [message['executable'] for message in messages
+                   if message.get('reason') == 'compiler-artifact' and message.get('executable')
+                   and message['target']['name'] == 'kokuban' and message['profile']['test']]
+          assert len(paths) == 1, paths
+          shutil.copy2(paths[0], directory / 'benchmark')
+          PY
+            sha256sum "$side_evidence/benchmark" > "$side_evidence/binary-sha256.txt"
+          done
+          python3 - "$evidence_directory" <<'PY'
+          from pathlib import Path
+          import sys
+          directory = Path(sys.argv[1])
+          manifests = [(directory / f'{side}-build/source-sha256.txt').read_text().splitlines()
+                       for side in ('before', 'after')]
+          assert len(manifests[0]) == len(manifests[1])
+          changed = [before.split('  ', 1)[1] for before, after in zip(*manifests) if before != after]
+          assert changed in ([], ['./src/software_raster.rs']), changed
+          (directory / 'changed-source-files.txt').write_text('\n'.join(changed) + '\n')
+          PY
+
+      - name: Measure same-binary controls and five alternating repaint pairs
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-repaint"
+          benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          printf '%s\n' "$benchmark_cpu" > "$evidence_directory/pinned-cpu.txt"
+          for comparison in same-binary candidate; do
+            comparison_after=before
+            if [[ "$comparison" == candidate ]]; then
+              comparison_after=after
+            fi
+            taskset -c "$benchmark_cpu" python3 -B scripts/compare-frame-repaint.py \
+              --before "$evidence_directory/before-build/benchmark" \
+              --after "$evidence_directory/$comparison_after-build/benchmark" \
+              --pairs 5 --steps 300 --warmup 30 --timeout 180 \
+              --output-dir "$evidence_directory/$comparison" \
+              2>&1 | tee "$evidence_directory/$comparison.log"
+          done
+
+      - name: Preserve compiled test binaries, fonts, pixels and raw measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frame-repaint-${{ matrix.runner }}
+          path: ${{ runner.temp }}/kokuban-frame-repaint
+          if-no-files-found: ignore
+          retention-days: 7
