@@ -3,7 +3,7 @@ use font_kit::family_name::FamilyName;
 use font_kit::font::Font;
 use font_kit::properties::{Properties, Style, Weight};
 use font_kit::source::{Source, SystemSource};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use unicode_width::UnicodeWidthStr;
 
 mod text_raster;
@@ -64,11 +64,13 @@ pub struct GlyphEntry {
     pub pixel_h: u32,
     pub bearing_x: i32,
     pub bearing_y: i32,
+    /// Use the atlas RGBA colors instead of tinting its A8 coverage.
+    pub color: bool,
 }
 
 impl GlyphEntry {
     fn empty() -> Self {
-        Self { atlas_x: 0, atlas_y: 0, pixel_w: 0, pixel_h: 0, bearing_x: 0, bearing_y: 0 }
+        Self { atlas_x: 0, atlas_y: 0, pixel_w: 0, pixel_h: 0, bearing_x: 0, bearing_y: 0, color: false }
     }
 }
 
@@ -80,7 +82,6 @@ pub struct GlyphAtlas {
     pub rgba_pixels: Vec<u8>,
     // Separate style maps allow borrowed text lookup without allocating a key.
     text_glyphs: [HashMap<String, GlyphEntry>; 4],
-    color_glyphs: HashSet<(u32, u32)>,
     rasterizer: TextRasterizer,
     pub glyphs: HashMap<GlyphKey, GlyphEntry>,
     pub cell_width: f32,
@@ -193,7 +194,6 @@ impl GlyphAtlas {
             pixels,
             rgba_pixels,
             text_glyphs: std::array::from_fn(|_| HashMap::new()),
-            color_glyphs: HashSet::new(),
             font: font.font.clone(),
             rasterizer: TextRasterizer::new(font),
             glyphs: HashMap::new(),
@@ -245,7 +245,6 @@ impl GlyphAtlas {
         for glyphs in &mut self.text_glyphs {
             glyphs.clear();
         }
-        self.color_glyphs.clear();
         self.rgba_pixels.fill(0);
         self.rgba_pixels[..4].fill(255);
         self.cursor_x = 2;
@@ -305,7 +304,7 @@ impl GlyphAtlas {
     }
 
     pub fn is_color(&self, glyph: GlyphEntry) -> bool {
-        self.color_glyphs.contains(&(glyph.atlas_x, glyph.atlas_y))
+        glyph.color
     }
 
     fn rasterize_text(&mut self, text: &str) -> GlyphEntry {
@@ -349,10 +348,8 @@ impl GlyphAtlas {
             pixel_h: bitmap.height,
             bearing_x: bitmap.x,
             bearing_y: bitmap.y,
+            color: bitmap.color,
         };
-        if bitmap.color {
-            self.color_glyphs.insert((entry.atlas_x, entry.atlas_y));
-        }
         self.cursor_x += bitmap.width + 1;
         self.row_height = self.row_height.max(bitmap.height);
         self.dirty = true;
@@ -581,6 +578,7 @@ mod tests {
         assert!(atlas.descent.is_finite() && atlas.descent <= 0.0);
         assert!(glyph.pixel_w > 0);
         assert!(glyph.pixel_h > 0);
+        assert!(!atlas.is_color(glyph));
 
         for cached in atlas.glyphs.values() {
             assert!(cached.atlas_x.saturating_add(cached.pixel_w) <= atlas.width);
@@ -617,6 +615,69 @@ mod tests {
         assert_eq!(cached.atlas_y, expected.atlas_y);
         assert_eq!(cached.pixel_w, expected.pixel_w);
         assert_eq!(cached.pixel_h, expected.pixel_h);
+        assert_eq!(atlas.is_color(cached), atlas.is_color(expected));
+    }
+
+    #[test]
+    fn bitmap_format_and_pixels_survive_scalar_and_grapheme_cache_hits() {
+        use crate::grid::cell::{Cell, CellFlags};
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        for color in [false, true] {
+            let rgba = if color { [17, 83, 149, 127] } else { [255, 255, 255, 127] };
+            let entry = atlas.insert_bitmap("fixture", Bitmap {
+                width: 1, height: 1, x: -1, y: 2, rgba: rgba.to_vec(), color,
+            });
+            let offset = (entry.atlas_y * atlas.width + entry.atlas_x) as usize;
+            assert_eq!(atlas.pixels[offset], rgba[3]);
+            assert_eq!(atlas.rgba_pixels[offset * 4..offset * 4 + 4], rgba);
+            for (style, (bold, italic)) in
+                [(false, false), (true, false), (false, true), (true, true)].into_iter().enumerate()
+            {
+                let key = GlyphKey { c: 'é', bold, italic };
+                atlas.glyphs.insert(key, entry);
+                atlas.text_glyphs[style].insert("e\u{301}".to_owned(), entry);
+                let mut flags = CellFlags::empty();
+                flags.set(CellFlags::BOLD, bold);
+                flags.set(CellFlags::ITALIC, italic);
+                atlas.dirty = false;
+                for cell in [
+                    Cell { c: 'é', flags, ..Cell::default() },
+                    Cell { c: 'e', grapheme: Some(Arc::from("e\u{301}")), flags, ..Cell::default() },
+                ] {
+                    let cached = atlas.get_or_insert_cell(&cell);
+                    assert_eq!(atlas.is_color(cached), color);
+                    assert_eq!((cached.atlas_x, cached.atlas_y), (entry.atlas_x, entry.atlas_y));
+                    assert_eq!((cached.bearing_x, cached.bearing_y), (-1, 2));
+                }
+                assert!(!atlas.dirty, "both cache paths must preserve the inserted bitmap");
+            }
+        }
+    }
+
+    #[test]
+    fn resize_reuses_coordinates_without_retaining_previous_color_format() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        let color = atlas.insert_bitmap("color", Bitmap {
+            width: 1, height: 1, x: 0, y: 0, rgba: vec![17, 83, 149, 255], color: true,
+        });
+        assert!(atlas.is_color(color));
+        atlas.clear_and_resize(18.0).unwrap();
+        let mono = atlas.insert_bitmap("mono", Bitmap {
+            width: 1, height: 1, x: 0, y: 0, rgba: vec![255; 4], color: false,
+        });
+        assert_eq!((mono.atlas_x, mono.atlas_y), (color.atlas_x, color.atlas_y));
+        assert!(!atlas.is_color(mono));
+        assert!(!atlas.is_color(GlyphEntry::empty()));
+        // Failed insertions also return an empty monochrome entry, even when
+        // the rasterizer supplied a color bitmap.
+        atlas.cursor_y = atlas.height;
+        for (width, height) in [(0, 1), (atlas.width + 1, 1), (1, atlas.height)] {
+            let empty = atlas.insert_bitmap("cannot fit", Bitmap {
+                width, height, x: 0, y: 0, rgba: Vec::new(), color: true,
+            });
+            assert_eq!((empty.pixel_w, empty.pixel_h), (0, 0));
+            assert!(!atlas.is_color(empty));
+        }
     }
 
     #[test]
@@ -706,6 +767,8 @@ mod tests {
         for text in ["👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
             let glyph = atlas.get_or_insert_text(text, false, false);
             assert!(atlas.is_color(glyph), "system emoji fallback missing for {text}");
+            let cached = atlas.get_or_insert_text(text, false, false);
+            assert!(atlas.is_color(cached), "cache lost the color format for {text}");
             let colorful = (0..glyph.pixel_h).any(|y| (0..glyph.pixel_w).any(|x| {
                 let index = ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize * 4;
                 let color = &atlas.rgba_pixels[index..index + 4];

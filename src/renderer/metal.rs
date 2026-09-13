@@ -1127,6 +1127,7 @@ mod tests {
             pixel_h: 20,
             bearing_x: -2,
             bearing_y: 3,
+            color: false,
         };
 
         let (white_u, white_v) = white_pixel_uv(200, 80);

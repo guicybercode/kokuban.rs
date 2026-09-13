@@ -4200,6 +4200,7 @@ mod themed_cursor_tests {
             pixel_h: u32::from(cell_height),
             bearing_x: 0,
             bearing_y: -rounded_f64_i32(f64::from(atlas.ascent)).unwrap(),
+            color: false,
         };
         assert!(!atlas.is_color(glyph));
         // Distinct stripes in each half expose a wrong source origin when the
@@ -4304,6 +4305,7 @@ mod themed_cursor_tests {
         }
         let glyph = crate::glyph_atlas::GlyphEntry {
             atlas_x: 0, atlas_y: 0, pixel_w: 4, pixel_h: 3, bearing_x: 0, bearing_y: 0,
+            color: false,
         };
         for colored in [false, true] {
             let source = GlyphSource {
@@ -8400,6 +8402,7 @@ mod tests {
             pixel_h: 1,
             bearing_x: -1,
             bearing_y: 2,
+            color: false,
         };
 
         draw_cell_glyph(
@@ -10026,6 +10029,7 @@ mod damage_tests {
                 pixel_h: cell_height * 3,
                 bearing_x: -2,
                 bearing_y: -(cell_height as i32) * 2,
+                color: false,
             },
         );
         for y in 0..cell_height * 3 {
