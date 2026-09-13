@@ -25,6 +25,8 @@ Fontconfig matched `DejaVu Sans Mono`, `sans:lang=ja`, and `emoji` to `DejaVuSan
 
 Snapshot construction, font rasterization, reference comparisons, PTY traffic and window presentation are outside the timed interval. Incremental modes include damage calculation and CPU painting. The harness checks both transition directions against full-paint references and verifies the final pixels after each warmup/timed loop; it does not capture every intermediate timed frame.
 
+The clock is Rust `Instant`: these are elapsed durations for CPU rendering work, including any scheduling delay, rather than process CPU-accounting counters.
+
 Independent artifact checks found 40 complete process logs, 480 timing records and 144,000 timed repaints. All 96 retained reference files have exactly `1080 × 680 × 4` bytes; SHA256 and fixture checksums agree, each fixture's two states differ, and pixels match between baseline/candidate, A/A, and both architectures. Offscreen emoji insertion leaves the ASCII reference pixels unchanged. The original parser's incomplete fixture/dimension checks were addressed separately; these stronger checks were also applied directly to the original artifacts.
 
 ## Frame results
@@ -59,6 +61,8 @@ The microbenchmark run exercised 40 cases per platform: five kernels at widths `
 Image-kernel median paired throughput changes ranged from **+3.50% to +14.36% on Linux x86_64** and **+26.03% to +35.98% on Linux ARM64**. The macOS ARM64 microbenchmark regressed by 2.88–12.57% for that kernel. At the measured source, production macOS rendering uses Metal and has no production caller of `software_raster`; this synthetic result is not a measured macOS terminal regression.
 
 Microbenchmark A/A controls are **not uniformly neutral**. Examples include x86_64 alpha/width7 at 0.9246× (AB median 0.9223×, BA 1.0855×), ARM64 opaque/width16 and width17 at 0.9166× and 0.9235×, and macOS opaque/width9 at 1.1780× despite identical functions. Linux width9 controls were close to 1×. Consequently these microbenchmarks are diagnostics; acceptance is supported by the real-font frame comparisons and pixel checks, rather than a global claim from the 40-case suite.
+
+A [follow-up with eight pairs per case](https://github.com/guicybercode/kokuban.rs/actions/runs/34745537705) balanced four AB and four BA observations. All 240 case reports and 1,920 timing pairs were checked against their raw records and source/binary hashes. Same-source median throughput changes across the 40 cases ranged from −1.10% to +1.20% on Linux x86_64 and −2.69% to +2.61% on Linux ARM64. Linux width9 glyph speedups remained 1.222× and 1.836× respectively. macOS controls still ranged from −16.31% to +26.62%, so this run does not support precise macOS performance claims. These observations remain separate from the seven-pair results above.
 
 The processing runs used five alternating pairs, approximately 32 MiB per workload, 80 × 24 cells / 720 × 408 pixels, CPU 0 and headless Weston/Pixman. Median paired throughput changes for ASCII, ANSI, Unicode and short lines were respectively **−0.56%, −1.06%, +1.22%, +1.33%** on the alternate screen and **−0.20%, +0.53%, +0.05%, +1.06%** on the primary screen. They establish no broad text-processing gain. DSR acknowledges processing, not rendered pixels or presentation latency.
 
