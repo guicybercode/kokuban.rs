@@ -12,11 +12,11 @@ const MAX_OSC_BYTES: usize = 64 * 1024;
 const MAX_APC_BYTES: usize = super::kitty_graphics::MAX_KITTY_APC_BYTES;
 const MAX_DCS_BYTES: usize = 16 * 1024 * 1024;
 
-/// Find the first byte outside a printable ASCII or mixed UTF-8 block.
+/// Find the first C0/DEL byte in a mixed UTF-8 and printable ASCII block.
 /// Word checks only skip whole valid blocks; the scalar tail finds the exact
 /// boundary, including when subtraction borrows between adjacent byte lanes.
 #[inline]
-fn text_prefix_len<const MIXED_UTF8: bool>(input: &[u8]) -> usize {
+fn utf8_text_prefix_len(input: &[u8]) -> usize {
     const HIGH: u64 = 0x8080_8080_8080_8080;
     const ONES: u64 = 0x0101_0101_0101_0101;
     const SPACES: u64 = 0x2020_2020_2020_2020;
@@ -27,13 +27,13 @@ fn text_prefix_len<const MIXED_UTF8: bool>(input: &[u8]) -> usize {
         let below_space = word.wrapping_sub(SPACES) & !word & HIGH;
         let del = word ^ DELETE;
         let delete = del.wrapping_sub(ONES) & !del & HIGH;
-        if below_space != 0 || delete != 0 || (!MIXED_UTF8 && word & HIGH != 0) {
+        if below_space != 0 || delete != 0 {
             break;
         }
         offset += 8;
     }
     offset + input[offset..].iter().position(|byte| {
-        *byte < 0x20 || *byte == 0x7f || (!MIXED_UTF8 && !byte.is_ascii())
+        *byte < 0x20 || *byte == 0x7f
     }).unwrap_or(input.len() - offset)
 }
 
@@ -1059,7 +1059,9 @@ impl Utf8Parser {
                     b' '..=b'~' => {
                         // The first byte is already printable; scan its tail.
                         let tail = &input[index + 1..];
-                        let printable = 1 + text_prefix_len::<false>(tail);
+                        let printable = 1 + tail.iter()
+                            .position(|byte| !matches!(byte, b' '..=b'~'))
+                            .unwrap_or(tail.len());
                         grid.put_ascii(&input[index..index + printable]);
                         index += printable;
                         continue;
@@ -1092,7 +1094,7 @@ impl Utf8Parser {
         // ASCII inside multilingual text belongs to the same block. Stop before
         // C0/DEL so escape sequences and terminal events retain their boundaries.
         let tail = &input[1..];
-        let block_len = 1 + text_prefix_len::<true>(tail);
+        let block_len = 1 + utf8_text_prefix_len(tail);
         let block = &input[..block_len];
         match std::str::from_utf8(block) {
             Ok(text) => grid.put_utf8(text),
@@ -1179,14 +1181,11 @@ mod tests {
     }
 
     #[test]
-    fn text_block_scans_stop_at_every_byte_and_word_boundary() {
+    fn utf8_block_scans_stop_at_every_byte_and_word_boundary() {
         fn check(bytes: &[u8]) {
-            let ascii = bytes.iter().position(|b| !matches!(b, b' '..=b'~'))
-                .unwrap_or(bytes.len());
             let mixed = bytes.iter().position(|b| *b < 0x20 || *b == 0x7f)
                 .unwrap_or(bytes.len());
-            assert_eq!(super::text_prefix_len::<false>(bytes), ascii, "{bytes:?}");
-            assert_eq!(super::text_prefix_len::<true>(bytes), mixed, "{bytes:?}");
+            assert_eq!(super::utf8_text_prefix_len(bytes), mixed, "{bytes:?}");
         }
         // Exercise every byte in every lane, word transition and short tail.
         for length in 0..=40 {
