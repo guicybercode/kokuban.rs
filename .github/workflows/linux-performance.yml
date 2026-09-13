@@ -2,6 +2,12 @@ name: Linux release resource measurements
 
 on:
   workflow_dispatch:
+    inputs:
+      video_soak_seconds:
+        description: Optional same-process video soak (0 disables; 30..1800 seconds)
+        type: number
+        default: 0
+        required: true
 
 permissions:
   contents: read
@@ -13,12 +19,29 @@ concurrency:
 jobs:
   measure:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
+      VIDEO_SOAK_SECONDS: ${{ inputs.video_soak_seconds || 0 }}
 
     steps:
+      - name: Validate optional soak duration
+        id: soak_config
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import os
+          raw = os.environ['VIDEO_SOAK_SECONDS']
+          if not raw.isascii() or not raw.isdecimal():
+              raise SystemExit('video_soak_seconds must be 0 or an integer in 30..1800')
+          seconds = int(raw)
+          if seconds != 0 and not 30 <= seconds <= 1800:
+              raise SystemExit('video_soak_seconds must be 0 or an integer in 30..1800')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'seconds={seconds}', file=output)
+          PY
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -61,6 +84,21 @@ jobs:
           dpkg-query -W ffmpeg mpv xvfb xdotool fonts-dejavu-core \
             > "$evidence_directory/system-packages.txt"
 
+      - name: Validate soak observer and retain exact executable and source
+        id: soak_provenance
+        if: ${{ steps.soak_config.outputs.seconds != '0' }}
+        shell: bash
+        run: |
+          test -f scripts/linux-video-soak.py
+          test -f scripts/test_linux_video_soak.py
+          python3 -B -m unittest discover -s scripts -p 'test_linux_video_soak.py'
+          evidence_directory="$RUNNER_TEMP/kokuban-release-evidence"
+          git rev-parse HEAD > "$evidence_directory/revision.txt"
+          cp target/release/kokuban "$evidence_directory/kokuban"
+          git archive --format=tar HEAD | gzip -n > "$evidence_directory/source.tar.gz"
+          sha256sum "$evidence_directory/kokuban" "$evidence_directory/source.tar.gz" \
+            > "$evidence_directory/retained-build-sha256.txt"
+
       - name: Measure idle, finite PTY output and post-output settling
         shell: bash
         run: |
@@ -77,6 +115,18 @@ jobs:
             timeout --kill-after=5s 90s python3 scripts/linux-video-smoke.py \
               "$PWD/target/release/kokuban" --build-profile release \
               --artifacts-dir "$RUNNER_TEMP/kokuban-release-evidence/video"
+
+      - name: Observe prolonged video in the same terminal and player processes
+        if: ${{ !cancelled() && steps.soak_provenance.outcome == 'success' }}
+        shell: bash
+        env:
+          SOAK_SECONDS: ${{ steps.soak_config.outputs.seconds }}
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=10s "$((SOAK_SECONDS + 120))s" \
+            python3 -B scripts/linux-video-soak.py "$PWD/target/release/kokuban" \
+              --duration-seconds "$SOAK_SECONDS" \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-release-evidence/video-soak"
 
       - name: Upload measurements and bounded evidence
         if: always()
