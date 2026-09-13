@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Measure synthetic X11 input to verified window pixels, not input-to-photon.
 
-xdotool injects an XTest key into a focused, controlled terminal. A raw PTY app
-repaints a large opaque rectangle; xwd polls until every pixel in it is correct.
-Process launch, X11 readback and observer scheduling are included in this upper
-bound. On Xvfb this measures software-display behavior, never physical scanout.
+By default xdotool injects a key and xwd captures the controlled terminal. The
+optional xlib observer uses persistent XTest/XGetImage calls instead. A raw PTY
+app repaints a large opaque rectangle; every RGB pixel must match. Injection,
+readback and observer scheduling are included in this upper bound. On Xvfb this
+measures software-display behavior, never physical scanout.
 """
 
 import argparse
@@ -37,6 +38,7 @@ stop_owned_child = HELPERS["stop_owned_child"]
 command_observation = HELPERS["command_observation"]
 TERMINALS = HELPERS["TERMINALS"]
 COLORS = ((29, 173, 83), (211, 47, 149))
+XLIB_PATH = Path(__file__).with_name("terminal-frame-xlib.py")
 
 
 def distribution(values):
@@ -199,6 +201,7 @@ def execute_sample(name, binary, version, directory, args, cell):
               "verified_pixels_per_frame": (region[2] - region[0]) * (region[3] - region[1]),
               "warmup": [], "measurements": []}
     process = None
+    observer = None
     try:
         record(directory, "case.json", {"geometry": geometry, "timeout": args.timeout})
         with (directory / "terminal.log").open("wb") as log:
@@ -249,6 +252,13 @@ def execute_sample(name, binary, version, directory, args, cell):
         window = wait_for(find_window, "one visible window with calibrated pixels", args.timeout)
         sample["window"] = window
         run(["xdotool", "windowfocus", "--sync", window], args.timeout)
+        if getattr(args, "observer", "xwd") == "xlib":
+            observer = runpy.run_path(str(XLIB_PATH))["XlibObserver"](window, Frame)
+            sample["observer"] = observer.library_provenance()
+            sample["observer"]["package_versions"] = command_observation([
+                "dpkg-query", "-W", "libx11-6", "libxtst6"])
+        else:
+            sample["observer"] = {"type": "xwd", "transport": "xdotool and xwd subprocesses"}
         (directory / "window-ready").touch()
 
         def wait_color(color):
@@ -258,7 +268,8 @@ def execute_sample(name, binary, version, directory, args, cell):
             deadline = time.monotonic() + args.timeout
             while time.monotonic() < deadline:
                 check()
-                frame, started, finished = capture(window, args.timeout)
+                frame, started, finished = (observer.capture(args.timeout) if observer is not None
+                                            else capture(window, args.timeout))
                 if [frame.width, frame.height] != geometry[2:]:
                     raise AssertionError("window pixel dimensions changed during measurement")
                 matches = frame.matches(region, color)
@@ -278,13 +289,19 @@ def execute_sample(name, binary, version, directory, args, cell):
         time.sleep(args.settle_seconds)
         for index in range(args.warmup + args.events):
             check()
-            focus = run(["xdotool", "getwindowfocus"], args.timeout).decode().strip()
-            if focus != window:
-                raise AssertionError("benchmark window lost keyboard focus")
+            if observer is not None:
+                observer.prepare_input()
+            else:
+                focus = run(["xdotool", "getwindowfocus"], args.timeout).decode().strip()
+                if focus != window:
+                    raise AssertionError("benchmark window lost keyboard focus")
             started = time.perf_counter_ns()
             sample["pending_event"] = {"index": index, "input_started_ns": started}
-            run(["xdotool", "key", "--clearmodifiers", "--delay", "0", "b" if index % 2 == 0 else "a"],
-                args.timeout)
+            key = "b" if index % 2 == 0 else "a"
+            if observer is not None:
+                observer.inject(key)
+            else:
+                run(["xdotool", "key", "--clearmodifiers", "--delay", "0", key], args.timeout)
             injected = time.perf_counter_ns()
             frame, observations = wait_color(COLORS[(index + 1) % 2])
             finished = observations[-1]["capture_finished_ns"]
@@ -322,6 +339,11 @@ def execute_sample(name, binary, version, directory, args, cell):
         if (directory / "terminal.log").exists():
             sample["log_tail"] = (directory / "terminal.log").read_text(errors="replace")[-4000:]
     finally:
+        if observer is not None:
+            try:
+                observer.close()
+            except Exception as error:
+                sample.update(status="failed", error=f"observer cleanup failed: {error}")
         if process is not None:
             try:
                 if process.poll() is None:
@@ -368,6 +390,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--child-dir", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--observer", choices=("xwd", "xlib"), default="xwd",
+                        help="xwd subprocess reference or optional persistent Xlib/XTest connection")
     parser.add_argument("--terminals", nargs="+", choices=TERMINALS, default=list(TERMINALS))
     for name in TERMINALS:
         parser.add_argument("--" + name, default=name)
@@ -412,6 +436,9 @@ def main(argv=None):
                   "MESA_LOADER_DRIVER_OVERRIDE", "GDK_SCALE", "GDK_DPI_SCALE")},
               "font_match": command_observation(["fc-match", "-f", "%{family}\n%{file}\n", HELPERS["FONT"]]),
               "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              "observer": args.observer,
+              "xlib_helper_sha256": hashlib.sha256(XLIB_PATH.read_bytes()).hexdigest()
+              if args.observer == "xlib" else None,
               "configuration_harness_sha256": hashlib.sha256(COMPARISON_PATH.read_bytes()).hexdigest(),
               "resource_harness_sha256": hashlib.sha256(
                   COMPARISON_PATH.with_name("linux-resource-smoke.py").read_bytes()).hexdigest(),
@@ -421,7 +448,9 @@ def main(argv=None):
               "limitations": [
                   "Not physical keyboard, compositor presentation, vblank, GPU-only or input-to-photon latency",
                   "Xvfb measurements describe the virtual software X11 display and may differ from a desktop GPU",
-                  "Input interval starts before xdotool launch; xwd subprocess, readback and scheduling add overhead",
+                  "xwd mode starts before xdotool launch; subprocesses, readback and scheduling add overhead",
+                  "xlib mode starts before XTest press/release and flush; attributes, readback and XWD copy add overhead",
+                  "Xlib synchronous calls require an enclosing process/job timeout for an unresponsive X server",
                   "Capture completion is a conservative upper bound; observer cost is reported, never subtracted",
                   "Opaque background pixels are verified; text rendering, fonts and Unicode fidelity are not evaluated",
                   "Sequential events within a process are correlated; raw per-process samples are retained",
