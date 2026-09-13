@@ -642,7 +642,7 @@ mod tests {
                 atlas.dirty = false;
                 for cell in [
                     Cell { c: 'é', flags, ..Cell::default() },
-                    Cell { c: 'e', grapheme: Some(Arc::from("e\u{301}")), flags, ..Cell::default() },
+                    Cell { c: 'e', grapheme: Some("e\u{301}".into()), flags, ..Cell::default() },
                 ] {
                     let cached = atlas.get_or_insert_cell(&cell);
                     assert_eq!(atlas.is_color(cached), color);

@@ -9913,7 +9913,7 @@ mod damage_tests {
             let old_glyph = atlas.get_or_insert_cell(old_cell);
 
             // c, flags, colors, cursor, and grid dimensions are unchanged.
-            grid.buffer.cell_mut(4, 3).grapheme = Some(std::sync::Arc::from(after));
+            grid.buffer.cell_mut(4, 3).grapheme = Some(after.into());
             let current = PresentedScene {
                 snapshot: snapshot_locked_grid(&grid),
                 frame_size,

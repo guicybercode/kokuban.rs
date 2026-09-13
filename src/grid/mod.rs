@@ -6,11 +6,11 @@ mod boundary_pages;
 mod history;
 
 use buffer::{Buffer, RowMetadata};
-use cell::{Cell, CellFlags, Color, UnderlineStyle};
+use cell::{Cell, CellFlags, Color, Grapheme, UnderlineStyle};
 use history::HistoryRow;
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -69,25 +69,6 @@ fn scalar_extends_grapheme(previous: &str, c: char) -> bool {
             }
             Err(_) => unreachable!("the chunk contains both sides of the boundary"),
         }
-    }
-}
-
-/// Avoid a temporary heap allocation for short clusters; retain every byte
-/// through the String fallback when a cluster outgrows the stack buffer.
-fn append_grapheme(previous: &str, c: char) -> Arc<str> {
-    let len = previous.len() + c.len_utf8();
-    if len <= 64 {
-        let mut bytes = [0; 64];
-        bytes[..previous.len()].copy_from_slice(previous.as_bytes());
-        c.encode_utf8(&mut bytes[previous.len()..len]);
-        let text = std::str::from_utf8(&bytes[..len])
-            .expect("a UTF-8 string followed by an encoded scalar is valid");
-        Arc::from(text)
-    } else {
-        let mut text = String::with_capacity(len);
-        text.push_str(previous);
-        text.push(c);
-        text.into()
     }
 }
 
@@ -545,7 +526,7 @@ impl Grid {
             }
             let cells = self.buffer.row_range_mut(row, col..col + count);
             for (cell, &byte) in cells.iter_mut().zip(&text[..count]) {
-                *cell = Cell { c: char::from(byte), ..template.clone() };
+                cell.write_scalar(char::from(byte), &template, template.flags);
             }
             self.buffer.mark_written(row, col + count);
             self.cursor_col += count;
@@ -639,13 +620,10 @@ impl Grid {
             let cells = self.buffer.row_range_mut(row, col..end);
             let mut offset = 0;
             for &(c, width) in &staged[..count] {
-                let mut cell = Cell { c, ..leader.clone() };
+                let flags = if width == 2 { leader.flags | CellFlags::WIDE } else { leader.flags };
+                cells[offset].write_scalar(c, &leader, flags);
                 if width == 2 {
-                    cell.flags.insert(CellFlags::WIDE);
-                }
-                cells[offset] = cell;
-                if width == 2 {
-                    cells[offset + 1] = continuation.clone();
+                    cells[offset + 1].write_scalar(continuation.c, &continuation, continuation.flags);
                 }
                 offset += usize::from(width);
             }
@@ -770,7 +748,7 @@ impl Grid {
         let previous_text = previous.grapheme.as_deref()
             .unwrap_or_else(|| previous.c.encode_utf8(&mut scalar_bytes));
         if !scalar_extends_grapheme(previous_text, c) { return false; }
-        let text = append_grapheme(previous_text, c);
+        let text = Grapheme::from_appended(previous_text, c);
         let old_width = if previous.flags.contains(CellFlags::WIDE)
             && col + 1 < self.cols() { 2 } else { 1 };
         let natural_width = text.width().clamp(1, 2);
@@ -1480,12 +1458,11 @@ mod history_tests;
 #[cfg(test)]
 mod tests {
     use super::{
-        cell::{CellFlags, Color, UnderlineStyle},
+        cell::{CellFlags, Color, Grapheme, UnderlineStyle},
         marks::PromptMarkKind,
-        append_grapheme, scalar_extends_grapheme, Grid, TerminalEvent,
+        scalar_extends_grapheme, Grid, TerminalEvent,
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
-    use std::sync::Arc;
     use unicode_segmentation::UnicodeSegmentation;
 
     #[test]
@@ -2550,8 +2527,8 @@ mod tests {
     }
 
     #[test]
-    fn appended_graphemes_preserve_multibyte_scalars_at_stack_boundaries() {
-        for total_bytes in [63, 64, 65] {
+    fn appended_graphemes_preserve_multibyte_scalars_at_storage_boundaries() {
+        for total_bytes in [13, 14, 15, 63, 64, 65] {
             for next in ['\u{308}', '\u{200d}', '🏽'] {
                 let prefix_bytes = total_bytes - next.len_utf8();
                 let mut previous = String::from(if prefix_bytes % 2 == 0 { "é" } else { "e" });
@@ -2559,7 +2536,7 @@ mod tests {
                 let expected = format!("{previous}{next}");
                 assert_eq!(expected.len(), total_bytes);
                 assert_eq!(expected.graphemes(true).count(), 1);
-                let actual = append_grapheme(&previous, next);
+                let actual = Grapheme::from_appended(&previous, next);
                 assert_eq!(actual.as_bytes(), expected.as_bytes(), "bytes={total_bytes}, next={next:?}");
             }
         }
@@ -2570,9 +2547,52 @@ mod tests {
         let previous = format!("e{}", "\u{301}".repeat(4096));
         let expected = format!("{previous}\u{308}");
         assert_eq!(expected.graphemes(true).count(), 1);
-        let actual = append_grapheme(&previous, '\u{308}');
+        let actual = Grapheme::from_appended(&previous, '\u{308}');
         assert_eq!(actual.len(), 8195);
         assert_eq!(actual.as_bytes(), expected.as_bytes());
+    }
+
+    #[test]
+    fn fragmented_inline_growth_keeps_snapshots_immutable_when_spilling_to_heap() {
+        for chunk_size in [1, 2, 3, 7, 64] {
+            let mut grid = Grid::new(3, 2, 4);
+            let mut parser = crate::parser::ansi::Utf8Parser::new();
+            let prefix = format!("é{}", "\u{301}".repeat(5));
+            assert_eq!(prefix.len(), 12);
+            let input = format!("\x1b[1;3;4;38;2;12;34;56;48;5;7mab{prefix}");
+            for chunk in input.as_bytes().chunks(chunk_size) {
+                parser.feed_until_terminal_event(chunk, &mut grid);
+            }
+            let first = grid.buffer.cell(0, 2).clone();
+            assert!(first.grapheme.as_ref().unwrap().heap_weak().is_none());
+            for chunk in "\u{308}".as_bytes().chunks(chunk_size) {
+                parser.feed_until_terminal_event(chunk, &mut grid);
+            }
+            let full_inline = grid.buffer.cell(0, 2).clone();
+            assert_eq!(full_inline.text().len(), 14);
+            assert!(full_inline.grapheme.as_ref().unwrap().heap_weak().is_none());
+            for chunk in "\x1b[0m\u{308}".as_bytes().chunks(chunk_size) {
+                parser.feed_until_terminal_event(chunk, &mut grid);
+            }
+            let heap_cell = grid.buffer.cell(0, 2).clone();
+            assert_eq!(heap_cell.text(), format!("{prefix}\u{308}\u{308}"));
+            let heap_owner = heap_cell.grapheme.as_ref().unwrap().heap_weak().unwrap();
+            assert_eq!((heap_cell.fg, heap_cell.bg, heap_cell.flags, heap_cell.underline_style, heap_cell.underline_color),
+                (first.fg, first.bg, first.flags, first.underline_style, first.underline_color));
+            assert_eq!(heap_cell.display_width(), 1);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 3));
+            assert!(grid.is_wrap_pending());
+            grid.put_ascii(b"X");
+            assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+            assert_eq!(grid.buffer.cell(1, 0).fg, Color::Default);
+            assert!(grid.retained_row_wrapped(0));
+            drop(grid);
+            assert_eq!(heap_owner.strong_count(), 1);
+            drop(heap_cell);
+            assert!(heap_owner.upgrade().is_none());
+            assert_eq!(first.text(), prefix);
+            assert_eq!(full_inline.text(), format!("{prefix}\u{308}"));
+        }
     }
 
     #[test]
@@ -2587,7 +2607,7 @@ mod tests {
                 assert_eq!(parser.feed_until_terminal_event(chunk, &mut grid), chunk.len());
             }
             let snapshot = grid.buffer.cell(0, 2).clone();
-            let original = Arc::downgrade(snapshot.grapheme.as_ref().unwrap());
+            let original = snapshot.grapheme.as_ref().unwrap().heap_weak().unwrap();
             assert_eq!(snapshot.text(), prefix);
             assert_eq!(snapshot.fg, Color::Rgb(12, 34, 56));
             assert_eq!(snapshot.bg, Color::Indexed(7));
@@ -2606,8 +2626,8 @@ mod tests {
             assert_eq!(cell.display_width(), 1);
             assert_eq!((cell.c, cell.fg, cell.bg, cell.flags, cell.underline_style, cell.underline_color),
                 (snapshot.c, snapshot.fg, snapshot.bg, snapshot.flags, snapshot.underline_style, snapshot.underline_color));
-            assert!(!Arc::ptr_eq(cell.grapheme.as_ref().unwrap(), snapshot.grapheme.as_ref().unwrap()));
-            let extended = Arc::downgrade(cell.grapheme.as_ref().unwrap());
+            let extended = cell.grapheme.as_ref().unwrap().heap_weak().unwrap();
+            assert!(!original.ptr_eq(&extended));
             assert_eq!(snapshot.text(), prefix);
             assert_eq!((grid.cursor_row, grid.cursor_col), (0, 3));
             assert!(grid.is_wrap_pending());

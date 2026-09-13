@@ -549,6 +549,31 @@ mod tests {
     }
 
     #[test]
+    fn copied_compound_history_survives_reflow_and_saved_primary_storage() {
+        for grapheme in ["e\u{301}", "👩🏽‍💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
+            let mut grid = Grid::new(8, 1, 10);
+            for character in grapheme.chars() { grid.put_char(character); }
+            grid.put_ascii(b"  ");
+            grid.carriage_return();
+            grid.newline();
+            grid.put_ascii(b"next");
+            let expected = format!("{grapheme}  \nnext");
+            for cols in [4, 1, 8] {
+                grid.enter_alt_screen();
+                grid.resize(cols, 1);
+                grid.leave_alt_screen();
+                let selection = selected(
+                    GridPoint { row: 0, col: 0 },
+                    GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+                );
+                assert_eq!(selection.get_text(&grid), expected, "width={cols}");
+                assert_eq!(selection.get_text_with_limit(&grid, expected.len()), Ok(expected.clone()));
+                assert_eq!(selection.get_text_with_limit(&grid, expected.len() - 1), Err(SelectionTextError::TooLarge));
+            }
+        }
+    }
+
+    #[test]
     fn orphaned_continuations_and_nuls_never_enter_clipboard_text() {
         let mut grid = Grid::new(3, 1, 10);
         grid.buffer.cell_mut(0, 0).flags = CellFlags::WIDE_CONT;

@@ -4,7 +4,6 @@ use super::{
     history::HistoryRow,
     Grid,
 };
-use std::sync::Arc;
 
 #[test]
 fn short_history_allocates_only_the_known_prefix_but_keeps_the_logical_width() {
@@ -74,7 +73,7 @@ fn styled_blank_suffixes_keep_every_cell_attribute() {
             ..Cell::default()
         },
         Cell {
-            grapheme: Some(Arc::from(" \u{301}")),
+            grapheme: Some(" \u{301}".into()),
             ..Cell::default()
         },
     ];
@@ -134,7 +133,7 @@ fn compact_extraction_matches_full_rows_after_circular_and_partial_scrolls() {
         buffer.clear_row(row, template.clone());
         *buffer.cell_mut(row, col) = Cell {
             c: 'e',
-            grapheme: Some(Arc::from("e\u{301}")),
+            grapheme: Some("e\u{301}".into()),
             ..Cell::default()
         };
         if step % 2 == 0 {
