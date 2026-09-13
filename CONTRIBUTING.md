@@ -1,6 +1,6 @@
 # Contributing to Kokuban
 
-Bug reports, focused fixes, tests, documentation and platform feedback are welcome. Read the [README](README.md) for setup and the [roadmap](docs/ROADMAP.md) for current capabilities. Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
+Bug reports, focused fixes, tests, documentation and platform feedback are welcome. Read the [README](README.md) for setup and the [roadmap](docs/ROADMAP.md) for current capabilities. Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue. All community participation follows our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Set up a development checkout
 
@@ -25,7 +25,7 @@ Fork the repository first if you do not have push access. Use your fork as the p
 - Keep configuration, README examples and platform claims consistent with the actual implementation. Distinguish compilation from runtime validation.
 - Do not commit credentials, private signing keys, SDKs, `target/`, personal logs or unreviewed generated output. Preserve third-party notices.
 
-Android development currently lives on `codex/android-native`. Coordinate shared API changes using the [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md); an experimental branch is not part of the desktop v0.1 release.
+Android development currently lives on `codex/android-native`. Coordinate shared API changes using the [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md); an experimental branch is not part of the desktop v0.2 release.
 
 ## Validate your change
 
@@ -48,4 +48,4 @@ Use descriptive commits. Preserve actual contributor attribution and do not add 
 
 ## Licensing
 
-By submitting code or documentation intended for inclusion in this repository, you agree to license your contribution under the project's [MIT license](LICENSE). Only submit work you have the right to contribute. Dependencies and third-party assets keep their own licenses and required notices; the project's MIT license does not relicense them.
+By submitting code or documentation intended for inclusion in this repository, you agree to license your contribution under the [project license](LICENSE). Only submit work you have the right to contribute. Dependencies and third-party assets keep their own licenses and required notices; the project license does not relicense them.
