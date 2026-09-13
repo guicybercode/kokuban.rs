@@ -22,6 +22,10 @@ dependency for the smoke tests, benchmarks, Unicode-table regeneration and relea
 packaging in `scripts/`; it is not needed to build or run Kokuban. Historical
 measurement harnesses live in `docs/`. These development files are excluded from
 GitHub's application language statistics through `.gitattributes`.
+Binary release archives and Cargo source packages omit the development scripts
+and raw benchmark snapshots. Binary archive documentation links to the tagged
+repository for those files; third-party license notices and required source
+archives remain included.
 
 ## Make a focused change
 
