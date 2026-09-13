@@ -282,9 +282,20 @@ impl GlyphAtlas {
         let bold = cell.flags.contains(CellFlags::BOLD);
         let italic = cell.flags.contains(CellFlags::ITALIC);
         match &cell.grapheme {
-            Some(text) => self.get_or_insert_text(text, bold, italic),
+            Some(text) => self.get_or_insert_grapheme(text, bold, italic),
             None => self.get_or_insert(GlyphKey { c: cell.c, bold, italic }),
         }
+    }
+
+    // Keep inline UTF-8 validation and its stack frame off scalar cache hits.
+    #[inline(never)]
+    fn get_or_insert_grapheme(
+        &mut self,
+        text: &crate::grid::cell::Grapheme,
+        bold: bool,
+        italic: bool,
+    ) -> GlyphEntry {
+        self.get_or_insert_text(text, bold, italic)
     }
 
     /// Cache a whole grapheme, preserving shaping substitutions and mark offsets.
