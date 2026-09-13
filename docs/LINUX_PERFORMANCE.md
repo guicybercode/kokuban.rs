@@ -2,6 +2,11 @@
 
 O workflow manual `Linux release resource measurements` compila com Rust 1.94.1 e `cargo build --release --locked`, sem strip ou LTO adicionais. Ele registra manifesto, lockfile, árvore Cargo, versões de pacotes, dependências ELF, tamanho/hash do binário e hardware do runner. O perfil de release mantém `debug=0`.
 
+Os [resultados de repintura de 13 de setembro](LINUX_RASTER_BENCHMARK_2026-09-13.md)
+registram o ajuste de mistura de cores, controles A/A, igualdade dos pixels e
+ganhos e regressões separados por cenário. A [medição de resposta visual X11](LINUX_FRAME_LATENCY.md)
+tem outro escopo: inclui a injeção sintética e o custo de observar os pixels.
+
 Para comparar duas revisões no mesmo runner Linux, use o workflow manual
 `Linux paired revision measurements`:
 
