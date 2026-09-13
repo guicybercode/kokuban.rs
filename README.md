@@ -2,14 +2,14 @@
 
 A native terminal emulator written in Rust for Linux and macOS.
 
-[Download v0.2](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2) · [Run Kokuban](#installation) · [Omarchy](docs/OMARCHY.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md) · [BSD-4-Clause license](LICENSE)
+[Download v0.3](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.3) · [Run Kokuban](#installation) · [Omarchy](docs/OMARCHY.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md) · [BSD-4-Clause license](LICENSE)
 
 ![Kokuban brand](docs/screenshots/kokuban-brand.png)
 
 
 Kokuban brings interactive shells, development tools and terminal graphics into a native desktop window. It has its own VT/ANSI parser, terminal grid and PTY handling, with Metal rendering on macOS and software rendering on Linux.
 
-Version 0.2 preserves complete Unicode graphemes through selection and resize, adds Omarchy launch and live-theme integration, and reduces work in the text and rendering paths. Performance reports retain the tested revisions, workload, hardware, gains and regressions; see the [measurements](docs/LINUX_PERFORMANCE.md), [changelog](CHANGELOG.md) and [v0.2 announcement in Portuguese](docs/blog/2026-09-13-kokuban-v0.2.md).
+Version 0.3 reduces scrollback storage and Linux repaint work, adds faster warmed glyph lookups on Linux and macOS, and ships application packages without the development Python tools. See the [performance details](#performance) for measured CPU, memory, throughput and rendering tradeoffs, and the [changelog](CHANGELOG.md) for this release.
 
 ## Features
 
@@ -36,13 +36,13 @@ Android APK builds and emulator validation are being developed on the separate `
 
 ### Run a downloaded release
 
-The [v0.2 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2) is an early desktop release. Download the archive for your computer and its matching `.sha256` file. Rust is not required to run the binary.
+The [v0.3 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.3) is an early desktop release. Download the archive for your computer and its matching `.sha256` file. Neither Rust nor Python is required to run the binary. Python is used only by development tools retained in the source repository; those tools and raw benchmark snapshots are omitted from the application archives.
 
 | Computer | Archive |
 | --- | --- |
-| Linux x86_64, built on Ubuntu 24.04 | `kokuban-v0.2-x86_64-unknown-linux-gnu.tar.gz` |
-| macOS Apple Silicon | `kokuban-v0.2-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `kokuban-v0.2-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64, built on Ubuntu 24.04 | `kokuban-v0.3-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `kokuban-v0.3-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `kokuban-v0.3-x86_64-apple-darwin.tar.gz` |
 
 The Linux binary requires compatible glibc and system libraries; Ubuntu 24.04 is the tested distribution. Build from source for another architecture or an older distribution. macOS binaries target macOS 11 at build time. Release builds and automated Rust tests run on macOS 15 CI runners; graphical compatibility with older systems is not established. Archives contain standalone executables, not signed or notarized `.app` bundles. If macOS blocks a download, review it through Privacy & Security or build from source; do not disable system-wide protections.
 
@@ -57,18 +57,18 @@ sudo apt install --yes libfontconfig1 libfreetype6 fonts-dejavu-core \
 In the directory containing the downloaded archive and checksum:
 
 ```sh
-sha256sum --check kokuban-v0.2-x86_64-unknown-linux-gnu.tar.gz.sha256
-tar -xzf kokuban-v0.2-x86_64-unknown-linux-gnu.tar.gz
-cd kokuban-v0.2-x86_64-unknown-linux-gnu
+sha256sum --check kokuban-v0.3-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar -xzf kokuban-v0.3-x86_64-unknown-linux-gnu.tar.gz
+cd kokuban-v0.3-x86_64-unknown-linux-gnu
 ./kokuban
 ```
 
 **macOS (Apple Silicon):** in the download directory:
 
 ```sh
-shasum -a 256 --check kokuban-v0.2-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf kokuban-v0.2-aarch64-apple-darwin.tar.gz
-cd kokuban-v0.2-aarch64-apple-darwin
+shasum -a 256 --check kokuban-v0.3-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf kokuban-v0.3-aarch64-apple-darwin.tar.gz
+cd kokuban-v0.3-aarch64-apple-darwin
 ./kokuban
 ```
 
@@ -95,7 +95,7 @@ xcode-select --install
 Then build the release source and launch it:
 
 ```sh
-git clone --branch v0.2 --depth 1 https://github.com/guicybercode/kokuban.rs.git
+git clone --branch v0.3 --depth 1 https://github.com/guicybercode/kokuban.rs.git
 cd kokuban.rs
 rustup toolchain install 1.94.1 --profile minimal
 rustup run 1.94.1 cargo build --release --locked
@@ -121,7 +121,7 @@ allow_file_transfer = false
 
 ### Omarchy and Linux commands
 
-Kokuban v0.2 supports Omarchy's terminal launcher, working-directory inheritance,
+Kokuban v0.3 supports Omarchy's terminal launcher, working-directory inheritance,
 and commands opened directly in the terminal:
 
 ```sh
@@ -152,7 +152,7 @@ before copying explicit colors or a font family into your configuration.
 
 ### Application icon
 
-Kokuban v0.2 embeds the [Kokuban artwork](assets/kokuban-icon.png).
+Kokuban v0.3 embeds the [Kokuban artwork](assets/kokuban-icon.png).
 It appears in the macOS Dock while the application runs and as the Linux X11
 window icon. A standalone macOS executable retains its ordinary Finder file icon.
 
@@ -406,7 +406,7 @@ revisions, hosts or display backends should not be combined into one speedup.
 
 ## Development Status
 
-Kokuban v0.2 (Cargo version 0.2.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation, short mpv playback, theme changes and command launching. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52, broad Wayland coverage, physical Omarchy/Hyprland validation, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application uses native platform APIs and font libraries; resource use is documented for specific revisions and workloads, rather than guaranteed across machines.
+Kokuban v0.3 (Cargo version 0.3.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation, short mpv playback, theme changes and command launching. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52, broad Wayland coverage, physical Omarchy/Hyprland validation, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application uses native platform APIs and font libraries; resource use is documented for specific revisions and workloads, rather than guaranteed across machines.
 
 ## Project Name
 
@@ -416,7 +416,7 @@ Kokuban v0.2 (Cargo version 0.2.0) is an early desktop release. Linux tests cove
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. Send vulnerabilities through the private channel in [SECURITY.md](SECURITY.md); ordinary bugs can use [GitHub issues](https://github.com/guicybercode/kokuban.rs/issues).
 
-When writing about or building on Kokuban, link to [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs) and identify the version or commit you used. [CITATION.cff](CITATION.cff) provides citation metadata; the [v0.2 blog post](docs/blog/2026-09-13-kokuban-v0.2.md) introduces the release.
+When writing about or building on Kokuban, link to [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs) and identify the version or commit you used. [CITATION.cff](CITATION.cff) provides citation metadata; the [changelog](CHANGELOG.md) describes v0.3.
 
 Starting with v0.2, Kokuban's original code and documentation use the [BSD-4-Clause license](LICENSE). Redistributed source and binaries must retain the required copyright notice, conditions and disclaimer. Advertising materials mentioning features or use of the software must display this acknowledgment:
 

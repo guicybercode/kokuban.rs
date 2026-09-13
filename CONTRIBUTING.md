@@ -35,7 +35,7 @@ archives remain included.
 - Keep configuration, README examples and platform claims consistent with the actual implementation. Distinguish compilation from runtime validation.
 - Do not commit credentials, private signing keys, SDKs, `target/`, personal logs or unreviewed generated output. Preserve third-party notices.
 
-Android development currently lives on `codex/android-native`. Coordinate shared API changes using the [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md); an experimental branch is not part of the desktop v0.2 release.
+Android development currently lives on `codex/android-native`. Coordinate shared API changes using the [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md); an experimental branch is not part of the desktop v0.3 release.
 
 ## Validate your change
 

@@ -1,10 +1,30 @@
 # Changelog
 
-## Unreleased
+## v0.3 — 2026-09-13
+
+Desktop performance and distribution update. The Git tag is `v0.3`; the Cargo package version is `0.3.0`.
+
+### Changed
+
+- Store immutable scrollback rows with compact default-cell suffixes while preserving logical width, styled blanks, complete graphemes, selection and resize reflow. The [paired history report](docs/linux-evidence/2026-09-13-compact-history/README.md) records the throughput improvements and regressions by workload.
+- Cache glyph color classification to avoid repeating the scan during Linux painting; remove unused grid dirty flags. Preserve complete before/after frame comparisons in the [renderer report](docs/linux-evidence/2026-09-13-glyph-color/summary.md).
 
 - Reduce Linux software alpha-blending work and filter glyph painting against damaged frame bands; preserve pixel-equivalence checks for clipping, overhang and underlines.
 - Use direct cache slots for ASCII glyphs across regular, bold, italic and bold-italic styles on Linux and macOS. The [integration report](docs/LINUX_DAMAGE_CACHE_2026-09-13.md) records measured gains, Unicode and grapheme costs, and 14 KiB additional inline atlas storage.
 - Add controlled CPU repaint and warmed glyph-lookup measurements, plus an Xlib observer for synthetic X11 input-to-readback tests. Preserve raw measurements and offline integrity checks; each report defines its timing boundaries and hardware limits.
+
+- Exclude development Python scripts and raw benchmark snapshots from binary release archives and Cargo source packages. Keep the tools in the repository for CI and reproducible measurements; archive documentation links to the matching source revision. Building and running the Rust application do not require Python.
+- Classify development tools and documentation separately from application code in GitHub language statistics.
+- Expand README performance details with process CPU/RSS, short video observations, a four-terminal throughput comparison and optimization tradeoffs. Measurements retain their original commit identities; they are not new measurements of the v0.3 binaries.
+
+### Validation scope and limits
+
+- Release targets remain Linux x86_64, macOS Apple Silicon and macOS Intel, using Rust 1.94.1 and the locked dependency graph.
+- Linux packages are built on Ubuntu 24.04. Native macOS tests/builds run on macOS 15 with a macOS 11 deployment target; binaries remain unsigned, unnotarized standalone executables.
+- Linux launch checks cover X11 and headless Weston/Wayland; graphical interaction and release rendering checks use X11. Physical Omarchy/Hyprland, broad Wayland interaction, OSC 52, audio and sustained media playback remain incomplete or unverified. Android is not shipped.
+- CPU repaint and warmed glyph lookup timings exclude PTY processing and physical display presentation. Retained benchmark gains, regressions and resource figures apply only to their recorded workloads, revisions and hosts.
+
+See the [v0.2…v0.3 comparison](https://github.com/guicybercode/kokuban.rs/compare/v0.2...v0.3), [installation instructions](README.md#installation) and [performance details](README.md#performance).
 
 ## v0.2 — 2026-09-13
 
