@@ -10097,83 +10097,222 @@ mod damage_tests {
     #[ignore = "CPU raster microbenchmark; run release on an idle Linux host with --nocapture"]
     fn benchmark_frame_repaint() {
         use std::hint::black_box;
-        let mut atlas = atlas();
-        let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
-        let frame_size = (
-            u32::from(cell_dimensions.0) * 120,
-            u32::from(cell_dimensions.1) * 40,
-        );
-        let mut grid = Grid::new(120, 40, 0);
-        grid.cursor_visible = false;
-        for row in 0..40 {
-            for column in 0..120 {
-                grid.buffer.cell_mut(row, column).c = char::from(b'!' + (column % 90) as u8);
-            }
+        use unicode_width::UnicodeWidthStr;
+
+        fn positive_setting(name: &str, default: usize) -> usize {
+            let value = std::env::var(name).map_or(default, |value| {
+                value
+                    .parse()
+                    .unwrap_or_else(|_| panic!("{name} must be a positive integer"))
+            });
+            assert!(value > 0, "{name} must be a positive integer");
+            value
         }
-        let first = PresentedScene {
-            snapshot: snapshot_locked_grid(&grid),
-            frame_size,
-            cell_dimensions,
-            has_overlays: false,
-        };
-        grid.buffer.cell_mut(20, 40).c = 'Z';
-        let second = PresentedScene {
-            snapshot: snapshot_locked_grid(&grid),
-            frame_size,
-            cell_dimensions,
-            has_overlays: false,
-        };
-        let single_row = [first, second];
-        let first = PresentedScene {
-            snapshot: snapshot_locked_grid(&grid),
-            frame_size,
-            cell_dimensions,
-            has_overlays: false,
-        };
-        for row in 0..40 {
-            for column in 0..120 {
-                grid.buffer.cell_mut(row, column).c = char::from(b'"' + (column % 90) as u8);
-            }
+
+        fn checksum(frame: &[u32]) -> u64 {
+            frame
+                .iter()
+                .flat_map(|pixel| pixel.to_le_bytes())
+                .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+                    (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+                })
         }
-        let second = PresentedScene {
-            snapshot: snapshot_locked_grid(&grid),
-            frame_size,
-            cell_dimensions,
-            has_overlays: false,
-        };
-        let mut frame = vec![0; (frame_size.0 * frame_size.1) as usize];
-        for (workload, scenes) in [("single-row", single_row), ("full-screen", [first, second])] {
-            for sample in 0..5 {
-                for incremental in if sample % 2 == 0 {
-                    [false, true]
-                } else {
-                    [true, false]
-                } {
-                    paint(&mut frame, &scenes[1], &mut atlas, 0..frame_size.1);
-                    let start = Instant::now();
-                    for step in 0..300 {
-                        let current = &scenes[step % 2];
-                        let previous = &scenes[(step + 1) % 2];
-                        let damage = if incremental {
-                            frame_damage(
-                                Some(previous),
-                                &current.snapshot,
-                                frame_size,
-                                cell_dimensions,
-                                false,
-                                &mut atlas,
-                            )
-                        } else {
-                            0..frame_size.1
-                        };
-                        paint(black_box(&mut frame), current, &mut atlas, damage);
-                        black_box(&frame);
+
+        fn assert_frame(frame: &[u32], expected: &[u32]) {
+            assert_eq!(frame.len(), expected.len());
+            let mismatch = frame.iter().zip(expected).position(|(a, b)| a != b);
+            assert_eq!(
+                mismatch, None,
+                "incremental pixels must match a full repaint"
+            );
+        }
+
+        let content = std::env::var("KOKUBAN_FRAME_CONTENT").unwrap_or_else(|_| "all".into());
+        let change = std::env::var("KOKUBAN_FRAME_CHANGE").unwrap_or_else(|_| "all".into());
+        assert!(["all", "ascii", "ascii-after-emoji", "unicode"].contains(&content.as_str()));
+        assert!(["all", "single-row", "full-screen"].contains(&change.as_str()));
+        let samples = positive_setting("KOKUBAN_FRAME_SAMPLES", 5);
+        let steps = positive_setting("KOKUBAN_FRAME_STEPS", 300);
+        let warmup = positive_setting("KOKUBAN_FRAME_WARMUP", 30);
+        let output_dir = std::env::var_os("KOKUBAN_FRAME_OUTPUT_DIR").map(std::path::PathBuf::from);
+        if let Some(directory) = &output_dir {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+
+        for workload in ["ascii", "ascii-after-emoji", "unicode"] {
+            if content != "all" && content != workload {
+                continue;
+            }
+            // A fresh atlas keeps plain ASCII independent of earlier emoji cases.
+            let mut atlas = GlyphAtlas::new("DejaVu Sans Mono", 14.0, 1.0).unwrap();
+            assert!(atlas.glyphs.values().all(|glyph| !atlas.is_color(*glyph)));
+            if workload != "ascii" {
+                let emoji = atlas.get_or_insert_text("👩🏽\u{200d}💻", false, false);
+                assert!(
+                    atlas.is_color(emoji),
+                    "install Noto Color Emoji for {workload}"
+                );
+                assert!(emoji.pixel_w > 0 && emoji.pixel_h > 0);
+            }
+            let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+            let frame_size = (
+                u32::from(cell_dimensions.0) * 120,
+                u32::from(cell_dimensions.1) * 40,
+            );
+            let patterns = [
+                "Abéλ界e\u{301}👩🏽\u{200d}💻🇧🇷x",
+                "CdñΩ語o\u{308}👨🏻\u{200d}💻🇯🇵y",
+            ];
+            for pattern in patterns {
+                assert_eq!(pattern.width(), 12, "fixture must fill exactly 120 columns");
+            }
+            let write_row = |grid: &mut Grid, row, variant: usize| {
+                grid.set_cursor_pos(row, 0);
+                if workload == "unicode" {
+                    for character in patterns[variant].repeat(10).chars() {
+                        grid.put_char(character);
                     }
-                    let milliseconds = start.elapsed().as_secs_f64() * 1000.0 / 300.0;
-                    assert_matches_full(&frame, &scenes[1], &mut atlas);
-                    println!(
-                        "{workload} sample={sample} incremental={incremental} ms={milliseconds:.4}"
+                } else {
+                    for column in 0..120 {
+                        grid.put_char(char::from(b'!' + variant as u8 + (column % 90) as u8));
+                    }
+                }
+            };
+
+            for mutation in ["single-row", "full-screen"] {
+                if change != "all" && change != mutation {
+                    continue;
+                }
+                let mut grid = Grid::new(120, 40, 0);
+                grid.cursor_visible = false;
+                for row in 0..40 {
+                    write_row(&mut grid, row, 0);
+                }
+                let scene = |grid: &Grid| PresentedScene {
+                    snapshot: snapshot_locked_grid(grid),
+                    frame_size,
+                    cell_dimensions,
+                    has_overlays: false,
+                };
+                let first = scene(&grid);
+                for row in 0..40 {
+                    if mutation == "full-screen" || row == 20 {
+                        write_row(&mut grid, row, 1);
+                    }
+                }
+                let scenes = [first, scene(&grid)];
+                let mut frame = vec![0; (frame_size.0 * frame_size.1) as usize];
+                // Build full reference frames and warm every glyph before any timing.
+                let expected = scenes.each_ref().map(|scene| {
+                    let mut pixels = vec![0; frame.len()];
+                    paint(&mut pixels, scene, &mut atlas, 0..frame_size.1);
+                    pixels
+                });
+                assert!(
+                    expected[0] != expected[1],
+                    "fixture must change visible pixels"
+                );
+                let mut color_cells = 0;
+                let mut mono_cells = 0;
+                for cell in &scenes[0].snapshot.cells {
+                    if cell.flags.contains(CellFlags::WIDE_CONT) {
+                        continue;
+                    }
+                    let glyph = atlas.get_or_insert_cell(cell);
+                    assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0);
+                    if atlas.is_color(glyph) {
+                        color_cells += 1;
+                    } else {
+                        mono_cells += 1;
+                    }
+                }
+                assert!(mono_cells > 0);
+                assert_eq!(color_cells > 0, workload == "unicode");
+                for (index, pixels) in expected.iter().enumerate() {
+                    if let Some(directory) = &output_dir {
+                        let bytes: Vec<u8> = pixels
+                            .iter()
+                            .flat_map(|pixel| pixel.to_le_bytes())
+                            .collect();
+                        let path =
+                            directory.join(format!("{workload}-{mutation}-{index}.xrgb8888le"));
+                        std::fs::write(path, bytes).unwrap();
+                    }
+                }
+                frame.copy_from_slice(&expected[1]);
+                let mut bands = Vec::new();
+                for step in 0..2 {
+                    let damage = frame_damage(
+                        Some(&scenes[1 - step]),
+                        &scenes[step].snapshot,
+                        frame_size,
+                        cell_dimensions,
+                        false,
+                        &mut atlas,
                     );
+                    assert!(!damage.is_empty(), "visible edit must produce damage");
+                    if mutation == "single-row" {
+                        assert!(damage.end - damage.start < frame_size.1);
+                    } else {
+                        assert_eq!(damage, 0..frame_size.1);
+                    }
+                    bands.push((damage.start, damage.end));
+                    paint(&mut frame, &scenes[step], &mut atlas, damage);
+                    assert_frame(&frame, &expected[step]);
+                }
+                println!(
+                    "frame-repaint fixture content={workload} change={mutation} cols=120 rows=40 \
+                     width={} height={} cell_width={} cell_height={} warmup={warmup} \
+                     samples={samples} steps={steps} mono_cells={mono_cells} color_cells={color_cells} \
+                     bands={bands:?} frame0={:016x} frame1={:016x}",
+                    frame_size.0, frame_size.1, cell_dimensions.0, cell_dimensions.1,
+                    checksum(&expected[0]), checksum(&expected[1]),
+                );
+                for sample in 0..samples {
+                    for incremental in if sample % 2 == 0 {
+                        [false, true]
+                    } else {
+                        [true, false]
+                    } {
+                        // Snapshot creation, font rasterization, pixel checks and output
+                        // are excluded. This includes damage calculation and CPU paint;
+                        // it does not measure PTY, window presentation or input latency.
+                        for (measured, iterations) in [(false, warmup), (true, steps)] {
+                            paint(&mut frame, &scenes[1], &mut atlas, 0..frame_size.1);
+                            atlas.dirty = false;
+                            let start = Instant::now();
+                            for step in 0..iterations {
+                                let current = &scenes[step % 2];
+                                let previous = &scenes[(step + 1) % 2];
+                                let damage = if incremental {
+                                    frame_damage(
+                                        Some(previous),
+                                        &current.snapshot,
+                                        frame_size,
+                                        cell_dimensions,
+                                        false,
+                                        &mut atlas,
+                                    )
+                                } else {
+                                    0..frame_size.1
+                                };
+                                paint(black_box(&mut frame), current, &mut atlas, damage);
+                                black_box(&frame);
+                            }
+                            let elapsed = start.elapsed();
+                            assert!(!atlas.dirty, "glyph rasterization escaped prewarm");
+                            assert_frame(&frame, &expected[(iterations - 1) % 2]);
+                            if measured {
+                                println!(
+                                    "frame-repaint sample content={workload} change={mutation} \
+                                     sample={sample} incremental={incremental} frames={iterations} \
+                                     elapsed_ns={} ns_per_frame={:.3}",
+                                    elapsed.as_nanos(),
+                                    elapsed.as_nanos() as f64 / iterations as f64,
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
