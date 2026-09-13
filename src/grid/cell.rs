@@ -109,7 +109,7 @@ impl fmt::Debug for Grapheme {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Cell {
     pub c: char,
     pub grapheme: Option<Grapheme>,
@@ -118,6 +118,35 @@ pub struct Cell {
     pub flags: CellFlags,
     pub underline_style: UnderlineStyle,
     pub underline_color: Color,
+}
+
+// Keep the empty compound-text case explicit instead of cloning an
+// intermediate Option<Grapheme>.
+impl Clone for Cell {
+    #[inline]
+    fn clone(&self) -> Self {
+        let mut cell = Self {
+            c: self.c,
+            grapheme: None,
+            fg: self.fg,
+            bg: self.bg,
+            flags: self.flags,
+            underline_style: self.underline_style,
+            underline_color: self.underline_color,
+        };
+        if let Some(grapheme) = &self.grapheme {
+            cell.grapheme = Some(grapheme.clone());
+        }
+        cell
+    }
+
+    #[inline]
+    fn clone_from(&mut self, source: &Self) {
+        self.write_scalar(source.c, source, source.flags);
+        if let Some(grapheme) = &source.grapheme {
+            self.grapheme = Some(grapheme.clone());
+        }
+    }
 }
 
 impl Cell {
@@ -260,6 +289,47 @@ mod tests {
                 assert!(owner.upgrade().is_none(), "scalar overwrite must release the heap owner");
             }
             assert_eq!(style.grapheme.as_deref(), Some("e\u{301}"));
+        }
+    }
+
+    #[test]
+    fn cloning_cells_preserves_style_and_releases_previous_text() {
+        let long = format!("e{}", "\u{301}".repeat(7));
+        let texts = [None, Some("e\u{308}".to_owned()), Some(long)];
+        for old in &texts {
+            for new in &texts {
+                let mut target = Cell {
+                    grapheme: old.as_ref().map(|text| Grapheme::from(text.clone())),
+                    ..Cell::default()
+                };
+                let previous_owner = target.grapheme.as_ref().and_then(Grapheme::heap_weak);
+                let source = Cell {
+                    c: 'e',
+                    grapheme: new.as_ref().map(|text| Grapheme::from(text.clone())),
+                    fg: Color::Indexed(2),
+                    bg: Color::Rgb(4, 5, 6),
+                    flags: CellFlags::ITALIC | CellFlags::WIDE,
+                    underline_style: UnderlineStyle::Double,
+                    underline_color: Color::Rgb(7, 8, 9),
+                };
+                let source_owner = source.grapheme.as_ref().and_then(Grapheme::heap_weak);
+                target.clone_from(&source);
+                assert_eq!(target, source);
+                let snapshot = source.clone();
+                assert_eq!(snapshot, source);
+                if let Some(owner) = previous_owner { assert!(owner.upgrade().is_none()); }
+                drop(source);
+                assert_eq!(target, snapshot);
+                target.clone_from(&snapshot);
+                assert_eq!(target, snapshot);
+                if let Some(owner) = source_owner {
+                    assert_eq!(owner.strong_count(), 2);
+                    drop(target);
+                    assert_eq!(owner.strong_count(), 1);
+                    drop(snapshot);
+                    assert!(owner.upgrade().is_none());
+                }
+            }
         }
     }
 
