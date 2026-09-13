@@ -34,8 +34,6 @@ fn utf8_spans_match_scalars_for_widths_and_alternating_runs() {
         for text in samples {
             let mut batched = Grid::new(cols, 3, 8);
             let mut scalar = Grid::new(cols, 3, 8);
-            batched.clear_dirty();
-            scalar.clear_dirty();
             write_pair(&mut batched, &mut scalar, text);
         }
     }
@@ -92,7 +90,6 @@ fn utf8_spans_preserve_margins_disabled_wrap_and_resized_saved_wrap() {
                         grid.set_auto_wrap(auto_wrap);
                         grid.resize(new_cols, 3);
                         grid.restore_cursor();
-                        grid.clear_dirty();
                         grid
                     };
                     let mut batched = setup();
@@ -124,7 +121,6 @@ fn utf8_spans_fall_back_for_insert_and_dec_special_modes() {
                         grid.set_cursor_pos(1, col);
                         grid.charset = charset;
                         grid.insert_mode = insert_mode;
-                        grid.clear_dirty();
                         grid
                     };
                     let mut batched = setup();
@@ -160,7 +156,6 @@ fn utf8_spans_repair_wide_edges_preserve_styles_and_release_arcs() {
                 grid.flags = CellFlags::BOLD | CellFlags::REVERSE | CellFlags::WIDE_CONT;
                 grid.underline_style = UnderlineStyle::Double;
                 grid.underline_color = Color::Rgb(70, 80, 90);
-                grid.clear_dirty();
                 (grid, arcs)
             };
             let (mut batched, batched_arcs) = setup();
@@ -196,7 +191,6 @@ fn utf8_spans_preserve_history_alternate_screen_and_regional_scrolls() {
                 grid.enter_alt_screen();
                 grid.set_scroll_region(1, 2);
                 grid.set_cursor_pos(1, 0);
-                grid.clear_dirty();
             }
             for _ in 0..8 {
                 write_pair(&mut batched, &mut scalar, "αβ日本語éé天地");
@@ -224,7 +218,6 @@ fn utf8_spans_keep_the_uniform_suffix_frontier_at_the_written_end() {
             grid.bg = Color::Rgb(7, 8, 9);
             grid.underline_style = UnderlineStyle::Dotted;
             grid.erase_in_display(2);
-            grid.clear_dirty();
             grid
         };
         let mut batched = setup();
@@ -260,8 +253,6 @@ fn mixed_utf8_spans_preserve_text_across_staging_capacity_and_row_edges() {
                 let mut scalar = Grid::new(cols, 3, 8);
                 batched.set_auto_wrap(auto_wrap);
                 scalar.set_auto_wrap(auto_wrap);
-                batched.clear_dirty();
-                scalar.clear_dirty();
                 write_pair(&mut batched, &mut scalar, &text);
                 write_pair(&mut batched, &mut scalar, "\u{301}語abc日");
             }
@@ -310,7 +301,6 @@ fn mixed_utf8_spans_repair_wide_pairs_and_release_arcs_at_staging_edges() {
             grid.flags = CellFlags::BOLD | CellFlags::UNDERLINE;
             grid.underline_style = UnderlineStyle::Curly;
             grid.underline_color = Color::Rgb(8, 9, 10);
-            grid.clear_dirty();
             (grid, arcs)
         };
         let (mut batched, batched_arcs) = setup();

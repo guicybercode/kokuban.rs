@@ -1174,8 +1174,6 @@ mod tests {
         for (chunk_index, chunk) in chunks.into_iter().enumerate() {
             let mut remaining = chunk;
             while !remaining.is_empty() {
-                actual.clear_dirty();
-                expected.clear_dirty();
                 let consumed = fast.feed_until_terminal_event(remaining, &mut actual);
                 let mut scalar_consumed = 0;
                 for &byte in remaining {
@@ -1408,8 +1406,6 @@ mod tests {
                 for chunk in input.chunks(chunk_size) {
                     let mut remaining = chunk;
                     while !remaining.is_empty() {
-                        actual.clear_dirty();
-                        expected.clear_dirty();
                         let consumed = batched.feed_until_terminal_event(remaining, &mut actual);
                         let mut scalar_consumed = 0;
                         for &byte in remaining {

@@ -1391,7 +1391,6 @@ impl LinuxWindow {
                 match writer.enqueue_nonfatal(bytes) {
                     Ok(()) => {
                         grid.scroll_offset = 0;
-                        grid.mark_all_dirty();
                         self.selection.clear();
                         if let Some(window) = &self.window {
                             window.request_redraw();
@@ -4820,7 +4819,6 @@ mod tests {
                 grid.cursor_col = 80;
                 grid.scroll_top = 3;
                 grid.scroll_bottom = 20;
-                grid.dirty[0] = false;
                 grid.buffer.cell_mut(0, 0).c = 'x';
             }
             let mut applied = Some(initial);
@@ -4855,7 +4853,6 @@ mod tests {
             if target.cells == initial.cells {
                 assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
                 assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
-                assert!(!grid.dirty[0]);
                 assert_eq!(grid.buffer.cell(0, 0).c, 'x');
             }
         }
@@ -4902,7 +4899,6 @@ mod tests {
             grid.cursor_col = 80;
             grid.scroll_top = 3;
             grid.scroll_bottom = 20;
-            grid.dirty[0] = false;
             grid.buffer.cell_mut(0, 0).c = 'x';
         }
 
@@ -4916,7 +4912,6 @@ mod tests {
         assert_eq!((grid.cols(), grid.rows()), (80, 24));
         assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
         assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
-        assert!(!grid.dirty[0]);
         assert_eq!(grid.buffer.cell(0, 0).c, 'x');
     }
 
@@ -4929,7 +4924,6 @@ mod tests {
             grid.cursor_col = 80;
             grid.scroll_top = 3;
             grid.scroll_bottom = 20;
-            grid.dirty[0] = false;
             grid.buffer.cell_mut(0, 0).c = 'x';
         }
         let error = resize_terminal_with(
@@ -4952,7 +4946,6 @@ mod tests {
         assert_eq!((grid.cols(), grid.rows()), (80, 24));
         assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
         assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
-        assert!(!grid.dirty[0]);
         assert_eq!(grid.buffer.cell(0, 0).c, 'x');
     }
 

@@ -1266,7 +1266,6 @@ fn handle_pane_action(action: PaneAction) {
                             // scroll_offset = sb_len - sb_index (with 2 lines context)
                             let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
                             pane.grid.scroll_offset = offset.min(sb_len);
-                            pane.grid.mark_all_dirty();
                         }
                     }
                 }
@@ -1287,7 +1286,6 @@ fn handle_pane_action(action: PaneAction) {
                             let sb_index = target_row - evicted;
                             let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
                             pane.grid.scroll_offset = offset.min(sb_len);
-                            pane.grid.mark_all_dirty();
                         } else {
                             // Target is in the visible buffer or beyond — snap to bottom
                             pane.grid.scroll_to_bottom();
