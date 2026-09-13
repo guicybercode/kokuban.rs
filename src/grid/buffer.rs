@@ -199,7 +199,13 @@ impl Buffer {
         if suffix < self.cols && self.cells[start + self.cols - 1] == super::DEFAULT_CELL {
             // The buffer already knows this entire suffix is default. Avoid
             // allocating and cloning it merely to move a short line offscreen.
-            return super::history::HistoryRow::from_prefix(self.cells[start..start + suffix].to_vec(), self.cols);
+            return match suffix {
+                0 => super::history::HistoryRow::from_prefix(Vec::new(), self.cols),
+                1 => super::history::HistoryRow::from_single(self.cells[start].clone(), self.cols),
+                _ => super::history::HistoryRow::from_prefix(
+                    self.cells[start..start + suffix].to_vec(), self.cols,
+                ),
+            };
         }
         // Unknown or styled suffixes keep the existing complete-row extraction.
         super::history::HistoryRow::from_prefix(self.extract_row(row), self.cols)

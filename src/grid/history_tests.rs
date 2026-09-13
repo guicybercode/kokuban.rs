@@ -27,6 +27,92 @@ fn short_history_allocates_only_the_known_prefix_but_keeps_the_logical_width() {
 }
 
 #[test]
+fn single_cell_history_uses_inline_storage_for_every_cell_attribute() {
+    use super::buffer::Buffer;
+    let samples = [
+        Cell::default(),
+        Cell {
+            c: 'x',
+            ..Cell::default()
+        },
+        Cell {
+            c: 'e',
+            grapheme: Some(Arc::from("e\u{301}")),
+            fg: Color::Rgb(1, 2, 3),
+            bg: Color::Indexed(4),
+            flags: CellFlags::BOLD | CellFlags::ITALIC | CellFlags::HIDDEN,
+            underline_style: UnderlineStyle::Curly,
+            underline_color: Color::Indexed(5),
+        },
+    ];
+    for cols in [1, 80] {
+        for expected in &samples {
+            let mut buffer = Buffer::new(cols, 1);
+            *buffer.cell_mut(0, 0) = expected.clone();
+            let row = buffer.extract_history_row(0);
+            assert_eq!(row.materialized_len(), 1);
+            assert_eq!(row.allocated_capacity(), 0);
+            assert_eq!(row.len(), cols);
+            assert_eq!(row.get(0), Some(expected));
+            assert_eq!(row.get(cols), None);
+            assert_eq!(row.get(usize::MAX), None);
+            for col in 1..cols {
+                assert_eq!(row.get(col), Some(&Cell::default()));
+            }
+            assert_eq!(row.clone().into_cells(), buffer.extract_row(0));
+            // Reflow trims default cells, while an explicit prefix retains its length.
+            let reflowed = HistoryRow::from_cells(row.into_cells());
+            assert_eq!(
+                reflowed.materialized_len(),
+                usize::from(expected != &Cell::default())
+            );
+            assert_eq!(reflowed.allocated_capacity(), 0);
+            assert_eq!(reflowed.clone().into_cells(), buffer.extract_row(0));
+        }
+    }
+    let mut unknown = Buffer::new(80, 1);
+    unknown.row_mut(0)[0].c = 'x';
+    let row = unknown.extract_history_row(0);
+    assert_eq!(
+        row.materialized_len(),
+        80,
+        "unknown suffix must keep the full-row fallback"
+    );
+    assert!(row.allocated_capacity() >= 80);
+}
+
+#[test]
+fn single_cell_history_clones_keep_shared_text_alive_until_materialized_cells_drop() {
+    use super::buffer::Buffer;
+    let text: Arc<str> = Arc::from("e\u{301}");
+    let owner = Arc::downgrade(&text);
+    let mut buffer = Buffer::new(80, 1);
+    *buffer.cell_mut(0, 0) = Cell {
+        c: 'e',
+        grapheme: Some(text),
+        bg: Color::Indexed(3),
+        ..Cell::default()
+    };
+    let row = buffer.extract_history_row(0);
+    let snapshot = row.clone();
+    buffer.clear_row(0, Cell::default());
+    drop(row);
+    assert_eq!(owner.strong_count(), 1);
+    assert_eq!(snapshot.get(0).unwrap().text(), "e\u{301}");
+    let cells = snapshot.into_cells();
+    assert_eq!(cells.len(), 80);
+    assert_eq!(cells[0].bg, Color::Indexed(3));
+    assert!(cells[1..].iter().all(|cell| cell == &Cell::default()));
+    assert_eq!(owner.strong_count(), 1);
+    let row = HistoryRow::from_cells(cells);
+    assert_eq!(row.materialized_len(), 1);
+    assert_eq!(row.allocated_capacity(), 0);
+    assert_eq!(owner.strong_count(), 1);
+    drop(row);
+    assert!(owner.upgrade().is_none());
+}
+
+#[test]
 fn blank_history_still_consumes_the_logical_cell_budget_for_soft_wraps() {
     for maximum in [0, 1, 3] {
         let mut grid = Grid::new(80, 2, maximum);
@@ -46,7 +132,7 @@ fn blank_history_still_consumes_the_logical_cell_budget_for_soft_wraps() {
         assert!(grid
             .scrollback
             .iter()
-            .all(|row| row.materialized_len() == 0));
+            .all(|row| row.materialized_len() == 0 && row.allocated_capacity() == 0));
     }
 }
 
@@ -157,22 +243,27 @@ fn compact_extraction_matches_full_rows_after_circular_and_partial_scrolls() {
 
 #[test]
 fn history_compaction_preserves_spaces_recorded_beyond_the_stored_prefix() {
-    let mut grid = Grid::new(80, 1, 10);
-    grid.put_ascii(b"ok   ");
-    grid.scroll_up(1);
-    grid.resize(40, 1);
-    assert_eq!(grid.scrollback[0].materialized_len(), 2);
-    assert_eq!(grid.retained_row_len(0), 5);
-    assert_eq!(grid.scrollback_cells, 40);
-    grid.enter_alt_screen();
-    grid.resize(3, 1);
-    grid.resize(80, 1);
-    grid.leave_alt_screen();
-    assert_eq!(grid.scrollback[0].materialized_len(), 2);
-    assert_eq!(grid.retained_row_len(0), 5);
-    assert_eq!(grid.scrollback_cells, 80);
-    for col in 2..5 {
-        assert_eq!(grid.retained_cell_data(0, col), &Cell::default());
+    for (text, prefix) in [(b"x   ".as_slice(), 1), (b"ok   ".as_slice(), 2)] {
+        let mut grid = Grid::new(80, 1, 10);
+        grid.put_ascii(text);
+        grid.scroll_up(1);
+        grid.resize(40, 1);
+        assert_eq!(grid.scrollback[0].materialized_len(), prefix);
+        assert_eq!(grid.retained_row_len(0), text.len());
+        assert_eq!(grid.scrollback_cells, 40);
+        grid.enter_alt_screen();
+        grid.resize(3, 1);
+        grid.resize(80, 1);
+        grid.leave_alt_screen();
+        assert_eq!(grid.scrollback[0].materialized_len(), prefix);
+        assert_eq!(grid.retained_row_len(0), text.len());
+        assert_eq!(grid.scrollback_cells, 80);
+        if prefix == 1 {
+            assert_eq!(grid.scrollback[0].allocated_capacity(), 0);
+        }
+        for col in prefix..text.len() {
+            assert_eq!(grid.retained_cell_data(0, col), &Cell::default());
+        }
     }
 }
 
