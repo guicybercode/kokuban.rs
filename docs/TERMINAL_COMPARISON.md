@@ -6,6 +6,33 @@ PTY, os mesmos bytes e uma consulta final de posição do cursor (DSR). O result
 mede processamento de saída e resposta do protocolo; não mede apresentação de
 quadros, latência entre teclado e tela, nem estabelece o melhor terminal.
 
+## Medição auditada de 2026-09-13
+
+A revisão `d54f801` foi comparada no mesmo host Linux x86_64 com Alacritty
+0.16.1, Kitty 0.45.0 e Ghostty **1.3.0-dev+0000000 (tip)**. Cinco processos por
+terminal, tela alternativa sem histórico e calibração para 80×24 células e
+720×408 pixels produziram estas medianas de processamento:
+
+| Carga | Kokuban MiB/s | Ghostty MiB/s | Alacritty MiB/s | Kitty MiB/s |
+| --- | ---: | ---: | ---: | ---: |
+| ASCII | 70,015 | 28,333 | 50,854 | 78,800 |
+| ANSI | 55,677 | 22,088 | 53,846 | 16,747 |
+| Unicode | 36,853 | 26,646 | 51,779 | 57,365 |
+| Linhas curtas | 36,634 | 24,340 | 50,246 | 28,917 |
+
+Kokuban liderou ANSI e superou Ghostty nas quatro cargas. Kitty liderou ASCII
+e Unicode; Alacritty liderou linhas curtas. As faixas Kokuban/rival ficaram
+separadas nas 12 comparações, mas o resultado continua limitado a esse host e
+perfil. Não comprova superioridade geral ou igualdade de renderização.
+
+O [pacote auditável](linux-evidence/2026-09-13-four-terminals/README.md) conserva
+as amostras, faixas, configurações, logs, fontes do harness e auditor reproduzível.
+O ensaio usou EPYC 7763, Ubuntu 26.04 em container, Weston headless/Pixman e
+fontes DejaVu/Noto; não houve GPU ou monitor físico. DSR mediano do Kokuban:
+0,074546 ms, máximo 0,159240 ms; **não é latência de apresentação**. A auditoria
+conferiu 28 processos, incluindo oito pré-voos excluídos, e o CI passou em
+977 testes Rust e 52 Python.
+
 ## Executar no Omarchy
 
 Compile Kokuban em release e mantenha os outros terminais instalados. Em uma

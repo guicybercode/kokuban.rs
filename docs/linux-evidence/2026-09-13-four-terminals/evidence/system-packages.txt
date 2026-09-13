@@ -1,0 +1,12 @@
+alacritty	0.16.1-2ubuntu1
+fonts-dejavu-core	2.37-8build1
+fonts-noto-cjk	1:20240730+repack1-1build1
+fonts-noto-color-emoji	2.051-1build1
+ghostty	1.3.0~us1-0ubuntu1.1
+kitty	0.45.0-1build1
+libegl-mesa0:amd64	26.0.8-1ubuntu0.3
+libfontconfig1:amd64	2.17.1-3ubuntu1
+libfreetype6:amd64	2.14.2+dfsg-1ubuntu0.1
+libgl1-mesa-dri:amd64	26.0.8-1ubuntu0.3
+libglx-mesa0:amd64	26.0.8-1ubuntu0.3
+weston	14.0.2-5

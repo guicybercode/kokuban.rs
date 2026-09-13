@@ -1,0 +1,139 @@
+name: Linux four-terminal processing comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Kokuban source commit or ref
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-terminal-comparison-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOURCE_REF: ${{ inputs.revision }}
+
+    steps:
+      - name: Check out harness and source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install fixed Rust toolchain and validate harness
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
+
+      - name: Resolve source and official Ubuntu image
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-four-terminal-evidence"
+          source_directory="$RUNNER_TEMP/kokuban-comparison-source"
+          mkdir -p "$evidence_directory" "$source_directory"
+          git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+          revision="$(git rev-parse --verify --end-of-options "${SOURCE_REF}^{commit}")"
+          printf '%s\n' "$revision" > "$evidence_directory/source-revision.txt"
+          git archive "$revision" | tar -x -C "$source_directory"
+          docker pull --platform linux/amd64 ubuntu:26.04
+          docker image inspect ubuntu:26.04 --format '{{index .RepoDigests 0}}' > "$evidence_directory/image-reference.txt"
+          docker image inspect ubuntu:26.04 > "$evidence_directory/container-image.json"
+
+      - name: Build, verify native launch, calibrate cells and compare processing
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-four-terminal-evidence"
+          image_reference="$(cat "$evidence_directory/image-reference.txt")"
+          toolchain_directory="$(dirname "$(dirname "$(rustup which cargo)")")"
+          container_name="kokuban-four-terminal-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trap 'docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
+          timeout --kill-after=10s 30m docker run --rm --init --interactive \
+            --name "$container_name" --platform linux/amd64 \
+            --mount "type=bind,src=$toolchain_directory,dst=/opt/rust,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/kokuban-comparison-source,dst=/source,readonly" \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/scripts,dst=/harness,readonly" \
+            --mount "type=bind,src=$evidence_directory,dst=/evidence" \
+            --workdir /source "$image_reference" bash -seu <<'CONTAINER'
+          set -o pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            alacritty ca-certificates build-essential dbus-daemon fontconfig \
+            fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji ghostty kitty \
+            libegl-mesa0 libgl1-mesa-dri libglx-mesa0 libfontconfig1-dev \
+            libfreetype6-dev libxkbcommon-x11-0 pkg-config python3 util-linux weston xdotool
+          export PATH="/opt/rust/bin:$PATH"
+          export CARGO_HOME=/build/cargo-home
+          export CARGO_TARGET_DIR=/build/target
+          export CARGO_INCREMENTAL=0 CARGO_PROFILE_RELEASE_DEBUG=0
+          mkdir -p /build
+          rustc --version --verbose > /evidence/rustc.txt
+          cargo build --release --locked
+          cargo test --release --locked --all-targets > /evidence/rust-tests.txt 2>&1
+          cargo tree --locked > /evidence/cargo-tree.txt
+          cp Cargo.toml Cargo.lock /evidence/
+          sha256sum /build/target/release/kokuban > /evidence/kokuban-binary-sha256.txt
+          dpkg-query -W alacritty ghostty kitty weston fonts-dejavu-core \
+            fonts-noto-cjk fonts-noto-color-emoji libfontconfig1 libfreetype6 \
+            libegl-mesa0 libgl1-mesa-dri libglx-mesa0 > /evidence/system-packages.txt
+          dpkg-query -W > /evidence/all-system-packages.txt
+          fc-match -s 'DejaVu Sans Mono' -f '%{family}|%{file}\n' > /evidence/font-fallbacks.txt
+          fc-match -s 'DejaVu Sans Mono' -f '%{file}\n' | sort -u | \
+            while IFS= read -r font_file; do sha256sum "$font_file"; done > /evidence/font-files-sha256.txt
+          lscpu > /evidence/cpu.txt
+          export XDG_RUNTIME_DIR
+          XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WAYLAND_DISPLAY=wayland-kokuban-comparison
+          export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+          unset DISPLAY WAYLAND_SOCKET
+          weston --backend=headless --renderer=pixman --no-config \
+            --socket="$WAYLAND_DISPLAY" --idle-time=0 --width=1280 --height=900 \
+            --log=/evidence/weston.log &
+          weston_pid=$!
+          trap 'kill "$weston_pid" 2>/dev/null || true; wait "$weston_pid" 2>/dev/null || true' EXIT
+          for _attempt in {1..100}; do
+            test ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" || break
+            kill -0 "$weston_pid"
+            sleep 0.1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          timeout --kill-after=5s 60s python3 /harness/linux-launch-smoke.py \
+            /build/target/release/kokuban --backend wayland > /evidence/native-launch.txt 2>&1
+          timeout --kill-after=10s 20m dbus-run-session -- \
+            python3 /harness/compare-terminal-performance.py \
+              --kokuban /build/target/release/kokuban \
+              --output-dir /evidence/measurements --backend wayland \
+              --screen alternate --samples 5 --bytes 33554432 --timeout 180 \
+              --match-cell-size --environment-note \
+              'Official Ubuntu26.04 container on GitHub hosted x86_64; Weston headless pixman; Mesa llvmpipe; full runner CPU affinity; fonts include real CJK/emoji fallback; processing/DSR only, not physical Omarchy/GPU performance'
+          CONTAINER
+
+      - name: Make container evidence readable by the artifact uploader
+        if: always()
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-four-terminal-evidence"
+          if test -d "$evidence_directory"; then
+            sudo chown -R --no-dereference -- "$(id -u):$(id -g)" "$evidence_directory"
+          fi
+
+      - name: Upload comparisons and provenance even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-four-terminal-comparison
+          path: |
+            ${{ runner.temp }}/kokuban-four-terminal-evidence
+            !${{ runner.temp }}/kokuban-four-terminal-evidence/**/*.bin
+          if-no-files-found: ignore
+          retention-days: 7

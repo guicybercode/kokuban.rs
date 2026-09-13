@@ -950,3 +950,15 @@ Excluem snapshots, rasterização inicial dos glifos, PTY, compositor e
 apresentação. Não estabelecem latência física ou posição frente a outros
 terminais. A integração posterior `d54f801` passou nos 863 testes locais e no
 [CI macOS/Linux 34746312645](https://github.com/guicybercode/kokuban.rs/actions/runs/34746312645).
+
+
+## Quatro terminais no mesmo host: 2026-09-13
+
+A revisão integrada `d54f801` liderou ANSI no ensaio nativo x86_64 e superou
+Ghostty tip nas quatro cargas. Kitty permaneceu à frente em ASCII e Unicode;
+Alacritty liderou linhas curtas. O [comparativo](TERMINAL_COMPARISON.md#medição-auditada-de-2026-09-13)
+e o [pacote auditável](linux-evidence/2026-09-13-four-terminals/README.md) registram
+medianas, faixas, versões, configurações e os 28 processos conferidos. As janelas
+foram calibradas para 80×24 células e 720×408 pixels na tela alternativa sem
+histórico, em Weston headless/Pixman. Esses resultados de PTY/DSR não medem
+apresentação, fidelidade de pixels ou desempenho no Omarchy com GPU física.

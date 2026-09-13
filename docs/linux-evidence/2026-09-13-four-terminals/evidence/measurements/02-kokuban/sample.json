@@ -1,0 +1,157 @@
+{
+  "command": [
+    "/build/target/release/kokuban",
+    "-e",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/02-kokuban"
+  ],
+  "config": {
+    "filename": "kokuban.toml",
+    "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+    "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "history_limit": 0,
+    "history_unit": "lines"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      8.118300002024625e-05,
+      7.86690000040835e-05,
+      7.97900000293339e-05,
+      7.88790000001427e-05,
+      7.835799999611481e-05,
+      7.941000001210341e-05,
+      8.070299998053088e-05,
+      7.883899996841137e-05,
+      7.715500004223941e-05,
+      7.766700002775906e-05,
+      7.71190000250499e-05,
+      9.587100004182503e-05,
+      7.628299999851151e-05,
+      8.200499996746657e-05,
+      7.47309999837853e-05,
+      9.147200000825251e-05,
+      7.408999999825028e-05,
+      8.958000000802713e-05,
+      7.468100000096456e-05,
+      8.282600003894913e-05,
+      7.555299998784903e-05,
+      8.254599998736012e-05,
+      7.429100003264466e-05,
+      8.181499998727304e-05,
+      7.378900005505784e-05,
+      7.266699998353943e-05,
+      8.111300002155986e-05,
+      7.354899997835673e-05,
+      8.050299999240451e-05,
+      7.340800004840276e-05
+    ],
+    "workloads": {
+      "ascii": {
+        "bytes": 33554380,
+        "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+        "write_seconds": 0.4572402460000262,
+        "drain_rtt_seconds": 0.00024643499995136153,
+        "write_and_dsr_seconds": 0.4574866809999776,
+        "mib_per_second": 69.94728314054922,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.45999999999999996,
+        "terminal_rss_before_kib": 17476,
+        "terminal_rss_after_kib": 17476
+      },
+      "ansi": {
+        "bytes": 33554392,
+        "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+        "write_seconds": 0.5684232190000102,
+        "drain_rtt_seconds": 0.0002973310000129459,
+        "write_and_dsr_seconds": 0.5687205500000232,
+        "mib_per_second": 56.266582688151566,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.5700000000000001,
+        "terminal_rss_before_kib": 17476,
+        "terminal_rss_after_kib": 17476
+      },
+      "unicode": {
+        "bytes": 33554400,
+        "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+        "write_seconds": 0.8678241089999688,
+        "drain_rtt_seconds": 0.0005005140000093888,
+        "write_and_dsr_seconds": 0.8683246229999781,
+        "mib_per_second": 36.85254181997633,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.8699999999999997,
+        "terminal_rss_before_kib": 48284,
+        "terminal_rss_after_kib": 48288
+      },
+      "short_lines": {
+        "bytes": 33554430,
+        "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+        "write_seconds": 0.8731747329999848,
+        "drain_rtt_seconds": 0.00047765100003971384,
+        "write_and_dsr_seconds": 0.8736523840000245,
+        "mib_per_second": 36.62783811810724,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.8799999999999999,
+        "terminal_rss_before_kib": 48288,
+        "terminal_rss_after_kib": 48288
+      }
+    },
+    "term": "xterm-256color"
+  },
+  "status": "passed"
+}
