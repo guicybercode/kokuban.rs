@@ -14,6 +14,7 @@ RUNNER = runpy.run_path(str(Path(__file__).with_name("compare-frame-revisions.py
 GLOBALS = RUNNER["measure"].__globals__
 PREFIX = b"// preserved runtime\n#[cfg(test)]\nmod damage_tests {\n"
 BENCHMARK = RUNNER["MARKER"].encode() + b"        let fixture = 1;\n    }\n}\n"
+FRAME_CHECKSUMS = [RUNNER["frame_checksum"](bytes([index]) * 120 * 40 * 4) for index in (0, 1)]
 
 
 def sample_output(elapsed=600, steps=300, prefix=True):
@@ -25,7 +26,7 @@ def sample_output(elapsed=600, steps=300, prefix=True):
             lines.append(f"frame-repaint fixture content={content} change={change} cols=120 rows=40 "
                          f"width=120 height=40 cell_width=1 cell_height=1 warmup=30 samples=1 steps={steps} "
                          f"mono_cells=1000 color_cells={color} bands={bands} "
-                         "frame0=0000000000000001 frame1=0000000000000002")
+                         f"frame0={FRAME_CHECKSUMS[0]} frame1={FRAME_CHECKSUMS[1]}")
             for incremental in ("false", "true"):
                 lines.append(f"frame-repaint sample content={content} change={change} sample=0 "
                              f"incremental={incremental} frames={steps} elapsed_ns={elapsed} "
@@ -146,7 +147,7 @@ class FrameRevisionTests(unittest.TestCase):
                  output.replace("samples=1", "samples=2", 1),
                  output.replace("sample=0", "sample=1", 1),
                  output.replace("[(20, 21), (20, 21)]", "[(0, 40), (0, 40)]", 1),
-                 output.replace("frame0=0000000000000001", "frame0=0000000000000002", 1),
+                 output.replace(f"frame0={FRAME_CHECKSUMS[0]}", f"frame0={FRAME_CHECKSUMS[1]}", 1),
                  "\n".join(line for line in output.splitlines() if "incremental=true" not in line)]
         for case in cases:
             with self.subTest(case=case), self.assertRaises(ValueError):
@@ -178,6 +179,37 @@ class FrameRevisionTests(unittest.TestCase):
         image.unlink()
         with self.assertRaises(ValueError):
             RUNNER["verify_frames"](self.root, fixtures)
+
+    def test_frame_checksums_match_known_fnv1a_vectors(self):
+        self.assertEqual(RUNNER["frame_checksum"](b""), "cbf29ce484222325")
+        self.assertEqual(RUNNER["frame_checksum"](b"foobar"), "85944171f73967e8")
+
+    def test_frame_gate_rejects_identical_states_and_false_printed_checksums(self):
+        fixtures, _ = RUNNER["parse_output"](sample_output(), 300, 30)
+        for side in ("before", "after"):
+            self.images(self.root / (side + "-frames"))
+        first = self.root / "before-frames/ascii-single-row-0.xrgb8888le"
+        second = self.root / "before-frames/ascii-single-row-1.xrgb8888le"
+        original = second.read_bytes()
+        second.write_bytes(first.read_bytes())
+        with self.assertRaisesRegex(ValueError, "did not change visible pixels"):
+            RUNNER["verify_frames"](self.root, fixtures)
+        second.write_bytes(original)
+        fixtures[("ascii", "single-row")]["checksums"][0] = "0000000000000000"
+        with self.assertRaisesRegex(ValueError, "checksum does not match"):
+            RUNNER["verify_frames"](self.root, fixtures)
+
+    def test_paired_median_is_distinct_from_ratio_of_medians(self):
+        _, samples = RUNNER["parse_output"](sample_output(), 300, 30)
+        records = []
+        for pair, (before, after) in enumerate(((1, 2), (2, 100), (100, 1)), 1):
+            for side, value in (("before", before), ("after", after)):
+                records.extend({**sample, "side": side, "pair": pair, "ns_per_frame": value}
+                               for sample in samples)
+        for row in RUNNER["summarize"](records, 3):
+            self.assertEqual(row["latency_change_percent"], 0)
+            self.assertEqual(row["paired_latency_change_percent"], [100, 4900, -99])
+            self.assertEqual(row["median_paired_latency_change_percent"], 100)
 
     def test_alternating_pairs_publish_ratios_only_after_pixel_equivalence(self):
         args = self.builds()

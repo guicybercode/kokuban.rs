@@ -52,6 +52,14 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def frame_checksum(data):
+    """The Rust fixture's FNV-1a checksum over little-endian XRGB bytes."""
+    value = 0xcbf29ce484222325
+    for byte in data:
+        value = ((value ^ byte) * 0x100000001b3) & 0xffffffffffffffff
+    return f"{value:016x}"
+
+
 def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n")
 
@@ -152,7 +160,8 @@ def parse_output(output, steps, warmup):
         for start, end in ((a, b), (c, d)):
             require(0 <= start < end <= height, "invalid damage band")
             require((end - start < height) == (change == "single-row"), "unexpected damage coverage")
-        fixtures[key] = {"line": line, "width": width, "height": height}
+        fixtures[key] = {"line": line, "width": width, "height": height,
+                         "checksums": fields[-2:]}
     require(set(fixtures) == {(c, m) for c in CONTENTS for m in CHANGES}, "expected all six fixtures exactly once")
     samples = []
     for match in SAMPLE.finditer(output):
@@ -179,12 +188,18 @@ def verify_frames(output, fixtures):
         for content in CONTENTS:
             for change in CHANGES:
                 fixture = fixtures[(content, change)]
+                checksums = []
                 for index in (0, 1):
                     name = f"{content}-{change}-{index}.xrgb8888le"
                     path = directory / name
                     require(path.stat().st_size == fixture["width"] * fixture["height"] * 4,
                             "frame size does not match fixture geometry")
                     hashes[side][name] = sha(path)
+                    checksums.append(frame_checksum(path.read_bytes()))
+                names = [f"{content}-{change}-{index}.xrgb8888le" for index in (0, 1)]
+                require(hashes[side][names[0]] != hashes[side][names[1]],
+                        "reference states did not change visible pixels")
+                require(checksums == fixture["checksums"], "frame checksum does not match its fixture")
         for change in CHANGES:
             for index in (0, 1):
                 require(hashes[side][f"ascii-{change}-{index}.xrgb8888le"] ==
@@ -210,6 +225,7 @@ def summarize(records, pairs):
                                   "range_ns": {side: [min(v), max(v)] for side, v in values.items()},
                                   "latency_change_percent": (medians["after"] / medians["before"] - 1) * 100,
                                   "paired_latency_change_percent": changes,
+                                  "median_paired_latency_change_percent": statistics.median(changes),
                                   "slower_pairs": sum(value > 0 for value in changes)})
     return summaries
 
