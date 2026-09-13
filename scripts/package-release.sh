@@ -71,7 +71,7 @@ files["THIRD_PARTY_LICENSES.txt"] = arguments.notices.resolve()
 required_nonempty = set(files)
 # Test harnesses and raw benchmark snapshots stay in the source repository.
 # Snapshots can contain compressed Python sources as well as loose scripts.
-development_directories = ("scripts/", "docs/linux-evidence/", "docs/glyph-cache-evidence/")
+development_directories = ("scripts/", ".github/", "docs/linux-evidence/", "docs/glyph-cache-evidence/")
 
 def development_file(name):
     return name.startswith(development_directories) or name.endswith((".py", ".pyc"))

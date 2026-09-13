@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Version label for the selected ref (for example v0.2; tag may be created after review)
+        description: Version label for the selected ref (for example v0.3; tag may be created after review)
         required: true
         type: string
 
@@ -196,6 +196,11 @@ jobs:
             fi
           )
           extracted_directory="$RUNNER_TEMP/release-extracted"
+          archive_entries="$(tar -tzf "dist/$package_name.tar.gz")"
+          if grep -E '/(scripts|\.github)/|/docs/(linux-evidence|glyph-cache-evidence)/|\.(py|pyc)$' <<<"$archive_entries"; then
+            echo "Development tooling or raw benchmark snapshots leaked into the application archive"
+            exit 1
+          fi
           mkdir -p "$extracted_directory"
           tar -xzf "dist/$package_name.tar.gz" -C "$extracted_directory"
           extracted_binary="$extracted_directory/$package_name/kokuban"
