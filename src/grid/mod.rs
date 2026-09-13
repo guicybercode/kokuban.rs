@@ -751,7 +751,17 @@ impl Grid {
         let text = Grapheme::from_appended(previous_text, c);
         let old_width = if previous.flags.contains(CellFlags::WIDE)
             && col + 1 < self.cols() { 2 } else { 1 };
-        let natural_width = text.width().clamp(1, 2);
+        // A printable ASCII scalar followed by a combining diacritic stays
+        // one cell wide. Compound contexts and presentation selectors use the
+        // full string-width rules below.
+        let natural_width = if previous.grapheme.is_none()
+            && matches!(previous.c, ' '..='~')
+            && matches!(c, '\u{0300}'..='\u{036f}')
+        {
+            1
+        } else {
+            text.width().clamp(1, 2)
+        };
         let new_width = natural_width.min(self.cols());
         let mut cell = previous.clone();
         cell.grapheme = Some(text);
@@ -2644,6 +2654,30 @@ mod tests {
             assert!(original.upgrade().is_some());
             drop(snapshot);
             assert!(original.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn ascii_combining_diacritics_preserve_one_cell_width() {
+        for base in ' '..='~' {
+            for codepoint in 0x0300..=0x036f {
+                let mark = char::from_u32(codepoint).unwrap();
+                let text = format!("{base}{mark}");
+                assert_eq!(unicode_width::UnicodeWidthStr::width(text.as_str()), 1);
+                assert_eq!(text.graphemes(true).count(), 1);
+                for columns in [1, 3] {
+                    let mut grid = Grid::new(columns, 2, 4);
+                    grid.put_char(base);
+                    grid.put_char(mark);
+                    let cell = grid.buffer.cell(0, 0);
+                    assert_eq!(cell.c, base);
+                    assert_eq!(cell.grapheme.as_deref(), Some(text.as_str()));
+                    assert!(!cell.flags.intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
+                    assert_eq!(grid.cursor_col, 1);
+                    assert_eq!(grid.cursor_row, 0);
+                    assert_eq!(grid.is_wrap_pending(), columns == 1);
+                }
+            }
         }
     }
 
