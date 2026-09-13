@@ -17,6 +17,12 @@ rustup run 1.94.1 cargo build --locked
 
 Fork the repository first if you do not have push access. Use your fork as the push destination. Run the application from a graphical desktop session; a headless SSH shell without a display cannot open a window.
 
+The application and its Cargo build are Rust-only. Python 3 is a development
+dependency for the smoke tests, benchmarks, Unicode-table regeneration and release
+packaging in `scripts/`; it is not needed to build or run Kokuban. Historical
+measurement harnesses live in `docs/`. These development files are excluded from
+GitHub's application language statistics through `.gitattributes`.
+
 ## Make a focused change
 
 - Keep changes small and preserve unrelated work. Avoid whole-file formatting of legacy code when only a few lines change.
