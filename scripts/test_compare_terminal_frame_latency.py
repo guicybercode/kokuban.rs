@@ -36,6 +36,18 @@ def xwd(width=6, height=5, bits=32, order=0, color=(29, 173, 83), padding=4):
 
 
 class PixelOracleTests(unittest.TestCase):
+    def test_startup_spare_pixels_can_be_normalized_without_accepting_a_different_grid(self):
+        geometry = [24, 80, 720, 408]
+        remainder = {"window": "11", "pixels": [721, 409]}
+        helper = {"window": "10", "pixels": [1, 1]}
+        choose = RUNNER["cell_remainder_window"]
+        self.assertEqual(choose([helper, remainder], geometry, [9, 17]), remainder)
+        for pixels in ([729, 409], [721, 425], [719, 409], [721, 407], [720, 408]):
+            with self.subTest(pixels=pixels):
+                self.assertIsNone(choose([{**remainder, "pixels": pixels}], geometry, [9, 17]))
+        self.assertIsNone(choose([remainder, {**remainder, "window": "12"}], geometry, [9, 17]))
+        self.assertIsNone(choose([remainder, {"window": "13", "pixels": [720, 408]}], geometry, [9, 17]))
+
     def test_auxiliary_windows_do_not_hide_the_unique_calibrated_terminal_window(self):
         geometry = [24, 80, 720, 408]
         candidates = [{"window": "10", "pixels": [1, 1]},

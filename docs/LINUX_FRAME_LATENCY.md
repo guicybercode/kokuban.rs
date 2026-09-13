@@ -26,6 +26,8 @@ Changes to this harness or workflow on the dedicated `perf/input-frame-latency` 
 
 The script reuses the existing comparison's isolated configurations and untimed cell-size calibration. It requests 80 columns, 24 rows, DejaVu Sans Mono at 14 logical pixels, no padding, and the alternate screen. Two preflight launches per terminal observe natural cell dimensions and verify the supported spacing adjustments. These launches also use the existing DSR probe; their results are retained separately and never enter frame timing statistics. Incompatible versions, unavailable executables or unmatchable cell dimensions fail the run instead of silently comparing different geometry.
 
+Window discovery ignores auxiliary windows and requires a unique calibrated window. Some terminals leave spare edge pixels: Kitty 0.45.0 opened a 721×409 window for an 80×24 PTY with 9×17 cells in the initial Linux smoke. When each surplus is smaller than one cell, the runner requests the exact 720×408 window size before warmup and records the adjustment. It then requires both XWD and PTY dimensions to agree; it does not accept a larger rendering area as equivalent.
+
 ## What each sample proves
 
 1. A fresh terminal process opens one visible X11 window with the calibrated pixel dimensions. The controlled child waits for its PTY geometry to agree.
@@ -39,7 +41,7 @@ Default settings collect 120 measured key/frame pairs per terminal across three 
 
 ## Read the evidence
 
-`report.json` includes binary versions and hashes, configuration and helper hashes, environment observations, cell calibration, execution order and per-terminal summaries. Each process directory contains its configuration, terminal log, controlled-child event records, `sample.json`, and initial/final XWD snapshots. A color timeout also retains its final unmatched snapshot and partial capture observations. Every successful target capture has an XWD SHA-256 in the raw sample; only the initial/final captures are retained as files.
+`report.json` includes binary versions and hashes, configuration and helper hashes, environment observations, cell calibration, execution order and per-terminal summaries. Each process directory contains its configuration, terminal log, controlled-child event records, `sample.json`, and initial, first-transition and final XWD snapshots. The first-transition snapshot preserves the second color even if an even event count finishes on the initial color. A color timeout also retains its final unmatched snapshot and partial capture observations. Every successful target capture has an XWD SHA-256 in the raw sample; only these selected captures are retained as files, outside their timed intervals.
 
 The main summary is `input_to_observed_frame_upper_bound_seconds`. Separate distributions report `injection_seconds`, `observer_capture_seconds` and `observer_validation_seconds`. Capture timing covers the `xwd` subprocess and transfer; validation timing covers XWD decoding and RGB checking. The child write timestamp is a post-write acknowledgment: scheduler preemption can make it occur after the observer has already captured the updated pixels.
 

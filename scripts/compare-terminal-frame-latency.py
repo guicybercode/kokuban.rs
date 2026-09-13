@@ -162,6 +162,15 @@ def matching_window(candidates, geometry):
     return matches[0] if len(matches) == 1 else None
 
 
+def cell_remainder_window(candidates, geometry, cell):
+    """Find one startup window with spare pixels that cannot fit another cell."""
+    if any(item.get("pixels") == geometry[2:] for item in candidates):
+        return None
+    matches = [item for item in candidates if "pixels" in item and all(
+        wanted <= actual < wanted + size for actual, wanted, size in zip(item["pixels"], geometry[2:], cell))]
+    return matches[0] if len(matches) == 1 else None
+
+
 def verify_event(event, index, geometry, started, finished):
     expected_key = b"b" if index % 2 == 0 else b"a"
     if (event["index"] != index or event["input_hex"] != expected_key.hex()
@@ -196,6 +205,7 @@ def execute_sample(name, binary, version, directory, args, cell):
             process = subprocess.Popen(command, cwd=directory, env=environment,
                                        stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         sample["terminal_pid"] = process.pid
+        resized_windows = set()
 
         def check():
             failure = directory / "child-error.json"
@@ -220,7 +230,21 @@ def execute_sample(name, binary, version, directory, args, cell):
                     except subprocess.CalledProcessError as error:
                         # Auxiliary windows may disappear while startup is in progress.
                         candidates.append({"window": candidate, "capture_error": str(error)})
-            return matching_window(candidates, geometry)
+            matched = matching_window(candidates, geometry)
+            if matched is not None:
+                return matched
+            remainder = cell_remainder_window(candidates, geometry, cell)
+            if remainder is not None and remainder["window"] not in resized_windows:
+                # Kitty 0.45.0 opens 721x409 for an 80x24 grid of 9x17 cells.
+                # Remove unused edge pixels before warmup, then require an
+                # exact new XWD and PTY size instead of weakening geometry checks.
+                resized_windows.add(remainder["window"])
+                sample.setdefault("window_size_adjustments", []).append({
+                    "window": remainder["window"], "before_pixels": remainder["pixels"],
+                    "requested_pixels": geometry[2:]})
+                run(["xdotool", "windowsize", "--sync", remainder["window"],
+                     str(geometry[2]), str(geometry[3])], args.timeout)
+            return None
 
         window = wait_for(find_window, "one visible window with calibrated pixels", args.timeout)
         sample["window"] = window
@@ -277,6 +301,10 @@ def execute_sample(name, binary, version, directory, args, cell):
                     "injection_seconds": (injected - started) / 1e9,
                     "child": event, "observations": observations,
                     "matched_xwd_sha256": hashlib.sha256(frame.data).hexdigest()}
+            if index == 0:
+                # Retain both colors even when an even event count returns to
+                # the initial color. File I/O is after this warmup interval.
+                (directory / "first-transition.xwd").write_bytes(frame.data)
             sample["warmup" if index < args.warmup else "measurements"].append(item)
             sample.pop("pending_event", None)
             sample.pop("pending_observations", None)
