@@ -51,6 +51,26 @@ enum GraphemeRepr {
 impl Grapheme {
     pub(super) const INLINE_CAPACITY: usize = 14;
 
+    /// Append one encoded scalar without rebuilding short text through a string.
+    #[inline]
+    pub(super) fn from_appended(previous: &str, c: char) -> Self {
+        let len = previous.len() + c.len_utf8();
+        if len <= Self::INLINE_CAPACITY {
+            let mut bytes = [0; Self::INLINE_CAPACITY];
+            bytes[..previous.len()].copy_from_slice(previous.as_bytes());
+            c.encode_utf8(&mut bytes[previous.len()..len]);
+            Self(GraphemeRepr::Inline {
+                len: len as u8,
+                bytes,
+            })
+        } else {
+            let mut text = String::with_capacity(len);
+            text.push_str(previous);
+            text.push(c);
+            Self(GraphemeRepr::Heap(Arc::new(text)))
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn heap_weak(&self) -> Option<std::sync::Weak<String>> {
         match &self.0 {
@@ -199,6 +219,55 @@ mod tests {
         }
         assert_ne!(Grapheme::from("e\u{301}"), Grapheme::from("e\u{308}"));
         assert_ne!(Grapheme::from("e\u{301}"), Grapheme::from("e\u{301}\0"));
+    }
+
+    #[test]
+    fn appended_scalars_match_concatenation_and_canonical_storage() {
+        let mut prefixes = vec![
+            String::new(),
+            "e\0".into(),
+            "é".into(),
+            "日".into(),
+            "🇧🇷".into(),
+            "👩🏽‍".into(),
+        ];
+        prefixes.extend((0..=17).map(|len| "a".repeat(len)));
+        prefixes.extend(["é".repeat(32), format!("e{}", "\u{301}".repeat(32))]);
+        for previous in prefixes {
+            for next in [
+                '\0',
+                '\u{7f}',
+                '\u{80}',
+                '\u{7ff}',
+                '\u{800}',
+                '\u{ffff}',
+                '\u{10000}',
+                '\u{10ffff}',
+            ] {
+                let mut expected = previous.clone();
+                expected.push(next);
+                let actual = Grapheme::from_appended(&previous, next);
+                assert_eq!(actual.as_bytes(), expected.as_bytes());
+                assert_eq!(actual, Grapheme::from(expected.as_str()));
+                match &actual.0 {
+                    GraphemeRepr::Inline { len, bytes } => {
+                        assert!(expected.len() <= Grapheme::INLINE_CAPACITY);
+                        assert_eq!(usize::from(*len), expected.len());
+                        assert!(bytes[expected.len()..].iter().all(|&byte| byte == 0));
+                    }
+                    GraphemeRepr::Heap(text) => {
+                        assert!(expected.len() > Grapheme::INLINE_CAPACITY);
+                        assert_eq!(text.as_str(), expected);
+                        let owner = actual.heap_weak().unwrap();
+                        let snapshot = actual.clone();
+                        drop(actual);
+                        assert_eq!(snapshot.as_ref(), expected);
+                        drop(snapshot);
+                        assert!(owner.upgrade().is_none());
+                    }
+                }
+            }
+        }
     }
 
     #[test]

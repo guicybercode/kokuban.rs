@@ -72,25 +72,6 @@ fn scalar_extends_grapheme(previous: &str, c: char) -> bool {
     }
 }
 
-/// Store short clusters inline; retain every byte in immutable shared storage
-/// when a cluster outgrows the inline capacity.
-fn append_grapheme(previous: &str, c: char) -> Grapheme {
-    let len = previous.len() + c.len_utf8();
-    if len <= Grapheme::INLINE_CAPACITY {
-        let mut bytes = [0; Grapheme::INLINE_CAPACITY];
-        bytes[..previous.len()].copy_from_slice(previous.as_bytes());
-        c.encode_utf8(&mut bytes[previous.len()..len]);
-        let text = std::str::from_utf8(&bytes[..len])
-            .expect("a UTF-8 string followed by an encoded scalar is valid");
-        Grapheme::from(text)
-    } else {
-        let mut text = String::with_capacity(len);
-        text.push_str(previous);
-        text.push(c);
-        text.into()
-    }
-}
-
 // Mouse tracking modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MouseTracking {
@@ -772,7 +753,7 @@ impl Grid {
         let previous_text = previous.grapheme.as_deref()
             .unwrap_or_else(|| previous.c.encode_utf8(&mut scalar_bytes));
         if !scalar_extends_grapheme(previous_text, c) { return false; }
-        let text = append_grapheme(previous_text, c);
+        let text = Grapheme::from_appended(previous_text, c);
         let old_width = if previous.flags.contains(CellFlags::WIDE)
             && col + 1 < self.cols() { 2 } else { 1 };
         let natural_width = text.width().clamp(1, 2);
@@ -1514,9 +1495,9 @@ mod history_tests;
 #[cfg(test)]
 mod tests {
     use super::{
-        cell::{CellFlags, Color, UnderlineStyle},
+        cell::{CellFlags, Color, Grapheme, UnderlineStyle},
         marks::PromptMarkKind,
-        append_grapheme, scalar_extends_grapheme, Grid, TerminalEvent,
+        scalar_extends_grapheme, Grid, TerminalEvent,
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use unicode_segmentation::UnicodeSegmentation;
@@ -2598,7 +2579,7 @@ mod tests {
                 let expected = format!("{previous}{next}");
                 assert_eq!(expected.len(), total_bytes);
                 assert_eq!(expected.graphemes(true).count(), 1);
-                let actual = append_grapheme(&previous, next);
+                let actual = Grapheme::from_appended(&previous, next);
                 assert_eq!(actual.as_bytes(), expected.as_bytes(), "bytes={total_bytes}, next={next:?}");
             }
         }
@@ -2609,7 +2590,7 @@ mod tests {
         let previous = format!("e{}", "\u{301}".repeat(4096));
         let expected = format!("{previous}\u{308}");
         assert_eq!(expected.graphemes(true).count(), 1);
-        let actual = append_grapheme(&previous, '\u{308}');
+        let actual = Grapheme::from_appended(&previous, '\u{308}');
         assert_eq!(actual.len(), 8195);
         assert_eq!(actual.as_bytes(), expected.as_bytes());
     }
