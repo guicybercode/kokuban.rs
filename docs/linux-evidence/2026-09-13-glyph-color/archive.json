@@ -1,0 +1,18 @@
+{
+  "format": "tar+xz",
+  "tar_format": "pax",
+  "tar_mtime": 0,
+  "uid": 0,
+  "gid": 0,
+  "mode": "0644",
+  "xz_check": "CRC64",
+  "lzma2_preset": 6,
+  "dictionary_bytes": 33554432,
+  "original_files": 67,
+  "original_file_bytes": 104005019,
+  "tar_bytes": 104058880,
+  "tar_sha256": "e15f21c3aba64f213771d184916c9a78e16a8f7511d75c5372889b9af44e1fee",
+  "compressed_bytes": 3142112,
+  "compressed_sha256": "19f9790724b5ce2db330fbf55cbe97025c36e5981fd93da93c0f041060e0793a",
+  "all_members_recovered_byte_identical": true
+}

@@ -1,0 +1,79 @@
+{
+  "status": "passed",
+  "run_id": 34744896010,
+  "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34744896010",
+  "revisions": {
+    "before": "24782c344714727be4f8981cd0d1d10f047aa9f4",
+    "after": "965843d698edb94ac705f28c7948d26adef3edf2",
+    "harness": "4a80b7e5d42fa9a4f205a5c42b06648eb7a77948"
+  },
+  "sources": {
+    "before": {
+      "git_blobs_verified": 1167,
+      "archive_sha256": "c4e678845503402f4525886d607ae877cb3c9c339b9db5db9d7b0a8ca2076590",
+      "fresh_root": true,
+      "original_runtime_prefix_preserved": true,
+      "build": {
+        "source": "/home/runner/work/_temp/kokuban-frame-source-before",
+        "target": "/home/runner/work/_temp/kokuban-frame-target-before",
+        "binary": "/home/runner/work/_temp/kokuban-frame-target-before/release/deps/kokuban-74b60748afa29789",
+        "binary_sha256": "b592cceaa5aa4df2842ca8339e9e485d67b2ee392bf3a9951dd2180a05f4b056",
+        "cargo_messages_sha256": "2783df437598a86201477437bd26c1acc9176f3d371bb4cfec1b4e7e387b41b4",
+        "source_revision": "24782c344714727be4f8981cd0d1d10f047aa9f4",
+        "root": "/home/runner/work/_temp/kokuban-frame-source-before",
+        "original_sha256": "2a32561c388cce350a9265a8499c2554b92831c93b1280414a6ea01e0f3f367d",
+        "injected_sha256": "95be827522db426e8cb1d26d19644654004253007c7c943c5867693d98bde76e",
+        "preserved_prefix_sha256": "b0db9ce0de99226fb53c11cdc5e653f43743a099e392c5152eb252d9e916a2b8",
+        "cargo_sha256": {
+          "Cargo.toml": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+          "Cargo.lock": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        }
+      }
+    },
+    "after": {
+      "git_blobs_verified": 1167,
+      "archive_sha256": "ba578c5a81105331d1e02be3fabbfb0ddabbe4a9099625f6908fe4eed21981dc",
+      "fresh_root": true,
+      "original_runtime_prefix_preserved": true,
+      "build": {
+        "source": "/home/runner/work/_temp/kokuban-frame-source-after",
+        "target": "/home/runner/work/_temp/kokuban-frame-target-after",
+        "binary": "/home/runner/work/_temp/kokuban-frame-target-after/release/deps/kokuban-74b60748afa29789",
+        "binary_sha256": "d3dd15331b1785ada901fbb3ab009bb16ceb55479c70e259e5b5f4ecb06a3991",
+        "cargo_messages_sha256": "0acea78004d0f07849ed05e9efa2229296d033c4836d7daeb00bddeb9c0e40dd",
+        "source_revision": "965843d698edb94ac705f28c7948d26adef3edf2",
+        "root": "/home/runner/work/_temp/kokuban-frame-source-after",
+        "original_sha256": "1dc62d4d535dbcf463f44fc1722c7f3d4c8a71ddd1747cf22613dd7eefa6f087",
+        "injected_sha256": "4b009f694ddc7e764f4c5c424377c6e6b522d0f99a1fa7d2974e1c37e5e45921",
+        "preserved_prefix_sha256": "b918bdd8790c0dc54c09f6d513a877e468b9882990418de42b4d25fef5bca913",
+        "cargo_sha256": {
+          "Cargo.toml": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+          "Cargo.lock": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        }
+      }
+    }
+  },
+  "pinned_harness_sha256": {
+    "scripts/compare-frame-revisions.py": "aca1571e38d6df1619b1203a4b90da19619e3a51fb4ada70ce8ce7570d4ce9bf",
+    "scripts/test_compare_frame_revisions.py": "03df89e5f9997beee428ef5a27fb30a2d4abf9e8541d8c73a065e13d87b488cf",
+    ".github/workflows/linux-render-performance.yml": "3def45138e2d1bfdf13c852d699aaa3e3d129bc7930f280dc16decf9d08dbbe2"
+  },
+  "benchmark_sha256": "b4e01fbfb366231b737074eb10c2d7a05f7cc87107bc054859e3b41410ed256a",
+  "dependencies_identical": true,
+  "cpu_affinity": [
+    0
+  ],
+  "fonts_identity_and_recorded_hashes_verified": true,
+  "source_files_changed": [
+    "src/glyph_atlas.rs",
+    "src/linux_window.rs",
+    "src/renderer/metal.rs",
+    "src/software_raster.rs"
+  ],
+  "limitations": [
+    "Test binary hashes were checked in CI; executable bytes are not included for independent rehash.",
+    "Font identity and recorded CI hashes checked; font bytes themselves are not supplied.",
+    "Affinity observed on harness and inherited by children, not independently read back per child.",
+    "Exact frames and120 sample arithmetic were separately rechecked; final summary links those checks."
+  ]
+}

@@ -925,3 +925,28 @@ reproduzível. Os builds usaram Rust 1.94.1 e targets separados; o CI funcional
 passou em macOS/Linux. A remoção de dirty tracking foi integrada separadamente
 e não compõe estes binários. PTY/DSR não mede apresentação, não verifica pixels
 e não estabelece superioridade geral sobre outros terminais.
+
+
+## Classificação de cor no cache de glifos: Linux x86 de 2026-09-13
+
+Guardar a classificação de cor em cada entrada do atlas removeu uma consulta
+à tabela de hash por glifo. No ensaio pareado, o tempo mediano de desenho
+incremental de uma linha caiu **31,55% para ASCII após carregar emoji** e
+**28,91% para Unicode**. Os oito cenários com emoji/Unicode melhoraram nos cinco
+pares, com faixas separadas; os ganhos variaram de 5,15% a 31,55%. ASCII puro,
+tela inteira e pintura integral ficou **0,31% mais lento**, em três dos cinco
+pares, com faixas sobrepostas. O campo aumenta GlyphEntry de 24 para 28 bytes.
+
+O [pacote reproduzível](linux-evidence/2026-09-13-glyph-color/README.md) conserva
+os 67 originais, incluindo dois arquivos de fontes, 24 frames brutos, logs e
+120 amostras. A auditoria comparou os 1.167 blobs de cada revisão com o Git,
+validou targets novos e separados, e conferiu os 12 pares de pixels byte a byte.
+A base foi `24782c344714727be4f8981cd0d1d10f047aa9f4`; o candidato foi
+`965843d698edb94ac705f28c7948d26adef3edf2`. Rust 1.94.1, Linux x86_64 nativo,
+EPYC 7763/CPU 0, DejaVu 14 px e fontes Noto CJK/Emoji foram comuns aos builds.
+
+Os tempos incluem pintura na CPU e cálculo de danos quando incremental.
+Excluem snapshots, rasterização inicial dos glifos, PTY, compositor e
+apresentação. Não estabelecem latência física ou posição frente a outros
+terminais. A integração posterior `d54f801` passou nos 863 testes locais e no
+[CI macOS/Linux 34746312645](https://github.com/guicybercode/kokuban.rs/actions/runs/34746312645).
