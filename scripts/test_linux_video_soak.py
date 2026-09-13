@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -18,6 +19,51 @@ def stats(pid=10, start=20, cpu=1.0, rss=1000, hwm=2000):
 
 
 class SoakTests(unittest.TestCase):
+    def test_logged_process_can_resize_a_nonlog_file_above_one_mib(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            frame = directory / 'framebuffer'
+            code = 'import sys; f=open(sys.argv[1], "wb"); f.truncate(720*408*4); f.close(); print("ready")'
+            process, log = soak.spawn_logged([sys.executable, '-c', code, str(frame)], directory / 'terminal.log',
+                                              capture_stdout=True)
+            try:
+                self.assertEqual(process.wait(timeout=5), 0)
+            finally:
+                soak.smoke.stop_process(process)
+                result = log.finish()
+            self.assertEqual(frame.stat().st_size, 720 * 408 * 4)
+            self.assertFalse(result['overflow'])
+            self.assertTrue(result['eof'])
+            self.assertEqual((directory / 'terminal.log').read_bytes(), b'ready\n')
+
+    def test_log_overflow_is_bounded_and_reported_instead_of_signalling_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'terminal.log'
+            process, log = soak.spawn_logged([sys.executable, '-c', 'import sys; sys.stdout.buffer.write(b"a"*4096)'],
+                                             path, capture_stdout=True, log_limit=32)
+            try:
+                self.assertEqual(process.wait(timeout=5), 0)
+            finally:
+                soak.smoke.stop_process(process)
+                result = log.finish()
+            self.assertEqual(path.read_bytes(), b'a' * 32)
+            self.assertEqual(result['received_bytes'], 4096)
+            self.assertEqual(result['discarded_bytes'], 4096 - 32)
+            self.assertTrue(result['overflow'])
+            self.assertTrue(json.loads(path.with_name('terminal.log-status.json').read_text())['overflow'])
+            with self.assertRaisesRegex(AssertionError, 'log overflow'):
+                log.ensure_healthy()
+
+    def test_mpv_logging_does_not_capture_stdout_kitty_transport(self):
+        player = mock.Mock()
+        with mock.patch.object(soak.subprocess, 'Popen', return_value=player) as spawn, \
+             mock.patch.object(soak, 'BoundedLog') as logger:
+            soak.spawn_logged(['mpv'], Path('mpv.log'))
+        self.assertNotIn('stdout', spawn.call_args.kwargs)
+        self.assertNotIn('preexec_fn', spawn.call_args.kwargs)
+        self.assertEqual(spawn.call_args.kwargs['stderr'], subprocess.PIPE)
+        self.assertEqual(logger.call_args.args[1], player.stderr)
+
     def test_duration_and_memory_guard_cli_boundaries(self):
         for duration in (30, 900, 1800):
             parsed = soak.parse_args(['binary', '--artifacts-dir', 'new', '--duration-seconds', str(duration)])
@@ -121,11 +167,12 @@ class SoakTests(unittest.TestCase):
 
     def test_child_timeout_records_failure_and_stops_its_player(self):
         player = mock.Mock(pid=11)
+        log = mock.Mock()
         player.wait.side_effect = subprocess.TimeoutExpired('mpv', 90)
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / 'mpv-command.json').write_text('["mpv"]')
-            with mock.patch.object(soak.subprocess, 'Popen', return_value=player), \
+            with mock.patch.object(soak, 'spawn_logged', return_value=(player, log)), \
                  mock.patch.object(soak.smoke, 'process_stats', return_value=stats(pid=11)), \
                  mock.patch.object(soak.smoke, 'stop_process') as stop:
                 with self.assertRaises(subprocess.TimeoutExpired):

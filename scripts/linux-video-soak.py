@@ -12,13 +12,14 @@ import json
 import math
 import os
 from pathlib import Path
-import resource
+import select
 import shlex
 import shutil
 import signal
 import statistics
 import subprocess
 import sys
+import threading
 import time
 
 HELPER_PATH = Path(__file__).with_name('linux-video-smoke.py')
@@ -156,8 +157,85 @@ def summarize_resources(samples):
     return result
 
 
-def limit_log_files():
-    resource.setrlimit(resource.RLIMIT_FSIZE, (LOG_BYTES, LOG_BYTES))
+class BoundedLog:
+    """Drain a pipe continuously; retain a bounded prefix without child rlimits."""
+    def __init__(self, path, stream, limit=LOG_BYTES):
+        self.path, self.stream, self.limit = path, stream, limit
+        self.received = self.kept = 0
+        self.overflow = self.eof = False
+        self.error = None
+        self.lock = threading.Lock()
+        self.publish_lock = threading.Lock()
+        self.abort = threading.Event()
+        self.thread = threading.Thread(target=self._drain, name=f'log-{path.name}', daemon=True)
+        self.thread.start()
+
+    def status(self):
+        with self.lock:
+            return {'limit_bytes': self.limit, 'received_bytes': self.received,
+                    'retained_bytes': self.kept, 'discarded_bytes': self.received - self.kept,
+                    'overflow': self.overflow, 'eof': self.eof, 'error': self.error}
+
+    def publish(self):
+        with self.publish_lock:
+            smoke.record(self.path.parent, self.path.name + '-status.json', self.status())
+
+    def _drain(self):
+        try:
+            with self.path.open('wb') as output:
+                while not self.abort.is_set():
+                    readable, _, _ = select.select([self.stream], [], [], 0.2)
+                    if not readable:
+                        continue
+                    block = os.read(self.stream.fileno(), 65536)
+                    if not block:
+                        with self.lock:
+                            self.eof = True
+                        break
+                    retained = block[:max(0, self.limit - self.kept)]
+                    output.write(retained)
+                    output.flush()
+                    with self.lock:
+                        self.received += len(block)
+                        self.kept += len(retained)
+                        newly_overflowed = not self.overflow and self.received > self.limit
+                        self.overflow = self.received > self.limit
+                    if newly_overflowed:
+                        self.publish()
+        except Exception as error:
+            with self.lock:
+                self.error = f'{type(error).__name__}: {error}'
+        finally:
+            self.stream.close()
+            self.publish()
+
+    def ensure_healthy(self):
+        status = self.status()
+        require(not status['overflow'], f'{self.path.name} log overflow; excess bytes were discarded')
+        require(status['error'] is None, f'{self.path.name} log reader failed: {status["error"]}')
+
+    def finish(self):
+        self.thread.join(timeout=2)
+        if self.thread.is_alive():
+            self.abort.set()
+            self.thread.join(timeout=0.4)
+        with self.lock:
+            if self.thread.is_alive() or not self.eof:
+                self.error = self.error or 'log reader did not reach EOF during bounded cleanup'
+        self.publish()
+        return self.status()
+
+
+def spawn_logged(command, path, *, capture_stdout=False, log_limit=LOG_BYTES, **kwargs):
+    # mpv stdout must remain on the PTY: it carries Kitty graphics, not logs.
+    options = {'stdout': subprocess.PIPE, 'stderr': subprocess.STDOUT} if capture_stdout else {'stderr': subprocess.PIPE}
+    process = subprocess.Popen(command, **options, **kwargs)
+    try:
+        stream = process.stdout if capture_stdout else process.stderr
+        return process, BoundedLog(path, stream, log_limit)
+    except BaseException:
+        smoke.stop_process(process)
+        raise
 
 
 def hard_timeout(_signum, _frame):
@@ -165,35 +243,40 @@ def hard_timeout(_signum, _frame):
 
 
 def child(directory, duration):
-    player = None
+    player = log = None
     try:
         smoke.record(directory, 'child.json', smoke.process_stats(os.getpid()))
-        with (directory / 'mpv.log').open('wb') as log:
-            player = subprocess.Popen(json.loads((directory / 'mpv-command.json').read_text()), stderr=log)
-            deadline = time.monotonic() + 3
-            while True:
-                identity = smoke.process_stats(player.pid)
-                if identity and identity['rss_kib'] > 0:
-                    break
-                require(player.poll() is None and time.monotonic() < deadline, 'mpv failed before identity capture')
-                time.sleep(0.01)
-            smoke.record(directory, 'mpv.json', identity)
-            status = player.wait(timeout=duration + 60)
-            smoke.record(directory, 'mpv-exit.json', {'status': status})
-            return status
+        player, log = spawn_logged(json.loads((directory / 'mpv-command.json').read_text()), directory / 'mpv.log')
+        deadline = time.monotonic() + 3
+        while True:
+            identity = smoke.process_stats(player.pid)
+            if identity and identity['rss_kib'] > 0:
+                break
+            require(player.poll() is None and time.monotonic() < deadline, 'mpv failed before identity capture')
+            time.sleep(0.01)
+        smoke.record(directory, 'mpv.json', identity)
+        status = player.wait(timeout=duration + 60)
+        log.finish()
+        log.ensure_healthy()
+        smoke.record(directory, 'mpv-exit.json', {'status': status})
+        return status
     except BaseException as error:
         smoke.record(directory, 'child-error.json', {'error': f'{type(error).__name__}: {error}'})
         raise
     finally:
         smoke.stop_process(player)
+        if log is not None:
+            log.finish()
 
 
-def cleanup(ipc, terminal, directory):
+def cleanup(ipc, terminal, directory, terminal_log=None):
     errors = []
     actions = [('ipc', lambda: ipc.close() if ipc is not None else None),
                ('mpv', lambda: smoke.stop_owned(smoke.read_json(directory / 'mpv.json'))),
                ('driver', lambda: smoke.stop_owned(smoke.read_json(directory / 'child.json'))),
                ('terminal', lambda: smoke.stop_process(terminal)),
+               ('terminal-log', lambda: (terminal_log.finish(), terminal_log.ensure_healthy())
+                if terminal_log is not None else None),
                ('socket', lambda: (directory / 'mpv.sock').unlink()
                 if (directory / 'mpv.sock').is_socket() else None)]
     for name, action in actions:
@@ -206,7 +289,7 @@ def cleanup(ipc, terminal, directory):
 
 def exercise(args, report):
     directory = args.artifacts_dir
-    terminal = ipc = capture = None
+    terminal = ipc = capture = terminal_log = None
     try:
         report['encoded_stream'] = smoke.make_video(directory)
         command = ['mpv', '--no-config', '--load-scripts=no', '--vo=kitty', '--vo-kitty-use-shm=no',
@@ -224,9 +307,8 @@ def exercise(args, report):
         for key in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'XDG_RUNTIME_DIR', 'KOKUBAN_EXIT_AFTER_FIRST_FRAME'):
             env.pop(key, None)
         env.update(KOKUBAN_SHELL=str(shell), WINIT_X11_SCALE_FACTOR='1', LC_ALL='C.UTF-8')
-        with (directory / 'terminal.log').open('wb') as log:
-            terminal = subprocess.Popen([str(args.binary)], cwd=directory, env=env, stdout=log, stderr=log,
-                                        preexec_fn=limit_log_files)
+        terminal, terminal_log = spawn_logged([str(args.binary)], directory / 'terminal.log',
+                                              capture_stdout=True, cwd=directory, env=env)
         started = time.monotonic()
 
         def alive():
@@ -234,9 +316,10 @@ def exercise(args, report):
             failure = smoke.read_json(directory / 'child-error.json')
             require(failure is None, f'video driver failed: {failure}')
             require(not (directory / 'mpv-exit.json').exists(), 'mpv exited before requested soak completion')
-            for name in ('terminal.log', 'mpv.log'):
-                path = directory / name
-                require(not path.exists() or path.stat().st_size < LOG_BYTES, f'{name} exceeded log guard')
+            terminal_log.ensure_healthy()
+            status = smoke.read_json(directory / 'mpv.log-status.json')
+            require(status is None or not status['overflow'], 'mpv.log overflow; excess bytes were discarded')
+            require(status is None or status['error'] is None, f'mpv.log reader failed: {status}')
 
         def wait(description, observe, timeout=12):
             deadline = time.monotonic() + timeout
@@ -353,7 +436,9 @@ def exercise(args, report):
                 report['failure_capture_error'] = f'{type(error).__name__}: {error}'
         raise
     finally:
-        report['cleanup_errors'] = cleanup(ipc, terminal, directory)
+        report['cleanup_errors'] = cleanup(ipc, terminal, directory, terminal_log)
+        report['logs'] = {name: smoke.read_json(directory / (name + '-status.json'))
+                          for name in ('terminal.log', 'mpv.log')}
 
 
 def parse_args(argv=None):
@@ -389,7 +474,9 @@ def check(args):
               'configuration_toml': CONFIG, 'visible_samples': [], 'process_samples': [],
               'limits': ['Absolute elapsed-time observation on Xvfb; no A/B or GPU claim.',
                   'Capture/PNG/checkpoint work adds observer overhead; excessive observer gaps fail separately.',
-                  '1 MiB RLIMIT_FSIZE is inherited by owned processes to bound logs; RSS guard is an experiment limit.',
+                  'Supervisor pipe readers retain at most 1 MiB per log; overflow fails explicitly. No child file-size limits are set.',
+                  'Log reader threads add observer overhead. The RSS guard is an experiment limit, not a product memory cap.',
+                  'Periodic video IDs use smoke pixel probes, not full-frame equality; only a few complete PNGs are retained.',
                   '256 MiB image-cache setting is not an RSS cap; snapshots may temporarily retain buffers.',
                   'No cache occupancy is measured; short pilots cannot establish eviction or a memory plateau.',
                   'CPU tick resolution limits short intervals; RSS samples can miss peaks; VmHWM is lifetime.']}
