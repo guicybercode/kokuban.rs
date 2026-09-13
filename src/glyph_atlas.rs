@@ -74,6 +74,63 @@ impl GlyphEntry {
     }
 }
 
+/// ASCII scalars use direct slots; all other scalars retain keyed storage.
+/// A cached empty glyph is still present, so failed/blank rasterization is not
+/// repeated on every frame. Each style has its own entry in both stores.
+pub struct ScalarGlyphCache {
+    ascii: [Option<GlyphEntry>; 128 * 4],
+    unicode: HashMap<GlyphKey, GlyphEntry>,
+}
+
+impl ScalarGlyphCache {
+    fn new() -> Self {
+        Self { ascii: [None; 128 * 4], unicode: HashMap::new() }
+    }
+
+    fn ascii_index(key: &GlyphKey) -> Option<usize> {
+        if key.c.is_ascii() {
+            let style = usize::from(key.bold) | (usize::from(key.italic) << 1);
+            Some(key.c as usize | (style << 7))
+        } else {
+            None
+        }
+    }
+
+    pub fn get(&self, key: &GlyphKey) -> Option<&GlyphEntry> {
+        match Self::ascii_index(key) {
+            Some(index) => self.ascii[index].as_ref(),
+            None => self.unicode.get(key),
+        }
+    }
+
+    pub fn insert(&mut self, key: GlyphKey, entry: GlyphEntry) -> Option<GlyphEntry> {
+        match Self::ascii_index(&key) {
+            Some(index) => self.ascii[index].replace(entry),
+            None => self.unicode.insert(key, entry),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.ascii.fill(None);
+        self.unicode.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.ascii.iter().filter(|entry| entry.is_some()).count() + self.unicode.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains_key(&self, key: &GlyphKey) -> bool {
+        self.get(key).is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn values(&self) -> impl Iterator<Item = &GlyphEntry> {
+        self.ascii.iter().filter_map(Option::as_ref).chain(self.unicode.values())
+    }
+}
+
 pub struct GlyphAtlas {
     pub width: u32,
     pub height: u32,
@@ -83,7 +140,7 @@ pub struct GlyphAtlas {
     // Separate style maps allow borrowed text lookup without allocating a key.
     text_glyphs: [HashMap<String, GlyphEntry>; 4],
     rasterizer: TextRasterizer,
-    pub glyphs: HashMap<GlyphKey, GlyphEntry>,
+    pub glyphs: ScalarGlyphCache,
     pub cell_width: f32,
     pub cell_height: f32,
     pub ascent: f32,
@@ -196,7 +253,7 @@ impl GlyphAtlas {
             text_glyphs: std::array::from_fn(|_| HashMap::new()),
             font: font.font.clone(),
             rasterizer: TextRasterizer::new(font),
-            glyphs: HashMap::new(),
+            glyphs: ScalarGlyphCache::new(),
             cell_width,
             cell_height,
             ascent,
@@ -603,6 +660,114 @@ mod tests {
             })
         });
         assert!(has_coverage);
+    }
+
+    #[test]
+    fn scalar_cache_keeps_every_ascii_style_distinct_from_unicode_and_empty_entries() {
+        let mut cache = ScalarGlyphCache::new();
+        let characters: Vec<_> = (0..=128).map(|c| char::from_u32(c).unwrap())
+            .chain(['é', '界', '👩']).collect();
+        let keys: Vec<_> = characters.iter().flat_map(|&c| {
+            [(false, false), (true, false), (false, true), (true, true)]
+                .map(|(bold, italic)| GlyphKey { c, bold, italic })
+        }).collect();
+        for (index, &key) in keys.iter().enumerate() {
+            let entry = GlyphEntry { atlas_x: index as u32 + 1, color: key.italic, ..GlyphEntry::empty() };
+            assert!(cache.get(&key).is_none());
+            assert!(cache.insert(key, entry).is_none());
+        }
+        assert_eq!(cache.ascii.iter().flatten().count(), 128 * 4);
+        assert_eq!(cache.unicode.len(), 4 * 4, "ASCII must not also occupy the hash map");
+        assert_eq!(cache.len(), keys.len());
+        assert_eq!(cache.values().count(), keys.len());
+        for (index, &key) in keys.iter().enumerate() {
+            let cached = cache.get(&key).unwrap();
+            assert_eq!(cached.atlas_x, index as u32 + 1, "wrong scalar/style: {key:?}");
+            assert_eq!(cached.color, key.italic);
+            // Replacement by an empty glyph preserves presence, including the
+            // 127/128 boundary, all controls, and each Unicode style.
+            let previous = cache.insert(key, GlyphEntry::empty()).unwrap();
+            assert_eq!(previous.atlas_x, index as u32 + 1);
+            assert!(cache.contains_key(&key));
+            assert_eq!(cache.get(&key).unwrap().pixel_w, 0);
+            assert!(!cache.get(&key).unwrap().color);
+        }
+        assert_eq!(cache.len(), keys.len());
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+        assert!(cache.values().next().is_none());
+        for key in keys {
+            assert!(cache.get(&key).is_none(), "clear retained {key:?}");
+        }
+        eprintln!("scalar-cache inline_bytes={} entry_bytes={} ascii_slots=512",
+            std::mem::size_of::<ScalarGlyphCache>(), std::mem::size_of::<GlyphEntry>());
+    }
+
+    #[test]
+    fn empty_ascii_entries_are_shared_by_scalar_text_and_cell_lookups() {
+        use crate::grid::cell::{Cell, CellFlags};
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 14.0, 1.0).unwrap();
+        let original_position = (atlas.cursor_x, atlas.cursor_y, atlas.row_height);
+        for c in ['\0', ' ', 'A', '\u{7f}', '\u{80}'] {
+            for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+                let key = GlyphKey { c, bold, italic };
+                atlas.glyphs.insert(key, GlyphEntry::empty());
+                let mut flags = CellFlags::empty();
+                flags.set(CellFlags::BOLD, bold);
+                flags.set(CellFlags::ITALIC, italic);
+                let text = c.to_string();
+                atlas.dirty = false;
+                let entries = [
+                    atlas.get_or_insert(key),
+                    atlas.get_or_insert_text(&text, bold, italic),
+                    atlas.get_or_insert_cell(&Cell { c, flags, ..Cell::default() }),
+                    atlas.get_or_insert_cell(&Cell {
+                        c, grapheme: Some(Arc::from(text.as_str())), flags, ..Cell::default()
+                    }),
+                ];
+                assert!(entries.iter().all(|entry| entry.pixel_w == 0 && entry.pixel_h == 0 && !entry.color));
+                assert!(!atlas.dirty, "empty cache entry was rasterized again: {key:?}");
+                assert_eq!((atlas.cursor_x, atlas.cursor_y, atlas.row_height), original_position);
+            }
+        }
+        assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
+    }
+
+    #[test]
+    fn resize_invalidates_all_scalar_slots_only_after_sizing_succeeds() {
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 14.0, 1.0).unwrap();
+        let keys: Vec<_> = ['\0', ' ', 'A', '\u{7f}', '\u{80}', '界'].into_iter().flat_map(|c| {
+            [(false, false), (true, false), (false, true), (true, true)]
+                .map(|(bold, italic)| GlyphKey { c, bold, italic })
+        }).collect();
+        for &key in &keys {
+            atlas.glyphs.insert(key, GlyphEntry { atlas_x: u32::MAX, color: true, ..GlyphEntry::empty() });
+        }
+        atlas.dirty = false;
+        for invalid_size in [f32::NAN, 0.0, -1.0, f32::INFINITY] {
+            assert!(atlas.clear_and_resize(invalid_size).is_err());
+            assert!(!atlas.dirty);
+            for key in &keys {
+                let cached = atlas.glyphs.get(key).unwrap();
+                assert_eq!(cached.atlas_x, u32::MAX);
+                assert!(cached.color);
+            }
+        }
+        atlas.clear_and_resize(18.0).unwrap();
+        assert!(atlas.dirty);
+        assert_eq!(atlas.glyphs.len(), 95, "only regular printable ASCII is prewarmed");
+        assert!(atlas.glyphs.unicode.is_empty());
+        for c in 0..128 {
+            for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+                let key = GlyphKey { c: char::from_u32(c).unwrap(), bold, italic };
+                let cached = atlas.glyphs.get(&key);
+                assert_eq!(cached.is_some(), !bold && !italic && (32..=126).contains(&c));
+                if let Some(entry) = cached {
+                    assert_ne!(entry.atlas_x, u32::MAX);
+                    assert!(!entry.color);
+                }
+            }
+        }
     }
 
     #[test]

@@ -2,6 +2,13 @@
 
 `scripts/compare-terminal-frame-latency.py` complements the [throughput and DSR comparison](LINUX_PERFORMANCE.md). It measures a synthetic key event followed by a verified change in a large region of the terminal window. A terminal protocol reply alone cannot satisfy this test.
 
+Audited 120-event measurements per terminal are retained for both the
+[xwd observer](linux-evidence/2026-09-13-observed-frames-xwd/README.md) and
+[persistent Xlib observer](linux-evidence/2026-09-13-observed-frames-xlib/README.md),
+including raw reports and selected lossless snapshots. Both used application
+source `55c48f4`; their different hosts and observers prevent attributing the
+difference between those measurements to application-code changes.
+
 With the default `--observer xwd`, the interval is an **upper bound from before `xdotool` starts until the matching `xwd` capture finishes**. It includes process launch, XTest delivery, terminal input handling, the controlled PTY application, terminal rendering, X11 readback and observer scheduling. The optional `--observer xlib` removes the subprocesses from that interval, as described below. Neither mode measures physical keyboard latency, compositor presentation, vblank, GPU time alone or input-to-photon latency. Xvfb results describe its virtual software display.
 
 ## Run
@@ -50,6 +57,15 @@ Window discovery ignores auxiliary windows and requires a unique calibrated wind
 6. The child must report the expected number of events and exit successfully. Failure paths retain available observations and stop the owned terminal and PTY child.
 
 Default settings collect 120 measured key/frame pairs per terminal across three processes, plus five warmup events per process. The interval between unsuccessful captures defaults to 1 ms, in addition to capture and validation overhead; `--poll-interval` records any adjustment. The observer can perturb the workload, especially through synchronous X11 readback. Its measured overhead is reported and is **not subtracted** from the upper bound.
+
+The workflow exposes the same setting as `poll_interval`, accepting 0 to 0.1 seconds. Zero starts the next capture immediately after an unsuccessful validation. This removes the explicit sleep but increases readback traffic and can perturb the terminal; retain the chosen interval when interpreting or comparing results.
+
+The [immediate-polling run 34747477331](https://github.com/guicybercode/kokuban.rs/actions/runs/34747477331)
+also passed on Intel Xeon 6973P-C with source `55c48f4`, Xlib and
+`poll_interval=0`: 540 events including warmup, 8,297 captures and all 36
+retained snapshots were verified. Kokuban's observed median was 1.357 ms,
+p95 1.782 ms and p99 2.007 ms over 120 measured events. The different host and
+capture cadence do not isolate an application-code or polling-only effect.
 
 ## Read the evidence
 

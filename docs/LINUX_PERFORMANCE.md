@@ -10,6 +10,14 @@ O [guia de repintura CPU](LINUX_CPU_FRAME_MEASUREMENTS.md) mostra como comparar
 revisões completas, isolar o raster e medir a variabilidade do mesmo executável.
 O [pacote X11 de 13 de setembro](linux-evidence/2026-09-13-observed-frames-xwd/README.md)
 preserva os resultados e as imagens da medição com quatro terminais.
+O [estudo do filtro de dano e cache ASCII](LINUX_DAMAGE_CACHE_2026-09-13.md)
+registra a comparação direta, o custo em Unicode x86 e uma alternativa rejeitada,
+com evidência compacta verificável sem executar os benchmarks.
+O [pacote do observador Xlib](linux-evidence/2026-09-13-observed-frames-xlib/README.md)
+preserva outra medição X11; hardware e método diferem do ensaio com XWD.
+As [consultas ao cache de glifos](GLYPH_CACHE_MEASUREMENTS.md) têm controles
+pareados em Linux e macOS. O [registro de recursos da integração](linux-evidence/2026-09-13-release-resources/README.md)
+preserva CPU, RSS, saída PTY e vídeo de uma build em release, sem comparação causal.
 
 Para comparar duas revisões no mesmo runner Linux, use o workflow manual
 `Linux paired revision measurements`:

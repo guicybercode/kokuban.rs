@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 /home/runner/work/kokuban.rs/kokuban.rs/scripts/linux-resource-smoke.py --child-dir /tmp/kokuban-resource-5h4m2k9f
