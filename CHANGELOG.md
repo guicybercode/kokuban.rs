@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Reduce Linux software alpha-blending work and filter glyph painting against damaged frame bands; preserve pixel-equivalence checks for clipping, overhang and underlines.
+- Use direct cache slots for ASCII glyphs across regular, bold, italic and bold-italic styles on Linux and macOS. The [integration report](docs/LINUX_DAMAGE_CACHE_2026-09-13.md) records measured gains, Unicode and grapheme costs, and 14 KiB additional inline atlas storage.
+- Add controlled CPU repaint and warmed glyph-lookup measurements, plus an Xlib observer for synthetic X11 input-to-readback tests. Preserve raw measurements and offline integrity checks; each report defines its timing boundaries and hardware limits.
+
 ## v0.2 — 2026-09-13
 
 Desktop release focused on text preservation, Omarchy integration and measured performance work. The Git tag is `v0.2`; the Cargo package version is `0.2.0`.
