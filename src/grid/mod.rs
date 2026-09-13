@@ -562,7 +562,9 @@ impl Grid {
         }
 
         let cols = self.cols();
-        let mut staged = [('\0', 0u8); 64];
+        // Separate arrays avoid the per-element padding of (char, u8).
+        let mut staged_chars = ['\0'; 64];
+        let mut staged_widths = [0u8; 64];
         let leader = Cell {
             c: '\0',
             grapheme: None,
@@ -612,9 +614,10 @@ impl Grid {
             let mut end = col + width;
             let mut count = 1;
             let mut bytes = first_bytes;
-            staged[0] = (first, width as u8);
+            staged_chars[0] = first;
+            staged_widths[0] = width as u8;
             let mut remaining = text[first_bytes..].chars();
-            while count < staged.len() && end < cols {
+            while count < staged_chars.len() && end < cols {
                 let Some(c) = remaining.next() else { break };
                 if !boundary_pages::is_other(c) {
                     break;
@@ -623,7 +626,8 @@ impl Grid {
                     Some(width @ (1 | 2)) if width <= cols - end => width,
                     _ => break,
                 };
-                staged[count] = (c, width as u8);
+                staged_chars[count] = c;
+                staged_widths[count] = width as u8;
                 count += 1;
                 bytes += c.len_utf8();
                 end += width;
@@ -636,7 +640,7 @@ impl Grid {
             }
             let cells = self.buffer.row_range_mut(row, col..end);
             let mut offset = 0;
-            for &(c, width) in &staged[..count] {
+            for (&c, &width) in staged_chars[..count].iter().zip(&staged_widths[..count]) {
                 let mut cell = Cell { c, ..leader.clone() };
                 if width == 2 {
                     cell.flags.insert(CellFlags::WIDE);
