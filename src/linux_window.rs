@@ -3620,10 +3620,31 @@ fn draw_grid_snapshot_in_band(
     images: &[ImageSnapshot],
     band: std::ops::Range<u32>,
 ) {
+    // Specialize once per repaint so full frames do not branch on damage
+    // filtering for every row and glyph. Both paths share the same drawing code.
+    if band == (0..frame_size.1) {
+        draw_grid_snapshot_for_band::<false>(frame, frame_size, atlas, colors,
+            cell_dimensions, snapshot, draw_terminal_cursor, images, band);
+    } else {
+        draw_grid_snapshot_for_band::<true>(frame, frame_size, atlas, colors,
+            cell_dimensions, snapshot, draw_terminal_cursor, images, band);
+    }
+}
+
+fn draw_grid_snapshot_for_band<const PARTIAL: bool>(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    atlas: &mut GlyphAtlas,
+    colors: &TerminalColors,
+    cell_dimensions: (u16, u16),
+    snapshot: &GridSnapshot,
+    draw_terminal_cursor: bool,
+    images: &[ImageSnapshot],
+    band: std::ops::Range<u32>,
+) {
     if band.is_empty() || band.end > frame_size.1 {
         return;
     }
-    let partial = band != (0..frame_size.1);
     debug_assert!(images.is_empty() || band == (0..frame_size.1));
     let start = u64::from(band.start) * u64::from(frame_size.0);
     let end = u64::from(band.end) * u64::from(frame_size.0);
@@ -3639,7 +3660,7 @@ fn draw_grid_snapshot_in_band(
         Some((x, y.checked_sub(offset)?))
     };
     let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
-    let background_rows = if partial && cell_size.1 != 0 {
+    let background_rows = if PARTIAL && cell_size.1 != 0 {
         (band.start / cell_size.1) as usize..band.end.div_ceil(cell_size.1) as usize
     } else {
         0..snapshot.rows
@@ -3672,14 +3693,14 @@ fn draw_grid_snapshot_in_band(
     for row in 0..snapshot.rows {
         // Ink can overhang any number of rows, so keep looking up its actual
         // bounds. Full repaints do not need these extra intersection checks.
-        let baseline = if partial {
+        let baseline = if PARTIAL {
             cell_origin(row, 0, cell_dimensions).and_then(|(_, y)| {
                 rounded_f64_i32(f64::from(y) + f64::from(atlas.ascent))
             })
         } else {
             None
         };
-        let underline_row = !partial || background_rows.contains(&row);
+        let underline_row = !PARTIAL || background_rows.contains(&row);
         for column in 0..snapshot.columns {
             let Some(cell) = snapshot.cell(row, column) else {
                 continue;
@@ -3696,7 +3717,7 @@ fn draw_grid_snapshot_in_band(
 
             let glyph = if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
                 let glyph = atlas.get_or_insert_cell(cell);
-                let intersects = !partial || baseline
+                let intersects = !PARTIAL || baseline
                     .and_then(|y| y.checked_add(glyph.bearing_y))
                     .is_some_and(|top| {
                         i64::from(top) < i64::from(band.end)
