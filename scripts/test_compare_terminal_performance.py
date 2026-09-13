@@ -60,6 +60,154 @@ class SampleLifecycleTests(unittest.TestCase):
         self.assertIn("injected launch failure", sample["error"])
         self.assertEqual(json.loads((self.directory / "sample.json").read_text()), sample)
 
+    def test_thread_cpu_flag_is_retained_in_real_driver_case(self):
+        self.args.thread_cpu = True
+        process = Mock(pid=123, returncode=0)
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        with patch.object(RUNNER["subprocess"], "Popen", return_value=process), \
+                patch.dict(GLOBALS, wait_for=lambda *_args: {"workloads": {}}):
+            sample = self.execute()
+        self.assertTrue(sample["thread_cpu_enabled"])
+        self.assertTrue(json.loads((self.directory / "case.json").read_text())["thread_cpu"])
+
+
+class ThreadCpuTests(unittest.TestCase):
+    @staticmethod
+    def stat(tid, name, user=10, system=5, start=100):
+        fields = ['S'] + ['0'] * 19
+        fields[11], fields[12], fields[19] = str(user), str(system), str(start)
+        return f'{tid} ({name}) ' + ' '.join(fields)
+
+    def snapshot(self, rows, at):
+        threads = []
+        for tid, name, user, start in rows:
+            row = RUNNER['parse_thread_stat'](self.stat(tid, name, user=user, start=start), 10, tid)
+            threads.append({**row, 'status': 'read', 'read_started_seconds': at, 'read_finished_seconds': at + 0.01})
+        return {'pid': 10, 'ticks_per_second': 100, 'enumeration_complete': True,
+                'listed_tids': [r['tid'] for r in threads], 'threads': threads}
+
+    def test_parser_preserves_spaces_and_parentheses_in_comm(self):
+        parsed = RUNNER['parse_thread_stat'](self.stat(10, 'a (worker) ) x'), 10, 10)
+        self.assertEqual(parsed['name'], 'a (worker) ) x')
+        self.assertEqual((parsed['cpu_ticks'], parsed['start_ticks']), (15, 100))
+        self.assertTrue(parsed['is_main_thread'])
+        reader = RUNNER['parse_thread_stat'](self.stat(11, 'terminal-reader'), 10, 11)
+        self.assertTrue(reader['is_terminal_reader'])
+        self.assertFalse(reader['is_main_thread'])
+        for text in ('broken', '11 (x) S', self.stat(11, 'x')):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                RUNNER['parse_thread_stat'](text, 10, 10)
+
+    def test_snapshot_keeps_timestamps_and_unreadable_tasks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for tid in (10, 11):
+                (root / '10' / 'task' / str(tid)).mkdir(parents=True)
+            (root / '10' / 'task' / '10' / 'stat').write_text(self.stat(10, 'main (x)'))
+            result = RUNNER['thread_cpu_snapshot'](10, root, ticks_per_second=100)
+            self.assertEqual(result['status'], 'partial')
+            self.assertEqual(result['listed_tids'], [10, 11])
+            self.assertEqual(result['threads'][1]['status'], 'unavailable')
+            self.assertIn('FileNotFoundError', result['threads'][1]['error'])
+            for row in result['threads']:
+                self.assertLessEqual(result['read_started_seconds'], row['read_started_seconds'])
+                self.assertLessEqual(row['read_started_seconds'], row['read_finished_seconds'])
+                self.assertLessEqual(row['read_finished_seconds'], result['read_finished_seconds'])
+            missing = RUNNER['thread_cpu_snapshot'](99, root, ticks_per_second=100)
+            self.assertFalse(missing['enumeration_complete'])
+            self.assertIn('enumeration_error', missing)
+
+    def test_identity_changes_and_disappeared_threads_have_null_deltas(self):
+        before = self.snapshot([(10, 'main', 10, 100), (11, 'terminal-reader', 20, 101),
+                                (12, 'worker', 30, 102)], 1)
+        after = self.snapshot([(10, 'main', 15, 100), (11, 'replacement', 1, 201),
+                               (13, 'new worker', 3, 103)], 2)
+        result = RUNNER['thread_cpu_deltas'](before, after)
+        rows = {r['tid']: r for r in result['threads']}
+        self.assertEqual(rows[10]['cpu_ticks_delta'], 5)
+        self.assertEqual(rows[10]['cpu_seconds_delta'], 0.05)
+        self.assertAlmostEqual(rows[10]['read_window_seconds']['minimum'], 0.99)
+        self.assertEqual(rows[11]['status'], 'identity_changed')
+        self.assertEqual(rows[12]['status'], 'disappeared')
+        self.assertEqual(rows[13]['status'], 'newly_observed')
+        self.assertEqual(result['newly_observed_tids'], [13])
+        self.assertEqual(result['disappeared_tids'], [12])
+        for tid in (11, 12, 13):
+            self.assertIsNone(rows[tid]['cpu_seconds_delta'])
+
+    def test_failed_enumeration_does_not_invent_disappearance_or_zero_cpu(self):
+        before = self.snapshot([(10, 'main', 10, 100)], 1)
+        after = {'pid': 10, 'ticks_per_second': 100, 'threads': [], 'enumeration_complete': False}
+        row = RUNNER['thread_cpu_deltas'](before, after)['threads'][0]
+        self.assertEqual(row['status'], 'unavailable')
+        self.assertIsNone(row['cpu_seconds_delta'])
+        regressed = self.snapshot([(10, 'main', 9, 100)], 2)
+        row = RUNNER['thread_cpu_deltas'](before, regressed)['threads'][0]
+        self.assertEqual(row['status'], 'counter_regressed')
+        self.assertIsNone(row['cpu_seconds_delta'])
+
+    def test_terminal_command_passes_opt_in_only_to_the_pty_driver(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(screen='primary', scrollback_lines=10000, font_pixels=14,
+                                   columns=80, rows=24, thread_cpu=True)
+            command, _ = RUNNER['terminal_command']('kokuban', Path('kokuban'), 'test', Path(temporary), args)
+            self.assertEqual(command[-1], '--thread-cpu')
+            self.assertIn('--child-dir', command)
+            args.thread_cpu = False
+            command, _ = RUNNER['terminal_command']('kokuban', Path('kokuban'), 'test', Path(temporary), args)
+            self.assertNotIn('--thread-cpu', command)
+
+    def test_real_child_keeps_clock_boundaries_and_reads_no_threads_by_default(self):
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                payload = directory / 'payload'
+                payload.write_bytes(b'x\r\n')
+                (directory / 'case.json').write_text(json.dumps({'terminal_pid': 10, 'payloads': {'short': str(payload)},
+                    'screen': 'primary', 'settle_seconds': 0, 'thread_cpu': enabled}))
+                (directory / 'finish').touch()
+                events, cpu_count, clock_count = [], [0], [0]
+
+                def cpu(pid):
+                    if pid == 10:
+                        cpu_count[0] += 1
+                        events.append('cpu_before' if cpu_count[0] == 1 else 'cpu_after')
+                    return {'pid': pid, 'start_ticks': 100, 'cpu_seconds': cpu_count[0], 'rss_kib': 1}
+
+                def clock():
+                    clock_count[0] += 1
+                    events.append('clock')
+                    return clock_count[0]
+
+                def barrier(marker):
+                    events.append(marker.decode())
+                    return 'reply'
+
+                def threads(_pid):
+                    self.assertTrue(enabled, 'thread collection must be completely disabled by default')
+                    label = 'threads_before' if cpu_count[0] == 0 else 'threads_after'
+                    events.append(label)
+                    return self.snapshot([(10, 'main', cpu_count[0] + 10, 100)], cpu_count[0])
+
+                with patch.dict(GLOBALS, process_stats=cpu, barrier=barrier, write_all=lambda _data: events.append('write'),
+                                terminal_size=lambda: [24, 80, 720, 408], wait_for=lambda observe, *_args: observe(),
+                                thread_cpu_snapshot=threads), \
+                     patch.object(RUNNER['time'], 'perf_counter', side_effect=clock), \
+                     patch.object(RUNNER['time'], 'monotonic', side_effect=AssertionError('no additional clock reads')), \
+                     patch.object(RUNNER['time'], 'sleep'), patch.object(RUNNER['tty'], 'setraw'), \
+                     patch.object(RUNNER['termios'], 'tcgetattr', return_value=[]), patch.object(RUNNER['termios'], 'tcsetattr'):
+                    RUNNER['controlled_child'](directory, enabled)
+                relevant = events[events.index('start') + 1:]
+                expected = ['cpu_before', 'clock', 'write', 'clock', 'done', 'clock', 'cpu_after', 'write']
+                if enabled:
+                    expected.insert(0, 'threads_before')
+                    expected.insert(-1, 'threads_after')
+                self.assertEqual(relevant, expected)
+                result = json.loads((directory / 'result.json').read_text())['workloads']['short']
+                self.assertEqual(result['write_and_dsr_seconds'], 2)
+                self.assertEqual('thread_cpu' in result, enabled)
+
 
 class CellCalibrationTests(unittest.TestCase):
     def setUp(self):

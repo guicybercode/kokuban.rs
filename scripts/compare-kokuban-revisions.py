@@ -57,6 +57,8 @@ def parse_args(argv=None):
     parser.add_argument("--environment-note", default="")
     parser.add_argument("--allow-identical-binaries", action="store_true",
                         help="allow an intentional A/A variability control using the same executable")
+    parser.add_argument("--thread-cpu", action="store_true",
+                        help="observe per-thread proc CPU counters outside workload clocks")
     args = parser.parse_args(argv)
     if args.samples < 3 or args.bytes < 1024:
         parser.error("at least 3 pairs and at least 1024 bytes are required")
@@ -81,6 +83,7 @@ def initial_report(args) -> dict:
         "environment_note": args.environment_note,
         "binaries_identical": None,
         "allow_identical_binaries": args.allow_identical_binaries,
+        "thread_cpu_enabled": args.thread_cpu,
         "comparison_mode": "revision-comparison",
         "source_refs_verified_by_runner": False,
         "rendering_equivalence_verified": False,

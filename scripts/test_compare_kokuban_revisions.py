@@ -62,6 +62,7 @@ class PairedRevisionTests(unittest.TestCase):
 
     def test_defaults_and_invalid_arguments(self):
         args = RUNNER["parse_args"](self.argv)
+        self.assertFalse(args.thread_cpu)
         self.assertEqual((args.samples, args.bytes, args.timeout, args.settle_seconds),
                          (5, 32 * 1024 * 1024, 120, 1))
         self.assertEqual((args.backend, args.screen, args.columns, args.rows, args.font_pixels,
@@ -72,6 +73,17 @@ class PairedRevisionTests(unittest.TestCase):
                         ["--scrollback-lines", "-1"], ["--before-ref", " "]):
             with self.subTest(options=options), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 RUNNER["parse_args"]([*self.argv, *options])
+
+    def test_thread_cpu_opt_in_reaches_samples_and_report(self):
+        self.args = RUNNER['parse_args']([*self.argv, '--samples', '3', '--bytes', '1024', '--thread-cpu'])
+
+        def execute(*arguments):
+            self.assertTrue(arguments[-1].thread_cpu)
+            return self.sample(*arguments)
+
+        status, report = self.run_comparison(execute)
+        self.assertEqual(status, 0)
+        self.assertTrue(report['thread_cpu_enabled'])
 
     def test_alternates_pairs_and_reports_matched_ratios_and_provenance(self):
         status, report = self.run_comparison()

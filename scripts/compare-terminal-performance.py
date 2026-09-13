@@ -63,13 +63,98 @@ def command_observation(command: list[str]) -> dict:
         return {"command": command, "error": str(error)}
 
 
-def controlled_child(directory: Path) -> None:
+def parse_thread_stat(text: str, pid: int, tid: int) -> dict:
+    """Parse proc stat without splitting spaces or parentheses inside comm."""
+    opening, closing = text.find(" ("), text.rfind(")")
+    if opening <= 0 or closing <= opening or int(text[:opening]) != tid:
+        raise ValueError("thread stat TID/name prefix is invalid")
+    name = text[opening + 2:closing]
+    fields = text[closing + 1:].split()
+    if len(fields) < 20:
+        raise ValueError("thread stat is truncated")
+    user, system, start = (int(fields[index]) for index in (11, 12, 19))
+    if min(user, system, start) < 0:
+        raise ValueError("thread stat has negative counters")
+    return {"tid": tid, "name": name, "start_ticks": start, "user_ticks": user,
+            "system_ticks": system, "cpu_ticks": user + system,
+            "is_main_thread": tid == pid, "is_terminal_reader": name == "terminal-reader"}
+
+
+def thread_cpu_snapshot(pid: int, proc_root: Path = Path("/proc"), ticks_per_second=None) -> dict:
+    snapshot = {"pid": pid, "clock": "time.monotonic", "read_started_seconds": time.monotonic(),
+                "ticks_per_second": os.sysconf("SC_CLK_TCK") if ticks_per_second is None else ticks_per_second,
+                "enumeration_complete": False, "listed_tids": [], "threads": []}
+    try:
+        task = proc_root / str(pid) / "task"
+        tids = sorted(int(path.name) for path in task.iterdir() if path.name.isdecimal())
+        snapshot.update(enumeration_complete=True, listed_tids=tids)
+        for tid in tids:
+            row = {"tid": tid, "read_started_seconds": time.monotonic()}
+            try:
+                row["stat"] = (task / str(tid) / "stat").read_text()
+                row.update(parse_thread_stat(row["stat"], pid, tid), status="read")
+            except (OSError, ValueError) as error:
+                row.update(status="unavailable", error=f"{type(error).__name__}: {error}")
+            row["read_finished_seconds"] = time.monotonic()
+            snapshot["threads"].append(row)
+    except OSError as error:
+        snapshot["enumeration_error"] = f"{type(error).__name__}: {error}"
+    snapshot["read_finished_seconds"] = time.monotonic()
+    snapshot["status"] = ("complete" if snapshot["enumeration_complete"] and snapshot["threads"]
+                          and all(row["status"] == "read" for row in snapshot["threads"]) else "partial")
+    return snapshot
+
+
+def thread_cpu_deltas(before: dict, after: dict) -> dict:
+    """Only identical readable TID/start-time pairs receive CPU deltas."""
+    first = {row["tid"]: row for row in before["threads"]}
+    last = {row["tid"]: row for row in after["threads"]}
+    rows = []
+    for tid in sorted(set(first) | set(last)):
+        old, new = first.get(tid), last.get(tid)
+        row = {"tid": tid, "status": "unavailable", "cpu_ticks_delta": None, "cpu_seconds_delta": None}
+        if old is not None and new is not None and old["status"] == new["status"] == "read":
+            row.update(before_name=old["name"], after_name=new["name"],
+                       before_start_ticks=old["start_ticks"], after_start_ticks=new["start_ticks"],
+                       is_main_thread=old["is_main_thread"],
+                       terminal_reader_before=old["is_terminal_reader"], terminal_reader_after=new["is_terminal_reader"])
+            if before["pid"] != after["pid"] or old["start_ticks"] != new["start_ticks"]:
+                row["status"] = "identity_changed"
+            elif before["ticks_per_second"] != after["ticks_per_second"] or before["ticks_per_second"] <= 0:
+                row["status"] = "clock_ticks_changed"
+            elif new["user_ticks"] < old["user_ticks"] or new["system_ticks"] < old["system_ticks"]:
+                row["status"] = "counter_regressed"
+            else:
+                delta = new["cpu_ticks"] - old["cpu_ticks"]
+                row.update(status="matched", cpu_ticks_delta=delta,
+                           cpu_seconds_delta=delta / before["ticks_per_second"],
+                           user_ticks_delta=new["user_ticks"] - old["user_ticks"],
+                           system_ticks_delta=new["system_ticks"] - old["system_ticks"],
+                           read_window_seconds={"minimum": new["read_started_seconds"] - old["read_finished_seconds"],
+                                                "maximum": new["read_finished_seconds"] - old["read_started_seconds"]})
+        elif old is None and before["enumeration_complete"] and new["status"] == "read":
+            row.update(status="newly_observed", after_name=new["name"], after_start_ticks=new["start_ticks"])
+        elif new is None and after["enumeration_complete"] and old["status"] == "read":
+            row.update(status="disappeared", before_name=old["name"], before_start_ticks=old["start_ticks"])
+        rows.append(row)
+    return {"before": before, "after": after, "threads": rows,
+            "newly_observed_tids": [row["tid"] for row in rows if row["status"] == "newly_observed"],
+            "disappeared_tids": [row["tid"] for row in rows if row["status"] == "disappeared"],
+            "limits": ["Sequential proc reads are not atomic; each thread has its own read window.",
+                       "Thread snapshots surround the existing process CPU reads and write-to-DSR clock; observer overhead is outside that clock.",
+                       "Counters are quantized; a zero matched delta does not prove no work. Missing/new/reused threads have null deltas.",
+                       "Do not sum missing threads as zero or expect thread deltas to equal the process CPU delta."]}
+
+
+def controlled_child(directory: Path, thread_cpu: bool = False) -> None:
     record(directory, "child.json", process_stats(os.getpid()))
     original = termios.tcgetattr(0)
     try:
         tty.setraw(0)
         case = wait_for(lambda: json.loads((directory / "case.json").read_text())
                         if (directory / "case.json").exists() else None, "benchmark case")
+        if bool(case.get("thread_cpu", False)) != thread_cpu:
+            raise ValueError("thread CPU flag differs between driver argv and benchmark case")
         # Pre-load payloads before any measured interval.
         data = {name: Path(path).read_bytes() for name, path in case["payloads"].items()}
         time.sleep(case["settle_seconds"])
@@ -86,7 +171,7 @@ def controlled_child(directory: Path) -> None:
             if index >= 5:
                 rtts.append(elapsed)
         observations = {"initial_geometry": list(terminal_size()), "protocol_rtt_seconds": rtts,
-                        "workloads": {}, "term": os.environ.get("TERM")}
+                        "workloads": {}, "term": os.environ.get("TERM"), "thread_cpu_enabled": thread_cpu}
         for name, payload in data.items():
             # Warm the parser/font paths outside the timed sample, then clear.
             write_all(payload)
@@ -94,6 +179,8 @@ def controlled_child(directory: Path) -> None:
             write_all(b"\x1b[3J\x1b[2J\x1b[H")
             barrier(b"start")
             geometry_before = list(terminal_size())
+            if thread_cpu:
+                threads_before = thread_cpu_snapshot(case["terminal_pid"])
             cpu_before = process_stats(case["terminal_pid"])
             started = time.perf_counter()
             write_all(payload)
@@ -101,6 +188,8 @@ def controlled_child(directory: Path) -> None:
             reply = barrier(b"done")
             finished = time.perf_counter()
             cpu_after = process_stats(case["terminal_pid"])
+            if thread_cpu:
+                threads_after = thread_cpu_snapshot(case["terminal_pid"])
             observations["workloads"][name] = {
                 "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest(),
                 "write_seconds": written - started, "drain_rtt_seconds": finished - written,
@@ -112,6 +201,12 @@ def controlled_child(directory: Path) -> None:
                 "terminal_rss_before_kib": cpu_before["rss_kib"],
                 "terminal_rss_after_kib": cpu_after["rss_kib"],
             }
+            if thread_cpu:
+                diagnostic = thread_cpu_deltas(threads_before, threads_after)
+                diagnostic.update(process_cpu_before=cpu_before, process_cpu_after=cpu_after,
+                                  write_and_dsr_started_perf_counter=started,
+                                  write_and_dsr_finished_perf_counter=finished)
+                observations["workloads"][name]["thread_cpu"] = diagnostic
         record(directory, "result.json", observations)
         wait_for(lambda: (directory / "finish").exists(), "benchmark shutdown")
     except BaseException as error:
@@ -126,6 +221,8 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
     history = 0 if args.screen == "alternate" else args.scrollback_lines
     width_offset, height_offset = getattr(args, "cell_adjustments", {}).get(name, (0, 0))
     child = [sys.executable, str(Path(__file__).resolve()), "--child-dir", str(directory)]
+    if getattr(args, "thread_cpu", False):
+        child.append("--thread-cpu")
     # Kokuban's size is logical pixels, the other terminals use points. Convert
     # at 96 dpi; actual cells/pixels are still checked because DPI varies.
     point_size = args.font_pixels * 72 / 96
@@ -208,14 +305,15 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
     else:
         environment.pop("DISPLAY", None)
         environment.update(GDK_BACKEND="wayland", WINIT_UNIX_BACKEND="wayland")
-    sample = {"command": command, "config": configuration}
+    sample = {"command": command, "config": configuration, "thread_cpu_enabled": getattr(args, "thread_cpu", False)}
     process = None
     try:
         with (directory / "terminal.log").open("wb") as log:
             process = subprocess.Popen(command, cwd=directory, env=environment,
                                        stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         record(directory, "case.json", {"payloads": payload_paths, "screen": args.screen,
-                                        "terminal_pid": process.pid, "settle_seconds": args.settle_seconds})
+                                        "terminal_pid": process.pid, "settle_seconds": args.settle_seconds,
+                                        "thread_cpu": getattr(args, "thread_cpu", False)})
 
         def observe():
             error = directory / "child-error.json"
@@ -419,9 +517,10 @@ def main(argv=None) -> int:
     parser.add_argument("--settle-seconds", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--environment-note", default="", help="GPU/compositor/display details for this run")
+    parser.add_argument("--thread-cpu", action="store_true", help="observe per-thread proc CPU counters outside workload clocks")
     args = parser.parse_args(argv)
     if args.child_dir:
-        controlled_child(args.child_dir)
+        controlled_child(args.child_dir, args.thread_cpu)
         return 0
     if not sys.platform.startswith("linux"):
         parser.error("the benchmark runner requires Linux")
@@ -448,6 +547,7 @@ def main(argv=None) -> int:
               "platform": platform.platform(), "machine": platform.machine(), "cpu_count": os.cpu_count(),
               "cpu_affinity": sorted(os.sched_getaffinity(0)),
               "environment_note": args.environment_note,
+              "thread_cpu_enabled": args.thread_cpu,
               "hardware": command_observation(["lscpu"]),
               "font_match": command_observation(["fc-match", "-f", "%{family}\n%{file}\n", FONT]),
               "python": sys.version, "backend": args.backend, "screen": args.screen,
