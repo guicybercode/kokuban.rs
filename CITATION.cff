@@ -8,7 +8,7 @@ authors:
     website: "https://github.com/guicybercode/kokuban.rs/graphs/contributors"
 repository-code: "https://github.com/guicybercode/kokuban.rs"
 url: "https://github.com/guicybercode/kokuban.rs"
-version: 0.2.0
+version: 0.3.0
 license: BSD-4-Clause
 date-released: "2026-09-13"
 keywords:

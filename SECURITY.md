@@ -4,7 +4,7 @@
 
 | Version | Security fixes |
 | --- | --- |
-| Latest 0.2.x release | Supported on a best-effort basis |
+| Latest 0.3.x release | Supported on a best-effort basis |
 | `main` | Development fixes; unreleased changes may be unstable |
 | Older releases and experimental branches | No separate maintenance commitment |
 
@@ -31,7 +31,7 @@ Relevant reports include memory-safety issues, escape-sequence/parser flaws, uns
 
 Kokuban runs the selected shell and its commands with your account's permissions. It is not a sandbox for those commands or for remote terminal output. Graphics and fonts also use dependencies and native system libraries, whose licenses and updates remain separate from the [project license](LICENSE).
 
-In v0.2, configuration is loaded at startup in this order:
+In v0.3, configuration is loaded at startup in this order:
 
 1. `kokuban.toml` in the launch directory.
 2. `$XDG_CONFIG_HOME/kokuban/kokuban.toml` when `XDG_CONFIG_HOME` is an absolute path; otherwise `$HOME/.config/kokuban/kokuban.toml` when `HOME` is an absolute path.
