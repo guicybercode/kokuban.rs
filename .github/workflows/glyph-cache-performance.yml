@@ -16,6 +16,16 @@ on:
         type: choice
         options: [revisions, same-binary]
         default: revisions
+      iterations:
+        description: Timed iterations per workload (integer 1..100000)
+        type: number
+        required: true
+        default: 1000
+      warmup:
+        description: Warmup iterations per workload (integer 1..100000)
+        type: number
+        required: true
+        default: 100
 
 permissions:
   contents: read
@@ -38,8 +48,21 @@ jobs:
       BEFORE_REF: ${{ inputs.before }}
       AFTER_REF: ${{ inputs.after }}
       COMPARISON: ${{ inputs.comparison }}
+      LOOKUP_ITERATIONS: ${{ inputs.iterations }}
+      LOOKUP_WARMUP: ${{ inputs.warmup }}
 
     steps:
+      - name: Validate lookup duration inputs
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import os
+          for name in ('LOOKUP_ITERATIONS', 'LOOKUP_WARMUP'):
+              raw = os.environ[name]
+              if not raw.isascii() or not raw.isdecimal() or not 1 <= int(raw) <= 100000:
+                  raise SystemExit(f'{name} must be an integer in 1..100000')
+          PY
+
       - name: Check out common fixture and source history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -188,7 +211,8 @@ jobs:
             --before-messages "$evidence_directory/before-cargo-messages.jsonl" \
             --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
             --injection "$evidence_directory/injection/injection.json" \
-            --output "$evidence_directory/measurements" --pairs 6 --iterations 1000 --warmup 100 --timeout 180 \
+            --output "$evidence_directory/measurements" --pairs 6 \
+            --iterations "$LOOKUP_ITERATIONS" --warmup "$LOOKUP_WARMUP" --timeout 180 \
             "${measure_options[@]}"
 
       - name: Hash retained evidence
