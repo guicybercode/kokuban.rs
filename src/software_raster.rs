@@ -318,6 +318,7 @@ mod tests {
             pixel_h,
             bearing_x: 0,
             bearing_y: 0,
+            color: false,
         }
     }
 
