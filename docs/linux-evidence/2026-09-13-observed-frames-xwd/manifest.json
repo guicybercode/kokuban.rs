@@ -1,0 +1,31 @@
+{
+  "run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34745820606",
+  "source_revision": "55c48f4a9c21045f49a739cbcf45841096a7987a",
+  "harness_revision": "e11085f01c22cd302a367a400d802cc85c35e091",
+  "original_report_sha256": "e2e8b2a5b564aa1f86e3c443a01d46573d9da9a7194c3d8a60e4e582545fbd69",
+  "files_sha256": {
+    "all-system-packages.txt": "86f3a3375874163a198d23dfefaf37fcdd5cbd98280df1049c9716a379027fd6",
+    "cpu.txt": "d53395eb22c253f3a0299c1dbdbdd80d7487a420a47f2f957b93828db88909cc",
+    "display.txt": "b95c8d7a5156d0a91769a59c12f984c5061528e50f8a9ef9c2698e8029b3da59",
+    "font-fallbacks.txt": "cda15b1493d10cf0c4c11db5f98b7caf86dfd2f815fb16f7baca5c92a3c7cc08",
+    "font-files-sha256.txt": "a5e7675b2008b2469aa3291f8dd1cb4d1d3a1fdc6f6e74572c8d1536f058f2af",
+    "harness-revision.txt": "454beef986cda76795fa9cfffea7929b8603fd2fab9bfe52f9c16fa1ca6cefba",
+    "harness-sha256.txt": "7c1c44e1e8be4a58adccf4d7e4933d5f2791613f91929f35b8be61e85375940c",
+    "image-reference.txt": "c403078b8708b254fdc047bfaf2df093f0153e4b75b365c369aa802e24bc87d0",
+    "independent-frame-latency-audit.json": "1ac7d6134c9e8cfce7165147193a99c326e46a4e9b16a59e6f2fa23274d7166d",
+    "kokuban-binary-sha256.txt": "00cecc18ea47fb861b2ccfcfc0acf9a45457c6009870b9ebc383e79de427e51b",
+    "renderer.txt": "d58f8b583950ed51dcf146f6bce81189828639ba179820b2e7ebe6adb78ab84d",
+    "report.json": "e2e8b2a5b564aa1f86e3c443a01d46573d9da9a7194c3d8a60e4e582545fbd69",
+    "rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "selected-snapshots.tar.gz": "afbd8acab6d7f2b4d42a2f5b18284143aff176c571a0af27a1c65efd69366f1b",
+    "source-revision.txt": "3d60ee7862c5b2a086dbe20f3235c957016049359b10d857a7f807f6c538b290",
+    "source-tree.txt": "d743beb5af66a6ffbc8c218af027614aa4d6bc1d42acad5943c417f555f1579e"
+  },
+  "notes": [
+    "report.json is byte-for-byte identical to the official artifact.",
+    "Audit describes checks over the complete downloaded artifact; this durable package retains the report, selected provenance and all 36 selected XWD snapshots.",
+    "Executable and font bytes were not retained by the original workflow.",
+    "Snapshots are losslessly packed with normalized archive metadata.",
+    "Intermediate captures were not retained as bitmap files by the original workflow."
+  ]
+}
