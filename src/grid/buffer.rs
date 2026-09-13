@@ -206,7 +206,21 @@ impl Buffer {
         if suffix < self.cols && self.cells[start + self.cols - 1] == super::DEFAULT_CELL {
             // The buffer already knows this entire suffix is default. Avoid
             // allocating and cloning it merely to move a short line offscreen.
-            return super::history::HistoryRow::from_prefix(self.cells[start..start + suffix].to_vec(), self.cols);
+            let prefix = &self.cells[start..start + suffix];
+            let cells = if prefix.iter().all(|cell| cell.grapheme.is_none()) {
+                prefix.iter().map(|cell| Cell {
+                    c: cell.c,
+                    grapheme: None,
+                    fg: cell.fg,
+                    bg: cell.bg,
+                    flags: cell.flags,
+                    underline_style: cell.underline_style,
+                    underline_color: cell.underline_color,
+                }).collect()
+            } else {
+                prefix.to_vec()
+            };
+            return super::history::HistoryRow::from_prefix(cells, self.cols);
         }
         // Unknown or styled suffixes keep the existing complete-row extraction.
         super::history::HistoryRow::from_prefix(self.extract_row(row), self.cols)
@@ -476,6 +490,44 @@ mod tests {
         assert_eq!(retained.strong_count(), 1);
         drop(extracted);
         assert!(retained.upgrade().is_none());
+    }
+
+    #[test]
+    fn history_prefixes_preserve_scalar_styles_and_compound_owners() {
+        for text in [None, Some("e\u{301}".to_owned()), Some(format!("e{}", "\u{301}".repeat(7)))] {
+            let mut buffer = Buffer::new(8, 1);
+            let style = Cell {
+                c: '日', fg: Color::Rgb(1, 2, 3), bg: Color::Indexed(4),
+                flags: CellFlags::WIDE | CellFlags::ITALIC,
+                underline_style: UnderlineStyle::Curly, underline_color: Color::Indexed(5),
+                ..Cell::default()
+            };
+            let prefix = [
+                style.clone(),
+                Cell { c: ' ', flags: CellFlags::WIDE_CONT, ..style.clone() },
+                Cell { c: 'e', grapheme: text.map(Grapheme::from), ..style.clone() },
+                Cell { c: ' ', ..style },
+            ];
+            buffer.row_range_mut(0, 0..prefix.len()).clone_from_slice(&prefix);
+            buffer.set_row_metadata(0, RowMetadata { len: 4, wrapped: true });
+            let owner = buffer.cell(0, 2).grapheme.as_ref().and_then(Grapheme::heap_weak);
+            let history = buffer.extract_history_row(0);
+            assert_eq!(history.len(), 8);
+            assert_eq!(history.materialized_len(), prefix.len());
+            for (col, cell) in prefix.iter().enumerate() {
+                assert_eq!(history.get(col), Some(cell));
+            }
+            for col in prefix.len()..8 { assert_eq!(history.get(col), Some(&Cell::default())); }
+            let metadata = buffer.row_metadata(0);
+            assert_eq!((metadata.len, metadata.wrapped), (4, true));
+            buffer.clear_row(0, Cell::default());
+            drop(prefix);
+            if let Some(owner) = owner {
+                assert_eq!(owner.strong_count(), 1);
+                drop(history);
+                assert!(owner.upgrade().is_none());
+            }
+        }
     }
 
     #[test]
