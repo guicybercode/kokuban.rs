@@ -16,20 +16,21 @@ The runner injects one identical ignored Rust test into fresh Git source
 archives. It builds release test executables in separate, new Cargo targets,
 then runs six process pairs alternating AB/BA. `same-binary` builds once and
 executes the same path and SHA-256 under both labels. Each process populates
-the cache and warms every workload before timing. Glyph counts, ordered entry
+the cache and warms every workload before timing. Inputs and returned glyph
+entries pass through `black_box`. Glyph counts, ordered entry
 fingerprints and complete atlas-buffer fingerprints must remain equal; checks
 and font loading occur outside the timer.
 
 Dispatch from the repository with GitHub CLI:
 
 ```sh
-gh workflow run glyph-cache-performance.yml --ref perf/glyph-cache-controls \
+gh workflow run glyph-cache-performance.yml --ref main \
   -f comparison=revisions \
   -f before=b6cd9ad8b1204a4cb67587ecb042bd5cb8986266 \
   -f after=ddccc9bc4146629c34c089486d56897b0b3e3515 \
   -f iterations=10000 -f warmup=1000
 
-gh workflow run glyph-cache-performance.yml --ref perf/glyph-cache-controls \
+gh workflow run glyph-cache-performance.yml --ref main \
   -f comparison=same-binary \
   -f before=b6cd9ad8b1204a4cb67587ecb042bd5cb8986266 \
   -f iterations=10000 -f warmup=1000
