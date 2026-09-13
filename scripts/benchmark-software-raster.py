@@ -11,7 +11,12 @@ Untimed correctness tests are also needed because repeated blending converges.
 """
 
 import argparse
+from contextlib import nullcontext
+from datetime import datetime, timezone
+import hashlib
+import json
 from pathlib import Path
+import platform
 import subprocess
 import tempfile
 
@@ -97,31 +102,98 @@ def positive_integer(value: str) -> int:
     return number
 
 
+def resolve_revision(root: Path, reference: str) -> str:
+    """Resolve a trusted local reference before using it in git show."""
+    return subprocess.check_output(
+        ["git", "rev-parse", "--verify", "--end-of-options", f"{reference}^{{commit}}"],
+        cwd=root, text=True,
+    ).strip()
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def artifact_directory(value: str) -> Path:
+    directory = Path(value).expanduser().resolve()
+    if directory.exists() and (not directory.is_dir() or any(directory.iterdir())):
+        raise argparse.ArgumentTypeError("artifacts directory must be absent or empty")
+    return directory
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", required=True, help="trusted local Git revision")
+    parser.add_argument("--candidate", help="trusted local Git revision; default: working tree")
+    parser.add_argument("--artifacts-dir", type=artifact_directory,
+                        help="preserve sources, harness, binary, logs and provenance here")
     parser.add_argument("--samples", type=positive_integer, default=5)
     parser.add_argument("--frames", type=positive_integer, default=100)
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
-    revision = subprocess.check_output(
-        ["git", "rev-parse", "--verify", "--end-of-options", f"{args.baseline}^{{commit}}"],
-        cwd=root, text=True,
-    ).strip()
+    revision = resolve_revision(root, args.baseline)
+    candidate_revision = resolve_revision(root, args.candidate) if args.candidate else None
     baseline = subprocess.check_output(
         ["git", "show", f"{revision}:src/software_raster.rs"], cwd=root,
     )
-    print(f"baseline={revision}; candidate=working-tree", flush=True)
-    subprocess.run(["rustc", "--version", "--verbose"], check=True)
-    with tempfile.TemporaryDirectory(prefix="kokuban-raster-bench-") as temporary:
+    candidate = (subprocess.check_output(
+        ["git", "show", f"{candidate_revision}:src/software_raster.rs"], cwd=root,
+    ) if candidate_revision else (root / "src/software_raster.rs").read_bytes())
+    rustc_version = subprocess.check_output(["rustc", "--version", "--verbose"], text=True)
+    print(f"baseline={revision}; candidate={candidate_revision or 'working-tree'}", flush=True)
+    print(rustc_version, end="", flush=True)
+    context = (nullcontext(args.artifacts_dir) if args.artifacts_dir else
+               tempfile.TemporaryDirectory(prefix="kokuban-raster-bench-"))
+    with context as temporary:
         directory = Path(temporary)
+        directory.mkdir(parents=True, exist_ok=True)
         (directory / "before.rs").write_bytes(baseline)
-        (directory / "after.rs").write_bytes((root / "src/software_raster.rs").read_bytes())
+        (directory / "after.rs").write_bytes(candidate)
         (directory / "main.rs").write_text(HARNESS, encoding="utf-8")
         executable = directory / "benchmark"
-        subprocess.run(["rustc", "--edition=2021", "-O", str(directory / "main.rs"),
-                        "-o", str(executable)], check=True)
-        subprocess.run([str(executable), str(args.samples), str(args.frames)], check=True)
+        compile_command = ["rustc", "--edition=2021", "-O", "main.rs", "-o", "benchmark"]
+        run_command = [str(executable), str(args.samples), str(args.frames)]
+        provenance = {
+            "schema_version": 1,
+            "started_at_utc": datetime.now(timezone.utc).isoformat(),
+            "baseline": {"requested_ref": args.baseline, "revision": revision},
+            "candidate": {"requested_ref": args.candidate, "revision": candidate_revision,
+                          "source": "git" if candidate_revision else "working-tree"},
+            "driver_revision": resolve_revision(root, "HEAD"),
+            "source_files_identical": baseline == candidate,
+            "comparison_mode": "same-source-control" if baseline == candidate else "different-sources",
+            "rustc_version": rustc_version,
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "compile_command": compile_command,
+            "run_command": run_command,
+            "configuration": {"samples": args.samples, "frames": args.frames},
+            "sha256": {name: sha256((directory / name).read_bytes())
+                       for name in ("before.rs", "after.rs", "main.rs")},
+            "driver_sha256": sha256(Path(__file__).read_bytes()),
+            "status": "prepared",
+        }
+        result_file = directory / "results.json"
+        result_file.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+        try:
+            compiled = subprocess.run(compile_command, cwd=directory, capture_output=True, text=True)
+            (directory / "compile.stdout.log").write_text(compiled.stdout, encoding="utf-8")
+            (directory / "compile.stderr.log").write_text(compiled.stderr, encoding="utf-8")
+            compiled.check_returncode()
+            provenance["sha256"]["benchmark"] = sha256(executable.read_bytes())
+            measured = subprocess.run(run_command, capture_output=True, text=True)
+            (directory / "benchmark.stdout.log").write_text(measured.stdout, encoding="utf-8")
+            (directory / "benchmark.stderr.log").write_text(measured.stderr, encoding="utf-8")
+            print(measured.stdout, end="", flush=True)
+            measured.check_returncode()
+            provenance["status"] = "complete"
+        except subprocess.CalledProcessError as error:
+            provenance["status"] = "failed"
+            provenance["error"] = str(error)
+            print(error.stderr or "", end="", flush=True)
+            raise
+        finally:
+            result_file.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
