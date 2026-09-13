@@ -15,6 +15,9 @@ registra a comparação direta, o custo em Unicode x86 e uma alternativa rejeita
 com evidência compacta verificável sem executar os benchmarks.
 O [pacote do observador Xlib](linux-evidence/2026-09-13-observed-frames-xlib/README.md)
 preserva outra medição X11; hardware e método diferem do ensaio com XWD.
+As [consultas ao cache de glifos](GLYPH_CACHE_MEASUREMENTS.md) têm controles
+pareados em Linux e macOS. O [registro de recursos da integração](linux-evidence/2026-09-13-release-resources/README.md)
+preserva CPU, RSS, saída PTY e vídeo de uma build em release, sem comparação causal.
 
 Para comparar duas revisões no mesmo runner Linux, use o workflow manual
 `Linux paired revision measurements`:
