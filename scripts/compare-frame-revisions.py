@@ -3,7 +3,9 @@
 font rasterization, compositor presentation and input-to-photon latency.
 
 prepare injects the identical final ignored benchmark into archived revisions.
-measure consumes fresh, separate Cargo release test builds and retains pixels.
+revisions compares full applications; raster-only compares one common application
+with two raster kernels; same-binary measures variability with one build/path.
+measure consumes fresh Cargo release test builds and retains pixels.
 """
 
 import argparse
@@ -24,6 +26,8 @@ CONTENTS = ("ascii", "ascii-after-emoji", "unicode")
 CHANGES = ("single-row", "full-screen")
 TEST = "linux_window::damage_tests::benchmark_frame_repaint"
 SOURCE = "src/linux_window.rs"
+RASTER_SOURCE = "src/software_raster.rs"
+COMPARISONS = ("revisions", "raster-only", "same-binary")
 MARKER = ('    #[test]\n'
           '    #[ignore = "CPU raster microbenchmark; run release on an idle Linux host with --nocapture"]\n'
           '    fn benchmark_frame_repaint() {\n')
@@ -90,12 +94,37 @@ def distinct_roots(paths):
     return resolved
 
 
+def source_manifest(root):
+    return {path.relative_to(root).as_posix(): sha(path)
+            for path in sorted(root.rglob("*")) if path.is_file()}
+
+
+def build_sides(comparison):
+    return ("before",) if comparison == "same-binary" else SIDES
+
+
 def prepare(args):
-    roots = dict(zip(SIDES, distinct_roots([args.before_source, args.after_source])))
+    comparison = args.comparison
+    sides = build_sides(comparison)
+    roots = dict(zip(sides, distinct_roots([getattr(args, side + "_source") for side in sides])))
     harness = (args.harness_source / SOURCE).resolve(strict=True)
     require(all(root not in harness.parents for root in roots.values()),
             "the harness checkout must be separate from both archived sources")
     _, benchmark = split_benchmark(harness.read_bytes())
+    original_manifests = {side: source_manifest(root) for side, root in roots.items()}
+    common = None
+    if comparison == "raster-only":
+        common_root = args.common_source.resolve(strict=True)
+        distinct_roots([*roots.values(), common_root])
+        common_manifest = source_manifest(common_root)
+        require(RASTER_SOURCE in common_manifest, "common application has no raster kernel")
+        for manifest in original_manifests.values():
+            require(manifest.keys() == common_manifest.keys() and
+                    all(value == common_manifest[name] for name, value in manifest.items()
+                        if name != RASTER_SOURCE),
+                    "raster-only sources differ from common application outside software_raster.rs")
+        common = {"root": str(common_root), "revision": args.common_ref,
+                  "manifest": common_manifest}
     prepared = {}
     for side, root in roots.items():
         original = (root / SOURCE).read_bytes()
@@ -103,7 +132,8 @@ def prepare(args):
         prepared[side] = (original, prefix + benchmark, prefix)
     args.output.mkdir(parents=True, exist_ok=False)
     (args.output / "benchmark.rs.txt").write_bytes(benchmark)
-    report = {"schema": 1, "benchmark_sha256": digest(benchmark),
+    report = {"schema": 2, "comparison": comparison, "common_source": common,
+              "benchmark_sha256": digest(benchmark),
               "harness_source": str(harness), "harness_source_sha256": sha(harness),
               "sources": {}}
     for side, root in roots.items():
@@ -113,9 +143,18 @@ def prepare(args):
         (evidence / "original-linux_window.rs").write_bytes(original)
         (evidence / "injected-linux_window.rs").write_bytes(injected)
         (root / SOURCE).write_bytes(injected)
+        manifest = source_manifest(root)
+        write_json(evidence / "original-source-manifest.json", original_manifests[side])
+        write_json(evidence / "prepared-source-manifest.json", manifest)
         report["sources"][side] = {"root": str(root), "original_sha256": digest(original),
                                    "injected_sha256": digest(injected), "preserved_prefix_sha256": digest(prefix),
+                                   "manifest": manifest,
                                    "cargo_sha256": {name: sha(root / name) for name in ("Cargo.toml", "Cargo.lock")}}
+    if comparison == "raster-only":
+        manifests = [report["sources"][side]["manifest"] for side in SIDES]
+        changed = [name for name in manifests[0] if manifests[0][name] != manifests[1][name]]
+        require(changed in ([], [RASTER_SOURCE]), "prepared raster-only sources contain unrelated differences")
+        report["changed_source_files"] = changed
     write_json(args.output / "injection.json", report)
 
 
@@ -232,7 +271,7 @@ def summarize(records, pairs):
 
 def measure(args):
     args.output.mkdir(parents=True, exist_ok=False)
-    report = {"schema": 1, "status": "initializing", "scope": __doc__,
+    report = {"schema": 2, "status": "initializing", "scope": __doc__, "comparison": args.comparison,
               "environment_note": args.environment_note, "platform": platform.platform(),
               "machine": platform.machine(), "started_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "runner_sha256": sha(__file__), "records": [], "execution_order": [],
@@ -246,13 +285,17 @@ def measure(args):
         require(len(affinity) == 1, "pin the runner to one CPU with taskset")
         report["cpu_affinity"] = affinity
         report["rustc"] = subprocess.check_output(["rustc", "--version", "--verbose"], text=True)
-        roots = distinct_roots([args.before_source, args.after_source, args.before_target, args.after_target])
-        sources = dict(zip(SIDES, roots[:2]))
-        targets = dict(zip(SIDES, roots[2:]))
+        sides = build_sides(args.comparison)
+        roots = distinct_roots([getattr(args, side + suffix) for suffix in ("_source", "_target")
+                                for side in sides])
+        sources = dict(zip(sides, roots[:len(sides)]))
+        targets = dict(zip(sides, roots[len(sides):]))
         injection = json.loads(args.injection.read_text())
+        require(injection["comparison"] == args.comparison, "comparison differs from source preparation")
+        require(set(injection["sources"]) == set(sides), "unexpected number of prepared builds")
         binaries = {}
         report["builds"] = {}
-        for side in SIDES:
+        for side in sides:
             source, target = sources[side], targets[side]
             provenance = injection["sources"][side]
             require(source == Path(provenance["root"]), "injection source root differs")
@@ -262,14 +305,25 @@ def measure(args):
                     digest(benchmark) == injection["benchmark_sha256"], "source changed since benchmark injection")
             require({name: sha(source / name) for name in ("Cargo.toml", "Cargo.lock")} == provenance["cargo_sha256"],
                     "Cargo files changed since source preparation")
+            require(source_manifest(source) == provenance["manifest"],
+                    "application source changed since preparation")
             messages = getattr(args, side + "_messages").resolve(strict=True)
             binary = test_artifact(source, target, messages)
             binaries[side] = binary
             report["builds"][side] = {"source": str(source), "target": str(target), "binary": str(binary),
                                       "binary_sha256": sha(binary), "cargo_messages_sha256": sha(messages),
-                                      "source_revision": getattr(args, side + "_ref"), **provenance}
-        require(report["builds"]["before"]["binary_sha256"] != report["builds"]["after"]["binary_sha256"],
-                "the two test binaries are identical")
+                                      "source_revision": (injection["common_source"]["revision"]
+                                                          if args.comparison == "raster-only"
+                                                          else getattr(args, side + "_ref")), **provenance}
+            if args.comparison == "raster-only":
+                report["builds"][side]["kernel_revision"] = getattr(args, side + "_ref")
+        if args.comparison == "same-binary":
+            binaries["after"] = binaries["before"]
+        else:
+            require(report["builds"]["before"]["binary_sha256"] != report["builds"]["after"]["binary_sha256"],
+                    "the two test binaries are identical; use same-binary for variability controls")
+        report["execution_binaries"] = {side: {"path": str(binary), "sha256": sha(binary)}
+                                        for side, binary in binaries.items()}
         report["injection_sha256"] = sha(args.injection)
         report["benchmark_sha256"] = injection["benchmark_sha256"]
         report["status"] = "running"
@@ -277,7 +331,8 @@ def measure(args):
         for pair in range(1, args.pairs + 1):
             for side in SIDES if pair % 2 else reversed(SIDES):
                 require(sorted(os.sched_getaffinity(0)) == affinity, "CPU affinity changed")
-                require(sha(binaries[side]) == report["builds"][side]["binary_sha256"], "binary changed during measurement")
+                require(sha(binaries[side]) == report["execution_binaries"][side]["sha256"],
+                        "binary changed during measurement")
                 environment = {k: v for k, v in os.environ.items() if not k.startswith("KOKUBAN_FRAME_")}
                 environment.update(KOKUBAN_FRAME_CONTENT="all", KOKUBAN_FRAME_CHANGE="all",
                                    KOKUBAN_FRAME_SAMPLES="1", KOKUBAN_FRAME_STEPS=str(args.steps),
@@ -324,14 +379,17 @@ def parse_args(argv=None):
     prepare_parser = commands.add_parser("prepare", help="inject the common final benchmark into archived sources")
     measure_parser = commands.add_parser("measure", help="measure separately built release test binaries")
     for command in (prepare_parser, measure_parser):
+        command.add_argument("--comparison", choices=COMPARISONS, default="revisions")
         command.add_argument("--before-source", type=Path, required=True)
-        command.add_argument("--after-source", type=Path, required=True)
+        command.add_argument("--after-source", type=Path)
         command.add_argument("--output", type=Path, required=True, help="new evidence directory")
     prepare_parser.add_argument("--harness-source", type=Path, required=True)
+    prepare_parser.add_argument("--common-source", type=Path, help="unmodified common application for raster-only")
+    prepare_parser.add_argument("--common-ref", help="exact common application commit for raster-only")
     for side in SIDES:
-        measure_parser.add_argument(f"--{side}-target", type=Path, required=True)
-        measure_parser.add_argument(f"--{side}-messages", type=Path, required=True)
-        measure_parser.add_argument(f"--{side}-ref", required=True)
+        measure_parser.add_argument(f"--{side}-target", type=Path, required=side == "before")
+        measure_parser.add_argument(f"--{side}-messages", type=Path, required=side == "before")
+        measure_parser.add_argument(f"--{side}-ref", required=side == "before")
     measure_parser.add_argument("--injection", type=Path, required=True)
     measure_parser.add_argument("--pairs", type=int, default=5)
     measure_parser.add_argument("--steps", type=int, default=300)
@@ -339,12 +397,25 @@ def parse_args(argv=None):
     measure_parser.add_argument("--timeout", type=float, default=180)
     measure_parser.add_argument("--environment-note", default="")
     args = parser.parse_args(argv)
+    after_fields = ["after_source"] + (["after_target", "after_messages", "after_ref"]
+                                        if args.command == "measure" else [])
+    if args.comparison == "same-binary":
+        if any(getattr(args, name) is not None for name in after_fields):
+            parser.error("same-binary uses only the before build; omit all --after-* arguments")
+    elif any(getattr(args, name) is None for name in after_fields):
+        parser.error("revisions and raster-only require all --after-* arguments")
+    if args.command == "prepare":
+        if args.comparison == "raster-only":
+            if args.common_source is None or not args.common_ref or not args.common_ref.strip():
+                parser.error("raster-only requires --common-source and --common-ref")
+        elif args.common_source is not None or args.common_ref is not None:
+            parser.error("--common-source and --common-ref are only valid for raster-only")
     if args.command == "measure":
         if not (1 <= args.pairs <= 20 and 1 <= args.steps <= 10000 and 1 <= args.warmup <= 10000):
             parser.error("pairs must be 1..20; steps and warmup must be 1..10000")
         if not math.isfinite(args.timeout) or args.timeout <= 0:
             parser.error("timeout must be positive and finite")
-        if not all(getattr(args, side + "_ref").strip() for side in SIDES):
+        if not all(getattr(args, side + "_ref").strip() for side in build_sides(args.comparison)):
             parser.error("source revision labels cannot be blank")
     return args
 
