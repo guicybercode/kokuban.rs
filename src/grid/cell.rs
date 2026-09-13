@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, fmt, ops::Deref, sync::Arc};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,10 +33,86 @@ pub enum UnderlineStyle {
     Dashed,
 }
 
+/// Immutable UTF-8 text for a compound cell. Short clusters need no allocation.
+/// The private representation keeps length-based storage and zeroed inline tails
+/// canonical, so derived equality is also textual equality.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Grapheme(GraphemeRepr);
+
+#[derive(Clone, PartialEq, Eq)]
+enum GraphemeRepr {
+    Inline {
+        len: u8,
+        bytes: [u8; Grapheme::INLINE_CAPACITY],
+    },
+    Heap(Arc<String>),
+}
+
+impl Grapheme {
+    pub(super) const INLINE_CAPACITY: usize = 14;
+
+    #[cfg(test)]
+    pub(crate) fn heap_weak(&self) -> Option<std::sync::Weak<String>> {
+        match &self.0 {
+            GraphemeRepr::Inline { .. } => None,
+            GraphemeRepr::Heap(text) => Some(Arc::downgrade(text)),
+        }
+    }
+}
+
+impl From<&str> for Grapheme {
+    fn from(text: &str) -> Self {
+        if text.len() <= Self::INLINE_CAPACITY {
+            let mut bytes = [0; Self::INLINE_CAPACITY];
+            bytes[..text.len()].copy_from_slice(text.as_bytes());
+            Self(GraphemeRepr::Inline {
+                len: text.len() as u8,
+                bytes,
+            })
+        } else {
+            Self(GraphemeRepr::Heap(Arc::new(text.to_owned())))
+        }
+    }
+}
+
+impl From<String> for Grapheme {
+    fn from(text: String) -> Self {
+        if text.len() <= Self::INLINE_CAPACITY {
+            Self::from(text.as_str())
+        } else {
+            Self(GraphemeRepr::Heap(Arc::new(text)))
+        }
+    }
+}
+
+impl Deref for Grapheme {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        match &self.0 {
+            GraphemeRepr::Inline { len, bytes } => std::str::from_utf8(&bytes[..usize::from(*len)])
+                .expect("inline graphemes are constructed from valid UTF-8"),
+            GraphemeRepr::Heap(text) => text,
+        }
+    }
+}
+
+impl AsRef<str> for Grapheme {
+    fn as_ref(&self) -> &str {
+        self
+    }
+}
+
+impl fmt::Debug for Grapheme {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self.as_ref(), formatter)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cell {
     pub c: char,
-    pub grapheme: Option<Arc<str>>,
+    pub grapheme: Option<Grapheme>,
     pub fg: Color,
     pub bg: Color,
     pub flags: CellFlags,
@@ -57,7 +133,8 @@ impl Cell {
         match self.grapheme.as_deref() {
             Some(text) => text.width(),
             None => self.c.width().unwrap_or(1),
-        }.clamp(1, 2)
+        }
+        .clamp(1, 2)
     }
 }
 
@@ -77,7 +154,74 @@ impl Default for Cell {
 
 #[cfg(test)]
 mod tests {
-    use super::CellFlags;
+    use super::{Cell, CellFlags, Grapheme, GraphemeRepr};
+
+    #[test]
+    fn grapheme_constructors_preserve_utf8_and_canonical_storage() {
+        let mut samples = vec![
+            String::new(),
+            "e\u{301}".into(),
+            "🇧🇷".into(),
+            "1\u{fe0f}\u{20e3}".into(),
+            "👩🏽‍💻".into(),
+            "a\0\u{301}".into(),
+        ];
+        for len in [13, 14, 15, 63, 64, 65, 8195] {
+            let mut text = String::from(if len % 2 == 0 { "é" } else { "e" });
+            text.push_str(&"\u{301}".repeat((len - text.len()) / 2));
+            assert_eq!(text.len(), len);
+            samples.push(text);
+        }
+        for text in samples {
+            let borrowed = Grapheme::from(text.as_str());
+            let owned = Grapheme::from(text.clone());
+            assert_eq!(borrowed, owned);
+            assert_eq!(borrowed.as_ref(), text);
+            assert_eq!(borrowed.as_bytes(), text.as_bytes());
+            assert_eq!(format!("{borrowed:?}"), format!("{text:?}"));
+            assert_eq!(borrowed.heap_weak().is_none(), text.len() <= 14);
+            if let GraphemeRepr::Inline { len, bytes } = &borrowed.0 {
+                assert_eq!(usize::from(*len), text.len());
+                assert!(bytes[text.len()..].iter().all(|&byte| byte == 0));
+            }
+        }
+        assert_ne!(Grapheme::from("e\u{301}"), Grapheme::from("e\u{308}"));
+        assert_ne!(Grapheme::from("e\u{301}"), Grapheme::from("e\u{301}\0"));
+    }
+
+    #[test]
+    fn grapheme_clones_keep_text_alive_and_take_ownership_of_long_strings() {
+        let text = "e\u{301}".to_owned();
+        let inline = Grapheme::from(text);
+        let cloned = inline.clone();
+        drop(inline);
+        assert_eq!(cloned.as_ref(), "e\u{301}");
+        assert!(cloned.heap_weak().is_none());
+
+        let long = format!("e{}", "\u{301}".repeat(7));
+        let string_bytes = long.as_ptr();
+        let heap = Grapheme::from(long);
+        assert_eq!(heap.as_ptr(), string_bytes);
+        let owner = heap.heap_weak().unwrap();
+        let cloned = heap.clone();
+        assert!(owner.ptr_eq(&cloned.heap_weak().unwrap()));
+        drop(heap);
+        assert_eq!(owner.strong_count(), 1);
+        assert_eq!(cloned.as_ref(), format!("e{}", "\u{301}".repeat(7)));
+        drop(cloned);
+        assert!(owner.upgrade().is_none());
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn inline_graphemes_keep_the_existing_cell_layout() {
+        use std::mem::size_of;
+        assert_eq!(size_of::<Grapheme>(), 16);
+        assert_eq!(size_of::<Option<Grapheme>>(), 16);
+        assert_eq!(size_of::<Cell>(), 40);
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Grapheme>();
+    }
 
     #[test]
     fn hidden_uses_the_last_unassigned_cell_flag_bit() {

@@ -1,5 +1,5 @@
 use super::{boundary_pages, CellFlags, CharSet, Color, Grid, UnderlineStyle};
-use std::sync::{Arc, Weak};
+use std::sync::Weak;
 
 fn assert_state(batched: &Grid, scalar: &Grid, context: &str) {
     // Debug includes every Grid field and Buffer's physical cells, row mapping,
@@ -138,41 +138,45 @@ fn utf8_spans_fall_back_for_insert_and_dec_special_modes() {
 
 #[test]
 fn utf8_spans_repair_wide_edges_preserve_styles_and_release_arcs() {
-    for col in 0..8 {
-        for text in ["λ", "λμνξοπ", "日本", "日本語", "λ日μ本ν"] {
-            let setup = || {
-                let mut grid = Grid::new(8, 3, 8);
-                grid.fg = Color::Indexed(3);
-                grid.bg = Color::Rgb(4, 5, 6);
-                grid.flags = CellFlags::ITALIC | CellFlags::HIDDEN;
-                grid.underline_style = UnderlineStyle::Curly;
-                grid.underline_color = Color::Indexed(7);
-                for c in "日\u{301}本\u{301}語\u{301}文\u{301}".chars() {
-                    grid.put_char(c);
+    for mark_count in [1, 7] {
+        for col in 0..8 {
+            for text in ["λ", "λμνξοπ", "日本", "日本語", "λ日μ本ν"] {
+                let setup = || {
+                    let mut grid = Grid::new(8, 3, 8);
+                    grid.fg = Color::Indexed(3);
+                    grid.bg = Color::Rgb(4, 5, 6);
+                    grid.flags = CellFlags::ITALIC | CellFlags::HIDDEN;
+                    grid.underline_style = UnderlineStyle::Curly;
+                    grid.underline_color = Color::Indexed(7);
+                    for c in "日本語文".chars() {
+                        grid.put_char(c);
+                        for _ in 0..mark_count { grid.put_char('\u{301}'); }
+                    }
+                    let arcs: Vec<Weak<String>> = (0..8)
+                        .filter_map(|col| grid.buffer.cell(0, col).grapheme.as_ref())
+                        .filter_map(|text| text.heap_weak())
+                        .collect();
+                    assert_eq!(arcs.len(), if mark_count == 1 { 0 } else { 4 });
+                    grid.set_cursor_pos(0, col);
+                    grid.fg = Color::Rgb(20, 30, 40);
+                    grid.bg = Color::Indexed(11);
+                    grid.flags = CellFlags::BOLD | CellFlags::REVERSE | CellFlags::WIDE_CONT;
+                    grid.underline_style = UnderlineStyle::Double;
+                    grid.underline_color = Color::Rgb(70, 80, 90);
+                    grid.clear_dirty();
+                    (grid, arcs)
+                };
+                let (mut batched, batched_arcs) = setup();
+                let (mut scalar, scalar_arcs) = setup();
+                write_pair(&mut batched, &mut scalar, text);
+                for (batched_arc, scalar_arc) in batched_arcs.iter().zip(&scalar_arcs) {
+                    assert_eq!(batched_arc.strong_count(), scalar_arc.strong_count());
                 }
-                let arcs: Vec<Weak<str>> = (0..8)
-                    .filter_map(|col| grid.buffer.cell(0, col).grapheme.as_ref())
-                    .map(Arc::downgrade)
-                    .collect();
-                grid.set_cursor_pos(0, col);
-                grid.fg = Color::Rgb(20, 30, 40);
-                grid.bg = Color::Indexed(11);
-                grid.flags = CellFlags::BOLD | CellFlags::REVERSE | CellFlags::WIDE_CONT;
-                grid.underline_style = UnderlineStyle::Double;
-                grid.underline_color = Color::Rgb(70, 80, 90);
-                grid.clear_dirty();
-                (grid, arcs)
-            };
-            let (mut batched, batched_arcs) = setup();
-            let (mut scalar, scalar_arcs) = setup();
-            write_pair(&mut batched, &mut scalar, text);
-            for (batched_arc, scalar_arc) in batched_arcs.iter().zip(&scalar_arcs) {
-                assert_eq!(batched_arc.strong_count(), scalar_arc.strong_count());
-            }
-            if col == 1 && text == "λμνξοπ" {
-                assert!(batched_arcs.iter().all(|arc| arc.upgrade().is_none()));
-                assert_eq!(batched.buffer.cell(0, 0).c, ' ');
-                assert_eq!(batched.buffer.cell(0, 7).c, ' ');
+                if col == 1 && text == "λμνξοπ" {
+                    assert!(batched_arcs.iter().all(|arc| arc.upgrade().is_none()));
+                    assert_eq!(batched.buffer.cell(0, 0).c, ' ');
+                    assert_eq!(batched.buffer.cell(0, 7).c, ' ');
+                }
             }
         }
     }
@@ -291,38 +295,41 @@ fn mixed_utf8_spans_preserve_prepend_near_staging_and_row_boundaries() {
 
 #[test]
 fn mixed_utf8_spans_repair_wide_pairs_and_release_arcs_at_staging_edges() {
-    for col in [0, 1, 63, 64, 65] {
-        let setup = || {
-            let mut grid = Grid::new(200, 2, 8);
-            grid.fg = Color::Indexed(3);
-            grid.flags = CellFlags::ITALIC;
-            for _ in 0..100 {
-                grid.put_char('日');
-                grid.put_char('\u{301}');
-            }
-            let arcs: Vec<Weak<str>> = (0..200)
-                .filter_map(|col| grid.buffer.cell(0, col).grapheme.as_ref())
-                .map(Arc::downgrade)
+    for mark_count in [1, 7] {
+        for col in [0, 1, 63, 64, 65] {
+            let setup = || {
+                let mut grid = Grid::new(200, 2, 8);
+                grid.fg = Color::Indexed(3);
+                grid.flags = CellFlags::ITALIC;
+                for _ in 0..100 {
+                    grid.put_char('日');
+                    for _ in 0..mark_count { grid.put_char('\u{301}'); }
+                }
+                let arcs: Vec<Weak<String>> = (0..200)
+                    .filter_map(|col| grid.buffer.cell(0, col).grapheme.as_ref())
+                    .filter_map(|text| text.heap_weak())
+                    .collect();
+                assert_eq!(arcs.len(), if mark_count == 1 { 0 } else { 100 });
+                grid.set_cursor_pos(0, col);
+                grid.fg = Color::Rgb(4, 5, 6);
+                grid.bg = Color::Indexed(7);
+                grid.flags = CellFlags::BOLD | CellFlags::UNDERLINE;
+                grid.underline_style = UnderlineStyle::Curly;
+                grid.underline_color = Color::Rgb(8, 9, 10);
+                grid.clear_dirty();
+                (grid, arcs)
+            };
+            let (mut batched, batched_arcs) = setup();
+            let (mut scalar, scalar_arcs) = setup();
+            let text: String = ['日', 'a', 'b', '本', 'λ']
+                .into_iter()
+                .cycle()
+                .take(129)
                 .collect();
-            grid.set_cursor_pos(0, col);
-            grid.fg = Color::Rgb(4, 5, 6);
-            grid.bg = Color::Indexed(7);
-            grid.flags = CellFlags::BOLD | CellFlags::UNDERLINE;
-            grid.underline_style = UnderlineStyle::Curly;
-            grid.underline_color = Color::Rgb(8, 9, 10);
-            grid.clear_dirty();
-            (grid, arcs)
-        };
-        let (mut batched, batched_arcs) = setup();
-        let (mut scalar, scalar_arcs) = setup();
-        let text: String = ['日', 'a', 'b', '本', 'λ']
-            .into_iter()
-            .cycle()
-            .take(129)
-            .collect();
-        write_pair(&mut batched, &mut scalar, &text);
-        for (batched_arc, scalar_arc) in batched_arcs.iter().zip(&scalar_arcs) {
-            assert_eq!(batched_arc.strong_count(), scalar_arc.strong_count());
+            write_pair(&mut batched, &mut scalar, &text);
+            for (batched_arc, scalar_arc) in batched_arcs.iter().zip(&scalar_arcs) {
+                assert_eq!(batched_arc.strong_count(), scalar_arc.strong_count());
+            }
         }
     }
 }

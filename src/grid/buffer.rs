@@ -234,7 +234,7 @@ impl Buffer {
 #[cfg(test)]
 mod tests {
     use super::{Buffer, RowMetadata};
-    use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
+    use crate::grid::cell::{Cell, CellFlags, Color, Grapheme, UnderlineStyle};
 
     #[test]
     fn whole_screen_scrolls_wrap_without_rotating_row_vectors() {
@@ -351,8 +351,8 @@ mod tests {
         let mut buffer = Buffer::new(4, 3);
         let mut owners = Vec::new();
         for row in 0..3 {
-            let text: std::sync::Arc<str> = format!("e{}", char::from_u32(0x300 + row as u32).unwrap()).into();
-            owners.push(std::sync::Arc::downgrade(&text));
+            let text: Grapheme = format!("e{}", char::from_u32(0x300 + row as u32).unwrap().to_string().repeat(7)).into();
+            owners.push(text.heap_weak().unwrap());
             *buffer.cell_mut(row, 0) = Cell { c: 'e', grapheme: Some(text), ..Cell::default() };
         }
         buffer.scroll_up(0, 2, 1, Cell::default());
@@ -365,6 +365,27 @@ mod tests {
         assert_eq!(owners[1].strong_count(), 1);
         drop(snapshot);
         assert!(owners[1].upgrade().is_none());
+    }
+
+    #[test]
+    fn inline_grapheme_snapshots_survive_scroll_overwrite_and_clear() {
+        let mut buffer = Buffer::new(4, 3);
+        for (row, text) in ["e\u{301}", "🇧🇷", "1\u{fe0f}\u{20e3}"].into_iter().enumerate() {
+            let grapheme: Grapheme = text.into();
+            assert!(grapheme.heap_weak().is_none());
+            *buffer.cell_mut(row, 0) = Cell {
+                c: text.chars().next().unwrap(), grapheme: Some(grapheme), ..Cell::default()
+            };
+        }
+        buffer.scroll_up(0, 2, 1, Cell::default());
+        let snapshot = buffer.extract_row(0);
+        buffer.scroll_down(0, 2, 2, Cell::default());
+        assert_eq!(buffer.cell(2, 0).text(), "🇧🇷");
+        buffer.cell_mut(2, 0).grapheme = Some("e\u{308}".into());
+        buffer.clear_row(2, Cell::default());
+        drop(buffer);
+        assert_eq!(snapshot[0].text(), "🇧🇷");
+        assert!(snapshot[1..].iter().all(|cell| cell == &Cell::default()));
     }
 
     #[test]
@@ -389,8 +410,8 @@ mod tests {
     #[test]
     fn partial_writes_keep_blank_suffixes_and_release_erased_graphemes() {
         let mut buffer = Buffer::new(12, 2);
-        let text: std::sync::Arc<str> = "e\u{301}".into();
-        let erased = std::sync::Arc::downgrade(&text);
+        let text: Grapheme = format!("e{}", "\u{301}".repeat(7)).into();
+        let erased = text.heap_weak().unwrap();
         *buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(text), ..Cell::default() };
         buffer.row_range_mut(0, 1..3).fill(Cell { c: 'x', ..Cell::default() });
         buffer.mark_written(0, 5); // Printed spaces remain retained content.
@@ -437,13 +458,13 @@ mod tests {
             ..Cell::default()
         };
         buffer.clear_row(0, template.clone());
-        let text: std::sync::Arc<str> = "e\u{301}".into();
-        let retained = std::sync::Arc::downgrade(&text);
+        let text: Grapheme = format!("e{}", "\u{301}".repeat(7)).into();
+        let retained = text.heap_weak().unwrap();
         *buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(text), ..template.clone() };
         let extracted = buffer.extract_row(0);
         buffer.clear_row(0, Cell::default());
         assert_eq!(extracted.len(), 8);
-        assert_eq!(extracted[0].text(), "e\u{301}");
+        assert_eq!(extracted[0].text(), format!("e{}", "\u{301}".repeat(7)));
         assert!(extracted[1..].iter().all(|cell| cell == &template));
         assert_eq!(retained.strong_count(), 1);
         drop(extracted);
@@ -453,9 +474,11 @@ mod tests {
     #[test]
     fn extracting_compound_suffixes_preserves_each_arc_owner() {
         let mut buffer = Buffer::new(3, 1);
-        let first: std::sync::Arc<str> = "e\u{301}".into();
-        let second: std::sync::Arc<str> = "e\u{301}".into();
-        assert!(!std::sync::Arc::ptr_eq(&first, &second));
+        let first: Grapheme = format!("e{}", "\u{301}".repeat(7)).into();
+        let second: Grapheme = format!("e{}", "\u{301}".repeat(7)).into();
+        let first_owner = first.heap_weak().unwrap();
+        let second_owner = second.heap_weak().unwrap();
+        assert!(!first_owner.ptr_eq(&second_owner));
         buffer.clear_row(0, Cell { c: 'e', grapheme: Some(first.clone()), ..Cell::default() });
         let replacement = Cell { c: 'e', grapheme: Some(second.clone()), ..Cell::default() };
         *buffer.cell_mut(0, 0) = replacement.clone();
@@ -463,9 +486,9 @@ mod tests {
         buffer.clear_row(0, replacement);
         assert_eq!(buffer.uniform_suffix_start[buffer.row_index(0)], 0);
         let extracted = buffer.extract_row(0);
-        assert!(std::sync::Arc::ptr_eq(extracted[0].grapheme.as_ref().unwrap(), &second));
+        assert!(extracted[0].grapheme.as_ref().unwrap().heap_weak().unwrap().ptr_eq(&second_owner));
         for cell in &extracted[1..] {
-            assert!(std::sync::Arc::ptr_eq(cell.grapheme.as_ref().unwrap(), &first));
+            assert!(cell.grapheme.as_ref().unwrap().heap_weak().unwrap().ptr_eq(&first_owner));
         }
     }
 
