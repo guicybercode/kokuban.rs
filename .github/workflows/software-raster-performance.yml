@@ -1,0 +1,106 @@
+name: Software raster kernel measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: Baseline source revision
+        required: true
+        default: 199b987281dbb97dd481c0ff752a3bf80dc996cd
+      after:
+        description: Candidate source revision (empty uses workflow revision)
+        required: false
+  push:
+    branches: [perf/packed-alpha]
+    paths:
+      - .github/workflows/software-raster-performance.yml
+      - scripts/benchmark-software-raster.py
+      - scripts/test_compare_software_raster.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: software-raster-measurements-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Raster kernels on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
+    env:
+      BEFORE_REF: ${{ inputs.before || '199b987281dbb97dd481c0ff752a3bf80dc996cd' }}
+      AFTER_REF: ${{ inputs.after || github.sha }}
+
+    steps:
+      - name: Check out harness and exact revision history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install the fixed Rust compiler
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+
+      - name: Validate the measurement harness
+        run: python3 -B -m unittest discover -s scripts -p 'test_compare_software_raster.py'
+
+      - name: Record source and machine provenance
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-raster-evidence"
+          mkdir -p "$evidence_directory"
+          git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+          git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
+          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          rustc --version --verbose > "$evidence_directory/rustc.txt"
+          uname -a > "$evidence_directory/kernel.txt"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            lscpu > "$evidence_directory/cpu.txt"
+          else
+            sysctl -a | grep -E '^(hw\.(model|machine|memsize|ncpu|physicalcpu|logicalcpu)|machdep.cpu\.)' \
+              > "$evidence_directory/cpu.txt"
+          fi
+
+      - name: Measure same-source controls and alternating candidate pairs
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-raster-evidence"
+          before="$(cat "$evidence_directory/before-revision.txt")"
+          after="$(cat "$evidence_directory/after-revision.txt")"
+          affinity_command=()
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+            affinity_command=(taskset -c "$benchmark_cpu")
+            printf '%s\n' "$benchmark_cpu" > "$evidence_directory/pinned-cpu.txt"
+          else
+            printf '%s\n' 'No CPU affinity control on macOS' > "$evidence_directory/pinned-cpu.txt"
+          fi
+          for comparison in same-source candidate; do
+            comparison_after="$before"
+            if [[ "$comparison" == candidate ]]; then
+              comparison_after="$after"
+            fi
+            "${affinity_command[@]}" python3 -B scripts/benchmark-software-raster.py \
+              --baseline "$before" --candidate "$comparison_after" \
+              --widths 1 7 8 9 15 16 17 32 --modes glyphs rgba opaque alpha image \
+              --samples 8 --frames 100 --warmup-frames 3 \
+              --artifacts-dir "$evidence_directory/$comparison" \
+              2>&1 | tee "$evidence_directory/$comparison.log"
+          done
+
+      - name: Preserve sources, binaries and raw timing evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: software-raster-${{ matrix.runner }}
+          path: ${{ runner.temp }}/kokuban-raster-evidence
+          if-no-files-found: ignore
+          retention-days: 7
