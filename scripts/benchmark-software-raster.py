@@ -6,7 +6,8 @@ Run on an otherwise idle host, for example:
 
 This measures CPU rasterization of 120x40 cells, not terminal throughput,
 presentation latency or performance relative to other terminals. No thresholds.
-Both versions receive identical pixels and every output frame is compared.
+Both versions receive identical pixels; final accumulated frames are compared.
+Untimed correctness tests are also needed because repeated blending converges.
 """
 
 import argparse
@@ -33,6 +34,7 @@ type Draw = fn(&mut [u32], (u32, u32), &[u8], (u32, u32),
     glyph_atlas::GlyphEntry, (i32, i32), u32);
 type Fill = fn(&mut [u32], (u32, u32), (i32, i32), (u32, u32), u32, u8);
 
+#[inline(never)]
 fn measure(draw: Draw, fill: Fill, mode: &str, frames: usize) -> (f64, Vec<u32>) {
     let mut frame = vec![0x203040; 1200 * 800];
     let atlas: Vec<u8> = (0..1024 * 32).map(|i| (i * 73 % 256) as u8).collect();
@@ -63,8 +65,13 @@ fn main() {
     let samples: usize = args[1].parse().unwrap();
     let frames: usize = args[2].parse().unwrap();
     for mode in ["glyphs", "opaque", "alpha"] {
-        let before = || measure(before::draw_glyph_a8, before::fill_rect, mode, frames);
-        let after = || measure(after::draw_glyph_a8, after::fill_rect, mode, frames);
+        // Hide function identities so LLVM cannot inline/specialize just one
+        // side after a kernel changes its inlining cost. Both versions use
+        // the same indirect-call measurement loop, including opaque controls.
+        let before = || measure(black_box(before::draw_glyph_a8 as Draw),
+            black_box(before::fill_rect as Fill), mode, frames);
+        let after = || measure(black_box(after::draw_glyph_a8 as Draw),
+            black_box(after::fill_rect as Fill), mode, frames);
         // Warm both versions, then alternate order to reduce thermal/order bias.
         assert_eq!(before().1, after().1);
         for sample in 0..samples {
