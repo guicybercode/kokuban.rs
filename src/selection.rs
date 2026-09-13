@@ -337,6 +337,23 @@ mod tests {
     }
 
     #[test]
+    fn copy_preserves_printed_spaces_in_compacted_history_after_reflow() {
+        let mut grid = Grid::new(80, 1, 10);
+        grid.put_ascii(b"ok   ");
+        grid.carriage_return();
+        grid.newline();
+        grid.put_ascii(b"next");
+        for cols in [40, 3, 1, 80] {
+            grid.resize(cols, 1);
+            let selection = selected(
+                GridPoint { row: 0, col: 0 },
+                GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+            );
+            assert_eq!(selection.get_text(&grid), "ok   \nnext", "width={cols}");
+        }
+    }
+
+    #[test]
     fn copy_clips_negative_and_extreme_rows_to_the_actual_grid() {
         let mut grid = Grid::new(4, 2, 10);
         write_row(&mut grid, 0, "abcd");

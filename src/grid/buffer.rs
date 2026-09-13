@@ -192,6 +192,19 @@ impl Buffer {
         extracted
     }
 
+    pub(crate) fn extract_history_row(&self, row: usize) -> super::history::HistoryRow {
+        let row_index = self.row_index(row);
+        let start = self.row_starts[row_index];
+        let suffix = self.uniform_suffix_start[row_index];
+        if suffix < self.cols && self.cells[start + self.cols - 1] == super::DEFAULT_CELL {
+            // The buffer already knows this entire suffix is default. Avoid
+            // allocating and cloning it merely to move a short line offscreen.
+            return super::history::HistoryRow::from_prefix(self.cells[start..start + suffix].to_vec(), self.cols);
+        }
+        // Unknown or styled suffixes keep the existing complete-row extraction.
+        super::history::HistoryRow::from_prefix(self.extract_row(row), self.cols)
+    }
+
     pub(crate) fn from_retained_rows(cols: usize, rows: &[super::reflow::RetainedRow]) -> Self {
         let mut buffer = Self::new(cols, rows.len());
         for (index, row) in rows.iter().enumerate() {
