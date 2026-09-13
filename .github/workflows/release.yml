@@ -149,13 +149,16 @@ jobs:
         shell: bash
         run: |
           release_binary="$PWD/target/$RELEASE_TARGET/release/kokuban"
-          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
-            timeout --kill-after=5s 40s python3 scripts/linux-launch-smoke.py "$release_binary"
-          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
-            timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py "$release_binary"
-          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
-            timeout --kill-after=5s 90s python3 scripts/linux-theme-smoke.py "$release_binary" \
-              --artifacts-dir "$RUNNER_TEMP/kokuban-release-theme-artifacts"
+          # Keep one authenticated display alive across fixtures. Consecutive
+          # xvfb-run instances can reuse a server number while cleanup finishes.
+          xvfb-run --auto-servernum --error-file=/dev/stderr \
+            --server-args="-screen 0 1280x900x24 -noreset" \
+            bash -euo pipefail -c '
+              timeout --kill-after=5s 40s python3 scripts/linux-launch-smoke.py "$1"
+              timeout --kill-after=10s 90s python3 scripts/linux-clipboard-smoke.py "$1"
+              timeout --kill-after=5s 90s python3 scripts/linux-theme-smoke.py "$1" \
+                --artifacts-dir "$2"
+            ' bash "$release_binary" "$RUNNER_TEMP/kokuban-release-theme-artifacts"
 
       - name: Upload Linux release theme and font evidence
         if: always() && runner.os == 'Linux'
