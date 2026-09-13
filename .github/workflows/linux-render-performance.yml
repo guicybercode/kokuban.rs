@@ -1,0 +1,138 @@
+name: Linux paired CPU frame measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: Baseline commit or ref (must contain the final ignored frame benchmark)
+        required: true
+        default: 24782c3
+      after:
+        description: Candidate commit or ref
+        required: true
+        default: 965843d
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-render-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      BEFORE_REF: ${{ inputs.before }}
+      AFTER_REF: ${{ inputs.after }}
+
+    steps:
+      - name: Check out common benchmark and revision history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install the same Rust and fonts for both builds
+        shell: bash
+        run: |
+          test "$(uname -m)" = x86_64
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji \
+            libfontconfig1-dev libfreetype6-dev libxkbcommon-x11-0 pkg-config
+
+      - name: Validate injection, report parsing and pixel gates
+        run: python3 -B -m unittest discover -s scripts -p 'test_compare_frame_revisions.py'
+
+      - name: Archive exact source revisions and inject the common benchmark
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          mkdir "$evidence_directory"
+          git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+          git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
+          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          cp scripts/compare-frame-revisions.py scripts/test_compare_frame_revisions.py \
+            .github/workflows/linux-render-performance.yml "$evidence_directory/"
+          rustc --version --verbose > "$evidence_directory/rustc.txt"
+          cargo --version --verbose > "$evidence_directory/cargo.txt"
+          lscpu > "$evidence_directory/cpu.txt"
+          uname -a > "$evidence_directory/kernel.txt"
+          cat /etc/os-release > "$evidence_directory/os-release.txt"
+          dpkg-query -W fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji \
+            libfontconfig1 libfreetype6 libxkbcommon-x11-0 > "$evidence_directory/system-packages.txt"
+          fc-match -v 'DejaVu Sans Mono' > "$evidence_directory/monospace-font.txt"
+          fc-match -v 'Noto Color Emoji' > "$evidence_directory/emoji-font.txt"
+          python3 - "$evidence_directory/font-files.json" <<'PY'
+          import hashlib, json, pathlib, subprocess, sys
+          paths = subprocess.check_output(['fc-list', '--format=%{file}\n'], text=True).splitlines()
+          hashes = {p: hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in sorted(set(paths))}
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(hashes, indent=2) + '\n')
+          PY
+          for side in before after; do
+            revision="$(cat "$evidence_directory/$side-revision.txt")"
+            source_directory="$RUNNER_TEMP/kokuban-frame-source-$side"
+            mkdir "$source_directory"
+            git archive --format=tar "$revision" > "$evidence_directory/$side-original-source.tar"
+            sha256sum "$evidence_directory/$side-original-source.tar" > "$evidence_directory/$side-source-sha256.txt"
+            tar -xf "$evidence_directory/$side-original-source.tar" -C "$source_directory"
+          done
+          python3 -B scripts/compare-frame-revisions.py prepare \
+            --harness-source "$GITHUB_WORKSPACE" \
+            --before-source "$RUNNER_TEMP/kokuban-frame-source-before" \
+            --after-source "$RUNNER_TEMP/kokuban-frame-source-after" \
+            --output "$evidence_directory/injection"
+
+      - name: Build separate release test executables sequentially
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          for side in before after; do
+            source_directory="$RUNNER_TEMP/kokuban-frame-source-$side"
+            target_directory="$RUNNER_TEMP/kokuban-frame-target-$side"
+            # A new target is essential: archived source mtimes can otherwise
+            # make Cargo reuse the other revision's apparently fresh root binary.
+            test ! -e "$target_directory"
+            mkdir "$target_directory"
+            cargo test --release --locked --bin kokuban --no-run --message-format=json \
+              --manifest-path "$source_directory/Cargo.toml" --target-dir "$target_directory" \
+              > "$evidence_directory/$side-cargo-messages.jsonl" \
+              2> "$evidence_directory/$side-build.log"
+            cargo tree --locked --manifest-path "$source_directory/Cargo.toml" \
+              > "$evidence_directory/$side-cargo-tree.txt"
+          done
+
+      - name: Compare five alternating process pairs with exact frame pixels
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          printf '%s\n' "$benchmark_cpu" > "$evidence_directory/benchmark-cpu.txt"
+          timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
+            python3 -B scripts/compare-frame-revisions.py measure \
+              --before-source "$RUNNER_TEMP/kokuban-frame-source-before" \
+              --after-source "$RUNNER_TEMP/kokuban-frame-source-after" \
+              --before-target "$RUNNER_TEMP/kokuban-frame-target-before" \
+              --after-target "$RUNNER_TEMP/kokuban-frame-target-after" \
+              --before-messages "$evidence_directory/before-cargo-messages.jsonl" \
+              --after-messages "$evidence_directory/after-cargo-messages.jsonl" \
+              --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
+              --after-ref "$(cat "$evidence_directory/after-revision.txt")" \
+              --injection "$evidence_directory/injection/injection.json" \
+              --output "$evidence_directory/measurements" --pairs 5 --steps 300 --warmup 30 \
+              --environment-note \
+              "Native GitHub Ubuntu 24.04 x86_64 runner, one CPU, DejaVu Sans Mono 14px, Noto CJK and Noto Color Emoji; CPU damage calculation and paint only, no compositor or presentation measurement"
+
+      - name: Upload source archives, injection, build provenance, raw samples and pixels
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-paired-frame-measurements
+          path: ${{ runner.temp }}/kokuban-frame-evidence
+          if-no-files-found: ignore
+          retention-days: 7
