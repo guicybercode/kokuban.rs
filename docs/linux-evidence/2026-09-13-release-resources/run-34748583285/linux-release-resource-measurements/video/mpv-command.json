@@ -1,0 +1,21 @@
+[
+  "mpv",
+  "--no-config",
+  "--load-scripts=no",
+  "--vo=kitty",
+  "--vo-kitty-use-shm=no",
+  "--profile=sw-fast",
+  "--audio=no",
+  "--osc=no",
+  "--osd-level=0",
+  "--keep-open=yes",
+  "--pause=yes",
+  "--vo-kitty-width=320",
+  "--vo-kitty-height=180",
+  "--vo-kitty-cols=80",
+  "--vo-kitty-rows=24",
+  "--vo-kitty-left=1",
+  "--vo-kitty-top=1",
+  "--input-ipc-server=/tmp/kokuban-video-r5axiot4/mpv.sock",
+  "/tmp/kokuban-video-r5axiot4/fixture.mkv"
+]
