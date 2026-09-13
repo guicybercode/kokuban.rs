@@ -21,8 +21,15 @@ fn text_prefix_len<const MIXED_UTF8: bool>(input: &[u8]) -> usize {
     const ONES: u64 = 0x0101_0101_0101_0101;
     const SPACES: u64 = 0x2020_2020_2020_2020;
     const DELETE: u64 = 0x7f7f_7f7f_7f7f_7f7f;
-    let mut offset = 0;
-    for chunk in input.chunks_exact(8) {
+    // Short labels and line endings usually stop inside the first word.
+    // Keep that path scalar before paying for the word-level masks.
+    let mut offset = input.iter().take(8).position(|byte| {
+        *byte < 0x20 || *byte == 0x7f || (!MIXED_UTF8 && !byte.is_ascii())
+    }).unwrap_or(input.len().min(8));
+    if offset < 8 {
+        return offset;
+    }
+    for chunk in input[offset..].chunks_exact(8) {
         let word = u64::from_ne_bytes(chunk.try_into().expect("chunks contain eight bytes"));
         let below_space = word.wrapping_sub(SPACES) & !word & HIGH;
         let del = word ^ DELETE;
