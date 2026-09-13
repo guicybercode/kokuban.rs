@@ -69,6 +69,15 @@ impl PartialEq for GraphemeRepr {
 impl Grapheme {
     pub(super) const INLINE_CAPACITY: usize = 14;
 
+    /// Borrow the initialized UTF-8 bytes without decoding or validating them again.
+    #[inline]
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        match &self.0 {
+            GraphemeRepr::Inline(bytes) => &bytes[1..1 + usize::from(bytes[0])],
+            GraphemeRepr::Heap(text) => text.as_bytes(),
+        }
+    }
+
     /// Append one encoded scalar without rebuilding short text through a string.
     #[inline]
     pub(super) fn from_appended(previous: &str, c: char) -> Self {

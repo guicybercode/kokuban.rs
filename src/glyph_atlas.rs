@@ -137,8 +137,8 @@ pub struct GlyphAtlas {
     pub pixels: Vec<u8>,
     /// Straight RGBA pixels; monochrome glyphs use white RGB plus coverage.
     pub rgba_pixels: Vec<u8>,
-    // Separate style maps allow borrowed text lookup without allocating a key.
-    text_glyphs: [HashMap<String, GlyphEntry>; 4],
+    // Shared byte keys let compound cells probe without UTF-8 validation.
+    text_glyphs: [HashMap<Vec<u8>, GlyphEntry>; 4],
     rasterizer: TextRasterizer,
     pub glyphs: ScalarGlyphCache,
     pub cell_width: f32,
@@ -344,7 +344,7 @@ impl GlyphAtlas {
         }
     }
 
-    // Keep inline UTF-8 validation and its stack frame off scalar cache hits.
+    // Keep compound lookup off scalar hits; only a miss needs validated text.
     #[inline(never)]
     fn get_or_insert_grapheme(
         &mut self,
@@ -352,6 +352,10 @@ impl GlyphAtlas {
         bold: bool,
         italic: bool,
     ) -> GlyphEntry {
+        let style = usize::from(bold) | (usize::from(italic) << 1);
+        if let Some(&entry) = self.text_glyphs[style].get(text.as_bytes()) {
+            return entry;
+        }
         self.get_or_insert_text(text, bold, italic)
     }
 
@@ -363,11 +367,11 @@ impl GlyphAtlas {
             return self.get_or_insert(GlyphKey { c, bold, italic });
         }
         let style = usize::from(bold) | (usize::from(italic) << 1);
-        if let Some(&entry) = self.text_glyphs[style].get(text) {
+        if let Some(&entry) = self.text_glyphs[style].get(text.as_bytes()) {
             return entry;
         }
         let entry = self.rasterize_text(text);
-        self.text_glyphs[style].insert(text.to_owned(), entry);
+        self.text_glyphs[style].insert(text.as_bytes().to_vec(), entry);
         entry
     }
 
@@ -708,7 +712,7 @@ mod tests {
         use crate::grid::cell::{Cell, CellFlags};
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 14.0, 1.0).unwrap();
         let original_position = (atlas.cursor_x, atlas.cursor_y, atlas.row_height);
-        for c in ['\0', ' ', 'A', '\u{7f}', '\u{80}'] {
+        for c in ['\0', ' ', 'A', '\u{7f}', '\u{80}', 'é', '界', '👩'] {
             for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
                 let key = GlyphKey { c, bold, italic };
                 atlas.glyphs.insert(key, GlyphEntry::empty());
@@ -811,7 +815,7 @@ mod tests {
             {
                 let key = GlyphKey { c: 'é', bold, italic };
                 atlas.glyphs.insert(key, entry);
-                atlas.text_glyphs[style].insert("e\u{301}".to_owned(), entry);
+                atlas.text_glyphs[style].insert("e\u{301}".as_bytes().to_vec(), entry);
                 let mut flags = CellFlags::empty();
                 flags.set(CellFlags::BOLD, bold);
                 flags.set(CellFlags::ITALIC, italic);
@@ -868,7 +872,7 @@ mod tests {
         let cached = atlas.get_or_insert_text("e\u{301}", false, false);
         assert!(!atlas.dirty);
         assert_eq!((composed.atlas_x, composed.atlas_y), (cached.atlas_x, cached.atlas_y));
-        assert!(atlas.text_glyphs[0].contains_key("e\u{301}"));
+        assert!(atlas.text_glyphs[0].contains_key("e\u{301}".as_bytes()));
     }
 
     #[test]
@@ -907,11 +911,122 @@ mod tests {
     }
 
     #[test]
-    fn scalar_text_keeps_using_the_scalar_cache_for_each_style() {
+    fn compound_byte_cache_is_shared_by_text_and_cells_across_resize() {
+        use crate::grid::cell::{Cell, CellFlags};
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
-        for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
-            atlas.get_or_insert_text("é", bold, italic);
-            assert!(atlas.glyphs.contains_key(&GlyphKey { c: 'é', bold, italic }));
+        let samples = [
+            "",
+            "e\u{301}",
+            "e\u{301}\0",
+            "1\u{fe0f}\u{20e3}",
+            "🇧🇷",
+            "👩🏽\u{200d}💻",
+            "é日🦀",
+        ];
+        let signature = |entry: GlyphEntry| {
+            (
+                entry.atlas_x,
+                entry.atlas_y,
+                entry.pixel_w,
+                entry.pixel_h,
+                entry.bearing_x,
+                entry.bearing_y,
+                entry.color,
+            )
+        };
+        for resized in [false, true] {
+            if resized {
+                atlas.clear_and_resize(24.0).unwrap();
+                assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
+            }
+            for (style, (bold, italic)) in
+                [(false, false), (true, false), (false, true), (true, true)]
+                    .into_iter()
+                    .enumerate()
+            {
+                let mut flags = CellFlags::empty();
+                flags.set(CellFlags::BOLD, bold);
+                flags.set(CellFlags::ITALIC, italic);
+                for (index, text) in samples.into_iter().enumerate() {
+                    let cell = Cell {
+                        c: text.chars().next().unwrap_or(' '),
+                        grapheme: Some(text.into()),
+                        flags,
+                        ..Cell::default()
+                    };
+                    let expected = if (index % 2 == 0) != resized {
+                        atlas.get_or_insert_text(text, bold, italic)
+                    } else {
+                        atlas.get_or_insert_cell(&cell)
+                    };
+                    assert_eq!(atlas.text_glyphs[style].len(), index + 1);
+                    let position = (atlas.cursor_x, atlas.cursor_y, atlas.row_height);
+                    let capacity = atlas.text_glyphs[style].capacity();
+                    atlas.dirty = false;
+                    let separate_text = text.to_owned();
+                    for actual in [
+                        atlas.get_or_insert_cell(&cell),
+                        atlas.get_or_insert_text(&separate_text, bold, italic),
+                    ] {
+                        assert_eq!(signature(actual), signature(expected));
+                    }
+                    assert!(!atlas.dirty, "cached text was rasterized again: {text:?}");
+                    assert_eq!((atlas.cursor_x, atlas.cursor_y, atlas.row_height), position);
+                    assert_eq!(atlas.text_glyphs[style].capacity(), capacity);
+                    assert_eq!(atlas.text_glyphs[style].len(), index + 1);
+                    assert_eq!(
+                        signature(*atlas.text_glyphs[style].get(text.as_bytes()).unwrap()),
+                        signature(expected),
+                    );
+                }
+            }
+            assert!(atlas
+                .text_glyphs
+                .iter()
+                .all(|glyphs| glyphs.len() == samples.len()));
+        }
+    }
+
+    #[test]
+    fn scalar_text_and_graphemes_share_the_scalar_cache_for_each_style() {
+        use crate::grid::cell::{Cell, CellFlags};
+        let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
+        for c in ['é', '界', '👩'] {
+            let text = c.to_string();
+            for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
+                let key = GlyphKey { c, bold, italic };
+                assert!(!atlas.glyphs.contains_key(&key));
+                let mut flags = CellFlags::empty();
+                flags.set(CellFlags::BOLD, bold);
+                flags.set(CellFlags::ITALIC, italic);
+                let cell = Cell {
+                    c,
+                    grapheme: Some(text.as_str().into()),
+                    flags,
+                    ..Cell::default()
+                };
+                let expected = atlas.get_or_insert_cell(&cell);
+                assert!(atlas.glyphs.contains_key(&key));
+                atlas.dirty = false;
+                let cached = atlas.get_or_insert_text(&text, bold, italic);
+                assert_eq!(
+                    (
+                        cached.atlas_x,
+                        cached.atlas_y,
+                        cached.pixel_w,
+                        cached.pixel_h,
+                        cached.color
+                    ),
+                    (
+                        expected.atlas_x,
+                        expected.atlas_y,
+                        expected.pixel_w,
+                        expected.pixel_h,
+                        expected.color
+                    ),
+                );
+                assert!(!atlas.dirty);
+            }
         }
         assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
     }
