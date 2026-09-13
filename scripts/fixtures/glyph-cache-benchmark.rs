@@ -48,6 +48,9 @@ fn cells(workload: &str) -> Vec<Cell> {
     const MIXED: [char; 16] = [
         'A', 'z', '3', '!', ' ', '-', 'm', 'Q', 'é', 'λ', 'Ω', '界', '語', 'ñ', 'Ж', '✓',
     ];
+    const UNICODE_SCALARS: [char; 16] = [
+        'é', 'ñ', 'ü', 'ç', 'λ', 'Ω', 'δ', 'α', '界', '語', '日', '本', 'Ж', 'Д', 'Я', '✓',
+    ];
     const GRAPHEMES: [&str; 8] = [
         "e\u{301}",
         "o\u{308}",
@@ -66,6 +69,11 @@ fn cells(workload: &str) -> Vec<Cell> {
                     (char::from(b' ' + (index % 95) as u8), None, index / 95 % 4)
                 }
                 "mixed-unicode" => (MIXED[index % MIXED.len()], None, index / MIXED.len() % 4),
+                "unicode-scalars" => (
+                    UNICODE_SCALARS[index % UNICODE_SCALARS.len()],
+                    None,
+                    index / UNICODE_SCALARS.len() % 4,
+                ),
                 "graphemes" => {
                     let text = GRAPHEMES[index % GRAPHEMES.len()];
                     (
@@ -143,6 +151,7 @@ fn benchmark_warmed_lookups() {
         "ascii-regular",
         "ascii-four-styles",
         "mixed-unicode",
+        "unicode-scalars",
         "graphemes",
     ] {
         let cells = cells(workload);
