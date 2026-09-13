@@ -1,0 +1,1394 @@
+{
+  "primary": {
+    "run": 34743854765,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "binary_hashes": {
+      "before": "cc6b2f80fc273ce7b4f6c18564c606a5118577191a2fe613a6285bc2c53a492c",
+      "after": "59fd885962c1b8fa7b1d22dede79109e3a5918124fec80b8c512fccd2c3b6221"
+    },
+    "loads": {
+      "ascii": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 57.16060800485087,
+            "min": 53.153214719272626,
+            "max": 57.44001007466466,
+            "median_absolute_deviation": 0.27940206981379134,
+            "samples": [
+              53.153214719272626,
+              57.44001007466466,
+              57.16060800485087,
+              55.401000026193174,
+              57.20892938615308
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 56.091250455022085,
+            "min": 55.00258424703314,
+            "max": 58.92960155381611,
+            "median_absolute_deviation": 0.22251018908173847,
+            "samples": [
+              55.87696612128999,
+              58.92960155381611,
+              55.00258424703314,
+              56.31376064410382,
+              56.091250455022085
+            ]
+          },
+          "ratio_of_medians_change_percent": -1.8707945684168337,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": 1.6475526028033816,
+            "min": -3.775368795297962,
+            "max": 5.124339922623289,
+            "median_absolute_deviation": 3.4767873198199073,
+            "samples": [
+              5.124339922623289,
+              2.593299474034172,
+              -3.775368795297962,
+              1.6475526028033816,
+              -1.9536791600954562
+            ]
+          },
+          "slower_after_pairs": 2,
+          "min_max_ranges_overlap": true
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.51,
+            "min": 0.5000000000000001,
+            "max": 0.5300000000000001,
+            "samples": [
+              0.5300000000000001,
+              0.5000000000000001,
+              0.51,
+              0.5200000000000001,
+              0.51
+            ]
+          },
+          "after": {
+            "median": 0.51,
+            "min": 0.49,
+            "max": 0.53,
+            "samples": [
+              0.52,
+              0.49,
+              0.53,
+              0.51,
+              0.51
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 47736,
+            "min": 47600,
+            "max": 47808,
+            "samples": [
+              47764,
+              47600,
+              47808,
+              47720,
+              47736
+            ]
+          },
+          "after": {
+            "median": 47488,
+            "min": 45528,
+            "max": 49452,
+            "samples": [
+              45528,
+              45636,
+              49452,
+              47488,
+              48284
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 47764,
+            "min": 47600,
+            "max": 49632,
+            "samples": [
+              47764,
+              47600,
+              47808,
+              49632,
+              47736
+            ]
+          },
+          "after": {
+            "median": 47488,
+            "min": 45528,
+            "max": 49452,
+            "samples": [
+              45528,
+              45636,
+              49452,
+              47488,
+              48284
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.00029541600002858104,
+            "min": 0.00028199000001905006,
+            "max": 0.00030854099998123274,
+            "samples": [
+              0.00030854099998123274,
+              0.0003081799999904433,
+              0.00029541600002858104,
+              0.00028199000001905006,
+              0.00029064699998571086
+            ]
+          },
+          "after": {
+            "median": 0.0003135900000188485,
+            "min": 0.00030935200004478247,
+            "max": 0.0003253630000017438,
+            "samples": [
+              0.00030935200004478247,
+              0.0003135900000188485,
+              0.0003201619999799732,
+              0.00031306900001482063,
+              0.0003253630000017438
+            ]
+          }
+        }
+      },
+      "ansi": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 44.517122424227054,
+            "min": 44.03414751073187,
+            "max": 46.31823241654473,
+            "median_absolute_deviation": 0.48297491349518396,
+            "samples": [
+              46.3161831318102,
+              44.34461890313406,
+              44.517122424227054,
+              46.31823241654473,
+              44.03414751073187
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 61.37987241566522,
+            "min": 59.291861177221605,
+            "max": 62.054896741797386,
+            "median_absolute_deviation": 0.6750243261321671,
+            "samples": [
+              61.95783905566741,
+              59.291861177221605,
+              62.054896741797386,
+              59.57951345752104,
+              61.37987241566522
+            ]
+          },
+          "ratio_of_medians_change_percent": 37.87924527273834,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": 33.77147006985219,
+            "min": 28.63080119663508,
+            "max": 39.39557042893218,
+            "median_absolute_deviation": 5.140668873217113,
+            "samples": [
+              33.77147006985219,
+              33.70700356392315,
+              39.39557042893218,
+              28.63080119663508,
+              39.39153108551925
+            ]
+          },
+          "slower_after_pairs": 0,
+          "min_max_ranges_overlap": false
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.6599999999999999,
+            "min": 0.6399999999999999,
+            "max": 0.6600000000000001,
+            "samples": [
+              0.6399999999999999,
+              0.6599999999999999,
+              0.6599999999999999,
+              0.6400000000000001,
+              0.6600000000000001
+            ]
+          },
+          "after": {
+            "median": 0.48,
+            "min": 0.45999999999999974,
+            "max": 0.49,
+            "samples": [
+              0.46999999999999975,
+              0.49,
+              0.45999999999999974,
+              0.48,
+              0.48
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 47764,
+            "min": 47600,
+            "max": 49632,
+            "samples": [
+              47764,
+              47600,
+              47808,
+              49632,
+              47736
+            ]
+          },
+          "after": {
+            "median": 47488,
+            "min": 45528,
+            "max": 49452,
+            "samples": [
+              45528,
+              45636,
+              49452,
+              47488,
+              48284
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 47764,
+            "min": 47600,
+            "max": 49632,
+            "samples": [
+              47764,
+              47600,
+              47808,
+              49632,
+              47736
+            ]
+          },
+          "after": {
+            "median": 47488,
+            "min": 45528,
+            "max": 49452,
+            "samples": [
+              45528,
+              45636,
+              49452,
+              47488,
+              48284
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.0003936009999847556,
+            "min": 0.0003456910000068092,
+            "max": 0.0007041650000019217,
+            "samples": [
+              0.0003456910000068092,
+              0.0003686840000227676,
+              0.0007041650000019217,
+              0.00040686599999162354,
+              0.0003936009999847556
+            ]
+          },
+          "after": {
+            "median": 0.0002953960000127154,
+            "min": 0.00026128199999675417,
+            "max": 0.0003517019999890181,
+            "samples": [
+              0.0002953960000127154,
+              0.00026128199999675417,
+              0.0003517019999890181,
+              0.0002708590000111144,
+              0.0003189299999917239
+            ]
+          }
+        }
+      },
+      "unicode": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 30.813628485328035,
+            "min": 30.146994220158838,
+            "max": 31.683889542884316,
+            "median_absolute_deviation": 0.4998464792837787,
+            "samples": [
+              30.146994220158838,
+              31.683889542884316,
+              30.759536128471748,
+              30.813628485328035,
+              31.313474964611814
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 33.464093338620955,
+            "min": 31.65559243915857,
+            "max": 34.073333350073696,
+            "median_absolute_deviation": 0.6092400114527408,
+            "samples": [
+              34.073333350073696,
+              32.085675905673526,
+              33.63232316622838,
+              33.464093338620955,
+              31.65559243915857
+            ]
+          },
+          "ratio_of_medians_change_percent": 8.601599303876029,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": 8.601599303876029,
+            "min": 1.0925567185800844,
+            "max": 13.023982096660824,
+            "median_absolute_deviation": 4.422382792784795,
+            "samples": [
+              13.023982096660824,
+              1.2681093406962773,
+              9.339500523538513,
+              8.601599303876029,
+              1.0925567185800844
+            ]
+          },
+          "slower_after_pairs": 0,
+          "min_max_ranges_overlap": true
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.98,
+            "min": 0.9599999999999995,
+            "max": 0.9900000000000002,
+            "samples": [
+              0.9900000000000002,
+              0.9599999999999995,
+              0.9800000000000004,
+              0.98,
+              0.9600000000000004
+            ]
+          },
+          "after": {
+            "median": 0.8999999999999999,
+            "min": 0.8899999999999997,
+            "max": 0.9500000000000002,
+            "samples": [
+              0.8899999999999997,
+              0.94,
+              0.8999999999999999,
+              0.8999999999999999,
+              0.9500000000000002
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 69944,
+            "min": 69728,
+            "max": 72820,
+            "samples": [
+              69944,
+              69728,
+              72820,
+              71784,
+              69852
+            ]
+          },
+          "after": {
+            "median": 68664,
+            "min": 66700,
+            "max": 70628,
+            "samples": [
+              66700,
+              66808,
+              70628,
+              68664,
+              69524
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 69944,
+            "min": 69728,
+            "max": 72820,
+            "samples": [
+              69944,
+              69728,
+              72820,
+              71784,
+              69852
+            ]
+          },
+          "after": {
+            "median": 68664,
+            "min": 66808,
+            "max": 70628,
+            "samples": [
+              68612,
+              66808,
+              70628,
+              68664,
+              69524
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.0005130359999725442,
+            "min": 0.00047255999999151754,
+            "max": 0.0005968570000050022,
+            "samples": [
+              0.0005187169999771868,
+              0.00047255999999151754,
+              0.0005130359999725442,
+              0.0004837999999836029,
+              0.0005968570000050022
+            ]
+          },
+          "after": {
+            "median": 0.0004927769999767406,
+            "min": 0.00048465300000088973,
+            "max": 0.0005016939999791248,
+            "samples": [
+              0.0004897320000054606,
+              0.0004927769999767406,
+              0.0005016939999791248,
+              0.0004935690000138493,
+              0.00048465300000088973
+            ]
+          }
+        }
+      },
+      "short_lines": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 6.531503996439943,
+            "min": 6.295901087124829,
+            "max": 6.762875471149275,
+            "median_absolute_deviation": 0.20700931395874633,
+            "samples": [
+              6.738513310398689,
+              6.531503996439943,
+              6.396397292944263,
+              6.762875471149275,
+              6.295901087124829
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 23.560195568962282,
+            "min": 23.293503283916362,
+            "max": 23.92759039688636,
+            "median_absolute_deviation": 0.13121204582514778,
+            "samples": [
+              23.92759039688636,
+              23.428983523137134,
+              23.619167906755674,
+              23.293503283916362,
+              23.560195568962282
+            ]
+          },
+          "ratio_of_medians_change_percent": 260.7162390439321,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": 258.70732890781846,
+            "min": 244.43194146169736,
+            "max": 274.21483029876504,
+            "median_absolute_deviation": 10.550033088902751,
+            "samples": [
+              255.0870836741089,
+              258.70732890781846,
+              269.2573619967212,
+              244.43194146169736,
+              274.21483029876504
+            ]
+          },
+          "slower_after_pairs": 0,
+          "min_max_ranges_overlap": false
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 4.800000000000001,
+            "min": 4.639999999999999,
+            "max": 4.979999999999999,
+            "samples": [
+              4.66,
+              4.800000000000001,
+              4.9,
+              4.639999999999999,
+              4.979999999999999
+            ]
+          },
+          "after": {
+            "median": 1.2999999999999998,
+            "min": 1.2800000000000002,
+            "max": 1.3099999999999996,
+            "samples": [
+              1.2800000000000002,
+              1.2999999999999998,
+              1.29,
+              1.3099999999999996,
+              1.3000000000000007
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 72244,
+            "min": 69944,
+            "max": 72820,
+            "samples": [
+              69944,
+              72616,
+              72820,
+              71784,
+              72244
+            ]
+          },
+          "after": {
+            "median": 68664,
+            "min": 66808,
+            "max": 70628,
+            "samples": [
+              68612,
+              66808,
+              70628,
+              68664,
+              69524
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 72244,
+            "min": 69944,
+            "max": 72820,
+            "samples": [
+              69944,
+              72616,
+              72820,
+              71784,
+              72244
+            ]
+          },
+          "after": {
+            "median": 69524,
+            "min": 68612,
+            "max": 70628,
+            "samples": [
+              68612,
+              69616,
+              70628,
+              68664,
+              69524
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.002248102999999446,
+            "min": 0.002185011999983999,
+            "max": 0.002589897000007113,
+            "samples": [
+              0.002391400000021804,
+              0.002185011999983999,
+              0.002589897000007113,
+              0.0022106409999764765,
+              0.002248102999999446
+            ]
+          },
+          "after": {
+            "median": 0.0007093950000012228,
+            "min": 0.0006328810000013618,
+            "max": 0.00079491600001802,
+            "samples": [
+              0.0006942369999478615,
+              0.0007093950000012228,
+              0.0006328810000013618,
+              0.00079491600001802,
+              0.0007403630000339945
+            ]
+          }
+        }
+      }
+    },
+    "rtt_us": {
+      "before": {
+        "median": 56.426500009365554,
+        "min": 46.7079999566522,
+        "max": 83.69800002583361
+      },
+      "after": {
+        "median": 55.62000001191336,
+        "min": 46.00699998036362,
+        "max": 139.823000040451
+      }
+    },
+    "source_changes": [
+      "src/grid/buffer.rs",
+      "src/grid/history.rs",
+      "src/grid/history_tests.rs",
+      "src/grid/mod.rs",
+      "src/selection.rs"
+    ],
+    "source_provenance": {
+      "source_directories_recorded_ci": {
+        "before": "/home/runner/work/_temp/kokuban-paired-source-before",
+        "after": "/home/runner/work/_temp/kokuban-paired-source-after"
+      },
+      "separate_targets_verified_in_workflow_and_ci_command": true,
+      "python_harness_tests_passed": 23,
+      "rust_correctness_tests_run_by_paired_workflow": false
+    },
+    "terminal_log_diagnostics": {
+      "measurements/01-before/terminal.log": [
+        "[2026-09-13T06:56:44Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/02-before/terminal.log": [
+        "[2026-09-13T06:57:17Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/03-before/terminal.log": [
+        "[2026-09-13T06:57:32Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/04-before/terminal.log": [
+        "[2026-09-13T06:58:04Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/05-before/terminal.log": [
+        "[2026-09-13T06:58:20Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/01-after/terminal.log": [
+        "[2026-09-13T06:57:00Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/02-after/terminal.log": [
+        "[2026-09-13T06:57:08Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/03-after/terminal.log": [
+        "[2026-09-13T06:57:48Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/04-after/terminal.log": [
+        "[2026-09-13T06:57:56Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/05-after/terminal.log": [
+        "[2026-09-13T06:58:36Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ]
+    },
+    "limitations": [
+      "Only PTY processing throughput and DSR RTT; no frame presentation or input-to-photon measurement.",
+      "DSR validates a final marker, not workload text, grapheme rendering or pixels.",
+      "No physical Omarchy/Hyprland/GPU/monitor validation or ranking against other terminals.",
+      "Five pairs describe this run; small changes and overlapping ranges do not establish noise or equivalence.",
+      "Compare source revisions within this run. Other profiles may use different CPU models and environments.",
+      "CI metadata and logs were supplied by the operator; no API refresh was performed by this auditor.",
+      "Binary hashes were recorded in CI; executable bytes were not independently rehashed or retained.",
+      "Per-child CPU affinity was inherited from the observed harness affinity, not read back separately.",
+      "Coarse process CPU counters are not instruction counts.",
+      "Paired CI builds revisions and tests the Python harness; source Rust correctness CI is separate.",
+      "The raw runner source_refs_verified_by_runner remains false; Git/workflow/build checks are external audit evidence.",
+      "Warnings and error diagnostics are preserved in original logs, including successful process runs."
+    ]
+  },
+  "alternate": {
+    "run": 34743855262,
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "binary_hashes": {
+      "before": "cc6b2f80fc273ce7b4f6c18564c606a5118577191a2fe613a6285bc2c53a492c",
+      "after": "59fd885962c1b8fa7b1d22dede79109e3a5918124fec80b8c512fccd2c3b6221"
+    },
+    "loads": {
+      "ascii": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 80.38909893725584,
+            "min": 80.10643219658066,
+            "max": 80.84226883414091,
+            "median_absolute_deviation": 0.22259708508937592,
+            "samples": [
+              80.3884965233125,
+              80.61169602234521,
+              80.10643219658066,
+              80.84226883414091,
+              80.38909893725584
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 80.37468568660772,
+            "min": 78.01472902553566,
+            "max": 81.18030215399722,
+            "median_absolute_deviation": 0.7344903228482167,
+            "samples": [
+              81.10917600945594,
+              80.37468568660772,
+              79.775083796835,
+              81.18030215399722,
+              78.01472902553566
+            ]
+          },
+          "ratio_of_medians_change_percent": -0.01792935962544595,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": -0.2940148234467088,
+            "min": -2.953596872100017,
+            "max": 0.8964957889645797,
+            "median_absolute_deviation": 0.7121541517105312,
+            "samples": [
+              0.8964957889645797,
+              -0.2940148234467088,
+              -0.41363519839771046,
+              0.4181393282638224,
+              -2.953596872100017
+            ]
+          },
+          "slower_after_pairs": 3,
+          "min_max_ranges_overlap": true
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.35,
+            "min": 0.35,
+            "max": 0.36,
+            "samples": [
+              0.35,
+              0.36,
+              0.35,
+              0.36,
+              0.35
+            ]
+          },
+          "after": {
+            "median": 0.36,
+            "min": 0.35,
+            "max": 0.37,
+            "samples": [
+              0.36,
+              0.36,
+              0.35,
+              0.35,
+              0.37
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 15740,
+            "min": 15676,
+            "max": 15840,
+            "samples": [
+              15676,
+              15816,
+              15840,
+              15688,
+              15740
+            ]
+          },
+          "after": {
+            "median": 15784,
+            "min": 15656,
+            "max": 18644,
+            "samples": [
+              15784,
+              15656,
+              18644,
+              15716,
+              15856
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 15816,
+            "min": 15676,
+            "max": 17652,
+            "samples": [
+              15676,
+              15816,
+              15840,
+              15688,
+              17652
+            ]
+          },
+          "after": {
+            "median": 15784,
+            "min": 15656,
+            "max": 18644,
+            "samples": [
+              15784,
+              15656,
+              18644,
+              15716,
+              15856
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.00018978299999616866,
+            "min": 0.0001679929999909291,
+            "max": 0.00024268200002097728,
+            "samples": [
+              0.00018845099998543446,
+              0.00018978299999616866,
+              0.00024268200002097728,
+              0.0002043210000124418,
+              0.0001679929999909291
+            ]
+          },
+          "after": {
+            "median": 0.000211143000001357,
+            "min": 0.00018977399997766042,
+            "max": 0.00027358900001672737,
+            "samples": [
+              0.00018977399997766042,
+              0.000211143000001357,
+              0.00027358900001672737,
+              0.0002262620000124116,
+              0.0002025969999976951
+            ]
+          }
+        }
+      },
+      "ansi": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 68.73722418469315,
+            "min": 67.76390906720724,
+            "max": 69.56825036454508,
+            "median_absolute_deviation": 0.4681270031191218,
+            "samples": [
+              67.76390906720724,
+              68.5434681431184,
+              68.73722418469315,
+              69.20535118781227,
+              69.56825036454508
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 67.41688260185357,
+            "min": 66.32353465229934,
+            "max": 68.12424637707683,
+            "median_absolute_deviation": 0.28742387179519824,
+            "samples": [
+              68.12424637707683,
+              66.32353465229934,
+              67.41688260185357,
+              67.70430647364877,
+              67.21879166795078
+            ]
+          },
+          "ratio_of_medians_change_percent": -1.9208538001067477,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": -2.168972035254768,
+            "min": -3.3771996338601062,
+            "max": 0.5317540189604619,
+            "median_absolute_deviation": 1.0697515819742986,
+            "samples": [
+              0.5317540189604619,
+              -3.2387236172290668,
+              -1.9208538001067477,
+              -2.168972035254768,
+              -3.3771996338601062
+            ]
+          },
+          "slower_after_pairs": 4,
+          "min_max_ranges_overlap": true
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.42000000000000015,
+            "min": 0.42000000000000015,
+            "max": 0.42000000000000015,
+            "samples": [
+              0.42000000000000015,
+              0.42000000000000015,
+              0.42000000000000015,
+              0.42000000000000015,
+              0.42000000000000015
+            ]
+          },
+          "after": {
+            "median": 0.43000000000000016,
+            "min": 0.42000000000000015,
+            "max": 0.44000000000000017,
+            "samples": [
+              0.42000000000000015,
+              0.44000000000000017,
+              0.42000000000000015,
+              0.43000000000000016,
+              0.44000000000000017
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 15816,
+            "min": 15676,
+            "max": 17652,
+            "samples": [
+              15676,
+              15816,
+              15840,
+              15688,
+              17652
+            ]
+          },
+          "after": {
+            "median": 15784,
+            "min": 15656,
+            "max": 18644,
+            "samples": [
+              15784,
+              15656,
+              18644,
+              15716,
+              15856
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 15816,
+            "min": 15676,
+            "max": 17652,
+            "samples": [
+              15676,
+              15816,
+              15840,
+              15688,
+              17652
+            ]
+          },
+          "after": {
+            "median": 15784,
+            "min": 15656,
+            "max": 18644,
+            "samples": [
+              15784,
+              15656,
+              18644,
+              15716,
+              15856
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.00023236300000917254,
+            "min": 0.00022289599999680831,
+            "max": 0.0002685799999824212,
+            "samples": [
+              0.00022289599999680831,
+              0.0002448269999888453,
+              0.0002685799999824212,
+              0.00023236300000917254,
+              0.00022705300000325224
+            ]
+          },
+          "after": {
+            "median": 0.00026374099996928635,
+            "min": 0.00024877399999923,
+            "max": 0.0002731390000008105,
+            "samples": [
+              0.00025466400001050715,
+              0.0002731390000008105,
+              0.00026374099996928635,
+              0.00024877399999923,
+              0.0002721669999914411
+            ]
+          }
+        }
+      },
+      "unicode": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 38.53742114988795,
+            "min": 38.25044374073948,
+            "max": 39.5640857055541,
+            "median_absolute_deviation": 0.28697740914847003,
+            "samples": [
+              38.53742114988795,
+              38.25044374073948,
+              38.520754712228744,
+              39.5640857055541,
+              38.92915240231184
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 39.1595817604144,
+            "min": 38.78364112895006,
+            "max": 39.59524881706878,
+            "median_absolute_deviation": 0.36248457506000875,
+            "samples": [
+              39.47007666583848,
+              39.1595817604144,
+              39.59524881706878,
+              38.79709718535439,
+              38.78364112895006
+            ]
+          },
+          "ratio_of_medians_change_percent": 1.6144323931448712,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": 2.376803850530562,
+            "min": -1.938597863496283,
+            "max": 2.789390064828945,
+            "median_absolute_deviation": 0.4125862142983827,
+            "samples": [
+              2.420129547130423,
+              2.376803850530562,
+              2.789390064828945,
+              -1.938597863496283,
+              -0.3737848485834028
+            ]
+          },
+          "slower_after_pairs": 2,
+          "min_max_ranges_overlap": true
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.77,
+            "min": 0.7599999999999998,
+            "max": 0.79,
+            "samples": [
+              0.79,
+              0.7800000000000002,
+              0.77,
+              0.7599999999999998,
+              0.77
+            ]
+          },
+          "after": {
+            "median": 0.77,
+            "min": 0.7599999999999998,
+            "max": 0.7799999999999998,
+            "samples": [
+              0.77,
+              0.7599999999999998,
+              0.7600000000000002,
+              0.77,
+              0.7799999999999998
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 37016,
+            "min": 36884,
+            "max": 38856,
+            "samples": [
+              36884,
+              37016,
+              37028,
+              36896,
+              38856
+            ]
+          },
+          "after": {
+            "median": 36968,
+            "min": 36868,
+            "max": 39832,
+            "samples": [
+              36968,
+              36868,
+              39832,
+              36916,
+              37048
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 37028,
+            "min": 36892,
+            "max": 38856,
+            "samples": [
+              36892,
+              38272,
+              37028,
+              36896,
+              38856
+            ]
+          },
+          "after": {
+            "median": 36968,
+            "min": 36868,
+            "max": 39832,
+            "samples": [
+              36968,
+              36868,
+              39832,
+              36916,
+              37048
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.0003998850000073162,
+            "min": 0.0003862000000083299,
+            "max": 0.0007662869999762734,
+            "samples": [
+              0.0003862000000083299,
+              0.0003998850000073162,
+              0.0003983820000144078,
+              0.0007662869999762734,
+              0.00043144400001438044
+            ]
+          },
+          "after": {
+            "median": 0.0003804090000016913,
+            "min": 0.00036445900002490816,
+            "max": 0.00045874500000309126,
+            "samples": [
+              0.00036445900002490816,
+              0.0003773130000013225,
+              0.00042610399998466164,
+              0.0003804090000016913,
+              0.00045874500000309126
+            ]
+          }
+        }
+      },
+      "short_lines": {
+        "throughput": {
+          "before_mib_per_second": {
+            "count": 5,
+            "median": 34.47308805288584,
+            "min": 34.052170139719266,
+            "max": 34.60958136233984,
+            "median_absolute_deviation": 0.09553820937950519,
+            "samples": [
+              34.46700146871084,
+              34.052170139719266,
+              34.60958136233984,
+              34.47308805288584,
+              34.56862626226535
+            ]
+          },
+          "after_mib_per_second": {
+            "count": 5,
+            "median": 33.90637296060239,
+            "min": 33.59392657365353,
+            "max": 34.143776526524434,
+            "median_absolute_deviation": 0.2285268252642325,
+            "samples": [
+              33.59392657365353,
+              33.67784613533816,
+              34.143776526524434,
+              33.9848573477844,
+              33.90637296060239
+            ]
+          },
+          "ratio_of_medians_change_percent": -1.6439348033284507,
+          "paired_throughput_change_percent": {
+            "count": 5,
+            "median": -1.4162662316542063,
+            "min": -2.53307470291515,
+            "max": -1.0992662225203897,
+            "median_absolute_deviation": 0.31700000913381654,
+            "samples": [
+              -2.53307470291515,
+              -1.0992662225203897,
+              -1.3458840514097292,
+              -1.4162662316542063,
+              -1.915764012832255
+            ]
+          },
+          "slower_after_pairs": 5,
+          "min_max_ranges_overlap": true
+        },
+        "terminal_cpu_seconds": {
+          "before": {
+            "median": 0.8800000000000008,
+            "min": 0.8700000000000001,
+            "max": 0.9000000000000004,
+            "samples": [
+              0.8900000000000006,
+              0.9000000000000004,
+              0.8800000000000008,
+              0.8700000000000001,
+              0.8799999999999999
+            ]
+          },
+          "after": {
+            "median": 0.9000000000000004,
+            "min": 0.8900000000000006,
+            "max": 0.9199999999999999,
+            "samples": [
+              0.9199999999999999,
+              0.9000000000000004,
+              0.8900000000000006,
+              0.9000000000000004,
+              0.9000000000000004
+            ]
+          }
+        },
+        "terminal_rss_before_kib": {
+          "before": {
+            "median": 37028,
+            "min": 36892,
+            "max": 38856,
+            "samples": [
+              36892,
+              38272,
+              37028,
+              36896,
+              38856
+            ]
+          },
+          "after": {
+            "median": 39804,
+            "min": 36868,
+            "max": 39948,
+            "samples": [
+              36968,
+              36868,
+              39832,
+              39804,
+              39948
+            ]
+          }
+        },
+        "terminal_rss_after_kib": {
+          "before": {
+            "median": 37028,
+            "min": 36892,
+            "max": 38856,
+            "samples": [
+              36892,
+              38272,
+              37028,
+              36896,
+              38856
+            ]
+          },
+          "after": {
+            "median": 39804,
+            "min": 36868,
+            "max": 39948,
+            "samples": [
+              36968,
+              36868,
+              39832,
+              39804,
+              39948
+            ]
+          }
+        },
+        "drain_rtt_seconds": {
+          "before": {
+            "median": 0.00045237299997324953,
+            "min": 0.00042030299999851195,
+            "max": 0.0005214920000184975,
+            "samples": [
+              0.00042030299999851195,
+              0.0005214920000184975,
+              0.00044396700002380385,
+              0.00045237299997324953,
+              0.0004860860000235334
+            ]
+          },
+          "after": {
+            "median": 0.0004906140000002779,
+            "min": 0.0004340780000120503,
+            "max": 0.0005125650000081805,
+            "samples": [
+              0.0004906140000002779,
+              0.00048230900000589827,
+              0.0004340780000120503,
+              0.0004995709999775499,
+              0.0005125650000081805
+            ]
+          }
+        }
+      }
+    },
+    "rtt_us": {
+      "before": {
+        "median": 56.42049998755283,
+        "min": 44.182999999975436,
+        "max": 117.54799999152965
+      },
+      "after": {
+        "median": 58.40400001488888,
+        "min": 38.92199998745127,
+        "max": 150.2300000026935
+      }
+    },
+    "source_changes": [
+      "src/grid/buffer.rs",
+      "src/grid/history.rs",
+      "src/grid/history_tests.rs",
+      "src/grid/mod.rs",
+      "src/selection.rs"
+    ],
+    "source_provenance": {
+      "source_directories_recorded_ci": {
+        "before": "/home/runner/work/_temp/kokuban-paired-source-before",
+        "after": "/home/runner/work/_temp/kokuban-paired-source-after"
+      },
+      "separate_targets_verified_in_workflow_and_ci_command": true,
+      "python_harness_tests_passed": 23,
+      "rust_correctness_tests_run_by_paired_workflow": false
+    },
+    "terminal_log_diagnostics": {
+      "measurements/01-before/terminal.log": [
+        "[2026-09-13T07:02:09Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/02-before/terminal.log": [
+        "[2026-09-13T07:02:28Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/03-before/terminal.log": [
+        "[2026-09-13T07:02:35Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/04-before/terminal.log": [
+        "[2026-09-13T07:02:55Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/05-before/terminal.log": [
+        "[2026-09-13T07:03:01Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/01-after/terminal.log": [
+        "[2026-09-13T07:02:15Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/02-after/terminal.log": [
+        "[2026-09-13T07:02:22Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/03-after/terminal.log": [
+        "[2026-09-13T07:02:42Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/04-after/terminal.log": [
+        "[2026-09-13T07:02:48Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ],
+      "measurements/05-after/terminal.log": [
+        "[2026-09-13T07:03:08Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+      ]
+    },
+    "limitations": [
+      "Only PTY processing throughput and DSR RTT; no frame presentation or input-to-photon measurement.",
+      "DSR validates a final marker, not workload text, grapheme rendering or pixels.",
+      "No physical Omarchy/Hyprland/GPU/monitor validation or ranking against other terminals.",
+      "Five pairs describe this run; small changes and overlapping ranges do not establish noise or equivalence.",
+      "Compare source revisions within this run. Other profiles may use different CPU models and environments.",
+      "CI metadata and logs were supplied by the operator; no API refresh was performed by this auditor.",
+      "Binary hashes were recorded in CI; executable bytes were not independently rehashed or retained.",
+      "Per-child CPU affinity was inherited from the observed harness affinity, not read back separately.",
+      "Coarse process CPU counters are not instruction counts.",
+      "Paired CI builds revisions and tests the Python harness; source Rust correctness CI is separate.",
+      "The raw runner source_refs_verified_by_runner remains false; Git/workflow/build checks are external audit evidence.",
+      "Warnings and error diagnostics are preserved in original logs, including successful process runs."
+    ]
+  }
+}

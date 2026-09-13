@@ -885,3 +885,38 @@ no commit `58b8d1cf5ddf2943fcc65e96876d13e8bd76a0de`:
 [CI 34722125349](https://github.com/guicybercode/kokuban.rs/actions/runs/34722125349),
 com **845 testes Rust macOS e 959 Linux, mais um ignorado no Linux**. Esse CI
 verifica a combinação funcional; as medições acima continuam referentes a `74eaad8`.
+
+
+## Histórico compacto: comparação pareada Linux de 2026-09-13
+
+O armazenamento apenas do prefixo materializado das linhas de histórico elevou
+a mediana de processamento na tela principal em **260,72% para linhas curtas**,
+**37,88% para ANSI** e **8,60% para Unicode**, nos cinco pares de cada carga.
+O tempo de CPU mediano das linhas curtas caiu de 4,80 para 1,30 s.
+A base medida é `24782c344714727be4f8981cd0d1d10f047aa9f4`; candidato e
+harness são `f0040ad66cbb49d76b387bbe0539c014bc801d28`.
+
+| Tela | Carga | Antes MiB/s | Depois MiB/s | Delta das medianas | Pares mais lentos |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Principal | ASCII | 57,161 | 56,091 | −1,87% | 2/5 |
+| Principal | ANSI | 44,517 | 61,380 | +37,88% | 0/5 |
+| Principal | Unicode | 30,814 | 33,464 | +8,60% | 0/5 |
+| Principal | Linhas curtas | 6,532 | 23,560 | +260,72% | 0/5 |
+| Alternativa | ASCII | 80,389 | 80,375 | −0,02% | 3/5 |
+| Alternativa | ANSI | 68,737 | 67,417 | −1,92% | 4/5 |
+| Alternativa | Unicode | 38,537 | 39,160 | +1,61% | 2/5 |
+| Alternativa | Linhas curtas | 34,473 | 33,906 | −1,64% | 5/5 |
+
+As regressões permanecem registradas, inclusive linhas curtas na alternativa
+mais lentas nos cinco pares. Faixas sobrepostas não estabelecem ruído ou
+equivalência. As faixas de ANSI e linhas curtas da principal não se sobrepõem;
+as de Unicode se sobrepõem ligeiramente. Cada perfil teve cinco pares AB/BA em
+uma sessão nativa Ubuntu 24.04 x86_64/EPYC 7763, CPU 0, Weston headless/Pixman,
+80×24 células e fonte 14 px. Os perfis usam sessões diferentes.
+
+O [pacote auditável](linux-evidence/2026-09-13-compact-history/README.md) conserva
+174 arquivos originais, CI completo, fontes do harness, inventários e auditor
+reproduzível. Os builds usaram Rust 1.94.1 e targets separados; o CI funcional
+passou em macOS/Linux. A remoção de dirty tracking foi integrada separadamente
+e não compõe estes binários. PTY/DSR não mede apresentação, não verifica pixels
+e não estabelece superioridade geral sobre outros terminais.
