@@ -3,9 +3,11 @@ pub mod cell;
 pub mod marks;
 mod reflow;
 mod boundary_pages;
+mod history;
 
 use buffer::{Buffer, RowMetadata};
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
+use history::HistoryRow;
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
 use std::{collections::VecDeque, sync::Arc};
@@ -145,7 +147,7 @@ pub fn dec_special_map(c: char) -> char {
 
 #[derive(Debug)]
 struct SavedPrimaryHistory {
-    cells: VecDeque<Vec<Cell>>,
+    cells: VecDeque<HistoryRow>,
     metadata: VecDeque<RowMetadata>,
     tail: Vec<RetainedRow>,
     total_lines: usize,
@@ -168,7 +170,7 @@ pub struct Grid {
     pub bg: Color,
     pub flags: CellFlags,
     // Scrollback
-    scrollback: VecDeque<Vec<Cell>>,
+    scrollback: VecDeque<HistoryRow>,
     scrollback_metadata: VecDeque<RowMetadata>,
     resize_tail: Vec<RetainedRow>,
     saved_primary_history: Option<SavedPrimaryHistory>,
@@ -397,7 +399,7 @@ impl Grid {
             .unwrap_or(&DEFAULT_CELL)
     }
 
-    fn project_scrollback_cell<'a>(&self, row_data: &'a [Cell], col: usize) -> &'a Cell {
+    fn project_scrollback_cell<'a>(&self, row_data: &'a HistoryRow, col: usize) -> &'a Cell {
         if col >= self.cols() {
             return &DEFAULT_CELL;
         }
@@ -933,7 +935,7 @@ impl Grid {
             && self.scroll_bottom == self.rows() - 1;
         if save_scrollback {
             for i in 0..count {
-                let row_data = self.buffer.extract_row(i);
+                let row_data = self.buffer.extract_history_row(i);
                 let metadata = self.buffer.row_metadata(i);
                 self.scrollback_cells += row_data.len();
                 self.scrollback_hard_lines += usize::from(!metadata.wrapped);
@@ -1351,7 +1353,7 @@ impl Grid {
         let rows = self.rows();
         let cols = self.cols();
         let mut retained: Vec<_> = self.scrollback.drain(..).zip(self.scrollback_metadata.drain(..))
-            .map(|(cells, metadata)| RetainedRow { cells, metadata }).collect();
+            .map(|(cells, metadata)| RetainedRow { cells: cells.into_cells(), metadata }).collect();
         retained.extend((0..rows).map(|row| RetainedRow {
             cells: self.buffer.extract_row(row), metadata: self.buffer.row_metadata(row),
         }));
@@ -1359,7 +1361,7 @@ impl Grid {
         let retained_row = retained_row.min(retained.len() - 1);
         let start = retained_row.min(retained.len().saturating_sub(rows));
         for row in retained.drain(..start) {
-            self.scrollback.push_back(row.cells);
+            self.scrollback.push_back(HistoryRow::from_cells(row.cells));
             self.scrollback_metadata.push_back(row.metadata);
         }
         if retained.len() > rows { self.resize_tail = retained.split_off(rows); }
@@ -1411,7 +1413,7 @@ impl Grid {
             let old_history = history.cells.len();
             Self::resize_screen(primary, &mut history.cells, &mut history.metadata, &mut history.tail, &mut cursor, cols, rows);
             history.total_lines = history.total_lines.saturating_sub(old_history) + history.cells.len();
-            history.cell_budget = history.cell_budget.max(history.cells.iter().map(Vec::len).sum());
+            history.cell_budget = history.cell_budget.max(history.cells.iter().map(HistoryRow::len).sum());
             self.alt_cursor = (cursor[0].row, cursor[0].col);
             self.alt_wrap_pending = cursor[0].pending;
             self.saved_primary_saved_cursor = Some(cursor[1]);
@@ -1423,12 +1425,12 @@ impl Grid {
 
     fn recount_history(&mut self) {
         self.scrollback_hard_lines = self.scrollback_metadata.iter().filter(|row| !row.wrapped).count();
-        self.scrollback_cells = self.scrollback.iter().map(Vec::len).sum();
+        self.scrollback_cells = self.scrollback.iter().map(HistoryRow::len).sum();
     }
 
     fn resize_screen(
         buffer: &mut Buffer,
-        history: &mut VecDeque<Vec<Cell>>,
+        history: &mut VecDeque<HistoryRow>,
         history_metadata: &mut VecDeque<RowMetadata>,
         tail: &mut Vec<RetainedRow>,
         cursors: &mut [ReflowCursor],
@@ -1437,7 +1439,7 @@ impl Grid {
     ) {
         let old_history = history.len();
         let mut source: Vec<_> = history.drain(..).zip(history_metadata.drain(..))
-            .map(|(cells, metadata)| RetainedRow { cells, metadata }).collect();
+            .map(|(cells, metadata)| RetainedRow { cells: cells.into_cells(), metadata }).collect();
         source.extend((0..buffer.rows()).map(|row| RetainedRow {
             cells: buffer.extract_row(row), metadata: buffer.row_metadata(row),
         }));
@@ -1460,7 +1462,7 @@ impl Grid {
             };
         }
         for row in reflowed.drain(..screen_start) {
-            history.push_back(row.cells);
+            history.push_back(HistoryRow::from_cells(row.cells));
             history_metadata.push_back(row.metadata);
         }
         if reflowed.len() > rows { *tail = reflowed.split_off(rows); }
@@ -1471,6 +1473,9 @@ impl Grid {
 
 #[cfg(test)]
 mod utf8_spans_tests;
+
+#[cfg(test)]
+mod history_tests;
 
 #[cfg(test)]
 mod tests {
