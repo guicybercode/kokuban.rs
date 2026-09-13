@@ -8,7 +8,7 @@ on:
         required: true
         default: a27b8ce
       after:
-        description: Candidate commit or ref
+        description: Candidate commit or ref (ignored by same-binary)
         required: true
         default: 4bcf68c
       screen:
@@ -16,12 +16,17 @@ on:
         type: choice
         options: [alternate, primary]
         default: alternate
+      comparison:
+        description: Compare revisions or run one exact executable under both labels
+        type: choice
+        options: [revisions, same-binary]
+        default: revisions
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-paired-performance-${{ github.ref }}
+  group: linux-paired-performance-${{ github.ref }}-${{ inputs.screen }}-${{ inputs.comparison || 'revisions' }}
   cancel-in-progress: false
 
 jobs:
@@ -34,6 +39,7 @@ jobs:
       BEFORE_REF: ${{ inputs.before }}
       AFTER_REF: ${{ inputs.after }}
       SCREEN: ${{ inputs.screen }}
+      COMPARISON: ${{ inputs.comparison || 'revisions' }}
 
     steps:
       - name: Check out measurement harness and revision history
@@ -54,32 +60,49 @@ jobs:
       - name: Validate measurement harness
         run: python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
 
-      - name: Build both exact revisions sequentially with the same toolchain
+      - name: Build exact revisions or the sole control executable
         shell: bash
         run: |
           evidence_directory="$RUNNER_TEMP/kokuban-paired-evidence"
           mkdir -p "$evidence_directory" "$RUNNER_TEMP/kokuban-paired-binaries"
           git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
           git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
-          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          printf '%s\n' "$COMPARISON" > "$evidence_directory/comparison.txt"
+          labels=(before after)
+          case "$COMPARISON" in
+            revisions)
+              git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+              ;;
+            same-binary)
+              labels=(before)
+              cp "$evidence_directory/before-revision.txt" "$evidence_directory/after-revision.txt"
+              ;;
+            *) exit 1 ;;
+          esac
           rustc --version --verbose > "$evidence_directory/rustc.txt"
           lscpu > "$evidence_directory/cpu.txt"
           uname -a > "$evidence_directory/kernel.txt"
           dpkg-query -W weston fonts-dejavu-core fonts-noto-color-emoji \
             libfontconfig1 libfreetype6 libxkbcommon-x11-0 > "$evidence_directory/system-packages.txt"
-          for label in before after; do
+          for label in "${labels[@]}"; do
             revision="$(cat "$evidence_directory/$label-revision.txt")"
             source_directory="$RUNNER_TEMP/kokuban-paired-source-$label"
             mkdir "$source_directory" "$evidence_directory/$label-build"
-            git archive "$revision" | tar -x -C "$source_directory"
+            git archive --format=tar "$revision" | gzip -n > "$evidence_directory/$label-source.tar.gz"
+            tar -xzf "$evidence_directory/$label-source.tar.gz" -C "$source_directory"
             # Archives preserve old mtimes: isolate targets so Cargo cannot
             # reuse the other revision's root binary as an apparently fresh build.
+            test ! -e "$RUNNER_TEMP/kokuban-paired-build-$label"
             cargo build --release --locked --manifest-path "$source_directory/Cargo.toml" \
-              --target-dir "$RUNNER_TEMP/kokuban-paired-build-$label"
+              --target-dir "$RUNNER_TEMP/kokuban-paired-build-$label" --message-format=json \
+              > "$evidence_directory/$label-build/cargo-messages.jsonl" \
+              2> "$evidence_directory/$label-build/build.log"
             cp "$RUNNER_TEMP/kokuban-paired-build-$label/release/kokuban" "$RUNNER_TEMP/kokuban-paired-binaries/$label"
+            cp "$RUNNER_TEMP/kokuban-paired-binaries/$label" "$evidence_directory/$label-build/kokuban"
             cp "$source_directory/Cargo.toml" "$source_directory/Cargo.lock" "$evidence_directory/$label-build/"
             cargo tree --locked --manifest-path "$source_directory/Cargo.toml" > "$evidence_directory/$label-build/cargo-tree.txt"
             sha256sum "$RUNNER_TEMP/kokuban-paired-binaries/$label" > "$evidence_directory/$label-build/binary-sha256.txt"
+            sha256sum "$evidence_directory/$label-source.tar.gz" > "$evidence_directory/$label-source-sha256.txt"
           done
 
       - name: Measure five alternating pairs in one native Wayland session
@@ -102,14 +125,20 @@ jobs:
           done
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
           benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          after_binary="$RUNNER_TEMP/kokuban-paired-binaries/after"
+          control_options=()
+          if [[ "$COMPARISON" == same-binary ]]; then
+            after_binary="$RUNNER_TEMP/kokuban-paired-binaries/before"
+            control_options+=(--allow-identical-binaries)
+          fi
           timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
             python3 scripts/compare-kokuban-revisions.py \
               --before "$RUNNER_TEMP/kokuban-paired-binaries/before" \
-              --after "$RUNNER_TEMP/kokuban-paired-binaries/after" \
+              --after "$after_binary" \
               --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
               --after-ref "$(cat "$evidence_directory/after-revision.txt")" \
               --artifacts-dir "$evidence_directory/measurements" \
-              --backend wayland --screen "$SCREEN" --samples 5 --bytes 33554432 \
+              --backend wayland --screen "$SCREEN" --samples 5 --bytes 33554432 "${control_options[@]}" \
               --timeout 120 --environment-note \
               "GitHub ubuntu-24.04 runner; Weston headless pixman; both binaries on CPU $benchmark_cpu; DSR processing only, no physical display or GPU comparison"
 
