@@ -69,6 +69,8 @@ The evidence preserves all five runs, not just the strongest result:
 
 Do not add percentages between these runs or compare their absolute times as a causal code effect. Host models and scheduling differ. The historical A/A results are not an adjustment to subtract from the candidate or a transferable noise cutoff. The primary aggregate result is measured directly.
 
+A later [row-baseline reuse experiment](linux-evidence/2026-09-13-row-baseline-experiment/README.md), `ddccc9b → 6a49dfb`, is preserved separately and also remains outside main. Although all ARM mode medians improved, x86 incremental and full-Unicode repaint regressed; reusing that calculation did not meet this variant's acceptance goals. Its evidence is not part of the five-run package below.
+
 ## Preserved evidence and offline verification
 
 The [manifest](linux-evidence/2026-09-13-damage-cache/manifest.json) maps 713 original artifact paths to 262 lossless XZ objects, deduplicated by their uncompressed SHA-256. Both compressed and original byte counts/hashes are recorded. The package is approximately 1.8 MB, representing about 726 MB of mapped original bytes, principally repeated frame references.
