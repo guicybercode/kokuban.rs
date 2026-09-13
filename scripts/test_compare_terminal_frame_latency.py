@@ -36,6 +36,16 @@ def xwd(width=6, height=5, bits=32, order=0, color=(29, 173, 83), padding=4):
 
 
 class PixelOracleTests(unittest.TestCase):
+    def test_auxiliary_windows_do_not_hide_the_unique_calibrated_terminal_window(self):
+        geometry = [24, 80, 720, 408]
+        candidates = [{"window": "10", "pixels": [1, 1]},
+                      {"window": "11", "pixels": [720, 408]},
+                      {"window": "12", "capture_error": "window disappeared"}]
+        self.assertEqual(RUNNER["matching_window"](candidates, geometry), "11")
+        self.assertIsNone(RUNNER["matching_window"](candidates[:1], geometry))
+        self.assertIsNone(RUNNER["matching_window"](
+            candidates + [{"window": "13", "pixels": [720, 408]}], geometry))
+
     def test_rgb_validation_supports_both_orders_depths_padding_and_unused_byte(self):
         for bits in (24, 32):
             for order in (0, 1):

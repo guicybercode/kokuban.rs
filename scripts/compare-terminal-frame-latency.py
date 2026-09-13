@@ -156,6 +156,12 @@ def capture(window, timeout):
     return Frame(data), started, finished
 
 
+def matching_window(candidates, geometry):
+    """Ignore auxiliary X11 windows, but reject ambiguous calibrated windows."""
+    matches = [item["window"] for item in candidates if item.get("pixels") == geometry[2:]]
+    return matches[0] if len(matches) == 1 else None
+
+
 def verify_event(event, index, geometry, started, finished):
     expected_key = b"b" if index % 2 == 0 else b"a"
     if (event["index"] != index or event["input_hex"] != expected_key.hex()
@@ -189,6 +195,7 @@ def execute_sample(name, binary, version, directory, args, cell):
         with (directory / "terminal.log").open("wb") as log:
             process = subprocess.Popen(command, cwd=directory, env=environment,
                                        stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+        sample["terminal_pid"] = process.pid
 
         def check():
             failure = directory / "child-error.json"
@@ -202,11 +209,18 @@ def execute_sample(name, binary, version, directory, args, cell):
             result = subprocess.run(["xdotool", "search", "--onlyvisible", "--pid", str(process.pid)],
                                     capture_output=True, timeout=args.timeout)
             windows = result.stdout.decode().splitlines()
-            if result.returncode == 0 and len(windows) == 1:
-                frame, _, _ = capture(windows[0], args.timeout)
-                if [frame.width, frame.height] == geometry[2:]:
-                    return windows[0]
-            return None
+            candidates = []
+            sample["window_search"] = {"status": result.returncode, "candidates": candidates,
+                                       "stderr": result.stderr.decode(errors="replace")}
+            if result.returncode == 0:
+                for candidate in windows:
+                    try:
+                        frame, _, _ = capture(candidate, args.timeout)
+                        candidates.append({"window": candidate, "pixels": [frame.width, frame.height]})
+                    except subprocess.CalledProcessError as error:
+                        # Auxiliary windows may disappear while startup is in progress.
+                        candidates.append({"window": candidate, "capture_error": str(error)})
+            return matching_window(candidates, geometry)
 
         window = wait_for(find_window, "one visible window with calibrated pixels", args.timeout)
         sample["window"] = window
