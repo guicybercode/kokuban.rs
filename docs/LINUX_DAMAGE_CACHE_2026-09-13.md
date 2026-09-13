@@ -2,7 +2,7 @@
 
 The combined candidate reduces CPU repaint time substantially for ASCII and single-row incremental updates. It also has a small, consistent regression for full Unicode repaint on x86. These are measurements of candidate `ddccc9b`, compared directly with `d54f801`; they are not a claim that every workload improves.
 
-**Status at this evidence snapshot:** the candidate is under review, with separate macOS glyph-lookup performance validation pending. [Linux and macOS CI passed on the exact candidate](https://github.com/guicybercode/kokuban.rs/actions/runs/34746934511). That verifies correctness checks and compilation, not macOS performance. The candidate is not integrated into the `8c12b23` main revision from which this report was prepared.
+**Status:** integrated into main in [`62c99ad`](https://github.com/guicybercode/kokuban.rs/commit/62c99adc6fc1dbf12d89ee717f5823644c162d47), after the portable lookup measurements below and independent review. [Linux and macOS CI passed on the exact candidate](https://github.com/guicybercode/kokuban.rs/actions/runs/34746934511) and on the [integration branch](https://github.com/guicybercode/kokuban.rs/actions/runs/34748539460). The application sources and Cargo files in that integration are identical to `ddccc9b`; documentation and measurement tooling were added separately. CI verifies correctness checks and compilation, not performance.
 
 ## Direct aggregate result
 
@@ -35,7 +35,7 @@ ARM Unicode nonselective medians are −0.59% to −0.82%, with three slower pai
 
 The damage filter restricts background work to affected rows and rejects glyph ink that cannot intersect the damage band before color resolution and composition/blitting. It still visits visible grid rows and calls `get_or_insert_cell`; a cache miss outside the band can still rasterize a glyph. **This is not evidence that cold rasterization is avoided.** Underlines and glyph overhang retain independent intersection handling.
 
-The scalar glyph cache replaces hashed ASCII lookups with 512 direct slots: 128 ASCII values × four bold/italic combinations. Non-ASCII scalars retain keyed storage, and cached empty glyphs remain present. Grapheme handling remains separate. This shared cache also warrants the pending macOS lookup measurement; the Linux damage filter alone does not characterize Metal rendering.
+The scalar glyph cache replaces hashed ASCII lookups with 512 direct slots: 128 ASCII values × four bold/italic combinations. Non-ASCII scalars retain keyed storage, and cached empty glyphs remain present. Grapheme handling remains separate. The shared cache was also measured on macOS; the Linux damage filter alone does not characterize Metal rendering.
 
 The macro uses a **prewarmed glyph atlas**, 120×40 cells, 9×17 pixels per cell and a 1080×680 XRGB frame. DejaVu Sans Mono is requested at 14 px, with Noto CJK and Noto Color Emoji available. The three contents are ASCII, ASCII with an atlas previously populated with emoji, and a mixed Unicode fixture. The latter is not a pure non-ASCII-only workload.
 
@@ -44,6 +44,16 @@ Each architecture runs six balanced process pairs in order AB, BA, AB, BA, AB, B
 The timed region covers CPU damage calculation and software paint. Snapshots, font shaping/rasterization warmup, PTY/parser throughput, window presentation, GPU work, physical display latency and application startup are outside this measurement. Do not translate these percentages into typing latency or terminal rankings.
 
 Both alternating fixture states are compared against full repaint outside timing; final timed state is also checked. The retained reference frames are byte-identical between builds and architectures. They do not record every intermediate timed frame.
+
+## Shared-cache validation and accepted costs
+
+The [portable lookup evidence](glyph-cache-evidence/2026-09-13/README.md) preserves two A/B rounds of `b6cd9ad → ddccc9b` and two same-binary A/A controls, each with six pairs on Linux x86, Linux ARM and macOS ARM. The [method guide](GLYPH_CACHE_MEASUREMENTS.md) defines the five prewarmed workloads. These runs time cached lookups only; they do not measure Metal frames or physical display latency.
+
+In the longer A/B, regular/four-style ASCII lookup time falls by 79.29%/80.25% on virtual Apple M1, 54.92%/54.69% on Neoverse-N2 and 60.38%/60.02% on Intel Xeon Platinum 8573C. Every ASCII pair improves. macOS has no enforced CPU affinity, and scheduling variability remains even with 3.84 million lookups per workload/sample.
+
+Grapheme results are an explicit limitation: the long Intel run is 0.716% slower in all six pairs, about 0.141 ns per lookup. The Mac median is 4.459% slower, about 1.529 ns per lookup, with three faster and three slower pairs. Its AB/BA medians are −12.718%/+13.290%; this strong order sensitivity prevents a precise causal interpretation or a neutrality claim. The x86 A/A ran on AMD EPYC 7763, so its variability is not a transferable cutoff for the Intel A/B.
+
+Both A/B rounds measure `GlyphAtlas` inline storage growing from 488 to 14,824 bytes and scalar-cache storage from 48 to 14,384 bytes: **14,336 additional bytes (14 KiB) per atlas**. These are Rust structure sizes, excluding heap allocations and RSS. The integration accepts this storage cost, the small full-Unicode x86 repaint regression above, and the recorded lookup limitations in exchange for the repeatable ASCII and selective-repaint gains. It makes no claim that every workload improves.
 
 ## Incremental experiments and rejected alternative
 
