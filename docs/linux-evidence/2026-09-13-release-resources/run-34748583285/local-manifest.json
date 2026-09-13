@@ -1,0 +1,158 @@
+{
+  "audit-release-resources.py": {
+    "sha256": "820754b22cca6471bb4a0f9aa8c8985d251e8ac399a86759164641b047c04de5",
+    "bytes": 12011
+  },
+  "github-artifacts.json": {
+    "sha256": "b3f8d1db373a1322806bbe1a798fe0e983793675752c8cc4f9058e0597bee984",
+    "bytes": 764
+  },
+  "github-run.json": {
+    "sha256": "4a2e6e4c26e439b8270a3c02d534320a8121e430bb981685250f36a0d1e169a1",
+    "bytes": 2311
+  },
+  "github-run.log": {
+    "sha256": "7fd7ff56d6e62c10e9769dca22cbca21f608f95f0aac87918725664a63734fb9",
+    "bytes": 230825
+  },
+  "linux-release-resource-measurements/Cargo.lock": {
+    "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1",
+    "bytes": 69307
+  },
+  "linux-release-resource-measurements/Cargo.toml": {
+    "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+    "bytes": 2084
+  },
+  "linux-release-resource-measurements/cargo-tree.txt": {
+    "sha256": "73a67a7d009d7225d743fd9aa874908d08bf4665dae23b0ce293a3be66e806f1",
+    "bytes": 13307
+  },
+  "linux-release-resource-measurements/resources/child-exit.json": {
+    "sha256": "370aaa466bf7fdf5df8dec2004f5e0b4d5d352b7060c00c4a1204cc89b4b641a",
+    "bytes": 18
+  },
+  "linux-release-resource-measurements/resources/child.json": {
+    "sha256": "425694994951d253e55a6ecee7a1fd476b568505cca7a72ec7eb6591e5e55d01",
+    "bytes": 177
+  },
+  "linux-release-resource-measurements/resources/kokuban.toml": {
+    "sha256": "6a270728b78bc32b41d0c703aa63775fabb5e7d62e7304abd2435df326680f7b",
+    "bytes": 171
+  },
+  "linux-release-resource-measurements/resources/output-done.json": {
+    "sha256": "7e88aa35eba0991bc0d9b8ce077d5bace1bfd87a92996415b4d82974e60089d4",
+    "bytes": 486
+  },
+  "linux-release-resource-measurements/resources/output-start": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "linux-release-resource-measurements/resources/ready.json": {
+    "sha256": "20e3aca2fcc6d9d7026000d9d308286351ef3151b2c7be59054d5edab6b5c276",
+    "bytes": 145
+  },
+  "linux-release-resource-measurements/resources/report.json": {
+    "sha256": "f3c511fd52178e3c7f7739f4e34e93fa2a369ef2d35b634c7615c741a71566f6",
+    "bytes": 23334
+  },
+  "linux-release-resource-measurements/resources/shell": {
+    "sha256": "06d5077f53ff36dbdf226e8cae77b3741448d32043b28f26a013814fe8b7f06a",
+    "bytes": 147
+  },
+  "linux-release-resource-measurements/resources/stop": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "linux-release-resource-measurements/resources/terminal.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "linux-release-resource-measurements/resources/window-ready": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "linux-release-resource-measurements/rustc.txt": {
+    "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "bytes": 196
+  },
+  "linux-release-resource-measurements/system-packages.txt": {
+    "sha256": "65bf4b57e40fecd069f5f375594f1bd10461f23e32bbca94ca803d0630965674",
+    "bytes": 126
+  },
+  "linux-release-resource-measurements/video/child.json": {
+    "sha256": "91c6787d892bc7e672cdb4004d1316e06b5d3ca44e465d2468f93b9a66e3b345",
+    "bytes": 105
+  },
+  "linux-release-resource-measurements/video/ffmpeg-command.json": {
+    "sha256": "2034da758b47e9cde386c8b2a60956cf9b60b6979bd417aafd1c3c819708f345",
+    "bytes": 328
+  },
+  "linux-release-resource-measurements/video/ffmpeg.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "linux-release-resource-measurements/video/fixture.mkv": {
+    "sha256": "823d4dbf0a39d76963a8fa8f34a0551c57bc22a66fe5dd3e52f77821e1f55c69",
+    "bytes": 107540
+  },
+  "linux-release-resource-measurements/video/frame-00.png": {
+    "sha256": "83803ca75eb8613bc9a9a08baa0f3d163a67a4438e0c8df7f2bdc8b9eec331f9",
+    "bytes": 2735
+  },
+  "linux-release-resource-measurements/video/frame-71.png": {
+    "sha256": "601396a5523b03f8544051d9c6e39fc55ea9526b58836d51ff4f857cb4b2d57b",
+    "bytes": 2716
+  },
+  "linux-release-resource-measurements/video/kokuban.toml": {
+    "sha256": "3bea7bd7d318b6a9def7a9972c202b9fee77804f7519cda3feba84c6da13e234",
+    "bytes": 146
+  },
+  "linux-release-resource-measurements/video/mpv-command.json": {
+    "sha256": "aa4efb73bbad87d8682586d7bf32cddb0c59b2c9896c3aa871f953e13cf5dda6",
+    "bytes": 457
+  },
+  "linux-release-resource-measurements/video/mpv-exit.json": {
+    "sha256": "370aaa466bf7fdf5df8dec2004f5e0b4d5d352b7060c00c4a1204cc89b4b641a",
+    "bytes": 18
+  },
+  "linux-release-resource-measurements/video/mpv.json": {
+    "sha256": "7970058261729ff41097c827b50b93a5835f4ffb6710e6388da6069bce271d15",
+    "bytes": 100
+  },
+  "linux-release-resource-measurements/video/mpv.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "linux-release-resource-measurements/video/paused.png": {
+    "sha256": "5008ae86d8c72514dc69af06d4efdcb2059bf2e211de2f77dddfeffda4fca316",
+    "bytes": 2765
+  },
+  "linux-release-resource-measurements/video/report.json": {
+    "sha256": "929735fd24e5746f126164ce6167c6ccc7d135d56b0b2e3aa97a68f4e5ef9ead",
+    "bytes": 65374
+  },
+  "linux-release-resource-measurements/video/shell": {
+    "sha256": "6ef2b43c80fdcceb0a7f5be2760af076b699f7364319e909f939e703aba162de",
+    "bytes": 141
+  },
+  "linux-release-resource-measurements/video/terminal.log": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "release-resource-audit.json": {
+    "sha256": "2135be13ebfbe5f75d94a5cc69d7591f5c7771ea0b8289fd7ddbd63baf240cd6",
+    "bytes": 11286
+  },
+  "source-reference/linux-performance.yml": {
+    "sha256": "0a984b93542a2389040421c229567bac659247a23b76587e4175001a2037746f",
+    "bytes": 2967
+  },
+  "source-reference/linux-resource-smoke.py": {
+    "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+    "bytes": 17732
+  },
+  "source-reference/linux-video-smoke.py": {
+    "sha256": "abecbea4abca7b5126abe54cfdea480ead44c2c208db1604e3c6c2cd187dabc6",
+    "bytes": 25810
+  }
+}
