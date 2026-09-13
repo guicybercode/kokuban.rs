@@ -278,20 +278,48 @@ fn clip_rect(
 fn blend_rgb(destination: u32, foreground: u32, coverage: u8) -> u32 {
     let coverage = u32::from(coverage);
     let inverse = 255 - coverage;
-
-    let blend_channel = |shift: u32| {
-        let destination = (destination >> shift) & 0xff_u32;
-        let foreground = (foreground >> shift) & 0xff_u32;
-        (foreground * coverage + destination * inverse + 127) / 255
-    };
-
-    (blend_channel(16) << 16) | (blend_channel(8) << 8) | blend_channel(0)
+    // Red and blue occupy independent 16-bit lanes. Each weighted sum plus
+    // rounding is at most 65153, and the correction stays below 65536, so
+    // neither multiplication nor addition carries into the adjacent lane.
+    // (n + 128 + ((n + 128) >> 8)) >> 8 equals (n + 127) / 255 here.
+    let red_blue = (foreground & 0x00ff_00ff) * coverage
+        + (destination & 0x00ff_00ff) * inverse
+        + 0x0080_0080;
+    let red_blue = ((red_blue + ((red_blue >> 8) & 0x00ff_00ff)) >> 8) & 0x00ff_00ff;
+    let green = ((foreground >> 8) & 255) * coverage
+        + ((destination >> 8) & 255) * inverse
+        + 128;
+    red_blue | (((green + (green >> 8)) >> 8) << 8)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_glyph_a8, draw_glyph_rgba, fill_rect};
+    use super::{blend_rgb, draw_glyph_a8, draw_glyph_rgba, fill_rect};
     use crate::glyph_atlas::GlyphEntry;
+
+    #[test]
+    fn packed_blend_matches_independent_channels_for_all_channel_pairs_and_alphas() {
+        for coverage in 0..=255_u32 {
+            for foreground in 0..=255_u32 {
+                for destination in 0..=255_u32 {
+                    // Every channel independently covers all 256x256 pairs;
+                    // different bijections also exercise adjacent lane values.
+                    let fg = 0xa500_0000 | foreground << 16
+                        | ((foreground * 73) & 255) << 8 | (foreground ^ 0x5b);
+                    let dst = 0xc300_0000 | destination << 16
+                        | (destination ^ 0xa7) << 8 | ((destination * 97) & 255);
+                    let mut expected = 0;
+                    for shift in [0, 8, 16] {
+                        let value = (((fg >> shift) & 255) * coverage
+                            + ((dst >> shift) & 255) * (255 - coverage) + 127) / 255;
+                        expected |= value << shift;
+                    }
+                    assert_eq!(blend_rgb(dst, fg, coverage as u8), expected,
+                        "foreground={fg:08x}, destination={dst:08x}, alpha={coverage}");
+                }
+            }
+        }
+    }
 
     const BACKGROUND: u32 = 0x0010_2030;
     const FOREGROUND: u32 = 0xffe0_4020;
