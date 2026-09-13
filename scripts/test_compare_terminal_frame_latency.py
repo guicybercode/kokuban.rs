@@ -382,12 +382,12 @@ class XlibObserverTests(unittest.TestCase):
 
 
 class XlibIntegrationTests(unittest.TestCase):
-    def exercise(self, fail_capture=False):
+    def exercise(self, fail_capture=False, stale_capture=False):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "sample"
             args = SimpleNamespace(rows=5, columns=6, timeout=1, observer="xlib", warmup=1,
                                    events=1, settle_seconds=0, poll_interval=0)
-            geometry, state = [5, 6, 54, 85], {"index": 0, "color": 0, "timed": False}
+            geometry, state = [5, 6, 54, 85], {"index": 0, "color": 0, "timed": False, "stale_pending": False}
             observer, process, cleanup = Mock(), Mock(pid=123), Mock()
             process.poll.return_value, process.wait.return_value = None, 0
             observer.library_provenance.return_value = {"type": "xlib"}
@@ -397,7 +397,7 @@ class XlibIntegrationTests(unittest.TestCase):
                 index = state["index"]
                 self.assertEqual(key, "b" if index % 2 == 0 else "a")
                 stamp = time.perf_counter_ns()
-                state.update(index=index + 1, color=(index + 1) % 2)
+                state.update(index=index + 1, color=(index + 1) % 2, stale_pending=stale_capture)
                 RUNNER["record"](directory, f"event-{index:04d}.json", {
                     "index": index, "input_hex": key.encode().hex(), "color": list(RUNNER["COLORS"][state["color"]]),
                     "received_ns": stamp, "written_ns": stamp,
@@ -408,9 +408,13 @@ class XlibIntegrationTests(unittest.TestCase):
                 if fail_capture:
                     raise RuntimeError("injected Xlib capture failure")
                 started = time.perf_counter_ns()
-                frame = RUNNER["Frame"](xwd(width=54, height=85, color=RUNNER["COLORS"][state["color"]]))
+                was_stale = state["stale_pending"]
+                color = 1 - state["color"] if was_stale else state["color"]
+                frame = RUNNER["Frame"](xwd(width=54, height=85, color=RUNNER["COLORS"][color]))
                 finished = time.perf_counter_ns()
-                state["timed"] = False
+                state["stale_pending"] = False
+                if not was_stale:
+                    state["timed"] = False
                 return frame, started, finished
 
             def external_command(*args, **kwargs):
@@ -444,6 +448,17 @@ class XlibIntegrationTests(unittest.TestCase):
         sample = self.exercise(fail_capture=True)
         self.assertEqual(sample["status"], "failed")
         self.assertIn("injected Xlib capture failure", sample["error"])
+
+
+    def test_an_old_frame_is_retained_as_a_miss_and_timing_ends_at_the_later_correct_frame(self):
+        sample = self.exercise(stale_capture=True)
+        self.assertEqual(sample.get("status"), "passed", sample.get("error"))
+        for event in sample["warmup"] + sample["measurements"]:
+            first, last = event["observations"]
+            self.assertEqual((first["matches"], last["matches"]), (False, True))
+            self.assertLess(first["capture_finished_ns"], last["capture_started_ns"])
+            self.assertEqual(event["input_to_observed_frame_upper_bound_seconds"],
+                             (last["capture_finished_ns"] - event["input_started_ns"]) / 1e9)
 
 
 if __name__ == "__main__":
