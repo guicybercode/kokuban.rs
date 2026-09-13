@@ -6,6 +6,10 @@ Os [resultados de repintura de 13 de setembro](LINUX_RASTER_BENCHMARK_2026-09-13
 registram o ajuste de mistura de cores, controles A/A, igualdade dos pixels e
 ganhos e regressões separados por cenário. A [medição de resposta visual X11](LINUX_FRAME_LATENCY.md)
 tem outro escopo: inclui a injeção sintética e o custo de observar os pixels.
+O [guia de repintura CPU](LINUX_CPU_FRAME_MEASUREMENTS.md) mostra como comparar
+revisões completas, isolar o raster e medir a variabilidade do mesmo executável.
+O [pacote X11 de 13 de setembro](linux-evidence/2026-09-13-observed-frames-xwd/README.md)
+preserva os resultados e as imagens da medição com quatro terminais.
 
 Para comparar duas revisões no mesmo runner Linux, use o workflow manual
 `Linux paired revision measurements`:

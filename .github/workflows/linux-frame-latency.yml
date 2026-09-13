@@ -21,12 +21,18 @@ on:
         description: Fresh processes per terminal (minimum 3)
         required: true
         default: '3'
+      observer:
+        description: Capture/injection observer (xwd reference or persistent xlib)
+        type: choice
+        options: [xwd, xlib]
+        required: true
+        default: xwd
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-frame-latency-${{ github.ref }}
+  group: linux-frame-latency-${{ github.ref }}-${{ inputs.observer || 'xwd' }}
   cancel-in-progress: false
 
 jobs:
@@ -37,6 +43,7 @@ jobs:
       SOURCE_REF: ${{ inputs.revision || '199b987281dbb97dd481c0ff752a3bf80dc996cd' }}
       FRAME_EVENTS: ${{ inputs.events || '5' }}
       FRAME_SAMPLES: ${{ inputs.samples || '3' }}
+      FRAME_OBSERVER: ${{ inputs.observer || 'xwd' }}
       # Same Ubuntu image used in the audited processing comparison 34743860822.
       UBUNTU_IMAGE: ubuntu@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d
 
@@ -57,12 +64,14 @@ jobs:
           (( FRAME_EVENTS <= 2000 )) || exit 2
           [[ "$FRAME_SAMPLES" =~ ^[1-9][0-9]?$ ]] || exit 2
           (( FRAME_SAMPLES >= 3 && FRAME_SAMPLES <= 20 )) || exit 2
+          [[ "$FRAME_OBSERVER" == xwd || "$FRAME_OBSERVER" == xlib ]] || exit 2
           revision="$(git rev-parse --verify --end-of-options "${SOURCE_REF}^{commit}")"
           printf '%s\n' "$revision" > "$evidence_directory/source-revision.txt"
           git ls-tree -r "$revision" > "$evidence_directory/source-tree.txt"
           git archive "$revision" | tar -x -C "$source_directory"
           cp scripts/compare-terminal-frame-latency.py scripts/test_compare_terminal_frame_latency.py \
             scripts/compare-terminal-performance.py scripts/linux-resource-smoke.py \
+            scripts/terminal-frame-xlib.py \
             "$evidence_directory/harness/"
           sha256sum "$evidence_directory"/harness/*.py > "$evidence_directory/harness-sha256.txt"
           python3 -B -m unittest discover -s scripts -p 'test_compare_*.py' \
@@ -87,7 +96,7 @@ jobs:
           trap 'docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
           timeout --kill-after=10s 30m docker run --rm --init --interactive \
             --name "$container_name" --platform linux/amd64 \
-            --env FRAME_EVENTS --env FRAME_SAMPLES \
+            --env FRAME_EVENTS --env FRAME_SAMPLES --env FRAME_OBSERVER \
             --mount "type=bind,src=$toolchain_directory,dst=/opt/rust,readonly" \
             --mount "type=bind,src=$RUNNER_TEMP/kokuban-frame-source,dst=/source,readonly" \
             --mount "type=bind,src=$GITHUB_WORKSPACE/scripts,dst=/harness,readonly" \
@@ -104,7 +113,7 @@ jobs:
             fonts-noto-color-emoji=2.051-1build1 \
             ca-certificates build-essential dbus-daemon fontconfig \
             libegl-mesa0 libgl1-mesa-dri libglx-mesa0 libfontconfig1-dev \
-            libfreetype6-dev libxkbcommon-x11-0 mesa-utils pkg-config python3 \
+            libfreetype6-dev libx11-dev libxtst-dev libxkbcommon-x11-0 mesa-utils pkg-config python3 \
             util-linux x11-apps x11-utils xdotool xvfb
           export PATH="/opt/rust/bin:$PATH"
           export CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target
@@ -113,6 +122,15 @@ jobs:
           rustc --version --verbose > /evidence/rustc.txt
           cp Cargo.toml Cargo.lock /evidence/
           dpkg-query -W > /evidence/all-system-packages.txt
+          # Require the native ABI probe's prerequisites so it cannot silently skip.
+          test -r /usr/include/X11/Xlib.h
+          test -r /usr/include/X11/extensions/XTest.h
+          command -v cc > /evidence/abi-compiler.txt
+          cc --version >> /evidence/abi-compiler.txt
+          sha256sum /usr/include/X11/Xlib.h /usr/include/X11/Xutil.h \
+            /usr/include/X11/extensions/XTest.h > /evidence/xlib-abi-headers-sha256.txt
+          python3 -B -m unittest discover -s /harness -p 'test_compare_terminal_frame_latency.py' -v \
+            2>&1 | tee /evidence/xlib-abi-tests.txt
           cargo build --release --locked 2>&1 | tee /evidence/build.txt
           sha256sum /build/target/release/kokuban > /evidence/kokuban-binary-sha256.txt
           cargo tree --locked > /evidence/cargo-tree.txt
@@ -140,9 +158,9 @@ jobs:
             python3 -B /harness/compare-terminal-frame-latency.py \
               --kokuban /build/target/release/kokuban \
               --output-dir /evidence/measurements --samples "$FRAME_SAMPLES" \
-              --events "$FRAME_EVENTS" --warmup 5 --timeout 30 \
+              --events "$FRAME_EVENTS" --warmup 5 --timeout 30 --observer "$FRAME_OBSERVER" \
               --environment-note \
-              'Pinned Ubuntu26.04 image and competitor packages from processing run 34743860822; GitHub hosted x86_64; persistent Xvfb; Mesa llvmpipe; full runner CPU affinity; synthetic XTest to verified window pixels including xdotool/xwd costs; not physical GPU/input-to-photon latency' \
+              "Pinned Ubuntu26.04 image and competitor packages from processing run 34743860822; GitHub hosted x86_64; persistent Xvfb; Mesa llvmpipe; full runner CPU affinity; observer=$FRAME_OBSERVER; synthetic XTest to verified window pixels including observer costs; not physical GPU/input-to-photon latency" \
               2>&1 | tee /evidence/frame-comparison.txt
           CONTAINER
 
