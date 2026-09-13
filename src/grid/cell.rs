@@ -121,6 +121,18 @@ pub struct Cell {
 }
 
 impl Cell {
+    /// Replace compound text with one scalar and copy only the requested style.
+    #[inline]
+    pub(super) fn write_scalar(&mut self, c: char, style: &Self, flags: CellFlags) {
+        self.grapheme = None;
+        self.c = c;
+        self.fg = style.fg;
+        self.bg = style.bg;
+        self.flags = flags;
+        self.underline_style = style.underline_style;
+        self.underline_color = style.underline_color;
+    }
+
     pub fn text(&self) -> Cow<'_, str> {
         match &self.grapheme {
             Some(text) => Cow::Borrowed(text),
@@ -154,7 +166,7 @@ impl Default for Cell {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cell, CellFlags, Grapheme, GraphemeRepr};
+    use super::{Cell, CellFlags, Color, Grapheme, GraphemeRepr, UnderlineStyle};
 
     #[test]
     fn grapheme_constructors_preserve_utf8_and_canonical_storage() {
@@ -221,6 +233,34 @@ mod tests {
         assert_eq!(size_of::<Cell>(), 40);
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Grapheme>();
+    }
+
+    #[test]
+    fn scalar_writes_copy_style_and_release_compound_text() {
+        let style = Cell {
+            c: 'S',
+            grapheme: Some(Grapheme::from("e\u{301}")),
+            fg: Color::Indexed(7),
+            bg: Color::Rgb(3, 4, 5),
+            flags: CellFlags::BOLD | CellFlags::WIDE_CONT,
+            underline_style: UnderlineStyle::Curly,
+            underline_color: Color::Indexed(2),
+        };
+        for text in ["e\u{301}".to_owned(), format!("e{}", "\u{301}".repeat(7))] {
+            let grapheme = Grapheme::from(text);
+            let heap_owner = grapheme.heap_weak();
+            let mut cell = Cell { grapheme: Some(grapheme), ..Cell::default() };
+            let flags = CellFlags::ITALIC | CellFlags::WIDE;
+            cell.write_scalar('日', &style, flags);
+            assert_eq!(cell, Cell {
+                c: '日', grapheme: None, fg: style.fg, bg: style.bg, flags,
+                underline_style: style.underline_style, underline_color: style.underline_color,
+            });
+            if let Some(owner) = heap_owner {
+                assert!(owner.upgrade().is_none(), "scalar overwrite must release the heap owner");
+            }
+            assert_eq!(style.grapheme.as_deref(), Some("e\u{301}"));
+        }
     }
 
     #[test]

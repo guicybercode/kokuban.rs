@@ -547,7 +547,7 @@ impl Grid {
             }
             let cells = self.buffer.row_range_mut(row, col..col + count);
             for (cell, &byte) in cells.iter_mut().zip(&text[..count]) {
-                *cell = Cell { c: char::from(byte), ..template.clone() };
+                cell.write_scalar(char::from(byte), &template, template.flags);
             }
             self.buffer.mark_written(row, col + count);
             self.dirty[row] = true;
@@ -642,13 +642,10 @@ impl Grid {
             let cells = self.buffer.row_range_mut(row, col..end);
             let mut offset = 0;
             for &(c, width) in &staged[..count] {
-                let mut cell = Cell { c, ..leader.clone() };
+                let flags = if width == 2 { leader.flags | CellFlags::WIDE } else { leader.flags };
+                cells[offset].write_scalar(c, &leader, flags);
                 if width == 2 {
-                    cell.flags.insert(CellFlags::WIDE);
-                }
-                cells[offset] = cell;
-                if width == 2 {
-                    cells[offset + 1] = continuation.clone();
+                    cells[offset + 1].write_scalar(continuation.c, &continuation, continuation.flags);
                 }
                 offset += usize::from(width);
             }
