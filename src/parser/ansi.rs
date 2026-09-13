@@ -12,6 +12,31 @@ const MAX_OSC_BYTES: usize = 64 * 1024;
 const MAX_APC_BYTES: usize = super::kitty_graphics::MAX_KITTY_APC_BYTES;
 const MAX_DCS_BYTES: usize = 16 * 1024 * 1024;
 
+/// Find the first byte outside a printable ASCII or mixed UTF-8 block.
+/// Word checks only skip whole valid blocks; the scalar tail finds the exact
+/// boundary, including when subtraction borrows between adjacent byte lanes.
+#[inline]
+fn text_prefix_len<const MIXED_UTF8: bool>(input: &[u8]) -> usize {
+    const HIGH: u64 = 0x8080_8080_8080_8080;
+    const ONES: u64 = 0x0101_0101_0101_0101;
+    const SPACES: u64 = 0x2020_2020_2020_2020;
+    const DELETE: u64 = 0x7f7f_7f7f_7f7f_7f7f;
+    let mut offset = 0;
+    for chunk in input.chunks_exact(8) {
+        let word = u64::from_ne_bytes(chunk.try_into().expect("chunks contain eight bytes"));
+        let below_space = word.wrapping_sub(SPACES) & !word & HIGH;
+        let del = word ^ DELETE;
+        let delete = del.wrapping_sub(ONES) & !del & HIGH;
+        if below_space != 0 || delete != 0 || (!MIXED_UTF8 && word & HIGH != 0) {
+            break;
+        }
+        offset += 8;
+    }
+    offset + input[offset..].iter().position(|byte| {
+        *byte < 0x20 || *byte == 0x7f || (!MIXED_UTF8 && !byte.is_ascii())
+    }).unwrap_or(input.len() - offset)
+}
+
 fn terminal_pixel_extent(cells: usize, cell_pixels: u16) -> u64 {
     u64::try_from(cells)
         .unwrap_or(u64::MAX)
@@ -1034,9 +1059,7 @@ impl Utf8Parser {
                     b' '..=b'~' => {
                         // The first byte is already printable; scan its tail.
                         let tail = &input[index + 1..];
-                        let printable = 1 + tail.iter()
-                            .position(|byte| !matches!(byte, b' '..=b'~'))
-                            .unwrap_or(tail.len());
+                        let printable = 1 + text_prefix_len::<false>(tail);
                         grid.put_ascii(&input[index..index + printable]);
                         index += printable;
                         continue;
@@ -1069,9 +1092,7 @@ impl Utf8Parser {
         // ASCII inside multilingual text belongs to the same block. Stop before
         // C0/DEL so escape sequences and terminal events retain their boundaries.
         let tail = &input[1..];
-        let block_len = 1 + tail.iter()
-            .position(|byte| *byte < 0x20 || *byte == 0x7f)
-            .unwrap_or(tail.len());
+        let block_len = 1 + text_prefix_len::<true>(tail);
         let block = &input[..block_len];
         match std::str::from_utf8(block) {
             Ok(text) => grid.put_utf8(text),
@@ -1155,6 +1176,47 @@ mod tests {
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
+    }
+
+    #[test]
+    fn text_block_scans_stop_at_every_byte_and_word_boundary() {
+        fn check(bytes: &[u8]) {
+            let ascii = bytes.iter().position(|b| !matches!(b, b' '..=b'~'))
+                .unwrap_or(bytes.len());
+            let mixed = bytes.iter().position(|b| *b < 0x20 || *b == 0x7f)
+                .unwrap_or(bytes.len());
+            assert_eq!(super::text_prefix_len::<false>(bytes), ascii, "{bytes:?}");
+            assert_eq!(super::text_prefix_len::<true>(bytes), mixed, "{bytes:?}");
+        }
+        // Exercise every byte in every lane, word transition and short tail.
+        for length in 0..=40 {
+            for position in 0..length {
+                for byte in 0..=255 {
+                    let mut bytes = vec![b' '; length];
+                    bytes[position] = byte;
+                    check(&bytes);
+                    for (i, b) in bytes.iter_mut().enumerate() {
+                        if i != position { *b = [0x20, 0x21, 0x7e, 0x80, 0xff][i % 5]; }
+                    }
+                    check(&bytes);
+                }
+            }
+        }
+        // Different adjacent values exercise carry/borrow propagation. Include
+        // high UTF-8 bytes and controls; this scanner does not validate UTF-8.
+        let mut state = 0x7c49_2813_a56d_e0fbu64;
+        for length in 0..=64 {
+            for _ in 0..128 {
+                let mut bytes = Vec::with_capacity(length);
+                for _ in 0..length {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    bytes.push(state as u8);
+                }
+                check(&bytes);
+            }
+        }
     }
 
     fn assert_utf8_matches_byte_decoding_at_every_split(input: &[u8], cols: usize) {
