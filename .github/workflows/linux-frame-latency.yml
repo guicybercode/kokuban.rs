@@ -1,0 +1,165 @@
+name: Linux four-terminal observed frame latency
+
+on:
+  push:
+    branches: [perf/input-frame-latency]
+    paths:
+      - .github/workflows/linux-frame-latency.yml
+      - scripts/compare-terminal-frame-latency.py
+      - scripts/test_compare_terminal_frame_latency.py
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact Kokuban source commit or ref to build
+        required: true
+        default: '199b987281dbb97dd481c0ff752a3bf80dc996cd'
+      events:
+        description: Measured keys per process (5 for smoke, 40 for comparison)
+        required: true
+        default: '5'
+      samples:
+        description: Fresh processes per terminal (minimum 3)
+        required: true
+        default: '3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-frame-latency-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOURCE_REF: ${{ inputs.revision || '199b987281dbb97dd481c0ff752a3bf80dc996cd' }}
+      FRAME_EVENTS: ${{ inputs.events || '5' }}
+      FRAME_SAMPLES: ${{ inputs.samples || '3' }}
+      # Same Ubuntu image used in the audited processing comparison 34743860822.
+      UBUNTU_IMAGE: ubuntu@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d
+
+    steps:
+      - name: Check out harness and source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate inputs and retain the exact source and harness provenance
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          source_directory="$RUNNER_TEMP/kokuban-frame-source"
+          mkdir -p "$evidence_directory/harness" "$source_directory"
+          git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+          [[ "$FRAME_EVENTS" =~ ^[1-9][0-9]{0,3}$ ]] || exit 2
+          (( FRAME_EVENTS <= 2000 )) || exit 2
+          [[ "$FRAME_SAMPLES" =~ ^[1-9][0-9]?$ ]] || exit 2
+          (( FRAME_SAMPLES >= 3 && FRAME_SAMPLES <= 20 )) || exit 2
+          revision="$(git rev-parse --verify --end-of-options "${SOURCE_REF}^{commit}")"
+          printf '%s\n' "$revision" > "$evidence_directory/source-revision.txt"
+          git ls-tree -r "$revision" > "$evidence_directory/source-tree.txt"
+          git archive "$revision" | tar -x -C "$source_directory"
+          cp scripts/compare-terminal-frame-latency.py scripts/test_compare_terminal_frame_latency.py \
+            scripts/compare-terminal-performance.py scripts/linux-resource-smoke.py \
+            "$evidence_directory/harness/"
+          sha256sum "$evidence_directory"/harness/*.py > "$evidence_directory/harness-sha256.txt"
+          python3 -B -m unittest discover -s scripts -p 'test_compare_*.py' \
+            2>&1 | tee "$evidence_directory/harness-tests.txt"
+
+      - name: Install fixed Rust toolchain and pull the comparison image by digest
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          docker pull --platform linux/amd64 "$UBUNTU_IMAGE"
+          printf '%s\n' "$UBUNTU_IMAGE" > "$evidence_directory/image-reference.txt"
+          docker image inspect "$UBUNTU_IMAGE" > "$evidence_directory/container-image.json"
+
+      - name: Build exact source and measure verified X11 frame changes
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          toolchain_directory="$(dirname "$(dirname "$(rustup which cargo)")")"
+          container_name="kokuban-frame-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trap 'docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
+          timeout --kill-after=10s 30m docker run --rm --init --interactive \
+            --name "$container_name" --platform linux/amd64 \
+            --env FRAME_EVENTS --env FRAME_SAMPLES \
+            --mount "type=bind,src=$toolchain_directory,dst=/opt/rust,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/kokuban-frame-source,dst=/source,readonly" \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/scripts,dst=/harness,readonly" \
+            --mount "type=bind,src=$evidence_directory,dst=/evidence" \
+            --workdir /source "$UBUNTU_IMAGE" bash -seu <<'CONTAINER'
+          set -o pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          # Pin the three competitors and fonts to processing run 34743860822.
+          # If a repository drops a version, fail instead of silently upgrading.
+          apt-get install --yes --no-install-recommends \
+            alacritty=0.16.1-2ubuntu1 ghostty=1.3.0~us1-0ubuntu1.1 kitty=0.45.0-1build1 \
+            fonts-dejavu-core=2.37-8build1 fonts-noto-cjk=1:20240730+repack1-1build1 \
+            fonts-noto-color-emoji=2.051-1build1 \
+            ca-certificates build-essential dbus-daemon fontconfig \
+            libegl-mesa0 libgl1-mesa-dri libglx-mesa0 libfontconfig1-dev \
+            libfreetype6-dev libxkbcommon-x11-0 mesa-utils pkg-config python3 \
+            util-linux x11-apps x11-utils xdotool xvfb
+          export PATH="/opt/rust/bin:$PATH"
+          export CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target
+          export CARGO_INCREMENTAL=0 CARGO_PROFILE_RELEASE_DEBUG=0
+          mkdir -p /build
+          rustc --version --verbose > /evidence/rustc.txt
+          cp Cargo.toml Cargo.lock /evidence/
+          dpkg-query -W > /evidence/all-system-packages.txt
+          cargo build --release --locked 2>&1 | tee /evidence/build.txt
+          sha256sum /build/target/release/kokuban > /evidence/kokuban-binary-sha256.txt
+          cargo tree --locked > /evidence/cargo-tree.txt
+          cargo test --release --locked --all-targets > /evidence/rust-tests.txt 2>&1
+          fc-match -s 'DejaVu Sans Mono' -f '%{family}|%{file}\n' > /evidence/font-fallbacks.txt
+          fc-match -s 'DejaVu Sans Mono' -f '%{file}\n' | sort -u | \
+            while IFS= read -r font_file; do sha256sum "$font_file"; done > /evidence/font-files-sha256.txt
+          lscpu > /evidence/cpu.txt
+          export XDG_RUNTIME_DIR
+          XDG_RUNTIME_DIR="$(mktemp -d)"
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+          unset WAYLAND_DISPLAY WAYLAND_SOCKET
+          # Keep this server alive between fresh terminal processes and probes.
+          Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp -noreset > /evidence/xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true; wait "$xvfb_pid" 2>/dev/null || true' EXIT
+          for _attempt in {1..100}; do
+            if xdpyinfo > /evidence/display.txt 2>&1; then break; fi
+            kill -0 "$xvfb_pid"
+            sleep 0.1
+          done
+          xdpyinfo > /evidence/display.txt
+          glxinfo -B > /evidence/renderer.txt
+          timeout --kill-after=10s 20m dbus-run-session -- \
+            python3 -B /harness/compare-terminal-frame-latency.py \
+              --kokuban /build/target/release/kokuban \
+              --output-dir /evidence/measurements --samples "$FRAME_SAMPLES" \
+              --events "$FRAME_EVENTS" --warmup 5 --timeout 30 \
+              --environment-note \
+              'Pinned Ubuntu26.04 image and competitor packages from processing run 34743860822; GitHub hosted x86_64; persistent Xvfb; Mesa llvmpipe; full runner CPU affinity; synthetic XTest to verified window pixels including xdotool/xwd costs; not physical GPU/input-to-photon latency' \
+              2>&1 | tee /evidence/frame-comparison.txt
+          CONTAINER
+
+      - name: Make evidence readable by the artifact uploader
+        if: always()
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-frame-evidence"
+          if test -d "$evidence_directory"; then
+            sudo chown -R --no-dereference -- "$(id -u):$(id -g)" "$evidence_directory"
+          fi
+
+      - name: Upload observations and provenance even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-four-terminal-frame-latency
+          path: ${{ runner.temp }}/kokuban-frame-evidence
+          if-no-files-found: warn
+          retention-days: 7

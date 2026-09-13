@@ -20,6 +20,10 @@ xvfb-run -a -s '-screen 0 1280x1024x24 -nolisten tcp' \
 
 The output directory must not exist. Explicit `--ghostty`, `--kitty` and `--alacritty` paths override the executables on `PATH`. `--terminals kokuban kitty` selects a smaller comparison. At least two terminals must finish successfully for the comparison to pass. For a physical X11 desktop, run on its `DISPLAY` and describe the actual GPU, display and compositor in `--environment-note`; the measurement still ends at window readback, not physical presentation.
 
+The manual `Linux four-terminal observed frame latency` workflow builds its selected exact Kokuban revision with Rust 1.94.1 in the Ubuntu image used by processing run `34743860822`. It pins the three competitor packages and fonts from that run, keeps Xvfb alive with `-noreset`, and uploads available evidence even on failure. Its default `events=5`, `samples=3` is a functional smoke with weak tail resolution; select `events=40` for the default comparison above. The workflow source/harness revision and the independently selected Kokuban source revision are recorded separately.
+
+Changes to this harness or workflow on the dedicated `perf/input-frame-latency` branch also run that bounded smoke automatically against the recorded baseline source.
+
 The script reuses the existing comparison's isolated configurations and untimed cell-size calibration. It requests 80 columns, 24 rows, DejaVu Sans Mono at 14 logical pixels, no padding, and the alternate screen. Two preflight launches per terminal observe natural cell dimensions and verify the supported spacing adjustments. These launches also use the existing DSR probe; their results are retained separately and never enter frame timing statistics. Incompatible versions, unavailable executables or unmatchable cell dimensions fail the run instead of silently comparing different geometry.
 
 ## What each sample proves
