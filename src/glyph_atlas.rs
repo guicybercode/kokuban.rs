@@ -722,7 +722,7 @@ mod tests {
                     atlas.get_or_insert_text(&text, bold, italic),
                     atlas.get_or_insert_cell(&Cell { c, flags, ..Cell::default() }),
                     atlas.get_or_insert_cell(&Cell {
-                        c, grapheme: Some(Arc::from(text.as_str())), flags, ..Cell::default()
+                        c, grapheme: Some(text.as_str().into()), flags, ..Cell::default()
                     }),
                 ];
                 assert!(entries.iter().all(|entry| entry.pixel_w == 0 && entry.pixel_h == 0 && !entry.color));
