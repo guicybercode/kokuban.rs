@@ -16,6 +16,11 @@ on:
         type: choice
         options: [alternate, primary]
         default: alternate
+      comparison:
+        description: Compare revisions or measure the baseline binary twice (ignores after)
+        type: choice
+        options: [revisions, same-binary-control]
+        default: revisions
 
 permissions:
   contents: read
@@ -34,6 +39,7 @@ jobs:
       BEFORE_REF: ${{ inputs.before }}
       AFTER_REF: ${{ inputs.after }}
       SCREEN: ${{ inputs.screen }}
+      COMPARISON: ${{ inputs.comparison || 'revisions' }}
 
     steps:
       - name: Check out measurement harness and revision history
@@ -61,13 +67,25 @@ jobs:
           mkdir -p "$evidence_directory" "$RUNNER_TEMP/kokuban-paired-binaries"
           git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
           git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
-          git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          if [[ "$COMPARISON" == same-binary-control ]]; then
+            cp "$evidence_directory/before-revision.txt" "$evidence_directory/after-revision.txt"
+          else
+            git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+          fi
+          printf '%s\n' "$COMPARISON" > "$evidence_directory/requested-comparison.txt"
           rustc --version --verbose > "$evidence_directory/rustc.txt"
           lscpu > "$evidence_directory/cpu.txt"
           uname -a > "$evidence_directory/kernel.txt"
           dpkg-query -W weston fonts-dejavu-core fonts-noto-color-emoji \
             libfontconfig1 libfreetype6 libxkbcommon-x11-0 > "$evidence_directory/system-packages.txt"
           for label in before after; do
+            if [[ "$COMPARISON" == same-binary-control && "$label" == after ]]; then
+              # A/A must execute the same bytes, including build paths and layout.
+              cp "$RUNNER_TEMP/kokuban-paired-binaries/before" "$RUNNER_TEMP/kokuban-paired-binaries/after"
+              cp -R "$evidence_directory/before-build" "$evidence_directory/after-build"
+              sha256sum "$RUNNER_TEMP/kokuban-paired-binaries/after" > "$evidence_directory/after-build/binary-sha256.txt"
+              continue
+            fi
             revision="$(cat "$evidence_directory/$label-revision.txt")"
             source_directory="$RUNNER_TEMP/kokuban-paired-source-$label"
             mkdir "$source_directory" "$evidence_directory/$label-build"
@@ -102,8 +120,13 @@ jobs:
           done
           test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
           benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+          comparison_flags=()
+          if [[ "$COMPARISON" == same-binary-control ]]; then
+            comparison_flags=(--allow-identical-binaries)
+          fi
           timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
             python3 scripts/compare-kokuban-revisions.py \
+              "${comparison_flags[@]}" \
               --before "$RUNNER_TEMP/kokuban-paired-binaries/before" \
               --after "$RUNNER_TEMP/kokuban-paired-binaries/after" \
               --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
