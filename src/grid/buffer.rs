@@ -115,7 +115,14 @@ impl Buffer {
         } else {
             self.cols
         };
-        self.cells[start..start + end].fill(template);
+        let cells = &mut self.cells[start..start + end];
+        if template.grapheme.is_none() {
+            for cell in cells {
+                cell.write_scalar(template.c, &template, template.flags);
+            }
+        } else {
+            cells.fill(template);
+        }
         self.metadata[row] = RowMetadata::default();
         self.uniform_suffix_start[row] = 0;
     }
