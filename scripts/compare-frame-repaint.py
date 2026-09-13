@@ -19,6 +19,11 @@ import time
 
 CONTENTS = ("ascii", "ascii-after-emoji", "unicode")
 CHANGES = ("single-row", "full-screen")
+FIXTURE = re.compile(
+    r"frame-repaint fixture content=(?P<content>\S+) change=(?P<change>\S+) "
+    r"cols=(?P<cols>\d+) rows=(?P<rows>\d+) width=(?P<width>\d+) height=(?P<height>\d+) "
+    r"cell_width=(?P<cell_width>\d+) cell_height=(?P<cell_height>\d+)(?: |$)"
+)
 SAMPLE = re.compile(
     r"frame-repaint sample content=(\S+) change=(\S+) sample=(\d+) "
     r"incremental=(true|false) frames=(\d+) elapsed_ns=(\d+) ns_per_frame=([0-9.]+)"
@@ -33,13 +38,36 @@ def save(directory, report):
     (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 
 
+def fixture_geometry(fixtures):
+    expected = {(content, change) for content in CONTENTS for change in CHANGES}
+    geometry = {}
+    for line in fixtures:
+        match = FIXTURE.match(line)
+        if match is None:
+            raise ValueError("malformed frame fixture geometry")
+        fields = match.groupdict()
+        key = fields["content"], fields["change"]
+        if key not in expected or key in geometry:
+            raise ValueError("duplicate or unknown frame fixture")
+        sizes = {name: int(fields[name]) for name in
+                 ("cols", "rows", "width", "height", "cell_width", "cell_height")}
+        if (sizes["cols"] != 120 or sizes["rows"] != 40
+                or sizes["cell_width"] <= 0 or sizes["cell_height"] <= 0
+                or sizes["width"] != sizes["cols"] * sizes["cell_width"]
+                or sizes["height"] != sizes["rows"] * sizes["cell_height"]):
+            raise ValueError("frame fixture must cover 120x40 positive-sized cells")
+        geometry[key] = sizes
+    if set(geometry) != expected:
+        raise ValueError("expected six unique full-frame fixtures")
+    return geometry
+
+
 def parse_output(output, frames):
     if "1 passed; 0 failed" not in output:
         raise ValueError("the exact ignored test did not pass")
     fixtures = [line[line.index("frame-repaint fixture"):] for line in output.splitlines()
                 if "frame-repaint fixture" in line]
-    if len(fixtures) != 6:
-        raise ValueError("expected six full-frame fixtures")
+    fixture_geometry(fixtures)
     records = []
     expected = {(content, change, incremental) for content in CONTENTS for change in CHANGES
                 for incremental in (False, True)}
@@ -57,9 +85,11 @@ def parse_output(output, frames):
     return fixtures, records
 
 
-def verify_pixels(directory):
-    expected = {f"{content}-{change}-{index}.xrgb8888le" for content in CONTENTS
-                for change in CHANGES for index in (0, 1)}
+def verify_pixels(directory, fixtures):
+    geometry = fixture_geometry(fixtures)
+    expected_sizes = {f"{content}-{change}-{index}.xrgb8888le": sizes["width"] * sizes["height"] * 4
+                      for (content, change), sizes in geometry.items() for index in (0, 1)}
+    expected = set(expected_sizes)
     hashes = {}
     for side in ("before", "after"):
         folder = directory / f"{side}-frames"
@@ -68,9 +98,15 @@ def verify_pixels(directory):
         hashes[side] = {}
         for name in sorted(expected):
             pixels = (folder / name).read_bytes()
-            if not pixels or len(pixels) % 4:
-                raise ValueError("reference pixels are empty or truncated")
+            if len(pixels) != expected_sizes[name]:
+                raise ValueError(f"{side}/{name}: pixel byte count {len(pixels)} "
+                                 f"does not match fixture size {expected_sizes[name]}")
             hashes[side][name] = hashlib.sha256(pixels).hexdigest()
+        for content, change in geometry:
+            first = f"{content}-{change}-0.xrgb8888le"
+            second = f"{content}-{change}-1.xrgb8888le"
+            if hashes[side][first] == hashes[side][second]:
+                raise ValueError(f"{side}/{content}-{change}: reference frames did not change visible pixels")
         for name in expected:
             if name.startswith("ascii-") and not name.startswith("ascii-after-emoji-"):
                 if hashes[side][name] != hashes[side][name.replace("ascii-", "ascii-after-emoji-", 1)]:
@@ -157,7 +193,7 @@ def main():
                 save(directory, report)
                 print(f"pair={pair + 1}/{args.pairs} side={side}: all modes passed", flush=True)
             if pair == 0:
-                report["frame_sha256"] = verify_pixels(directory)
+                report["frame_sha256"] = verify_pixels(directory, fixtures)
                 save(directory, report)
         report["summary"] = summaries(report["records"], args.pairs)
         report["status"] = "passed"

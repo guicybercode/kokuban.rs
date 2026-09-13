@@ -13,11 +13,25 @@ def valid_output():
     lines = ["test result: ok. 1 passed; 0 failed; 0 ignored;"]
     for content in ("ascii", "ascii-after-emoji", "unicode"):
         for change in ("single-row", "full-screen"):
-            lines.append(f"frame-repaint fixture content={content} change={change}")
+            lines.append(f"frame-repaint fixture content={content} change={change} "
+                         "cols=120 rows=40 width=120 height=40 cell_width=1 cell_height=1 "
+                         "warmup=30 samples=1 steps=3 mono_cells=4800 color_cells=0 "
+                         "bands=[(0, 1), (0, 1)] frame0=0000000000000000 frame1=1111111111111111")
             for incremental in ("false", "true"):
                 lines.append(f"frame-repaint sample content={content} change={change} sample=0 "
                              f"incremental={incremental} frames=3 elapsed_ns=100 ns_per_frame=33.333")
     return "\n".join(lines)
+
+
+def write_reference_frames(directory):
+    for side in ("before", "after"):
+        folder = directory / f"{side}-frames"
+        folder.mkdir()
+        for content in BENCHMARK.CONTENTS:
+            for change in BENCHMARK.CHANGES:
+                for index in (0, 1):
+                    (folder / f"{content}-{change}-{index}.xrgb8888le").write_bytes(
+                        bytes([index]) * (120 * 40 * 4))
 
 
 class FrameRepaintTests(unittest.TestCase):
@@ -33,6 +47,29 @@ class FrameRepaintTests(unittest.TestCase):
             with self.subTest(invalid=invalid[-100:]), self.assertRaises(ValueError):
                 BENCHMARK.parse_output(invalid, 3)
 
+    def test_rejects_duplicate_unknown_and_invalid_fixture_geometry(self):
+        output = valid_output()
+        for old, new in (("content=ascii-after-emoji", "content=ascii"),
+                         ("content=ascii change=single-row", "content=unknown change=single-row"),
+                         ("cols=120", "cols=119"), ("rows=40", "rows=41"),
+                         ("width=120", "width=119"), ("height=40", "height=39"),
+                         ("cell_width=1", "cell_width=0"), ("cell_height=1", "cell_height=0"),
+                         ("cell_width=1", "cell_width=2"), ("cell_height=1", "cell_height=2"),
+                         ("width=120", "width=-120"), ("height=40", "height=invalid")):
+            with self.subTest(old=old, new=new), self.assertRaisesRegex(ValueError, "fixture"):
+                BENCHMARK.parse_output(output.replace(old, new, 1), 3)
+
+    def test_preserves_raw_fixtures_with_nontrivial_cell_dimensions(self):
+        output = (valid_output().replace("width=120", "width=1080")
+                  .replace("height=40", "height=680")
+                  .replace("cell_width=1", "cell_width=9")
+                  .replace("cell_height=1", "cell_height=17"))
+        fixtures, _ = BENCHMARK.parse_output(output, 3)
+        self.assertEqual(fixtures, [line for line in output.splitlines()
+                                    if line.startswith("frame-repaint fixture")])
+        for geometry in BENCHMARK.fixture_geometry(fixtures).values():
+            self.assertEqual((geometry["width"], geometry["height"]), (1080, 680))
+
     def test_paired_summary_does_not_replace_pairs_with_ratio_of_medians(self):
         _, rows = BENCHMARK.parse_output(valid_output(), 3)
         records = []
@@ -45,23 +82,41 @@ class FrameRepaintTests(unittest.TestCase):
             self.assertEqual(summary["median_paired_latency_change_percent"], 100)
 
     def test_pixel_verification_rejects_single_changed_byte_and_missing_frame(self):
+        fixtures, _ = BENCHMARK.parse_output(valid_output(), 3)
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            for side in ("before", "after"):
-                folder = directory / f"{side}-frames"
-                folder.mkdir()
-                for content in ("ascii", "ascii-after-emoji", "unicode"):
-                    for change in ("single-row", "full-screen"):
-                        for index in (0, 1):
-                            (folder / f"{content}-{change}-{index}.xrgb8888le").write_bytes(bytes([index]) * 16)
-            self.assertEqual(len(BENCHMARK.verify_pixels(directory)), 12)
+            write_reference_frames(directory)
+            self.assertEqual(len(BENCHMARK.verify_pixels(directory, fixtures)), 12)
             changed = directory / "after-frames/unicode-full-screen-1.xrgb8888le"
-            changed.write_bytes(b"\0" + b"\1" * 15)
+            changed.write_bytes(b"\0" + changed.read_bytes()[1:])
             with self.assertRaisesRegex(ValueError, "reference pixels differ"):
-                BENCHMARK.verify_pixels(directory)
+                BENCHMARK.verify_pixels(directory, fixtures)
             changed.unlink()
             with self.assertRaisesRegex(ValueError, "incomplete"):
-                BENCHMARK.verify_pixels(directory)
+                BENCHMARK.verify_pixels(directory, fixtures)
+
+    def test_rejects_equally_truncated_or_extended_frames_on_both_sides(self):
+        fixtures, _ = BENCHMARK.parse_output(valid_output(), 3)
+        for size in (0, 4, 120 * 40 * 4 - 4, 120 * 40 * 4 + 4):
+            with self.subTest(size=size), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                write_reference_frames(directory)
+                for side in ("before", "after"):
+                    (directory / f"{side}-frames/unicode-full-screen-1.xrgb8888le").write_bytes(b"\1" * size)
+                with self.assertRaisesRegex(ValueError, "pixel byte count"):
+                    BENCHMARK.verify_pixels(directory, fixtures)
+
+    def test_rejects_full_sized_frames_without_visible_changes(self):
+        fixtures, _ = BENCHMARK.parse_output(valid_output(), 3)
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            write_reference_frames(directory)
+            for side in ("before", "after"):
+                folder = directory / f"{side}-frames"
+                (folder / "unicode-full-screen-1.xrgb8888le").write_bytes(
+                    (folder / "unicode-full-screen-0.xrgb8888le").read_bytes())
+            with self.assertRaisesRegex(ValueError, "did not change visible pixels"):
+                BENCHMARK.verify_pixels(directory, fixtures)
 
 
 if __name__ == "__main__":
