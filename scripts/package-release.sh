@@ -142,14 +142,14 @@ def distribution_content(name, path):
         if destination.scheme or destination.netloc or not destination.path:
             return match.group(0)
         target = posixpath.normpath(posixpath.join(posixpath.dirname(name), destination.path))
-        if not development_file(target):
+        if not development_file(target) and not target.startswith("src/"):
             return match.group(0)
         url = f"{package['repository']}/blob/{source_ref}/{quote(target)}"
         if destination.fragment:
             url += "#" + destination.fragment
         return "](" + url + ")"
 
-    # Preserve local documentation links; omitted harnesses/evidence link to the tag.
+    # Preserve local documentation links; omitted source/tooling links to the revision.
     return re.sub(r"\]\(([^\s)]+)\)", link, content.decode("utf-8")).encode("utf-8")
 
 # Stable gzip/tar timestamps and ownership avoid adding local user metadata.
