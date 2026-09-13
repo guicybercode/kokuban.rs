@@ -1,0 +1,216 @@
+name: Paired warmed glyph-cache lookup measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      before:
+        description: Baseline revision, or sole build for same-binary control
+        required: true
+        default: b6cd9ad8b1204a4cb67587ecb042bd5cb8986266
+      after:
+        description: Candidate revision; ignored by same-binary
+        required: true
+        default: ddccc9bc4146629c34c089486d56897b0b3e3515
+      comparison:
+        description: Compare revisions or measure one exact executable twice
+        type: choice
+        options: [revisions, same-binary]
+        default: revisions
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glyph-cache-${{ github.ref }}-${{ inputs.comparison }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      BEFORE_REF: ${{ inputs.before }}
+      AFTER_REF: ${{ inputs.after }}
+      COMPARISON: ${{ inputs.comparison }}
+
+    steps:
+      - name: Check out common fixture and source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install fixed compiler and native font dependencies
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          if [[ "$(uname -s)" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends \
+              fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji \
+              libfontconfig1-dev libfreetype6-dev libxkbcommon-x11-0 pkg-config
+          else
+            test "$(uname -s)" == Darwin
+            test "$(uname -m)" == arm64
+          fi
+
+      - name: Validate source injection, parser and exact-binary controls
+        run: python3 -B -m unittest discover -s scripts -p test_compare_glyph_cache_revisions.py
+
+      - name: Archive exact sources and inject one common warmed lookup fixture
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-glyph-cache"
+          mkdir "$evidence_directory"
+          git rev-parse HEAD > "$evidence_directory/harness-revision.txt"
+          git rev-parse --verify --end-of-options "${BEFORE_REF}^{commit}" > "$evidence_directory/before-revision.txt"
+          printf '%s\n' "$COMPARISON" > "$evidence_directory/comparison.txt"
+          sides=(before after)
+          prepare_options=(--comparison "$COMPARISON")
+          if [[ "$COMPARISON" == same-binary ]]; then
+            sides=(before)
+          elif [[ "$COMPARISON" == revisions ]]; then
+            git rev-parse --verify --end-of-options "${AFTER_REF}^{commit}" > "$evidence_directory/after-revision.txt"
+            prepare_options+=(--after-source "$RUNNER_TEMP/kokuban-glyph-source-after")
+          else
+            exit 1
+          fi
+          cp scripts/compare-glyph-cache-revisions.py scripts/test_compare_glyph_cache_revisions.py \
+            scripts/fixtures/glyph-cache-benchmark.rs .github/workflows/glyph-cache-performance.yml "$evidence_directory/"
+          rustc --version --verbose > "$evidence_directory/rustc.txt"
+          cargo --version --verbose > "$evidence_directory/cargo.txt"
+          uname -a > "$evidence_directory/kernel.txt"
+          if [[ "$(uname -s)" == Linux ]]; then
+            lscpu > "$evidence_directory/cpu.txt"
+            cat /etc/os-release > "$evidence_directory/os-release.txt"
+            fc-match -v monospace > "$evidence_directory/monospace-font.txt"
+            dpkg-query -W fontconfig fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji \
+              libfontconfig1 libfreetype6 > "$evidence_directory/font-packages.txt"
+          else
+            system_profiler SPHardwareDataType > "$evidence_directory/cpu.txt"
+            sw_vers > "$evidence_directory/os-release.txt"
+            xcodebuild -version > "$evidence_directory/xcode.txt"
+          fi
+          python3 - "$evidence_directory/font-files.json" <<'PY'
+          import hashlib, json, pathlib, platform, subprocess, sys
+          if platform.system() == 'Linux':
+              paths = {pathlib.Path(value) for value in subprocess.check_output(
+                  ['fc-list', '--format=%{file}\n'], text=True).splitlines()}
+          else:
+              paths = {path for root in ('/System/Library/Fonts', '/Library/Fonts')
+                       for path in pathlib.Path(root).rglob('*')
+                       if path.is_file() and path.suffix.lower() in ('.ttf', '.ttc', '.otf', '.dfont')}
+          hashes = {}
+          for path in sorted(paths):
+              digest = hashlib.sha256()
+              with path.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      digest.update(chunk)
+              hashes[str(path)] = digest.hexdigest()
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(hashes, indent=2) + '\n')
+          PY
+          for side in "${sides[@]}"; do
+            revision="$(cat "$evidence_directory/$side-revision.txt")"
+            source_directory="$RUNNER_TEMP/kokuban-glyph-source-$side"
+            mkdir "$source_directory"
+            git archive --format=tar "$revision" | gzip -n > "$evidence_directory/$side-original-source.tar.gz"
+            tar -xzf "$evidence_directory/$side-original-source.tar.gz" -C "$source_directory"
+          done
+          python3 -B scripts/compare-glyph-cache-revisions.py prepare \
+            --before-source "$RUNNER_TEMP/kokuban-glyph-source-before" \
+            --fixture scripts/fixtures/glyph-cache-benchmark.rs \
+            --output "$evidence_directory/injection" "${prepare_options[@]}"
+          for side in "${sides[@]}"; do
+            tar -czf "$evidence_directory/$side-prepared-source.tar.gz" \
+              -C "$RUNNER_TEMP/kokuban-glyph-source-$side" .
+          done
+
+      - name: Build each release test executable in a new target
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-glyph-cache"
+          sides=(before after)
+          if [[ "$COMPARISON" == same-binary ]]; then sides=(before); fi
+          for side in "${sides[@]}"; do
+            source_directory="$RUNNER_TEMP/kokuban-glyph-source-$side"
+            target_directory="$RUNNER_TEMP/kokuban-glyph-target-$side"
+            test ! -e "$target_directory"
+            mkdir "$target_directory"
+            cargo test --release --locked --bin kokuban --no-run --message-format=json \
+              --manifest-path "$source_directory/Cargo.toml" --target-dir "$target_directory" \
+              > "$evidence_directory/$side-cargo-messages.jsonl" 2> "$evidence_directory/$side-build.log"
+            cargo tree --locked --manifest-path "$source_directory/Cargo.toml" \
+              > "$evidence_directory/$side-cargo-tree.txt"
+            python3 -B - "$source_directory" "$target_directory" "$evidence_directory" "$side" <<'PY'
+          from pathlib import Path
+          import runpy, shutil, sys
+          source, target, evidence = [Path(value).resolve() for value in sys.argv[1:4]]
+          side = sys.argv[4]
+          runner = runpy.run_path('scripts/compare-glyph-cache-revisions.py')
+          binary = runner['test_artifact'](source, target, evidence / f'{side}-cargo-messages.jsonl')
+          retained = evidence / f'{side}-benchmark'
+          shutil.copy2(binary, retained)
+          assert runner['sha'](retained) == runner['sha'](binary)
+          PY
+          done
+
+      - name: Measure six balanced warmed-lookup process pairs
+        shell: bash
+        run: |
+          evidence_directory="$RUNNER_TEMP/kokuban-glyph-cache"
+          measure_options=(--comparison "$COMPARISON")
+          if [[ "$COMPARISON" != same-binary ]]; then
+            measure_options+=(
+              --after-source "$RUNNER_TEMP/kokuban-glyph-source-after"
+              --after-target "$RUNNER_TEMP/kokuban-glyph-target-after"
+              --after-messages "$evidence_directory/after-cargo-messages.jsonl"
+              --after-ref "$(cat "$evidence_directory/after-revision.txt")"
+            )
+          fi
+          prefix=()
+          if [[ "$(uname -s)" == Linux ]]; then
+            benchmark_cpu="$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')"
+            printf '%s\n' "$benchmark_cpu" > "$evidence_directory/benchmark-cpu.txt"
+            prefix=(taskset -c "$benchmark_cpu")
+          else
+            printf '%s\n' 'macOS CPU affinity is not enforced; scheduling/core migration may affect timing.' \
+              > "$evidence_directory/benchmark-cpu.txt"
+          fi
+          "${prefix[@]}" python3 -B scripts/compare-glyph-cache-revisions.py measure \
+            --before-source "$RUNNER_TEMP/kokuban-glyph-source-before" \
+            --before-target "$RUNNER_TEMP/kokuban-glyph-target-before" \
+            --before-messages "$evidence_directory/before-cargo-messages.jsonl" \
+            --before-ref "$(cat "$evidence_directory/before-revision.txt")" \
+            --injection "$evidence_directory/injection/injection.json" \
+            --output "$evidence_directory/measurements" --pairs 6 --iterations 1000 --warmup 100 --timeout 180 \
+            "${measure_options[@]}"
+
+      - name: Hash retained evidence
+        if: always()
+        shell: bash
+        run: |
+          python3 -B - "$RUNNER_TEMP/kokuban-glyph-cache" <<'PY'
+          from pathlib import Path
+          import runpy, sys
+          root = Path(sys.argv[1])
+          if root.exists():
+              runner = runpy.run_path('scripts/compare-glyph-cache-revisions.py')
+              hashes = {path.relative_to(root).as_posix(): runner['sha'](path)
+                        for path in sorted(root.rglob('*')) if path.is_file() and path.name != 'artifact-sha256.json'}
+              runner['save'](root / 'artifact-sha256.json', hashes)
+          PY
+
+      - name: Preserve sources, exact binaries, fingerprints and raw timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: glyph-cache-${{ matrix.runner }}-${{ inputs.comparison }}
+          path: ${{ runner.temp }}/kokuban-glyph-cache
+          if-no-files-found: ignore
+          retention-days: 7
