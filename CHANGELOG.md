@@ -1,9 +1,37 @@
 # Changelog
 
-## Unreleased
+## v0.2 — 2026-09-13
 
-- Embed the supplied Kokuban icon for the macOS Dock and Linux X11 window.
-- Add a matching Linux desktop launcher for application menus and Wayland icons.
+Desktop release focused on text preservation, Omarchy integration and measured performance work. The Git tag is `v0.2`; the Cargo package version is `0.2.0`.
+
+### Added
+
+- Complete Unicode grapheme storage and shaping, including combining characters, flags, ZWJ sequences and installed color-emoji font fallback on Linux and macOS.
+- Logical-line copying that preserves explicit breaks and joins automatic wraps; resize reflow across retained text and history, with text-aware cursor restoration.
+- Persistent XDG configuration after the launch-directory `kokuban.toml` lookup.
+- Linux command launching with `-e`/`--execute`/`--`, working-directory, title and app-ID options, plus a desktop entry declaring `xdg-terminal-exec` capabilities.
+- Omarchy live palette updates with explicit configuration overrides, invalid-theme recovery and no shell restart. Linux uses the system monospace font by default; explicit fonts remain supported.
+- `Ctrl+Insert` copy alongside `Ctrl+Shift+C`, matching Omarchy's universal copy mapping. Existing paste shortcuts and ordinary `Ctrl+C`/`Ctrl+V` application input are preserved.
+- Kokuban artwork in the macOS Dock and Linux X11 window, plus a matching Linux application-menu launcher.
+- Community code of conduct, updated security guidance, citation metadata and a Portuguese release announcement.
+
+### Changed and fixed
+
+- Batch ASCII and mixed UTF-8 processing, reduce repeated Unicode boundary/width work and glyph-cache allocations, and scroll full-screen rows through a circular origin.
+- Repaint changed Linux frame bands with buffer-age tracking; reuse row metadata and bulk pixel operations where applicable.
+- Block idle PTY reads until output or explicit shutdown instead of waking periodically.
+- Keep macOS selection aligned with complete graphemes; safely truncate Unicode status paths and reject malformed Unicode color values without invalid string slicing.
+- Expand regression coverage for Unicode copy after resize, X11/Wayland launching, live theme pixels, retained PTY sessions and system-font selection. Theme tests wait for actual font/window geometry before printing their fixture.
+- Add paired revision and cross-terminal benchmark tooling with verified build identities and cell geometry. Retain gains and regressions; revert the history-row reuse experiment after a measured throughput regression.
+
+### Validation scope and limits
+
+- Linux launch checks cover X11 and headless Weston/Wayland; clipboard, theme and other graphical interaction checks use X11. Physical Omarchy/Hyprland validation and broad Wayland interaction remain pending.
+- Linux archives are built on Ubuntu 24.04. macOS archives remain unsigned, unnotarized standalone executables with a macOS 11 build target; automated builds/tests run on macOS 15.
+- Linux pane management/font zoom, OSC 52, audio and sustained media playback remain incomplete or unverified. Native Kitty animation remains Linux-only; Android is separate and Windows is unsupported.
+- Font and Kokuban configuration changes apply to new windows; only the Omarchy palette reloads live. Resource measurements are tied to their documented revisions and workloads.
+
+See the [v0.1…v0.2 comparison](https://github.com/guicybercode/kokuban.rs/compare/v0.1...v0.2), [text behavior](docs/TERMINAL_TEXT.md), [Omarchy guide](docs/OMARCHY.md) and [performance evidence](docs/LINUX_PERFORMANCE.md).
 
 ## v0.1 — 2026-09-06
 

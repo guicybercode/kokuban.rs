@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use Kokuban in your work or write about it in a blog, please cite this software."
+type: software
+title: Kokuban
+abstract: "A native Rust terminal emulator for Linux and macOS with Omarchy integration."
+authors:
+  - name: Kokuban contributors
+    website: "https://github.com/guicybercode/kokuban.rs/graphs/contributors"
+repository-code: "https://github.com/guicybercode/kokuban.rs"
+url: "https://github.com/guicybercode/kokuban.rs"
+version: 0.2.0
+date-released: "2026-09-13"
+keywords:
+  - terminal emulator
+  - Rust
+  - Linux
+  - macOS
+  - Omarchy

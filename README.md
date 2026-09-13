@@ -2,26 +2,28 @@
 
 A native terminal emulator written in Rust for Linux and macOS.
 
-[Download v0.1](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.1) · [Run Kokuban](#installation) · [MIT license](LICENSE) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md)
+[Download v0.2](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2) · [Run Kokuban](#installation) · [Omarchy](docs/OMARCHY.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md) · [License](LICENSE)
 
 ![Kokuban brand](docs/screenshots/kokuban-brand.png)
 
 
-Kokuban is a from-scratch terminal emulator with a Metal GPU renderer on macOS and a software rasterizer on Linux. It includes its own VT/ANSI parser, PTY handling, glyph rendering, pane management, and graphics protocol support.
+Kokuban brings interactive shells, development tools and terminal graphics into a native desktop window. It has its own VT/ANSI parser, terminal grid and PTY handling, with Metal rendering on macOS and software rendering on Linux.
 
-An Ubuntu/Xvfb release run measured a 7.98 MiB executable and 11.93 MiB idle RSS. A short 320×180 video test observed all 72 source frames with 8.75% of one CPU core used by Kokuban. These are bounded CI scenarios, not hardware-independent guarantees; see the [resource measurements and reproduction steps](docs/LINUX_PERFORMANCE.md).
+Version 0.2 preserves complete Unicode graphemes through selection and resize, adds Omarchy launch and live-theme integration, and reduces work in the text and rendering paths. Performance reports retain the tested revisions, workload, hardware, gains and regressions; see the [measurements](docs/LINUX_PERFORMANCE.md), [changelog](CHANGELOG.md) and [v0.2 announcement in Portuguese](docs/blog/2026-09-13-kokuban-v0.2.md).
 
 ## Features
 
 - **Native rendering**: Metal GPU renderer on macOS; software rasterizer with winit + softbuffer on Linux
 - **Built-in parser**: VT/ANSI escape sequence parser with support for complex SGR modes (faint, conceal, styled underlines)
+- **Text preservation**: Complete Unicode graphemes, font fallback, logical-line copy and scrollback reflow when resizing
+- **Omarchy integration (Linux)**: Terminal launcher arguments, existing copy/paste shortcuts, live system palette and the system monospace font
 - **Graphics protocols**: Static Kitty PNG/RGB/RGBA images and Sixel on macOS and Linux; Linux also supports native Kitty animation with a bounded CPU cache
 - **Pane management (macOS)**: Split windows vertically or horizontally, navigate with vim-style keybinds
 - **Zoom (macOS)**: Dynamic font size adjustment per session
 - **Selection and clipboard**: Mouse-driven selection on macOS and Linux; Linux copy/paste shortcuts with an asynchronous system clipboard
 - **Status bar (macOS)**: Shows shell, working directory, and pane index
 - **Prompt marks (macOS)**: Visual indicators for command boundaries with navigation shortcuts
-- **Configuration**: TOML-based config file with font, color, and keybind customization
+- **Configuration**: Local or XDG TOML configuration for fonts, colors and supported keybinds
 
 ## Platform Support
 
@@ -34,13 +36,13 @@ Android APK builds and emulator validation are being developed on the separate `
 
 ### Run a downloaded release
 
-The [v0.1 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.1) is an early desktop release. Download the archive for your computer and its matching `.sha256` file. Rust is not required to run the binary.
+The [v0.2 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2) is an early desktop release. Download the archive for your computer and its matching `.sha256` file. Rust is not required to run the binary.
 
 | Computer | Archive |
 | --- | --- |
-| Linux x86_64, built on Ubuntu 24.04 | `kokuban-v0.1-x86_64-unknown-linux-gnu.tar.gz` |
-| macOS Apple Silicon | `kokuban-v0.1-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `kokuban-v0.1-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64, built on Ubuntu 24.04 | `kokuban-v0.2-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `kokuban-v0.2-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `kokuban-v0.2-x86_64-apple-darwin.tar.gz` |
 
 The Linux binary requires compatible glibc and system libraries; Ubuntu 24.04 is the tested distribution. Build from source for another architecture or an older distribution. macOS binaries target macOS 11 at build time. Release builds and automated Rust tests run on macOS 15 CI runners; graphical compatibility with older systems is not established. Archives contain standalone executables, not signed or notarized `.app` bundles. If macOS blocks a download, review it through Privacy & Security or build from source; do not disable system-wide protections.
 
@@ -55,18 +57,18 @@ sudo apt install --yes libfontconfig1 libfreetype6 fonts-dejavu-core \
 In the directory containing the downloaded archive and checksum:
 
 ```sh
-sha256sum --check kokuban-v0.1-x86_64-unknown-linux-gnu.tar.gz.sha256
-tar -xzf kokuban-v0.1-x86_64-unknown-linux-gnu.tar.gz
-cd kokuban-v0.1-x86_64-unknown-linux-gnu
+sha256sum --check kokuban-v0.2-x86_64-unknown-linux-gnu.tar.gz.sha256
+tar -xzf kokuban-v0.2-x86_64-unknown-linux-gnu.tar.gz
+cd kokuban-v0.2-x86_64-unknown-linux-gnu
 ./kokuban
 ```
 
 **macOS (Apple Silicon):** in the download directory:
 
 ```sh
-shasum -a 256 --check kokuban-v0.1-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf kokuban-v0.1-aarch64-apple-darwin.tar.gz
-cd kokuban-v0.1-aarch64-apple-darwin
+shasum -a 256 --check kokuban-v0.2-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf kokuban-v0.2-aarch64-apple-darwin.tar.gz
+cd kokuban-v0.2-aarch64-apple-darwin
 ./kokuban
 ```
 
@@ -93,7 +95,7 @@ xcode-select --install
 Then build the release source and launch it:
 
 ```sh
-git clone --branch v0.1 --depth 1 https://github.com/guicybercode/kokuban.rs.git
+git clone --branch v0.2 --depth 1 https://github.com/guicybercode/kokuban.rs.git
 cd kokuban.rs
 rustup toolchain install 1.94.1 --profile minimal
 rustup run 1.94.1 cargo build --release --locked
@@ -106,20 +108,20 @@ To work on the development version, clone `main` instead; see [CONTRIBUTING.md](
 KOKUBAN_SHELL=/bin/bash ./target/release/kokuban
 ```
 
-Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It reads `kokuban.toml` from the directory where you launch it. Development builds also search the user configuration directory described below. For Linux, a minimal file can select the installed font:
+Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It searches the launch directory and then the user configuration directory described below. This minimal configuration keeps the platform's default font and disables Kitty file transfers:
 
 ```toml
 [font]
-family = "DejaVu Sans Mono"
+# family = "DejaVu Sans Mono" # Optional explicit font.
 size = 14.0
 
 [images.kitty]
 allow_file_transfer = false
 ```
 
-### Omarchy and Linux commands (development builds)
+### Omarchy and Linux commands
 
-Build `main` to use Omarchy's terminal launcher, working-directory inheritance,
+Kokuban v0.2 supports Omarchy's terminal launcher, working-directory inheritance,
 and commands opened directly in the terminal:
 
 ```sh
@@ -134,22 +136,27 @@ See [Omarchy installation and bindings](docs/OMARCHY.md) to register Kokuban wit
 under X11 and headless Weston/Wayland; Hyprland integration still needs an
 on-device run.
 
+On Linux, Omarchy palette changes update existing windows while preserving the
+shell session. Explicit Kokuban colors take priority. The default font follows
+the system monospace alias; open a new window after changing the system font.
+See the [palette and font behavior](docs/OMARCHY.md#follow-the-omarchy-palette)
+before copying explicit colors or a font family into your configuration.
+
 ### Troubleshooting startup
 
 - **No Linux display:** start it inside an X11 or Wayland desktop session. A headless SSH session without a display cannot open the window. X11 has automated runtime coverage; Wayland remains less validated.
 - **Missing Linux library:** install the runtime packages above. Libraries opened dynamically may not appear in `ldd` output.
-- **Missing font:** install `fonts-dejavu-core` on Linux and use the font configuration above. macOS includes Menlo.
+- **Missing font:** install `fonts-dejavu-core` on Linux. Install `fonts-noto-color-emoji` for the emoji fallback exercised by CI. macOS includes Menlo and Apple Color Emoji.
 - **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
-- **Configuration seems ignored:** a local `kokuban.toml` takes priority. Builds from `main` also read `${XDG_CONFIG_HOME:-$HOME/.config}/kokuban/kokuban.toml`; published v0.1 binaries only read the local file. Invalid configuration falls back to defaults and logs a warning.
+- **Configuration seems ignored:** a local `kokuban.toml` takes priority over the user configuration file. Settings are read when a window opens; the Omarchy palette has its own live reload. Invalid configuration falls back to defaults and logs a warning.
 
-### Application icon (development builds)
+### Application icon
 
-Builds from `main` after v0.1 embed the [Kokuban artwork](assets/kokuban-icon.png).
+Kokuban v0.2 embeds the [Kokuban artwork](assets/kokuban-icon.png).
 It appears in the macOS Dock while the application runs and as the Linux X11
-window icon. The published v0.1 binaries predate this addition. A standalone
-macOS executable retains its ordinary Finder file icon.
+window icon. A standalone macOS executable retains its ordinary Finder file icon.
 
-For a Linux application-menu launcher and Wayland desktop icon, build `main`
+For a Linux application-menu launcher and Wayland desktop icon, build from source
 and run the following from the repository root. This installs into your user
 account; `desktop-file-utils` provides `desktop-file-install`:
 
@@ -202,15 +209,15 @@ These are example limits; defaults remain 256 MiB for the cache and 50 MiB per K
 
 ## Configuration
 
-Development builds read `kokuban.toml` in the launch directory first, then
+Kokuban reads `kokuban.toml` in the launch directory first, then
 `$XDG_CONFIG_HOME/kokuban/kokuban.toml`, or `$HOME/.config/kokuban/kokuban.toml`
 when `XDG_CONFIG_HOME` is unset, empty, or relative. The first existing file wins;
 files are not merged. Configuration is loaded before the CLI working directory
-is applied. Published v0.1 binaries only read the local file. Missing, unreadable
-or invalid configuration falls back to defaults; parse/read errors are logged.
+is applied. Missing, unreadable or invalid configuration falls back to defaults;
+parse/read errors are logged.
 Review local configuration before launching from an unfamiliar directory.
 
-In development builds, omitting `font.family` uses the system monospace font on
+Omitting `font.family` uses the system monospace font on
 Linux and Menlo on macOS. An explicit family overrides that choice. Open a new
 window after changing the system font or Kokuban's font settings.
 
@@ -306,14 +313,16 @@ The pane, resize, zoom and prompt-navigation bindings in the macOS table are con
 
 ## Development Status
 
-Kokuban v0.1 (Cargo version 0.1.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation and short mpv playback. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52, broad Wayland coverage, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application is written in Rust, but uses native platform APIs and font libraries; low memory, CPU and battery consumption must be measured rather than inferred from the language.
+Kokuban v0.2 (Cargo version 0.2.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation, short mpv playback, theme changes and command launching. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52, broad Wayland coverage, physical Omarchy/Hyprland validation, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application uses native platform APIs and font libraries; resource use is documented for specific revisions and workloads, rather than guaranteed across machines.
 
 ## Project Name
 
 黒板 (*kokuban*) is the Japanese word for "blackboard" or "chalkboard"—a blank surface for writing and drawing.
 
-## Contributing, security and license
+## Community, citation and license
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and checks. Send vulnerabilities through the private channel in [SECURITY.md](SECURITY.md); ordinary bugs can use [GitHub issues](https://github.com/guicybercode/kokuban.rs/issues).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. Send vulnerabilities through the private channel in [SECURITY.md](SECURITY.md); ordinary bugs can use [GitHub issues](https://github.com/guicybercode/kokuban.rs/issues).
 
-Kokuban's original code and documentation are licensed under [MIT](LICENSE). Dependencies and third-party assets retain their own licenses; release archives include their notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).
+When writing about or building on Kokuban, link to [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs) and identify the version or commit you used. [CITATION.cff](CITATION.cff) provides citation metadata; the [v0.2 blog post](docs/blog/2026-09-13-kokuban-v0.2.md) introduces the release.
+
+The project's [license](LICENSE) governs its original code and documentation. Third-party code, content and assets retain their own licenses, including the Contributor Covenant code of conduct under CC-BY-4.0. Release archives include third-party notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).
