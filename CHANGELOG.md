@@ -17,6 +17,7 @@ Desktop release focused on text preservation, Omarchy integration and measured p
 
 ### Changed and fixed
 
+- Change the license for original project code and documentation to BSD-4-Clause starting with v0.2, including its advertising acknowledgment requirement. The published v0.1 MIT license and third-party licenses remain unchanged.
 - Batch ASCII and mixed UTF-8 processing, reduce repeated Unicode boundary/width work and glyph-cache allocations, and scroll full-screen rows through a circular origin.
 - Repaint changed Linux frame bands with buffer-age tracking; reuse row metadata and bulk pixel operations where applicable.
 - Block idle PTY reads until output or explicit shutdown instead of waking periodically.

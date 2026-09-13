@@ -1,7 +1,8 @@
 # Third-party software in release packages
 
-Kokuban's own code is offered under the [project license](../LICENSE). Dependencies
-keep their own licenses. Each release archive includes
+Starting with v0.2, Kokuban's original code and documentation are offered under
+[BSD-4-Clause](../LICENSE). The published v0.1 release remains under MIT.
+Dependencies and other third-party material keep their own licenses. Each release archive includes
 `THIRD_PARTY_LICENSES.txt` and `THIRD_PARTY_SOURCES/option-ext-0.2.0.crate` beside
 the executable. Keep these files when redistributing that archive.
 
@@ -15,6 +16,20 @@ Changing Kokuban's project license does not change these third-party terms.
 The [Code of Conduct](../CODE_OF_CONDUCT.md) adapts Contributor Covenant 2.0
 and retains its separate Creative Commons Attribution 4.0 International
 license and attribution. It is not relicensed under Kokuban's project license.
+
+## Kokuban acknowledgment
+
+The project's [BSD-4-Clause license](../LICENSE) requires retention of its
+copyright notice, conditions and disclaimer when redistributing source or
+binaries. Its advertising clause requires this acknowledgment in advertising
+materials mentioning features or use of the software:
+
+> This product includes software developed by the Kokuban contributors.
+
+Running Kokuban by itself does not require a public announcement. Citation
+metadata supplements the required license notices. See the complete project
+license for all conditions and the [SPDX BSD-4-Clause reference](https://spdx.org/licenses/BSD-4-Clause.html)
+for the standard license form.
 
 ## Generation and scope
 

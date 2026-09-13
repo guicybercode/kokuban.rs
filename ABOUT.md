@@ -32,6 +32,10 @@ Bug reports, focused fixes, tests, documentation and platform feedback are welco
 - [Contribute](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Report a security issue privately](SECURITY.md)
-- [License](LICENSE)
+- [BSD-4-Clause license](LICENSE)
 
-For a blog, presentation or article, cite **Kokuban v0.2 — guicybercode/kokuban.rs** and link to the [release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2). For development builds or benchmark results, include the exact commit. Citation metadata supplements the obligations in [LICENSE](LICENSE). Third-party code, content and assets retain their own licenses; the Contributor Covenant code of conduct remains under CC-BY-4.0. See [third-party licensing](docs/THIRD_PARTY.md).
+For a blog, presentation or article, cite **Kokuban v0.2 — guicybercode/kokuban.rs** and link to the [release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2). For development builds or benchmark results, include the exact commit.
+
+Starting with v0.2, original project code and documentation use [BSD-4-Clause](LICENSE). Its advertising clause requires the following acknowledgment in advertising materials mentioning features or use of the software: “This product includes software developed by the Kokuban contributors.” Running the terminal by itself does not require a public announcement; redistribution also carries notice requirements. Citation metadata supplements these obligations. The published v0.1 release remains MIT.
+
+Third-party code, content and assets retain their own licenses, including the derived Unicode tables under MIT and the Contributor Covenant code of conduct under CC-BY-4.0. See [third-party licensing](docs/THIRD_PARTY.md).

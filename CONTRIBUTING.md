@@ -48,4 +48,6 @@ Use descriptive commits. Preserve actual contributor attribution and do not add 
 
 ## Licensing
 
-By submitting code or documentation intended for inclusion in this repository, you agree to license your contribution under the [project license](LICENSE). Only submit work you have the right to contribute. Dependencies and third-party assets keep their own licenses and required notices; the project license does not relicense them.
+By submitting original code or documentation intended for inclusion in this repository, you agree to license your contribution under [BSD-4-Clause](LICENSE), the project license starting with v0.2. Read its redistribution, advertising acknowledgment and endorsement conditions before contributing. Only submit work you have the right to contribute.
+
+Third-party code, content and assets keep their own licenses and required notices. In particular, the derived Unicode tables retain their MIT notices and the Contributor Covenant code of conduct retains CC-BY-4.0; the project license does not relicense them. The published v0.1 release remains under MIT. See [third-party licensing](docs/THIRD_PARTY.md).

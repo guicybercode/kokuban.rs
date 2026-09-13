@@ -2,7 +2,7 @@
 
 A native terminal emulator written in Rust for Linux and macOS.
 
-[Download v0.2](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2) · [Run Kokuban](#installation) · [Omarchy](docs/OMARCHY.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md) · [License](LICENSE)
+[Download v0.2](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.2) · [Run Kokuban](#installation) · [Omarchy](docs/OMARCHY.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [About](ABOUT.md) · [BSD-4-Clause license](LICENSE)
 
 ![Kokuban brand](docs/screenshots/kokuban-brand.png)
 
@@ -325,4 +325,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [CODE_O
 
 When writing about or building on Kokuban, link to [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs) and identify the version or commit you used. [CITATION.cff](CITATION.cff) provides citation metadata; the [v0.2 blog post](docs/blog/2026-09-13-kokuban-v0.2.md) introduces the release.
 
-The project's [license](LICENSE) governs its original code and documentation. Third-party code, content and assets retain their own licenses, including the Contributor Covenant code of conduct under CC-BY-4.0. Release archives include third-party notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).
+Starting with v0.2, Kokuban's original code and documentation use the [BSD-4-Clause license](LICENSE). Redistributed source and binaries must retain the required copyright notice, conditions and disclaimer. Advertising materials mentioning features or use of the software must display this acknowledgment:
+
+> This product includes software developed by the Kokuban contributors.
+
+Running Kokuban by itself does not require a public announcement. Citation metadata does not replace the license's required notices. The historical v0.1 release remains under its published MIT license.
+
+Third-party code, content and assets retain their own licenses, including the derived Unicode tables under MIT and the Contributor Covenant code of conduct under CC-BY-4.0. Release archives include third-party notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).
