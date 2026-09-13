@@ -21,6 +21,10 @@ on:
         type: choice
         options: [revisions, same-binary]
         default: revisions
+      thread_cpu:
+        description: Observe per-thread CPU counters outside workload clocks
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,6 +44,7 @@ jobs:
       AFTER_REF: ${{ inputs.after }}
       SCREEN: ${{ inputs.screen }}
       COMPARISON: ${{ inputs.comparison || 'revisions' }}
+      THREAD_CPU: ${{ inputs.thread_cpu || false }}
 
     steps:
       - name: Check out measurement harness and revision history
@@ -130,6 +135,9 @@ jobs:
           if [[ "$COMPARISON" == same-binary ]]; then
             after_binary="$RUNNER_TEMP/kokuban-paired-binaries/before"
             control_options+=(--allow-identical-binaries)
+          fi
+          if [[ "$THREAD_CPU" == true ]]; then
+            control_options+=(--thread-cpu)
           fi
           timeout --kill-after=10s 20m taskset -c "$benchmark_cpu" \
             python3 scripts/compare-kokuban-revisions.py \
