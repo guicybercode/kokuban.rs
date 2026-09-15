@@ -148,7 +148,7 @@ class ThreadCpuTests(unittest.TestCase):
         self.assertIsNone(row['cpu_seconds_delta'])
 
     def test_terminal_command_passes_opt_in_only_to_the_pty_driver(self):
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, patch.object(RUNNER['sys'], 'platform', 'linux'):
             args = SimpleNamespace(screen='primary', scrollback_lines=10000, font_pixels=14,
                                    columns=80, rows=24, thread_cpu=True)
             command, _ = RUNNER['terminal_command']('kokuban', Path('kokuban'), 'test', Path(temporary), args)
@@ -207,6 +207,69 @@ class ThreadCpuTests(unittest.TestCase):
                 result = json.loads((directory / 'result.json').read_text())['workloads']['short']
                 self.assertEqual(result['write_and_dsr_seconds'], 2)
                 self.assertEqual('thread_cpu' in result, enabled)
+
+
+class MacosObservationTests(unittest.TestCase):
+    def test_ps_cpu_time_formats_and_rejects_garbage(self):
+        parse = RUNNER['parse_ps_cpu_time']
+        self.assertAlmostEqual(parse('0:01.25'), 1.25)
+        self.assertAlmostEqual(parse('1:02:03.50'), 3723.5)
+        self.assertAlmostEqual(parse('2-00:00:01.00'), 172801.0)
+        stats = RUNNER['parse_ps_stats'](42, '  0:12.34  20480\n')
+        self.assertEqual((stats['pid'], stats['rss_kib'], stats['source']), (42, 20480, 'ps'))
+        self.assertAlmostEqual(stats['cpu_seconds'], 12.34)
+        for text in ('', '12.34 1', '0:01.00'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                RUNNER['parse_ps_stats'](42, text)
+
+    def test_top_idle_wakeups_ignore_headers_other_pids_and_plus_suffix(self):
+        text = ('Processes: 1 total\nPID    IDLEW\n42     122\n420    9\n'
+                'Processes: 1 total\nPID    IDLEW\n42     324+\n')
+        self.assertEqual(RUNNER['parse_top_idle_wakeups'](text, 42), [122, 324])
+
+    def test_idle_observation_reads_top_only_on_macos(self):
+        stats = iter([{'cpu_seconds': 1.0}, {'cpu_seconds': 1.5}])
+        completed = Mock(returncode=0, stdout='42 10\n42 30+\n', stderr='')
+        with patch.dict(GLOBALS, process_stats=lambda _pid: next(stats)), \
+                patch.object(RUNNER['sys'], 'platform', 'darwin'), \
+                patch.object(RUNNER['subprocess'], 'run', return_value=completed) as run:
+            idle = RUNNER['observe_idle'](42, 10)
+        self.assertEqual(run.call_args.args[0][:5], ['top', '-l', '2', '-s', '10'])
+        self.assertEqual((idle['idle_wakeups'], idle['idle_wakeups_per_second']), (20, 2.0))
+        self.assertAlmostEqual(idle['terminal_cpu_seconds'], 0.5)
+        stats = iter([{'cpu_seconds': 1.0}, {'cpu_seconds': 1.0}])
+        with patch.dict(GLOBALS, process_stats=lambda _pid: next(stats)), \
+                patch.object(RUNNER['sys'], 'platform', 'linux'), patch.object(RUNNER['time'], 'sleep') as sleep, \
+                patch.object(RUNNER['subprocess'], 'run', side_effect=AssertionError('top is macOS only')):
+            idle = RUNNER['observe_idle'](42, 3)
+        sleep.assert_called_once_with(3)
+        self.assertIsNone(idle['idle_wakeups'])
+        self.assertEqual(idle['idle_wakeups_observation']['status'], 'unavailable')
+
+    def test_macos_kokuban_launches_the_driver_through_an_executable_shell(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(RUNNER['sys'], 'platform', 'darwin'):
+            directory = Path(temporary)
+            args = SimpleNamespace(screen='alternate', scrollback_lines=10000, font_pixels=14,
+                                   columns=80, rows=24, thread_cpu=False)
+            command, config = RUNNER['terminal_command']('kokuban', Path('/bin/kokuban'), 'test', directory, args)
+            self.assertEqual(command, ['/bin/kokuban'])
+            shell = Path(config['launch_shell'])
+            self.assertTrue(shell.stat().st_mode & 0o111)
+            script = shell.read_text()
+            self.assertTrue(script.startswith('#!/bin/sh\nexec '))
+            self.assertIn('--child-dir', script)
+            self.assertIn(str(directory), script)
+            process = Mock(pid=123, returncode=0)
+            process.poll.return_value = 0
+            process.wait.return_value = 0
+            args.backend, args.settle_seconds, args.timeout, args.idle_seconds = 'wayland', 0, 1, 7
+            sample_directory = directory / 'sample'
+            with patch.object(RUNNER['subprocess'], 'Popen', return_value=process) as popen, \
+                    patch.dict(GLOBALS, wait_for=lambda *_args: {'workloads': {}}, stop_owned_child=Mock()):
+                RUNNER['execute_sample']('kokuban', Path('/bin/kokuban'), 'test', sample_directory, {}, args)
+            environment = popen.call_args.kwargs['env']
+            self.assertEqual(environment['KOKUBAN_SHELL'], str(sample_directory / 'kokuban-shell.sh'))
+            self.assertEqual(json.loads((sample_directory / 'case.json').read_text())['idle_seconds'], 7)
 
 
 class CellCalibrationTests(unittest.TestCase):

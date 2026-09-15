@@ -15,6 +15,8 @@ use std::sync::{Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
 const WRITE_RETRY_INTERVAL: Duration = Duration::from_millis(1);
+/// Bounds how long a full PTY input queue delays observing cancellation.
+const WRITE_READY_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CHILD_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const FINAL_REAP_TIMEOUT: Duration = Duration::from_millis(100);
 const CHILD_REAP_RETRY_INTERVAL: Duration = Duration::from_millis(10);
@@ -237,7 +239,22 @@ impl Pty {
             || cancelled.load(Ordering::Acquire),
             |remaining| nix::unistd::write(self.master(), remaining),
             || std::thread::sleep(WRITE_RETRY_INTERVAL),
+            || self.wait_writable(WRITE_READY_POLL_INTERVAL),
         )
+    }
+
+    /// Wait up to `timeout` for space in the PTY input queue. The retried write
+    /// reports hangups and errors, so poll results only choose how long to wait.
+    fn wait_writable(&self, timeout: Duration) {
+        let mut poll_fds = [PollFd::new(self.master().as_fd(), PollFlags::POLLOUT)];
+        match poll(&mut poll_fds, poll_timeout_for(timeout)) {
+            Ok(0) | Err(nix::errno::Errno::EINTR) => {}
+            Ok(_) if poll_fds[0]
+                .revents()
+                .is_some_and(|events| events.contains(PollFlags::POLLOUT)) => {}
+            // Hangup, error or a failed poll: keep the old backoff instead of spinning.
+            Ok(_) | Err(_) => std::thread::sleep(WRITE_RETRY_INTERVAL),
+        }
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
@@ -319,17 +336,19 @@ where
     Ok(())
 }
 
-fn write_all_cancellable_with<C, W, B>(
+fn write_all_cancellable_with<C, W, B, R>(
     output_lock: &Mutex<()>,
     data: &[u8],
     mut is_cancelled: C,
     mut write_once: W,
-    mut backoff: B,
+    mut lock_backoff: B,
+    mut wait_writable: R,
 ) -> std::io::Result<CancellableWriteOutcome>
 where
     C: FnMut() -> bool,
     W: FnMut(&[u8]) -> nix::Result<usize>,
     B: FnMut(),
+    R: FnMut(),
 {
     let _guard = loop {
         if is_cancelled() {
@@ -339,7 +358,7 @@ where
         match output_lock.try_lock() {
             Ok(guard) => break guard,
             Err(TryLockError::Poisoned(poisoned)) => break poisoned.into_inner(),
-            Err(TryLockError::WouldBlock) => backoff(),
+            Err(TryLockError::WouldBlock) => lock_backoff(),
         }
     };
 
@@ -359,7 +378,8 @@ where
             Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero)),
             Ok(count) => written += count,
             Err(nix::Error::EINTR) => continue,
-            Err(nix::Error::EAGAIN) => backoff(),
+            // A full input queue: wait for space instead of a fixed sleep.
+            Err(nix::Error::EAGAIN) => wait_writable(),
             Err(error) => return Err(error.into()),
         }
     }
@@ -390,6 +410,83 @@ where
                 return Ok(true);
             }
         }
+    }
+}
+
+/// Readiness reported by [`wait_any_readable_or_woken`].
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct PtyReadiness {
+    /// The wake descriptor is readable or hung up.
+    pub(crate) woken: bool,
+    /// Indices of PTYs with output, EOF or an error to observe through `read`.
+    pub(crate) readable: Vec<usize>,
+    /// Indices of PTYs whose descriptors poll rejected or reported unexpected events.
+    pub(crate) invalid: Vec<usize>,
+}
+
+/// Block without a timeout until any PTY has output/EOF or `wake` is readable.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+pub(crate) fn wait_any_readable_or_woken(
+    ptys: &[&Pty],
+    wake: BorrowedFd<'_>,
+) -> std::io::Result<PtyReadiness> {
+    wait_any_readable_or_woken_with(ptys.len(), |timeout| {
+        let mut poll_fds: Vec<PollFd<'_>> = ptys
+            .iter()
+            .map(|pty| PollFd::new(pty.master().as_fd(), PollFlags::POLLIN))
+            .collect();
+        poll_fds.push(PollFd::new(wake, PollFlags::POLLIN));
+        poll(&mut poll_fds, timeout)?;
+        Ok(poll_fds.iter().map(|poll_fd| poll_fd.revents()).collect())
+    })
+}
+
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+fn wait_any_readable_or_woken_with<P>(
+    pty_count: usize,
+    mut poll_once: P,
+) -> std::io::Result<PtyReadiness>
+where
+    P: FnMut(PollTimeout) -> nix::Result<Vec<Option<PollFlags>>>,
+{
+    loop {
+        let events = match poll_once(PollTimeout::NONE) {
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(error) => return Err(error.into()),
+            Ok(events) => events,
+        };
+        if events.len() != pty_count + 1 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "poll returned events for a different descriptor count",
+            ));
+        }
+
+        let mut readiness = PtyReadiness::default();
+        let wake_events = events[pty_count];
+        if wake_events != Some(PollFlags::empty()) {
+            classify_readable_events(wake_events)?;
+            readiness.woken = true;
+        }
+        for (index, pty_events) in events[..pty_count].iter().enumerate() {
+            if *pty_events == Some(PollFlags::empty()) {
+                continue;
+            }
+            // One broken PTY must not stop output from the others.
+            match classify_readable_events(*pty_events) {
+                Ok(()) => readiness.readable.push(index),
+                Err(_) => readiness.invalid.push(index),
+            }
+        }
+
+        if !readiness.woken && readiness.readable.is_empty() && readiness.invalid.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "poll without a timeout returned no ready descriptors",
+            ));
+        }
+        return Ok(readiness);
     }
 }
 
@@ -987,9 +1084,10 @@ mod tests {
         child_environment, child_stage_name, child_startup_status_with, classify_child_wait,
         classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
         poll_timeout_for, resize_with_ioctl, resolve_command, select_shell, set_cloexec,
-        terminate_and_reap_with, wait_for_child_reap_with, wait_readable_or_cancelled_with,
-        wait_readable_with, write_all_cancellable_with, write_all_with, write_child_stage_with,
-        CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
+        terminate_and_reap_with, wait_any_readable_or_woken, wait_any_readable_or_woken_with,
+        wait_for_child_reap_with, wait_readable_or_cancelled_with, wait_readable_with,
+        write_all_cancellable_with, write_all_with, write_child_stage_with,
+        CancellableWriteOutcome, ChildWaitState, Pty, PtyReadiness, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -1271,6 +1369,84 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "PTY write microbenchmark; run release with --nocapture"]
+    fn benchmark_large_pty_write() {
+        fn positive_setting(name: &str, default: usize) -> usize {
+            let value = std::env::var(name).map_or(default, |value| {
+                value
+                    .parse()
+                    .unwrap_or_else(|_| panic!("{name} must be a positive integer"))
+            });
+            assert!(value > 0, "{name} must be a positive integer");
+            value
+        }
+
+        let mib = positive_setting("KOKUBAN_PTY_WRITE_MIB", 8);
+        let samples = positive_setting("KOKUBAN_PTY_WRITE_SAMPLES", 5);
+        let program = CString::new("/bin/sh").unwrap();
+        // Raw mode without echo: the child only drains input, like a paste
+        // into an application that reads faster than the PTY queue fills.
+        let argv = [
+            "sh",
+            "-c",
+            "stty raw -echo; printf '__KOKUBAN_READY__'; exec cat >/dev/null",
+        ]
+        .into_iter()
+        .map(|argument| CString::new(argument).unwrap())
+        .collect();
+        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment()).unwrap();
+        assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
+        let payload = vec![b'x'; mib * 1024 * 1024];
+        let cancelled = AtomicBool::new(false);
+
+        println!("pty write to a draining child; MiB/sample={mib}; samples={samples}");
+        println!("sample,seconds,MiB_s");
+        for sample in 0..samples {
+            let started = Instant::now();
+            assert_eq!(
+                pty.write_all_cancellable(&payload, &cancelled).unwrap(),
+                CancellableWriteOutcome::Completed
+            );
+            let seconds = started.elapsed().as_secs_f64();
+            println!("{sample},{seconds:.6},{:.2}", mib as f64 / seconds);
+        }
+    }
+
+    #[test]
+    fn full_pty_input_queue_waits_for_space_and_still_observes_cancellation() {
+        let program = CString::new("/bin/sh").unwrap();
+        // The child never reads, so the PTY input queue stays full.
+        let argv = ["sh", "-c", "stty raw -echo; printf '__KOKUBAN_READY__'; exec sleep 30"]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap());
+        assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let writer_pty = pty.clone();
+        let writer_cancelled = cancelled.clone();
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let writer = thread::spawn(move || {
+            let payload = vec![b'x'; 1024 * 1024];
+            result_tx
+                .send(writer_pty.write_all_cancellable(&payload, &writer_cancelled))
+                .unwrap();
+        });
+        assert!(matches!(
+            result_rx.recv_timeout(Duration::from_millis(200)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        let cancelled_at = Instant::now();
+        cancelled.store(true, Ordering::Release);
+        let outcome = result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        assert_eq!(outcome, CancellableWriteOutcome::Cancelled);
+        assert!(cancelled_at.elapsed() < Duration::from_secs(1));
+        writer.join().unwrap();
+    }
+
+    #[test]
     fn cancellable_write_stops_before_and_while_waiting_for_the_lock() {
         let output_lock = Mutex::new(());
         let held = output_lock.lock().unwrap();
@@ -1286,6 +1462,7 @@ mod tests {
                 Ok(8)
             },
             || panic!("an already-cancelled write must not back off"),
+            || panic!("an already-cancelled write must not wait for the PTY"),
         )
         .unwrap();
 
@@ -1306,6 +1483,7 @@ mod tests {
                 backoffs.fetch_add(1, Ordering::Relaxed);
                 cancelled.store(true, Ordering::Release);
             },
+            || panic!("lock contention must not wait for PTY writability"),
         )
         .unwrap();
 
@@ -1334,6 +1512,7 @@ mod tests {
                 Ok(8)
             },
             || panic!("an uncontended lock must not back off"),
+            || panic!("a cancelled write must not wait for the PTY"),
         )
         .unwrap();
 
@@ -1365,6 +1544,7 @@ mod tests {
                     .next()
                     .expect("cancelled output must not be retried")
             },
+            || panic!("an uncontended lock must not back off"),
             || {
                 backoffs += 1;
                 cancelled.store(true, Ordering::Release);
@@ -1403,6 +1583,7 @@ mod tests {
                 remaining_slices.push(remaining.to_vec());
                 outcomes.next().expect("scripted write should complete")
             },
+            || panic!("an uncontended lock must not back off"),
             || backoffs += 1,
         )
         .unwrap();
@@ -1429,6 +1610,7 @@ mod tests {
                 outcomes.next().expect("scripted write should finish")
             },
             || panic!("EINTR and native errors must not back off"),
+            || panic!("EINTR and native errors must not wait for the PTY"),
         )
         .expect_err("native PTY write errors must remain observable");
 
@@ -2143,6 +2325,111 @@ mod tests {
             let error = wait_readable_or_cancelled_with(|_| Ok(events)).unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         }
+    }
+
+    #[test]
+    fn multi_pty_wait_retries_interrupts_and_reports_each_descriptor() {
+        let mut calls = 0;
+        let readiness = wait_any_readable_or_woken_with(3, |timeout| {
+            assert_eq!(timeout, PollTimeout::NONE);
+            calls += 1;
+            if calls == 1 {
+                return Err(nix::errno::Errno::EINTR);
+            }
+            Ok(vec![
+                Some(PollFlags::POLLIN),
+                Some(PollFlags::empty()),
+                Some(PollFlags::POLLNVAL),
+                Some(PollFlags::POLLHUP),
+            ])
+        })
+        .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(
+            readiness,
+            PtyReadiness {
+                woken: true,
+                readable: vec![0],
+                invalid: vec![2],
+            }
+        );
+
+        for flag in [PollFlags::POLLIN, PollFlags::POLLHUP, PollFlags::POLLERR] {
+            let readiness =
+                wait_any_readable_or_woken_with(1, |_| Ok(vec![Some(flag), Some(PollFlags::empty())]))
+                    .unwrap();
+            assert_eq!((readiness.woken, readiness.readable), (false, vec![0]));
+        }
+        let readiness = wait_any_readable_or_woken_with(1, |_| {
+            Ok(vec![Some(PollFlags::POLLPRI), Some(PollFlags::empty())])
+        })
+        .unwrap();
+        assert_eq!(readiness.invalid, vec![0]);
+        // A wake with no PTYs is the reader's idle state.
+        assert!(wait_any_readable_or_woken_with(0, |_| Ok(vec![Some(PollFlags::POLLIN)]))
+            .unwrap()
+            .woken);
+    }
+
+    #[test]
+    fn multi_pty_wait_rejects_broken_wake_descriptors_and_malformed_results() {
+        let error = wait_any_readable_or_woken_with(1, |_| {
+            Ok(vec![Some(PollFlags::POLLIN), Some(PollFlags::POLLNVAL)])
+        })
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EBADF));
+        let error = wait_any_readable_or_woken_with(1, |_| Err(nix::errno::Errno::EIO)).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        for events in [
+            vec![Some(PollFlags::empty())],
+            vec![Some(PollFlags::empty()), Some(PollFlags::empty())],
+            vec![Some(PollFlags::empty()), None],
+        ] {
+            let error = wait_any_readable_or_woken_with(1, |_| Ok(events.clone())).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn multi_pty_wait_reports_only_the_pty_with_output_and_wakes_on_signal() {
+        let program = CString::new("/bin/sh").unwrap();
+        let spawn = |script: &str| {
+            let argv = ["sh", "-c", script]
+                .into_iter()
+                .map(|argument| CString::new(argument).unwrap())
+                .collect();
+            Pty::spawn_prepared(40, 4, program.clone(), argv, test_environment()).unwrap()
+        };
+        let silent = spawn("read line");
+        let speaking = spawn("printf '__KOKUBAN_SPOKE__'; read line");
+        let (signal, wake) = UnixStream::pair().unwrap();
+
+        let readiness = wait_any_readable_or_woken(&[&silent, &speaking], wake.as_fd()).unwrap();
+        assert_eq!(
+            readiness,
+            PtyReadiness {
+                woken: false,
+                readable: vec![1],
+                invalid: vec![],
+            }
+        );
+        assert_eq!(read_until(&speaking, b"__KOKUBAN_SPOKE__"), b"__KOKUBAN_SPOKE__");
+
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            result_tx
+                .send(wait_any_readable_or_woken(&[&silent, &speaking], wake.as_fd()))
+                .unwrap();
+        });
+        assert!(matches!(
+            result_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        std::io::Write::write_all(&mut &signal, b"w").unwrap();
+        let readiness = result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        assert!(readiness.woken);
+        assert!(readiness.readable.is_empty());
+        worker.join().unwrap();
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use super::reader::ReaderWake;
 use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
@@ -295,6 +296,7 @@ struct ViewState {
     window_title: Arc<WindowTitleMailbox>,
     applied_window_title: String,
     should_close: Arc<AtomicBool>,
+    reader_wake: Arc<ReaderWake>,
     renderer: MetalRenderer,
     metal_layer: Retained<CAMetalLayer>,
     scale_factor: f32,
@@ -320,6 +322,14 @@ struct ViewState {
     confirm_dialog: Option<ConfirmDialog>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
+}
+
+impl ViewState {
+    /// Stop the app and wake the reader so it observes shutdown.
+    fn request_close(&self) {
+        self.should_close.store(true, Ordering::Relaxed);
+        self.reader_wake.wake();
+    }
 }
 
 // Keep AppKit title updates independent from the potentially long-held PaneTree lock.
@@ -570,7 +580,7 @@ define_class!(
                             ));
                             state.dirty.store(true, Ordering::Relaxed);
                         } else {
-                            state.should_close.store(true, Ordering::Relaxed);
+                            state.request_close();
                         }
                     }
                 });
@@ -1176,7 +1186,7 @@ fn handle_pane_action(action: PaneAction) {
                     if let Some(pane) = closed_pane {
                         state.pane_cleanup.retire(pane);
                     }
-                    state.should_close.store(true, Ordering::Relaxed);
+                    state.request_close();
                     return;
                 }
                 let size = state.metal_layer.drawableSize();
@@ -1310,6 +1320,8 @@ fn handle_pane_action(action: PaneAction) {
         if let Some(pane) = closed_pane {
             state.pane_cleanup.retire(pane);
         }
+        // Splits and closes change the PTYs the reader must poll.
+        state.reader_wake.wake();
         state.dirty.store(true, Ordering::Relaxed);
     });
 }
@@ -1368,7 +1380,7 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
                 if let Some(pane) = closed_pane {
                     state.pane_cleanup.retire(pane);
                 }
-                state.should_close.store(true, Ordering::Relaxed);
+                state.request_close();
                 return;
             }
             let size = state.metal_layer.drawableSize();
@@ -1392,9 +1404,10 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
             if let Some(pane) = closed_pane {
                 state.pane_cleanup.retire(pane);
             }
+            state.reader_wake.wake();
         }
         ConfirmAction::QuitApp => {
-            state.should_close.store(true, Ordering::Relaxed);
+            state.request_close();
         }
     }
 }
@@ -1809,6 +1822,7 @@ pub(super) fn create_terminal_view(
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
     should_close: Arc<AtomicBool>,
+    reader_wake: Arc<ReaderWake>,
     window_is_key: Arc<AtomicBool>,
     default_fg: (u8, u8, u8),
     default_bg: (u8, u8, u8),
@@ -1877,6 +1891,7 @@ pub(super) fn create_terminal_view(
             window_title,
             applied_window_title: WINDOW_TITLE.to_string(),
             should_close,
+            reader_wake,
             renderer,
             metal_layer,
             scale_factor,

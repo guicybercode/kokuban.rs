@@ -6,7 +6,7 @@ use crate::layout::{
 };
 use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
-use pane::Pane;
+use pane::{InputFailureNotifier, Pane};
 
 use std::collections::{HashMap, HashSet};
 
@@ -23,6 +23,7 @@ pub struct PaneTree {
     default_rows: u16,
     kitty_options: KittyHandlerOptions,
     graphics_support: GraphicsSupport,
+    on_input_failed: InputFailureNotifier,
 }
 
 #[must_use]
@@ -38,6 +39,7 @@ impl PaneTree {
         scrollback_max: usize,
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
+        on_input_failed: InputFailureNotifier,
     ) -> Result<Self, crate::pty::PtyError> {
         let id: PaneId = 1;
         let pane = Pane::new(
@@ -47,6 +49,7 @@ impl PaneTree {
             scrollback_max,
             kitty_options,
             graphics_support,
+            on_input_failed.clone(),
         )?;
         let mut panes = HashMap::new();
         panes.insert(id, pane);
@@ -61,6 +64,7 @@ impl PaneTree {
             default_rows: rows,
             kitty_options,
             graphics_support,
+            on_input_failed,
         })
     }
 
@@ -138,6 +142,7 @@ impl PaneTree {
             self.scrollback_max,
             self.kitty_options,
             self.graphics_support,
+            self.on_input_failed.clone(),
         )?;
 
         // Copy color config from existing pane for OSC 10/11 queries
@@ -317,6 +322,7 @@ mod tests {
                 kitty: false,
                 sixel: false,
             },
+            std::sync::Arc::new(|| {}),
         )
         .expect("pane tree should spawn its initial shell");
         let focused = tree.focused;
@@ -357,6 +363,7 @@ mod tests {
                 kitty: false,
                 sixel: false,
             },
+            std::sync::Arc::new(|| {}),
         )
         .expect("pane tree should spawn its initial shell");
         tree.relayout(

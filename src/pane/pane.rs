@@ -10,11 +10,15 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+/// Called after a pane's input first fails so its owner can close it promptly.
+pub type InputFailureNotifier = Arc<dyn Fn() + Send + Sync>;
+
 pub struct Pane {
     pub id: PaneId,
     writer: TerminalWriter,
     pub pty: Arc<Pty>,
     input_failed: Arc<AtomicBool>,
+    on_input_failed: InputFailureNotifier,
     pub decoder: TerminalDecoder,
     pub grid: Grid,
     pub selection: SelectionState,
@@ -36,6 +40,7 @@ impl Pane {
         scrollback_max: usize,
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
+        on_input_failed: InputFailureNotifier,
     ) -> Result<Self, crate::pty::PtyError> {
         let pty = Arc::new(Pty::spawn(
             cols,
@@ -45,8 +50,11 @@ impl Pane {
         )?);
         let input_failed = Arc::new(AtomicBool::new(false));
         let writer_input_failed = input_failed.clone();
+        let writer_on_input_failed = on_input_failed.clone();
         let writer = TerminalWriter::spawn(pty.clone(), move |exit| {
-            record_writer_exit(writer_input_failed.as_ref(), id, exit);
+            if record_writer_exit(writer_input_failed.as_ref(), id, exit) {
+                writer_on_input_failed();
+            }
         })?;
         let grid = Grid::new(cols as usize, rows as usize, scrollback_max);
         Ok(Self {
@@ -54,6 +62,7 @@ impl Pane {
             writer,
             pty,
             input_failed,
+            on_input_failed,
             decoder: TerminalDecoder::new(graphics_support),
             grid,
             selection: SelectionState::default(),
@@ -91,12 +100,16 @@ impl Pane {
             FullQueuePolicy::FailPane => self.writer.enqueue(bytes),
             FullQueuePolicy::NonFatal => self.writer.enqueue_nonfatal(bytes),
         };
-        record_enqueue_result(
+        let result = record_enqueue_result(
             self.input_failed.as_ref(),
             self.id,
             enqueue_result,
             full_policy,
-        )
+        );
+        if self.input_failed.load(Ordering::Acquire) {
+            (self.on_input_failed)();
+        }
+        result
     }
 
     pub fn input_failed(&self) -> bool {
@@ -447,6 +460,7 @@ mod tests {
                 kitty: false,
                 sixel: false,
             },
+            std::sync::Arc::new(|| {}),
         )
         .expect("paste policy test should spawn its shell");
         let oversized = Vec::with_capacity(pane.max_nonfatal_input_bytes() + 1);
