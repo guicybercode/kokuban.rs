@@ -8,6 +8,7 @@
 - macOS: the PTY reader blocks in `poll` instead of sleeping 2 ms between scans, reads without holding the atlas and pane-tree locks, and decodes each wakeup under one lock. End-to-end throughput rose 20–393% by workload and idle wakeups fell from 93.8/s to 11.9/s on an Apple M4; the [paired report](docs/macos-evidence/2026-09-15-poll-reader/README.md) keeps A/A controls and limits.
 - Wait for PTY writability instead of sleeping 1 ms after each `EAGAIN`. Large pastes into a draining macOS program went from 0.71 to 23.07 MiB/s; cancellation with a full input queue is now observed within 10 ms. See the [write report](docs/macos-evidence/2026-09-15-pty-writable-wait/README.md).
 - Refresh the application icon: the same chalkboard artwork without the irregular white border, used for the macOS Dock and the Linux X11 window and launcher.
+- macOS: frames are scheduled on the main queue only when content, titles or shutdown need them, still capped at 60 Hz, instead of a repeating 60 Hz timer. Idle wakeups fell from 8.0/s to 0.17/s and idle CPU by about 80%, with PTY throughput unchanged within noise; see the [render scheduling report](docs/macos-evidence/2026-09-15-on-demand-render/README.md).
 
 ### Fixed
 

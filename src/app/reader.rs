@@ -1,6 +1,7 @@
 //! macOS PTY reader: waits for pane output, decodes it and retires ended panes.
 
 use super::window::{self, WindowTitleMailbox};
+use super::render_scheduler::RenderScheduler;
 use super::{process_sixel_event, snapshot_then_lock, PaneCleanup};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::TerminalEvent;
@@ -85,7 +86,7 @@ enum PaneEnd {
 pub(super) fn run_reader(
     atlas: &Mutex<GlyphAtlas>,
     pane_tree: &Mutex<PaneTree>,
-    dirty: &AtomicBool,
+    render_scheduler: &Arc<RenderScheduler>,
     wake: &ReaderWake,
     shared: &ReaderShared,
 ) {
@@ -173,8 +174,9 @@ pub(super) fn run_reader(
         for pane in retired_panes {
             shared.pane_cleanup.retire(pane);
         }
-        if any_data {
-            dirty.store(true, Ordering::Relaxed);
+        // Closing panes changes layout and titles, and may request shutdown.
+        if any_data || closing_panes {
+            render_scheduler.request_render();
         }
     }
 

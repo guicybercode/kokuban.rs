@@ -1,5 +1,6 @@
 pub mod confirm;
 mod reader;
+mod render_scheduler;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
@@ -308,6 +309,25 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         window.setHasShadow(true);
     }
 
+    // Frames run on the main queue only when requested (at most 60 Hz). The
+    // callback also applies window titles and termination requested elsewhere.
+    let frame_dirty = dirty.clone();
+    let frame_should_close = should_close.clone();
+    // Keep the callback sendable; recover the main-thread-only window by number per frame.
+    let frame_window_number = window.windowNumber();
+    let render_scheduler = render_scheduler::RenderScheduler::new(
+        dirty.clone(),
+        Box::new(move || {
+            if frame_should_close.load(Ordering::Acquire) {
+                let mtm = MainThreadMarker::new().expect("frames run on the main thread");
+                NSApplication::sharedApplication(mtm).terminate(None);
+                return;
+            }
+            window::sync_window_title(frame_window_number);
+            window::render_if_dirty(&frame_dirty);
+        }),
+    );
+
     let prompt_indicator_color = if config.prompt_marks.enabled && config.prompt_marks.show_indicator {
         Some(ColorConfig::parse_hex(&config.prompt_marks.indicator_color))
     } else {
@@ -321,6 +341,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         pane_cleanup.clone(),
         atlas.clone(),
         dirty.clone(),
+        render_scheduler.clone(),
         should_close.clone(),
         reader_wake.clone(),
         window_is_key.clone(),
@@ -357,7 +378,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
 
     // PTY reader thread: waits on ALL panes without periodic wakeups
     let reader_tree = pane_tree.clone();
-    let reader_dirty = dirty.clone();
+    let reader_render_scheduler = render_scheduler.clone();
     let reader_atlas = atlas.clone();
     let reader_thread_wake = reader_wake.clone();
     let reader_shared = reader::ReaderShared {
@@ -376,38 +397,14 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
             reader::run_reader(
                 reader_atlas.as_ref(),
                 reader_tree.as_ref(),
-                reader_dirty.as_ref(),
+                &reader_render_scheduler,
                 reader_thread_wake.as_ref(),
                 &reader_shared,
             );
         })
         .expect("Failed to spawn PTY reader thread");
 
-    // Render timer (60fps)
-    let timer_dirty = dirty.clone();
-    let timer_should_close = should_close.clone();
-    // Keep the NSTimer block sendable; recover the main-thread-only window by number per update.
-    let timer_window_number = window.windowNumber();
-
-    unsafe {
-        let interval = 1.0 / 60.0;
-        let timer_block = block2::RcBlock::new(move |_timer: std::ptr::NonNull<NSTimer>| {
-            if timer_should_close.load(Ordering::Acquire) {
-                let mtm = MainThreadMarker::new().unwrap();
-                let app = NSApplication::sharedApplication(mtm);
-                app.terminate(None);
-                return;
-            }
-            window::sync_window_title(timer_window_number);
-            window::render_if_dirty(&timer_dirty);
-        });
-
-        let _timer = NSTimer::scheduledTimerWithTimeInterval_repeats_block(
-            interval,
-            true,
-            &timer_block,
-        );
-    }
+    render_scheduler.request_render();
 
     app.activate();
     log::info!("Starting application run loop");
