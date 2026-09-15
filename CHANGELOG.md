@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- macOS: the PTY reader blocks in `poll` instead of sleeping 2 ms between scans, reads without holding the atlas and pane-tree locks, and decodes each wakeup under one lock. End-to-end throughput rose 20–393% by workload and idle wakeups fell from 93.8/s to 11.9/s on an Apple M4; the [paired report](docs/macos-evidence/2026-09-15-poll-reader/README.md) keeps A/A controls and limits.
+
+### Fixed
+
+- macOS: output decoded while a frame was being drawn is no longer left undrawn until more output arrives.
+
 ## v0.3 — 2026-09-13
 
 Desktop performance and distribution update. The Git tag is `v0.3`; the Cargo package version is `0.3.0`.
