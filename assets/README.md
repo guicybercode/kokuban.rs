@@ -1,8 +1,9 @@
 # Application icon
 
 `kokuban-icon.png` is the square 1254 × 1254 artwork supplied by the project
-maintainer on 2026-09-10, copied without changing its pixels, transparency, or
-proportions. It replaces the previous non-square icon.
+maintainer on 2026-09-15, copied without changing its pixels, transparency, or
+proportions. It keeps the chalkboard design and replaces the 2026-09-10 version,
+whose outer white border had irregular edges, with a clean transparent margin.
 
 The executable embeds this PNG. macOS uses it as the running application's Dock
 icon. Linux renders a smaller version for X11 and uses the stable application ID
