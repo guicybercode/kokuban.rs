@@ -1640,6 +1640,10 @@ fn render_frame() {
         };
         let texture = drawable.texture();
 
+        // Clear before reading pane state: output decoded after this point
+        // marks the next frame dirty instead of being overwritten below.
+        state.dirty.store(false, Ordering::Relaxed);
+
         // Lock atlas FIRST (canonical order: atlas → tree → image_store)
         let mut atlas = state.atlas.lock().unwrap();
         let tree = state.pane_tree.lock().unwrap();
@@ -1731,8 +1735,6 @@ fn render_frame() {
         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
         if still_animating {
             state.dirty.store(true, Ordering::Relaxed);
-        } else {
-            state.dirty.store(false, Ordering::Relaxed);
         }
     });
 }
