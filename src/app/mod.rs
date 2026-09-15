@@ -176,9 +176,19 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         sixel: config.images.sixel_graphics_enabled(),
     };
 
+    let reader_wake =
+        Arc::new(reader::ReaderWake::new().expect("Failed to create PTY reader wake socket"));
+    let input_failure_wake = reader_wake.clone();
     let pane_tree = Arc::new(Mutex::new(
-        PaneTree::new(cols, rows, scrollback_max, kitty_options, graphics_support)
-            .expect("Failed to create initial pane"),
+        PaneTree::new(
+            cols,
+            rows,
+            scrollback_max,
+            kitty_options,
+            graphics_support,
+            Arc::new(move || input_failure_wake.wake()),
+        )
+        .expect("Failed to create initial pane"),
     ));
 
     let scale_factor = 2.0f32;
@@ -312,6 +322,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         atlas.clone(),
         dirty.clone(),
         should_close.clone(),
+        reader_wake.clone(),
         window_is_key.clone(),
         default_fg,
         default_bg,
@@ -344,10 +355,11 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     window.makeKeyAndOrderFront(None);
     window.center();
 
-    // PTY reader thread: reads from ALL panes
+    // PTY reader thread: waits on ALL panes without periodic wakeups
     let reader_tree = pane_tree.clone();
     let reader_dirty = dirty.clone();
     let reader_atlas = atlas.clone();
+    let reader_thread_wake = reader_wake.clone();
     let reader_shared = reader::ReaderShared {
         image_store: image_store.clone(),
         window_title: window_title.clone(),
@@ -361,75 +373,13 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let reader_handle = std::thread::Builder::new()
         .name("pty-reader".to_string())
         .spawn(move || {
-            let mut buf = [0u8; 4096];
-
-            loop {
-                if reader_shared.should_close.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                let mut any_data = false;
-                let mut dead_panes = Vec::new();
-
-                {
-                    // Lock atlas FIRST (canonical order: atlas → tree → image_store).
-                    // Keep it locked until the tree snapshot belongs to the same metric epoch.
-                    let (cell_size, mut tree) = snapshot_then_lock(
-                        reader_atlas.as_ref(),
-                        reader_tree.as_ref(),
-                        |atlas| (atlas.cell_width, atlas.cell_height),
-                    );
-                    let pane_ids = tree.pane_ids();
-
-                    for id in pane_ids {
-                        if tree.pane(id).is_some_and(|pane| pane.input_failed()) {
-                            dead_panes.push(id);
-                            continue;
-                        }
-                        let read_result = match tree.pane(id) {
-                            Some(pane) => pane.pty.read(&mut buf),
-                            None => continue,
-                        };
-
-                        match read_result {
-                            Ok(0) => {
-                                log::info!("PTY EOF for pane {id}");
-                                dead_panes.push(id);
-                            }
-                            Ok(n) => {
-                                reader::process_pane_output(
-                                    &mut tree,
-                                    id,
-                                    &buf[..n],
-                                    cell_size,
-                                    &reader_shared,
-                                );
-                                any_data = true;
-                            }
-                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                            Err(e) => {
-                                log::error!("PTY read error for pane {id}: {e}");
-                                dead_panes.push(id);
-                            }
-                        }
-                    }
-
-                    let retired_panes =
-                        reader::close_dead_panes(&mut tree, dead_panes, &reader_shared);
-                    drop(tree);
-                    for pane in retired_panes {
-                        reader_shared.pane_cleanup.retire(pane);
-                    }
-                }
-
-                if any_data {
-                    reader_dirty.store(true, Ordering::Relaxed);
-                } else {
-                    std::thread::sleep(std::time::Duration::from_millis(2));
-                }
-            }
-
-            log::info!("PTY reader thread exiting");
+            reader::run_reader(
+                reader_atlas.as_ref(),
+                reader_tree.as_ref(),
+                reader_dirty.as_ref(),
+                reader_thread_wake.as_ref(),
+                &reader_shared,
+            );
         })
         .expect("Failed to spawn PTY reader thread");
 
@@ -464,6 +414,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     app.run();
 
     should_close.store(true, Ordering::Release);
+    reader_wake.wake();
     if reader_handle.join().is_err() {
         log::error!("PTY reader thread panicked during shutdown");
     }
