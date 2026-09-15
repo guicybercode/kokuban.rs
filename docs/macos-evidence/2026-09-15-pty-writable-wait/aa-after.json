@@ -1,0 +1,160 @@
+{
+  "pairs": [
+    {
+      "pair": 1,
+      "order": [
+        "before",
+        "after"
+      ],
+      "before": {
+        "median_mib_s": 25.29,
+        "samples_mib_s": [
+          25.63,
+          25.29,
+          25.13
+        ]
+      },
+      "after": {
+        "median_mib_s": 23.75,
+        "samples_mib_s": [
+          23.75,
+          23.79,
+          23.75
+        ]
+      }
+    },
+    {
+      "pair": 2,
+      "order": [
+        "after",
+        "before"
+      ],
+      "after": {
+        "median_mib_s": 24.65,
+        "samples_mib_s": [
+          24.54,
+          24.67,
+          24.65
+        ]
+      },
+      "before": {
+        "median_mib_s": 23.71,
+        "samples_mib_s": [
+          23.67,
+          23.81,
+          23.71
+        ]
+      }
+    },
+    {
+      "pair": 3,
+      "order": [
+        "before",
+        "after"
+      ],
+      "before": {
+        "median_mib_s": 23.44,
+        "samples_mib_s": [
+          22.53,
+          23.57,
+          23.44
+        ]
+      },
+      "after": {
+        "median_mib_s": 23.57,
+        "samples_mib_s": [
+          23.57,
+          23.6,
+          23.34
+        ]
+      }
+    },
+    {
+      "pair": 4,
+      "order": [
+        "after",
+        "before"
+      ],
+      "after": {
+        "median_mib_s": 23.43,
+        "samples_mib_s": [
+          23.23,
+          23.43,
+          23.58
+        ]
+      },
+      "before": {
+        "median_mib_s": 23.32,
+        "samples_mib_s": [
+          23.3,
+          23.39,
+          23.32
+        ]
+      }
+    },
+    {
+      "pair": 5,
+      "order": [
+        "before",
+        "after"
+      ],
+      "before": {
+        "median_mib_s": 23.35,
+        "samples_mib_s": [
+          23.35,
+          23.3,
+          23.41
+        ]
+      },
+      "after": {
+        "median_mib_s": 24.46,
+        "samples_mib_s": [
+          24.46,
+          24.46,
+          24.35
+        ]
+      }
+    },
+    {
+      "pair": 6,
+      "order": [
+        "after",
+        "before"
+      ],
+      "after": {
+        "median_mib_s": 21.95,
+        "samples_mib_s": [
+          22.04,
+          21.83,
+          21.95
+        ]
+      },
+      "before": {
+        "median_mib_s": 23.15,
+        "samples_mib_s": [
+          23.3,
+          23.12,
+          23.15
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "before_median_mib_s": 23.395000000000003,
+    "after_median_mib_s": 23.66,
+    "throughput_change_percent": {
+      "median": 0.5131528108699879,
+      "min": -6.089363384737045,
+      "max": 4.753747323340463,
+      "pairs_slower": 2,
+      "samples": [
+        -6.089363384737045,
+        3.9645719105862343,
+        0.5546075085324231,
+        0.4716981132075526,
+        4.753747323340463,
+        -5.183585313174943
+      ]
+    }
+  }
+}
