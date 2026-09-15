@@ -1,4 +1,5 @@
 use super::reader::ReaderWake;
+use super::render_scheduler::RenderScheduler;
 use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
@@ -293,6 +294,7 @@ struct ViewState {
     pane_cleanup: PaneCleanup,
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
+    render_scheduler: Arc<RenderScheduler>,
     window_title: Arc<WindowTitleMailbox>,
     applied_window_title: String,
     should_close: Arc<AtomicBool>,
@@ -327,13 +329,15 @@ struct ViewState {
 impl ViewState {
     /// Mark the terminal content changed so the next frame redraws it.
     fn request_render(&self) {
-        self.dirty.store(true, Ordering::Relaxed);
+        self.render_scheduler.request_render();
     }
 
     /// Stop the app and wake the reader so it observes shutdown.
     fn request_close(&self) {
         self.should_close.store(true, Ordering::Relaxed);
         self.reader_wake.wake();
+        // The frame callback performs termination on the main thread.
+        self.render_scheduler.request_frame();
     }
 }
 
@@ -1826,6 +1830,7 @@ pub(super) fn create_terminal_view(
     pane_cleanup: PaneCleanup,
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
+    render_scheduler: Arc<RenderScheduler>,
     should_close: Arc<AtomicBool>,
     reader_wake: Arc<ReaderWake>,
     window_is_key: Arc<AtomicBool>,
@@ -1893,6 +1898,7 @@ pub(super) fn create_terminal_view(
             pane_cleanup,
             atlas,
             dirty,
+            render_scheduler,
             window_title,
             applied_window_title: WINDOW_TITLE.to_string(),
             should_close,
