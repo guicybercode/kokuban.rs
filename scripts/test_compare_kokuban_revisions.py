@@ -51,10 +51,11 @@ class PairedRevisionTests(unittest.TestCase):
                                                  "history_unit": "lines"},
                 "measurements": {"workloads": measured, "protocol_rtt_seconds": [0.001, 0.002]}}
 
-    def run_comparison(self, execute=None, observation=None):
+    def run_comparison(self, execute=None, observation=None, platform="linux"):
         observation = observation or (lambda command: {"command": command, "status": 0, "output": "observed"})
         with patch.dict(GLOBALS, execute_sample=execute or self.sample, command_observation=observation), \
                 patch.object(GLOBALS["os"], "sched_getaffinity", return_value={0, 2}, create=True), \
+                patch.object(GLOBALS["sys"], "platform", platform), \
                 redirect_stdout(io.StringIO()):
             status = RUNNER["compare"](self.args)
         report = json.loads((self.args.artifacts_dir / "report.json").read_text())
@@ -203,6 +204,67 @@ class PairedRevisionTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.run_comparison()
         self.assertEqual(preserved.read_text(), "existing evidence")
+
+    def test_macos_identifies_binaries_by_hash_without_launching_for_version(self):
+        def observation(command):
+            self.assertNotEqual(command[-1], "--version", "the macOS app would open a window")
+            return {"command": command, "status": 0, "output": "observed"}
+
+        def execute(*arguments):
+            sample = self.sample(*arguments)
+            for workload in sample["measurements"]["workloads"].values():
+                # The macOS app picks its own window size and reports no PTY pixels.
+                workload["geometry_before"] = workload["geometry_after"] = [61, 67, 0, 0]
+            return sample
+        status, report = self.run_comparison(execute, observation, platform="darwin")
+        self.assertEqual(status, 0)
+        self.assertIn("macOS", report["geometry_validation"])
+        self.assertEqual(report["comparability"]["geometries_rows_cols_pixels"], [[61, 67, 0, 0]])
+        self.assertEqual(report["hardware"]["command"][0], "sysctl")
+        self.assertIsNone(report["font_match"])
+        for side in ("before", "after"):
+            self.assertIn("skipped", report["terminals"][side]["version_observation"])
+        self.assertIsNone(report["paired_idle_summary"])
+
+    def test_macos_still_rejects_different_observed_rows_or_columns(self):
+        def execute(*arguments):
+            sample = self.sample(*arguments)
+            rows = 61 if arguments[1] == self.binaries["before"] else 60
+            for workload in sample["measurements"]["workloads"].values():
+                workload["geometry_before"] = workload["geometry_after"] = [rows, 67, 0, 0]
+            return sample
+        status, report = self.run_comparison(execute, platform="darwin")
+        self.assertEqual(status, 1)
+        self.assertIsNone(report["paired_summary"])
+        self.assertIn("actual PTY cell/pixel geometries differ or are missing", report["comparability"]["reasons"])
+
+    def test_idle_pairs_report_differences_and_tolerate_missing_wakeups(self):
+        self.args = RUNNER["parse_args"]([*self.argv, "--samples", "3", "--bytes", "1024", "--idle-seconds", "5"])
+        self.assertEqual(self.args.idle_seconds, 5)
+
+        def execute(*arguments):
+            sample = self.sample(*arguments)
+            before = arguments[1] == self.binaries["before"]
+            sample["measurements"]["idle"] = {
+                "terminal_cpu_seconds": 0.5 if before else 0.0,
+                "idle_wakeups_per_second": (100.0 if before else 2.0) if arguments[3].name != "02-after" else None}
+            return sample
+        status, report = self.run_comparison(execute)
+        self.assertEqual(status, 0)
+        self.assertEqual(report["idle_seconds"], 5)
+        cpu = report["paired_idle_summary"]["terminal_cpu_seconds"]
+        self.assertEqual(cpu["after_minus_before"]["samples"], [-0.5] * 3)
+        self.assertEqual(cpu["pairs_after_higher"], 0)
+        wakeups = report["paired_idle_summary"]["idle_wakeups_per_second"]
+        self.assertEqual(wakeups["pairs_observed"], 2)
+        self.assertEqual(wakeups["after"]["median"], 2.0)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            RUNNER["parse_args"]([*self.argv, "--idle-seconds", "-1"])
+
+    def test_macos_rejects_linux_thread_counters_before_creating_artifacts(self):
+        with patch.object(GLOBALS["sys"], "platform", "darwin"), redirect_stderr(io.StringIO()):
+            self.assertEqual(RUNNER["main"]([*self.argv, "--thread-cpu"]), 2)
+        self.assertFalse(self.args.artifacts_dir.exists())
 
     def test_missing_display_does_not_start_or_create_artifacts(self):
         with patch.dict(GLOBALS["os"].environ, {}, clear=True), \

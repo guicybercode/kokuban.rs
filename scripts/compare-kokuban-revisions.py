@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Measure two Kokuban binaries in alternating before/after pairs on Linux.
+"""Measure two Kokuban binaries in alternating before/after pairs on Linux or macOS.
 
 Reuses the cross-terminal runner's workloads, PTY driver and DSR barrier. This
 measures processing throughput and protocol RTT, not rendered equivalence or
 input-to-photon latency. Revision labels describe declared build provenance.
+
+On macOS the app must run in a logged-in GUI session; it is launched through
+KOKUBAN_SHELL because it takes no arguments. --idle-seconds adds an untimed
+phase per sample recording terminal CPU and (macOS only) top idle wakeups.
 """
 
 import argparse
@@ -59,9 +63,13 @@ def parse_args(argv=None):
                         help="allow an intentional A/A variability control using the same executable")
     parser.add_argument("--thread-cpu", action="store_true",
                         help="observe per-thread proc CPU counters outside workload clocks")
+    parser.add_argument("--idle-seconds", type=int, default=0,
+                        help="after the workloads, observe an idle terminal for this many seconds")
     args = parser.parse_args(argv)
     if args.samples < 3 or args.bytes < 1024:
         parser.error("at least 3 pairs and at least 1024 bytes are required")
+    if args.idle_seconds < 0:
+        parser.error("idle seconds cannot be negative")
     if args.rows <= 0 or args.columns <= 0 or args.scrollback_lines < 0:
         parser.error("grid dimensions must be positive and history cannot be negative")
     if (not all(math.isfinite(value) for value in (args.font_pixels, args.timeout, args.settle_seconds))
@@ -84,6 +92,7 @@ def initial_report(args) -> dict:
         "binaries_identical": None,
         "allow_identical_binaries": args.allow_identical_binaries,
         "thread_cpu_enabled": args.thread_cpu,
+        "idle_seconds": args.idle_seconds,
         "comparison_mode": "revision-comparison",
         "source_refs_verified_by_runner": False,
         "rendering_equivalence_verified": False,
@@ -127,6 +136,7 @@ def summarize_pairs(report: dict, args) -> bool:
     comparability["ranking"] = None
     comparability["scope"] = report["measurement_scope"]
     report["paired_summary"] = None
+    report["paired_idle_summary"] = None
     if reasons:
         return False
     report["paired_summary"] = {}
@@ -143,7 +153,30 @@ def summarize_pairs(report: dict, args) -> bool:
             "after_over_before_throughput_ratio": distribution(throughput_ratios),
             "elapsed_change_percent": distribution([(ratio - 1) * 100 for ratio in elapsed_ratios]),
         }
+    report["paired_idle_summary"] = summarize_idle_pairs(report) if args.idle_seconds else None
     return True
+
+
+def summarize_idle_pairs(report: dict) -> dict:
+    """Idle CPU can be zero, so pairs report after-minus-before differences, not ratios."""
+    pairs = list(zip(report["terminals"]["before"]["samples"], report["terminals"]["after"]["samples"]))
+    summary = {}
+    for metric in ("terminal_cpu_seconds", "idle_wakeups_per_second"):
+        values = {side: [] for side in SIDES}
+        differences = []
+        for before, after in pairs:
+            first = before["measurements"].get("idle", {}).get(metric)
+            second = after["measurements"].get("idle", {}).get(metric)
+            if first is None or second is None:
+                continue
+            values["before"].append(first)
+            values["after"].append(second)
+            differences.append(second - first)
+        summary[metric] = None if not differences else {
+            "before": distribution(values["before"]), "after": distribution(values["after"]),
+            "after_minus_before": distribution(differences), "pairs_observed": len(differences),
+            "pairs_after_higher": sum(1 for value in differences if value > 0)}
+    return summary
 
 
 def compare(args) -> int:
@@ -153,12 +186,22 @@ def compare(args) -> int:
     record(output, "report.json", report)
     result = 1
     try:
+        macos = sys.platform == "darwin"
+        args.pixel_geometry = not macos
+        report["geometry_validation"] = (
+            "observed PTY rows/columns must be identical across samples; the macOS app chooses its "
+            "window size and reports no PTY pixel size" if macos else
+            "observed PTY rows/columns must match the request with integer pixel cells")
+        affinity = getattr(os, "sched_getaffinity", None)
         report.update(platform=platform.platform(), machine=platform.machine(), python=sys.version,
-                      cpu_count=os.cpu_count(), cpu_affinity=sorted(os.sched_getaffinity(0)),
+                      cpu_count=os.cpu_count(), cpu_affinity=sorted(affinity(0)) if affinity else None,
                       script_sha256=file_hash(Path(__file__)), comparator_sha256=file_hash(COMPARATOR_PATH),
                       pty_driver_helpers_sha256=file_hash(COMPARATOR_PATH.with_name("linux-resource-smoke.py")),
-                      hardware=command_observation(["lscpu"]),
-                      font_match=command_observation(["fc-match", "-f", "%{family}\n%{file}\n", COMPARATOR["FONT"]]),
+                      hardware=command_observation(
+                          ["sysctl", "machdep.cpu.brand_string", "hw.ncpu", "hw.memsize"] if macos else ["lscpu"]),
+                      font_match=None if macos else command_observation(
+                          ["fc-match", "-f", "%{family}\n%{file}\n", COMPARATOR["FONT"]]),
+                      font_family=COMPARATOR["FONT"],
                       environment={key: os.environ.get(key) for key in (
                           "DISPLAY", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
                           "LIBGL_ALWAYS_SOFTWARE", "MESA_LOADER_DRIVER_OVERRIDE", "GDK_SCALE",
@@ -169,6 +212,12 @@ def compare(args) -> int:
                 raise ValueError(f"{side} binary is not an executable file: {binary}")
             terminal = report["terminals"][side]
             terminal.update(path=str(binary), sha256=file_hash(binary))
+            if macos:
+                # The macOS app ignores arguments and would open a window; the hash identifies it.
+                terminal["version_observation"] = {"skipped": "the macOS app has no --version option"}
+                terminal["version"] = "kokuban (macOS; identified by sha256)"
+                record(output, "report.json", report)
+                continue
             version = command_observation([str(binary), "--version"])
             terminal["version_observation"] = version
             if version.get("status") != 0:
@@ -240,8 +289,17 @@ def compare(args) -> int:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if sys.platform == "darwin":
+        if args.thread_cpu:
+            print("--thread-cpu reads Linux proc counters and is unavailable on macOS", file=sys.stderr)
+            return 2
+        try:
+            return compare(args)
+        except OSError as error:
+            print(f"could not create benchmark artifacts: {error}", file=sys.stderr)
+            return 1
     if not sys.platform.startswith("linux"):
-        print("the paired benchmark requires Linux", file=sys.stderr)
+        print("the paired benchmark requires Linux or macOS", file=sys.stderr)
         return 2
     if args.backend == "x11" and not os.environ.get("DISPLAY"):
         print("X11 requires DISPLAY (use xvfb-run or an existing session)", file=sys.stderr)

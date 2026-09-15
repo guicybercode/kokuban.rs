@@ -4,6 +4,7 @@
 DSR acknowledges terminal processing, not frame presentation or input-to-photon
 latency. Configurations, payloads, logs, individual samples and limitations are
 retained alongside the report. No packages are installed and no terminals ranked.
+The PTY driver and Kokuban launch also run on macOS for paired Kokuban revisions.
 """
 
 import argparse
@@ -15,6 +16,7 @@ from pathlib import Path
 import platform
 import re
 import runpy
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -29,11 +31,88 @@ record = HELPERS["record"]
 barrier = HELPERS["barrier"]
 write_all = HELPERS["write_all"]
 terminal_size = HELPERS["terminal_size"]
-process_stats = HELPERS["process_stats"]
+linux_process_stats = HELPERS["process_stats"]
 wait_for = HELPERS["wait_for"]
 stop_owned_child = HELPERS["stop_owned_child"]
 TERMINALS = ("kokuban", "ghostty", "alacritty", "kitty")
-FONT = "DejaVu Sans Mono"
+FONT = "Menlo" if sys.platform == "darwin" else "DejaVu Sans Mono"
+
+
+def parse_ps_cpu_time(text: str) -> float:
+    """Parse BSD ps cumulative time: [dd-][hh:]mm:ss.cc."""
+    days, _, clock = text.strip().rpartition("-")
+    parts = clock.split(":")
+    if not 2 <= len(parts) <= 3 or not all(parts):
+        raise ValueError(f"unrecognized ps CPU time: {text!r}")
+    seconds = 0.0
+    for part in parts:
+        seconds = seconds * 60 + float(part)
+    return seconds + (int(days) * 86400 if days else 0)
+
+
+def parse_ps_stats(pid: int, text: str) -> dict:
+    fields = text.split()
+    if len(fields) != 2:
+        raise ValueError(f"ps output for PID {pid} is not 'time rss': {text!r}")
+    return {"pid": pid, "cpu_seconds": parse_ps_cpu_time(fields[0]), "rss_kib": int(fields[1]),
+            "source": "ps", "monotonic_seconds": time.monotonic()}
+
+
+def darwin_process_stats(pid: int) -> dict:
+    # BSD ps reports user+system time at 10 ms resolution; RSS is in KiB.
+    result = subprocess.run(["ps", "-o", "time=,rss=", "-p", str(pid)],
+                            capture_output=True, text=True, timeout=10, check=True)
+    return parse_ps_stats(pid, result.stdout)
+
+
+def process_stats(pid: int) -> dict:
+    if sys.platform == "darwin":
+        return darwin_process_stats(pid)
+    return linux_process_stats(pid)
+
+
+def parse_top_idle_wakeups(text: str, pid: int) -> list[int]:
+    """Cumulative IDLEW values from `top -l N -stats pid,idlew` logging samples."""
+    values = []
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] == str(pid):
+            values.append(int(fields[1].rstrip("+")))
+    return values
+
+
+def idle_wakeups(pid: int, seconds: int) -> dict:
+    """Wait for `seconds`, observing macOS idle wakeups when top exposes them."""
+    if sys.platform != "darwin":
+        time.sleep(seconds)
+        return {"status": "unavailable", "reason": "idle wakeups are read only from macOS top"}
+    command = ["top", "-l", "2", "-s", str(seconds), "-pid", str(pid), "-stats", "pid,idlew"]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=seconds + 30)
+    observation = {"command": command, "status": "unavailable", "returncode": result.returncode}
+    values = parse_top_idle_wakeups(result.stdout, pid)
+    if result.returncode == 0 and len(values) >= 2 and values[-1] >= values[0]:
+        observation.update(status="read", samples=values, delta=values[-1] - values[0])
+    else:
+        observation["output"] = (result.stdout + result.stderr)[-2000:]
+    return observation
+
+
+def observe_idle(pid: int, seconds: int) -> dict:
+    """CPU and idle wakeups of a terminal with a hidden cursor and no PTY output."""
+    before = process_stats(pid)
+    started = time.monotonic()
+    wakeups = idle_wakeups(pid, seconds)
+    elapsed = time.monotonic() - started
+    after = process_stats(pid)
+    cpu = after["cpu_seconds"] - before["cpu_seconds"]
+    delta = wakeups.get("delta")
+    return {"requested_seconds": seconds, "elapsed_seconds": elapsed, "terminal_cpu_seconds": cpu,
+            "cpu_percent_one_core": 100 * cpu / elapsed if elapsed > 0 else None,
+            "idle_wakeups": delta,
+            "idle_wakeups_per_second": delta / seconds if delta is not None else None,
+            "idle_wakeups_observation": wakeups,
+            "limits": ["CPU counters are quantized (10 ms from BSD ps).",
+                       "top samples bracket the requested interval, not the monotonic elapsed time."]}
 
 
 def payloads(byte_count: int) -> dict[str, bytes]:
@@ -207,6 +286,11 @@ def controlled_child(directory: Path, thread_cpu: bool = False) -> None:
                                   write_and_dsr_started_perf_counter=started,
                                   write_and_dsr_finished_perf_counter=finished)
                 observations["workloads"][name]["thread_cpu"] = diagnostic
+        idle_seconds = case.get("idle_seconds", 0)
+        if idle_seconds:
+            write_all(b"\x1b[3J\x1b[2J\x1b[H")
+            barrier(b"idle")
+            observations["idle"] = observe_idle(case["terminal_pid"], idle_seconds)
         record(directory, "result.json", observations)
         wait_for(lambda: (directory / "finish").exists(), "benchmark shutdown")
     except BaseException as error:
@@ -233,7 +317,15 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
                   f'[window]\ncolumns = {args.columns}\nrows = {args.rows}\nscrollback_lines = {history}\n'
                   '[images]\nenabled = false\n')
         filename = "kokuban.toml"
-        command = [str(binary), "-e", *child]
+        launch_shell = None
+        if sys.platform == "darwin":
+            # The macOS app takes no arguments; KOKUBAN_SHELL selects the PTY program.
+            launch_shell = directory / "kokuban-shell.sh"
+            launch_shell.write_text("#!/bin/sh\nexec " + shlex.join(child) + "\n")
+            launch_shell.chmod(0o755)
+            command = [str(binary)]
+        else:
+            command = [str(binary), "-e", *child]
     elif name == "alacritty":
         match = re.search(r"alacritty (\d+)\.(\d+)", version)
         legacy = bool(match and tuple(map(int, match.groups())) < (0, 13))
@@ -284,9 +376,12 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
         command = [str(binary), "--config-default-files=false",
                    "--config-file=" + str(directory / filename), "-e", *child]
     (directory / filename).write_text(config)
-    return command, {"filename": filename, "text": config,
+    configuration = {"filename": filename, "text": config,
                      "sha256": hashlib.sha256(config.encode()).hexdigest(),
                      "history_limit": history, "history_unit": "bytes" if name == "ghostty" else "lines"}
+    if name == "kokuban" and launch_shell is not None:
+        configuration["launch_shell"] = str(launch_shell)
+    return command, configuration
 
 
 def execute_sample(name: str, binary: Path, version: str, directory: Path, payload_paths: dict, args) -> dict:
@@ -295,6 +390,8 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
     environment = os.environ.copy()
     for key in ("KOKUBAN_SHELL", "KOKUBAN_EXIT_AFTER_FIRST_FRAME", "WAYLAND_DEBUG"):
         environment.pop(key, None)
+    if configuration.get("launch_shell"):
+        environment["KOKUBAN_SHELL"] = configuration["launch_shell"]
     # Isolate user settings/cache, but keep fonts, compositor and runtime sockets.
     environment.update(XDG_CONFIG_HOME=str(directory / "config"),
                        XDG_CACHE_HOME=str(directory / "cache"), LC_ALL="C.UTF-8")
@@ -313,7 +410,8 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
                                        stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         record(directory, "case.json", {"payloads": payload_paths, "screen": args.screen,
                                         "terminal_pid": process.pid, "settle_seconds": args.settle_seconds,
-                                        "thread_cpu": getattr(args, "thread_cpu", False)})
+                                        "thread_cpu": getattr(args, "thread_cpu", False),
+                                        "idle_seconds": getattr(args, "idle_seconds", 0)})
 
         def observe():
             error = directory / "child-error.json"
@@ -352,8 +450,15 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
     return sample
 
 
-def cell_dimensions(geometry, args) -> tuple[int, int]:
+def cell_dimensions(geometry, args):
     """Require actual integer pixel cells, not just a requested rows/cols count."""
+    if not getattr(args, "pixel_geometry", True):
+        # The macOS app sizes its own window and reports no pixels; callers still
+        # require one observed rows/columns geometry across every sample.
+        if (not isinstance(geometry, (list, tuple)) or len(geometry) != 4
+                or any(type(value) is not int or value <= 0 for value in geometry[:2])):
+            raise ValueError("missing or invalid effective PTY rows/columns")
+        return None
     if (not isinstance(geometry, (list, tuple)) or len(geometry) != 4
             or any(type(value) is not int or value <= 0 for value in geometry)):
         raise ValueError("missing or invalid effective PTY cell/pixel dimensions")
