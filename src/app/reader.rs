@@ -1,14 +1,205 @@
-//! macOS PTY output handling: decodes pane output and retires ended panes.
+//! macOS PTY reader: waits for pane output, decodes it and retires ended panes.
 
 use super::window::{self, WindowTitleMailbox};
-use super::{process_sixel_event, PaneCleanup};
+use super::{process_sixel_event, snapshot_then_lock, PaneCleanup};
+use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::TerminalEvent;
 use crate::layout::PaneId;
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
+use crate::pty::unix::wait_any_readable_or_woken;
+use crate::pty::Pty;
 use crate::renderer::image_store::{ImageFormat, ImageStore};
+use std::io::{ErrorKind, Read, Write};
+use std::ops::Range;
+use std::os::fd::{AsFd, BorrowedFd};
+use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+const READ_CHUNK_BYTES: usize = 4096;
+/// Bound one pane's batch so a flooding pane cannot starve decoding or others.
+const MAX_BATCH_BYTES_PER_PANE: usize = 16 * READ_CHUNK_BYTES;
+const POLL_FAILURE_BACKOFF: Duration = Duration::from_millis(2);
+
+/// Interrupts a reader blocked in `poll` when panes change or shutdown starts.
+pub(super) struct ReaderWake {
+    sender: UnixStream,
+    receiver: UnixStream,
+}
+
+impl ReaderWake {
+    pub(super) fn new() -> std::io::Result<Self> {
+        let (sender, receiver) = UnixStream::pair()?;
+        sender.set_nonblocking(true)?;
+        receiver.set_nonblocking(true)?;
+        Ok(Self { sender, receiver })
+    }
+
+    pub(super) fn wake(&self) {
+        loop {
+            match (&self.sender).write(&[1]) {
+                // A full socket already guarantees the reader will wake.
+                Ok(_) => return,
+                Err(error) if error.kind() == ErrorKind::WouldBlock => return,
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    log::error!("Could not wake the PTY reader: {error}");
+                    return;
+                }
+            }
+        }
+    }
+
+    fn receiver(&self) -> BorrowedFd<'_> {
+        self.receiver.as_fd()
+    }
+
+    fn drain(&self) {
+        let mut buffer = [0u8; 64];
+        loop {
+            match (&self.receiver).read(&mut buffer) {
+                Ok(0) => return,
+                Ok(_) => continue,
+                Err(error) if error.kind() == ErrorKind::WouldBlock => return,
+                Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    log::error!("Could not drain PTY reader wakeups: {error}");
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// How a pane's batch ended.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PaneEnd {
+    Open,
+    Closed,
+}
+
+/// Run until `shared.should_close`. PTYs are polled and read without locks;
+/// the atlas and tree are locked once per wakeup to decode every batch.
+pub(super) fn run_reader(
+    atlas: &Mutex<GlyphAtlas>,
+    pane_tree: &Mutex<PaneTree>,
+    dirty: &AtomicBool,
+    wake: &ReaderWake,
+    shared: &ReaderShared,
+) {
+    let mut chunk = [0u8; READ_CHUNK_BYTES];
+    let mut targets: Vec<(PaneId, Arc<Pty>)> = Vec::new();
+    let mut collect_targets = true;
+    let mut pending = Vec::new();
+    let mut batches: Vec<(PaneId, Range<usize>)> = Vec::new();
+    let mut dead_panes = Vec::new();
+
+    while !shared.should_close.load(Ordering::Relaxed) {
+        if collect_targets {
+            // Pane changes wake the reader, so targets are refreshed only then.
+            targets.clear();
+            let tree = pane_tree.lock().unwrap();
+            for id in tree.pane_ids() {
+                let Some(pane) = tree.pane(id) else {
+                    continue;
+                };
+                if pane.input_failed() {
+                    dead_panes.push(id);
+                } else {
+                    targets.push((id, Arc::clone(&pane.pty)));
+                }
+            }
+            collect_targets = false;
+        }
+
+        if dead_panes.is_empty() {
+            let ptys: Vec<&Pty> = targets.iter().map(|(_, pty)| pty.as_ref()).collect();
+            match wait_any_readable_or_woken(&ptys, wake.receiver()) {
+                Ok(readiness) => {
+                    if readiness.woken {
+                        wake.drain();
+                        collect_targets = true;
+                    }
+                    for index in readiness.invalid {
+                        let id = targets[index].0;
+                        log::error!("PTY poll rejected pane {id}");
+                        dead_panes.push(id);
+                    }
+                    for index in readiness.readable {
+                        let (id, pty) = &targets[index];
+                        let start = pending.len();
+                        let end = read_batch(pty, *id, &mut chunk, &mut pending);
+                        if pending.len() > start {
+                            batches.push((*id, start..pending.len()));
+                        }
+                        if end == PaneEnd::Closed {
+                            dead_panes.push(*id);
+                        }
+                    }
+                }
+                Err(error) => {
+                    log::error!("PTY reader poll failed: {error}");
+                    collect_targets = true;
+                    std::thread::sleep(POLL_FAILURE_BACKOFF);
+                }
+            }
+        }
+
+        if batches.is_empty() && dead_panes.is_empty() {
+            continue;
+        }
+
+        // Lock atlas FIRST (canonical order: atlas → tree → image_store).
+        // Keep it locked until the tree snapshot belongs to the same metric epoch.
+        let (cell_size, mut tree) = snapshot_then_lock(atlas, pane_tree, |atlas| {
+            (atlas.cell_width, atlas.cell_height)
+        });
+        for (id, range) in batches.drain(..) {
+            process_pane_output(&mut tree, id, &pending[range], cell_size, shared);
+        }
+        let any_data = !pending.is_empty();
+        pending.clear();
+        let closing_panes = !dead_panes.is_empty();
+        let retired_panes = close_dead_panes(&mut tree, std::mem::take(&mut dead_panes), shared);
+        drop(tree);
+
+        if closing_panes {
+            // Drop PTY handles first so retired panes own their final reference.
+            targets.clear();
+            collect_targets = true;
+        }
+        for pane in retired_panes {
+            shared.pane_cleanup.retire(pane);
+        }
+        if any_data {
+            dirty.store(true, Ordering::Relaxed);
+        }
+    }
+
+    log::info!("PTY reader thread exiting");
+}
+
+/// Append available output from one PTY to `pending`, up to the batch limit.
+fn read_batch(pty: &Pty, id: PaneId, chunk: &mut [u8], pending: &mut Vec<u8>) -> PaneEnd {
+    let limit = pending.len() + MAX_BATCH_BYTES_PER_PANE;
+    while pending.len() < limit {
+        match pty.read(chunk) {
+            Ok(0) => {
+                log::info!("PTY EOF for pane {id}");
+                return PaneEnd::Closed;
+            }
+            Ok(read) => pending.extend_from_slice(&chunk[..read]),
+            Err(error) if error.kind() == ErrorKind::WouldBlock => break,
+            Err(error) => {
+                log::error!("PTY read error for pane {id}: {error}");
+                return PaneEnd::Closed;
+            }
+        }
+    }
+    PaneEnd::Open
+}
 
 /// State the reader shares with the window and cleanup worker.
 pub(super) struct ReaderShared {
@@ -182,4 +373,54 @@ pub(super) fn close_dead_panes(
         window::publish_focused_window_title(tree, shared.window_title.as_ref());
     }
     retired_panes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReaderWake;
+    use crate::pty::unix::wait_any_readable_or_woken;
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
+    #[test]
+    fn wake_interrupts_a_blocked_wait_and_drains_repeated_wakeups() {
+        let wake = Arc::new(ReaderWake::new().unwrap());
+        let reader_wake = wake.clone();
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let reader = std::thread::spawn(move || {
+            result_tx
+                .send(wait_any_readable_or_woken(&[], reader_wake.receiver()))
+                .unwrap();
+        });
+        assert!(matches!(
+            result_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        // Wakes never block, even after the socket buffer fills.
+        for _ in 0..100_000 {
+            wake.wake();
+        }
+        assert!(result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap().woken);
+        reader.join().unwrap();
+
+        wake.drain();
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let reader_wake = wake.clone();
+        let reader = std::thread::spawn(move || {
+            result_tx
+                .send(wait_any_readable_or_woken(&[], reader_wake.receiver()))
+                .unwrap();
+        });
+        assert!(
+            matches!(
+                result_rx.recv_timeout(Duration::from_millis(100)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ),
+            "drained wakeups must not wake the next wait"
+        );
+        wake.wake();
+        assert!(result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap().woken);
+        reader.join().unwrap();
+    }
 }

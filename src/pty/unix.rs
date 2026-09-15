@@ -393,6 +393,83 @@ where
     }
 }
 
+/// Readiness reported by [`wait_any_readable_or_woken`].
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct PtyReadiness {
+    /// The wake descriptor is readable or hung up.
+    pub(crate) woken: bool,
+    /// Indices of PTYs with output, EOF or an error to observe through `read`.
+    pub(crate) readable: Vec<usize>,
+    /// Indices of PTYs whose descriptors poll rejected or reported unexpected events.
+    pub(crate) invalid: Vec<usize>,
+}
+
+/// Block without a timeout until any PTY has output/EOF or `wake` is readable.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+pub(crate) fn wait_any_readable_or_woken(
+    ptys: &[&Pty],
+    wake: BorrowedFd<'_>,
+) -> std::io::Result<PtyReadiness> {
+    wait_any_readable_or_woken_with(ptys.len(), |timeout| {
+        let mut poll_fds: Vec<PollFd<'_>> = ptys
+            .iter()
+            .map(|pty| PollFd::new(pty.master().as_fd(), PollFlags::POLLIN))
+            .collect();
+        poll_fds.push(PollFd::new(wake, PollFlags::POLLIN));
+        poll(&mut poll_fds, timeout)?;
+        Ok(poll_fds.iter().map(|poll_fd| poll_fd.revents()).collect())
+    })
+}
+
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+fn wait_any_readable_or_woken_with<P>(
+    pty_count: usize,
+    mut poll_once: P,
+) -> std::io::Result<PtyReadiness>
+where
+    P: FnMut(PollTimeout) -> nix::Result<Vec<Option<PollFlags>>>,
+{
+    loop {
+        let events = match poll_once(PollTimeout::NONE) {
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(error) => return Err(error.into()),
+            Ok(events) => events,
+        };
+        if events.len() != pty_count + 1 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "poll returned events for a different descriptor count",
+            ));
+        }
+
+        let mut readiness = PtyReadiness::default();
+        let wake_events = events[pty_count];
+        if wake_events != Some(PollFlags::empty()) {
+            classify_readable_events(wake_events)?;
+            readiness.woken = true;
+        }
+        for (index, pty_events) in events[..pty_count].iter().enumerate() {
+            if *pty_events == Some(PollFlags::empty()) {
+                continue;
+            }
+            // One broken PTY must not stop output from the others.
+            match classify_readable_events(*pty_events) {
+                Ok(()) => readiness.readable.push(index),
+                Err(_) => readiness.invalid.push(index),
+            }
+        }
+
+        if !readiness.woken && readiness.readable.is_empty() && readiness.invalid.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "poll without a timeout returned no ready descriptors",
+            ));
+        }
+        return Ok(readiness);
+    }
+}
+
 #[allow(dead_code)]
 fn wait_readable_with<P, E>(
     timeout: Duration,
@@ -987,9 +1064,10 @@ mod tests {
         child_environment, child_stage_name, child_startup_status_with, classify_child_wait,
         classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
         poll_timeout_for, resize_with_ioctl, resolve_command, select_shell, set_cloexec,
-        terminate_and_reap_with, wait_for_child_reap_with, wait_readable_or_cancelled_with,
-        wait_readable_with, write_all_cancellable_with, write_all_with, write_child_stage_with,
-        CancellableWriteOutcome, ChildWaitState, Pty, ReadPollResult,
+        terminate_and_reap_with, wait_any_readable_or_woken, wait_any_readable_or_woken_with,
+        wait_for_child_reap_with, wait_readable_or_cancelled_with, wait_readable_with,
+        write_all_cancellable_with, write_all_with, write_child_stage_with,
+        CancellableWriteOutcome, ChildWaitState, Pty, PtyReadiness, ReadPollResult,
     };
     use crate::pty::PtyError;
     use nix::fcntl::{fcntl, FcntlArg, FdFlag};
@@ -2143,6 +2221,111 @@ mod tests {
             let error = wait_readable_or_cancelled_with(|_| Ok(events)).unwrap_err();
             assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         }
+    }
+
+    #[test]
+    fn multi_pty_wait_retries_interrupts_and_reports_each_descriptor() {
+        let mut calls = 0;
+        let readiness = wait_any_readable_or_woken_with(3, |timeout| {
+            assert_eq!(timeout, PollTimeout::NONE);
+            calls += 1;
+            if calls == 1 {
+                return Err(nix::errno::Errno::EINTR);
+            }
+            Ok(vec![
+                Some(PollFlags::POLLIN),
+                Some(PollFlags::empty()),
+                Some(PollFlags::POLLNVAL),
+                Some(PollFlags::POLLHUP),
+            ])
+        })
+        .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(
+            readiness,
+            PtyReadiness {
+                woken: true,
+                readable: vec![0],
+                invalid: vec![2],
+            }
+        );
+
+        for flag in [PollFlags::POLLIN, PollFlags::POLLHUP, PollFlags::POLLERR] {
+            let readiness =
+                wait_any_readable_or_woken_with(1, |_| Ok(vec![Some(flag), Some(PollFlags::empty())]))
+                    .unwrap();
+            assert_eq!((readiness.woken, readiness.readable), (false, vec![0]));
+        }
+        let readiness = wait_any_readable_or_woken_with(1, |_| {
+            Ok(vec![Some(PollFlags::POLLPRI), Some(PollFlags::empty())])
+        })
+        .unwrap();
+        assert_eq!(readiness.invalid, vec![0]);
+        // A wake with no PTYs is the reader's idle state.
+        assert!(wait_any_readable_or_woken_with(0, |_| Ok(vec![Some(PollFlags::POLLIN)]))
+            .unwrap()
+            .woken);
+    }
+
+    #[test]
+    fn multi_pty_wait_rejects_broken_wake_descriptors_and_malformed_results() {
+        let error = wait_any_readable_or_woken_with(1, |_| {
+            Ok(vec![Some(PollFlags::POLLIN), Some(PollFlags::POLLNVAL)])
+        })
+        .unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EBADF));
+        let error = wait_any_readable_or_woken_with(1, |_| Err(nix::errno::Errno::EIO)).unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        for events in [
+            vec![Some(PollFlags::empty())],
+            vec![Some(PollFlags::empty()), Some(PollFlags::empty())],
+            vec![Some(PollFlags::empty()), None],
+        ] {
+            let error = wait_any_readable_or_woken_with(1, |_| Ok(events.clone())).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn multi_pty_wait_reports_only_the_pty_with_output_and_wakes_on_signal() {
+        let program = CString::new("/bin/sh").unwrap();
+        let spawn = |script: &str| {
+            let argv = ["sh", "-c", script]
+                .into_iter()
+                .map(|argument| CString::new(argument).unwrap())
+                .collect();
+            Pty::spawn_prepared(40, 4, program.clone(), argv, test_environment()).unwrap()
+        };
+        let silent = spawn("read line");
+        let speaking = spawn("printf '__KOKUBAN_SPOKE__'; read line");
+        let (signal, wake) = UnixStream::pair().unwrap();
+
+        let readiness = wait_any_readable_or_woken(&[&silent, &speaking], wake.as_fd()).unwrap();
+        assert_eq!(
+            readiness,
+            PtyReadiness {
+                woken: false,
+                readable: vec![1],
+                invalid: vec![],
+            }
+        );
+        assert_eq!(read_until(&speaking, b"__KOKUBAN_SPOKE__"), b"__KOKUBAN_SPOKE__");
+
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            result_tx
+                .send(wait_any_readable_or_woken(&[&silent, &speaking], wake.as_fd()))
+                .unwrap();
+        });
+        assert!(matches!(
+            result_rx.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        std::io::Write::write_all(&mut &signal, b"w").unwrap();
+        let readiness = result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        assert!(readiness.woken);
+        assert!(readiness.readable.is_empty());
+        worker.join().unwrap();
     }
 
     #[test]
