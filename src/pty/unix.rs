@@ -1349,6 +1349,50 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "PTY write microbenchmark; run release with --nocapture"]
+    fn benchmark_large_pty_write() {
+        fn positive_setting(name: &str, default: usize) -> usize {
+            let value = std::env::var(name).map_or(default, |value| {
+                value
+                    .parse()
+                    .unwrap_or_else(|_| panic!("{name} must be a positive integer"))
+            });
+            assert!(value > 0, "{name} must be a positive integer");
+            value
+        }
+
+        let mib = positive_setting("KOKUBAN_PTY_WRITE_MIB", 8);
+        let samples = positive_setting("KOKUBAN_PTY_WRITE_SAMPLES", 5);
+        let program = CString::new("/bin/sh").unwrap();
+        // Raw mode without echo: the child only drains input, like a paste
+        // into an application that reads faster than the PTY queue fills.
+        let argv = [
+            "sh",
+            "-c",
+            "stty raw -echo; printf '__KOKUBAN_READY__'; exec cat >/dev/null",
+        ]
+        .into_iter()
+        .map(|argument| CString::new(argument).unwrap())
+        .collect();
+        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment()).unwrap();
+        assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
+        let payload = vec![b'x'; mib * 1024 * 1024];
+        let cancelled = AtomicBool::new(false);
+
+        println!("pty write to a draining child; MiB/sample={mib}; samples={samples}");
+        println!("sample,seconds,MiB_s");
+        for sample in 0..samples {
+            let started = Instant::now();
+            assert_eq!(
+                pty.write_all_cancellable(&payload, &cancelled).unwrap(),
+                CancellableWriteOutcome::Completed
+            );
+            let seconds = started.elapsed().as_secs_f64();
+            println!("{sample},{seconds:.6},{:.2}", mib as f64 / seconds);
+        }
+    }
+
+    #[test]
     fn cancellable_write_stops_before_and_while_waiting_for_the_lock() {
         let output_lock = Mutex::new(());
         let held = output_lock.lock().unwrap();
