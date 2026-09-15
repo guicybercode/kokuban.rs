@@ -1,10 +1,11 @@
 pub mod confirm;
+mod reader;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
 use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
-use crate::grid::{Grid, TerminalEvent};
+use crate::grid::Grid;
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
 use crate::pane::pane::Pane;
@@ -12,7 +13,7 @@ use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::parser::sixel::SixelImage;
 use crate::render_scene::ChromeColors;
-use crate::renderer::image_store::{ImageFormat, ImageStore};
+use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use crate::window_title::WINDOW_TITLE;
 
@@ -346,12 +347,16 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     // PTY reader thread: reads from ALL panes
     let reader_tree = pane_tree.clone();
     let reader_dirty = dirty.clone();
-    let reader_should_close = should_close.clone();
-    let reader_image_store = image_store.clone();
     let reader_atlas = atlas.clone();
-    let reader_window_title = window_title.clone();
-    let reader_window_is_key = window_is_key.clone();
-    let reader_pane_cleanup = pane_cleanup.clone();
+    let reader_shared = reader::ReaderShared {
+        image_store: image_store.clone(),
+        window_title: window_title.clone(),
+        window_is_key: window_is_key.clone(),
+        should_close: should_close.clone(),
+        pane_cleanup: pane_cleanup.clone(),
+        kitty_enabled,
+        sixel_enabled,
+    };
 
     let reader_handle = std::thread::Builder::new()
         .name("pty-reader".to_string())
@@ -359,7 +364,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
             let mut buf = [0u8; 4096];
 
             loop {
-                if reader_should_close.load(Ordering::Relaxed) {
+                if reader_shared.should_close.load(Ordering::Relaxed) {
                     break;
                 }
 
@@ -369,7 +374,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                 {
                     // Lock atlas FIRST (canonical order: atlas → tree → image_store).
                     // Keep it locked until the tree snapshot belongs to the same metric epoch.
-                    let ((cell_w, cell_h), mut tree) = snapshot_then_lock(
+                    let (cell_size, mut tree) = snapshot_then_lock(
                         reader_atlas.as_ref(),
                         reader_tree.as_ref(),
                         |atlas| (atlas.cell_width, atlas.cell_height),
@@ -381,11 +386,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                             dead_panes.push(id);
                             continue;
                         }
-                        let title_revision_before = tree
-                            .pane(id)
-                            .map(|pane| pane.grid.title_revision())
-                            .unwrap_or_default();
-                        let read_result = match tree.pane_mut(id) {
+                        let read_result = match tree.pane(id) {
                             Some(pane) => pane.pty.read(&mut buf),
                             None => continue,
                         };
@@ -396,135 +397,13 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                                 dead_panes.push(id);
                             }
                             Ok(n) => {
-                                let mut parsed_bytes = 0;
-                                while parsed_bytes < n {
-                                    let (consumed, terminal_events) = {
-                                        let Some(pane) = tree.pane_mut(id) else {
-                                            break;
-                                        };
-                                        let step = pane.decoder.feed_until_event(
-                                            &buf[parsed_bytes..n],
-                                            &mut pane.grid,
-                                        );
-                                        (step.consumed, step.events)
-                                    };
-                                    debug_assert!(consumed > 0);
-                                    parsed_bytes += consumed;
-
-                                    for event in terminal_events {
-                                        match event {
-                                            TerminalEvent::Response(response) => {
-                                                if let Some(pane) = tree.pane(id) {
-                                                    pane.queue_input(response);
-                                                }
-                                            }
-                                            TerminalEvent::KittyGraphics {
-                                                command,
-                                                cursor_row,
-                                                cursor_col,
-                                            } => {
-                                                if !kitty_enabled {
-                                                    continue;
-                                                }
-                                                let mut hard_delete_candidates = {
-                                                    let Some(pane) = tree.pane_mut(id) else {
-                                                        continue;
-                                                    };
-                                                    let grid_cols = pane.grid.cols();
-                                                    let grid_rows = pane.grid.rows();
-                                                    let outcome = {
-                                                        let mut store =
-                                                            reader_image_store.lock().unwrap();
-                                                        pane.kitty_handler.process(
-                                                            command,
-                                                            &mut store,
-                                                            cursor_row,
-                                                            cursor_col,
-                                                            cell_w,
-                                                            cell_h,
-                                                            grid_cols,
-                                                            grid_rows,
-                                                            &mut pane.grid.image_placements,
-                                                        )
-                                                    };
-                                                    if let Some(image_id) =
-                                                        outcome.retransmitted_image_id
-                                                    {
-                                                        pane.grid
-                                                            .remove_hidden_primary_kitty_placements(
-                                                                image_id,
-                                                            );
-                                                    }
-                                                    if let Some(response) = outcome.response {
-                                                        pane.queue_input(response);
-                                                    }
-                                                    // Advance cursor for inline images
-                                                    if let Some(adv) = outcome.advance {
-                                                        pane.grid.advance_image_cursor(
-                                                            adv.cols,
-                                                            adv.rows,
-                                                        );
-                                                    }
-                                                    outcome.hard_delete_candidates
-                                                };
-
-                                                if !hard_delete_candidates.is_empty() {
-                                                    tree.retain_unreferenced_image_ids(
-                                                        &mut hard_delete_candidates,
-                                                    );
-                                                    if !hard_delete_candidates.is_empty() {
-                                                        let mut store =
-                                                            reader_image_store.lock().unwrap();
-                                                        for image_id in hard_delete_candidates {
-                                                            store.remove(image_id);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            TerminalEvent::SixelGraphics {
-                                                image,
-                                                cursor_row,
-                                                cursor_col,
-                                            } => {
-                                                if !sixel_enabled {
-                                                    continue;
-                                                }
-                                                let Some(pane) = tree.pane_mut(id) else {
-                                                    continue;
-                                                };
-                                                process_sixel_event(
-                                                    &mut pane.grid,
-                                                    &image,
-                                                    (cursor_row, cursor_col),
-                                                    (cell_w, cell_h),
-                                                    |image| {
-                                                        let mut store =
-                                                            reader_image_store.lock().unwrap();
-                                                        let image_id = store.next_id();
-                                                        store.store(
-                                                            &image.pixels,
-                                                            image.width,
-                                                            image.height,
-                                                            ImageFormat::Rgba,
-                                                            Some(image_id),
-                                                        )
-                                                    },
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-
-                                let focused_title_changed = id == tree.focused
-                                    && tree.pane(id).is_some_and(|pane| {
-                                        pane.grid.title_revision() != title_revision_before
-                                    });
-                                if focused_title_changed {
-                                    window::publish_focused_window_title(
-                                        &tree,
-                                        reader_window_title.as_ref(),
-                                    );
-                                }
+                                reader::process_pane_output(
+                                    &mut tree,
+                                    id,
+                                    &buf[..n],
+                                    cell_size,
+                                    &reader_shared,
+                                );
                                 any_data = true;
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -535,41 +414,11 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                         }
                     }
 
-                    let mut retired_panes = Vec::new();
-                    let previous_focus = tree.focused_pane().map(|pane| pane.id);
-                    // Close dead panes
-                    for id in dead_panes {
-                        let outcome = tree.close(id);
-                        if let Some(pane) = outcome.closed_pane {
-                            retired_panes.push(pane);
-                        }
-                        if outcome.should_terminate {
-                            reader_should_close.store(true, Ordering::Relaxed);
-                            break;
-                        }
-                    }
-
-                    if tree.focused_pane().map(|pane| pane.id) != previous_focus {
-                        let detached_previous = previous_focus.and_then(|previous_focus| {
-                            retired_panes
-                                .iter()
-                                .find(|pane| pane.id == previous_focus)
-                        });
-                        window::dispatch_pane_focus_transition_locked(
-                            &tree,
-                            reader_window_is_key.as_ref(),
-                            previous_focus,
-                            detached_previous,
-                        );
-                        window::publish_focused_window_title(
-                            &tree,
-                            reader_window_title.as_ref(),
-                        );
-                    }
-
+                    let retired_panes =
+                        reader::close_dead_panes(&mut tree, dead_panes, &reader_shared);
                     drop(tree);
                     for pane in retired_panes {
-                        reader_pane_cleanup.retire(pane);
+                        reader_shared.pane_cleanup.retire(pane);
                     }
                 }
 
