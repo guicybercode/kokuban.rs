@@ -325,6 +325,11 @@ struct ViewState {
 }
 
 impl ViewState {
+    /// Mark the terminal content changed so the next frame redraws it.
+    fn request_render(&self) {
+        self.dirty.store(true, Ordering::Relaxed);
+    }
+
     /// Stop the app and wake the reader so it observes shutdown.
     fn request_close(&self) {
         self.should_close.store(true, Ordering::Relaxed);
@@ -578,7 +583,7 @@ define_class!(
                                 ConfirmAction::QuitApp,
                                 None,
                             ));
-                            state.dirty.store(true, Ordering::Relaxed);
+                            state.request_render();
                         } else {
                             state.request_close();
                         }
@@ -601,7 +606,7 @@ define_class!(
                                 if !text.is_empty() {
                                     copy_to_clipboard(&text);
                                 }
-                                state.dirty.store(true, Ordering::Relaxed);
+                                state.request_render();
                                 return true;
                             }
                             // No selection: send Ctrl-C
@@ -809,7 +814,7 @@ define_class!(
                     }
                     drop(tree);
                     if viewport_changed {
-                        state.dirty.store(true, Ordering::Relaxed);
+                        state.request_render();
                     }
                 }
             });
@@ -859,7 +864,7 @@ define_class!(
                         }
                     }
                     drop(tree);
-                    state.dirty.store(true, Ordering::Relaxed);
+                    state.request_render();
                 }
             });
         }
@@ -899,7 +904,7 @@ define_class!(
                         }
                     }
                     drop(tree);
-                    state.dirty.store(true, Ordering::Relaxed);
+                    state.request_render();
                 }
             });
         }
@@ -965,7 +970,7 @@ define_class!(
                                 MacScrollbackAction::End => { pane.grid.scroll_to_bottom(); }
                             }
                             drop(tree);
-                            state.dirty.store(true, Ordering::Relaxed);
+                            state.request_render();
                             return true;
                         }
                     }
@@ -985,7 +990,7 @@ define_class!(
                         pane.grid.scroll_to_bottom();
                         if pane.selection.is_active() {
                             pane.selection.clear();
-                            state.dirty.store(true, Ordering::Relaxed);
+                            state.request_render();
                         }
                         if let Some(bytes) =
                             translate_key_event(event, pane.grid.application_cursor_keys)
@@ -1039,7 +1044,7 @@ define_class!(
                                     state.status_bar_height = status_bar_height;
                                     state.metal_layer.setContentsScale(new_scale as f64);
                                     state.metal_layer.setDrawableSize(backing_size);
-                                    state.dirty.store(true, Ordering::Relaxed);
+                                    state.request_render();
                                 }
                                 Err(error) => log::error!(
                                     "Failed to rebuild glyph atlas for scale {new_scale}: {error}; \
@@ -1088,7 +1093,7 @@ define_class!(
                 let mut tree = state.pane_tree.lock().unwrap();
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
                 drop(tree);
-                state.dirty.store(true, Ordering::Relaxed);
+                state.request_render();
             });
         }
     }
@@ -1168,7 +1173,7 @@ fn handle_pane_action(action: PaneAction) {
                         ConfirmAction::ClosePane(id),
                         proc_name,
                     ));
-                    state.dirty.store(true, Ordering::Relaxed);
+                    state.request_render();
                     return;
                 }
                 // No confirmation — close immediately
@@ -1322,7 +1327,7 @@ fn handle_pane_action(action: PaneAction) {
         }
         // Splits and closes change the PTYs the reader must poll.
         state.reader_wake.wake();
-        state.dirty.store(true, Ordering::Relaxed);
+        state.request_render();
     });
 }
 
@@ -1342,12 +1347,12 @@ fn handle_confirm_key(key_code: u16, character: Option<char>) {
         match result {
             ConfirmResult::Confirmed => {
                 let action = state.confirm_dialog.take().unwrap().action;
-                state.dirty.store(true, Ordering::Relaxed);
+                state.request_render();
                 execute_confirm_action(state, action);
             }
             ConfirmResult::Cancelled => {
                 state.confirm_dialog = None;
-                state.dirty.store(true, Ordering::Relaxed);
+                state.request_render();
             }
             ConfirmResult::Pending => {
                 // Ignore unrecognized keys
@@ -1445,7 +1450,7 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     state.status_bar_height = status_bar_height;
     log::info!("Font zoom: {new_size}pt");
 
-    state.dirty.store(true, Ordering::Relaxed);
+    state.request_render();
 }
 
 fn update_pane_geometry(
@@ -1747,7 +1752,7 @@ fn render_frame() {
         // Keep rendering during fade-in animation
         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
         if still_animating {
-            state.dirty.store(true, Ordering::Relaxed);
+            state.request_render();
         }
     });
 }
