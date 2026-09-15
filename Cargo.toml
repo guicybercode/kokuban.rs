@@ -9,7 +9,7 @@ repository = "https://github.com/guicybercode/kokuban.rs"
 homepage = "https://github.com/guicybercode/kokuban.rs#readme"
 keywords = ["terminal", "terminal-emulator", "linux", "macos", "graphics"]
 categories = ["command-line-utilities"]
-exclude = ["/scripts", "/.github", "/docs/linux-evidence", "/docs/glyph-cache-evidence", "**/*.py", "**/.DS_Store"]
+exclude = ["/scripts", "/.github", "/docs/linux-evidence", "/docs/macos-evidence", "/docs/glyph-cache-evidence", "**/*.py", "**/.DS_Store"]
 
 [dependencies]
 nix = { version = "0.29", features = ["term", "fs", "process", "signal", "poll"] }
