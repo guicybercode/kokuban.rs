@@ -34,6 +34,7 @@ mod terminal_writer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
 mod renderer;
+mod update;
 mod window_title;
 
 /// Apps opened from Finder, the Dock or Launchpad start in `/`. Use the home
@@ -50,6 +51,17 @@ fn launch_directory(
 #[cfg(target_os = "macos")]
 fn main() -> std::process::ExitCode {
     env_logger::init();
+
+    // Finder may pass its own arguments, so only these exact flags are handled.
+    match std::env::args_os().nth(1).as_deref().and_then(std::ffi::OsStr::to_str) {
+        Some("--update") => return update::run_update_command(),
+        Some("--check-update") => return update::run_check_command(),
+        Some("-V" | "--version") => {
+            println!("kokuban {}", env!("CARGO_PKG_VERSION"));
+            return std::process::ExitCode::SUCCESS;
+        }
+        _ => {}
+    }
 
     if let Ok(current) = std::env::current_dir() {
         if let Some(home) = launch_directory(&current, std::env::var_os("HOME")) {
@@ -84,6 +96,14 @@ fn main() -> std::process::ExitCode {
         Ok(launch_options::LaunchAction::Version) => {
             println!("kokuban {}", env!("CARGO_PKG_VERSION"));
             return std::process::ExitCode::SUCCESS;
+        }
+        Ok(launch_options::LaunchAction::CheckUpdate) => {
+            env_logger::init();
+            return update::run_check_command();
+        }
+        Ok(launch_options::LaunchAction::Update) => {
+            env_logger::init();
+            return update::run_update_command();
         }
         Err(error) => {
             eprintln!("kokuban: {error}\nTry 'kokuban --help' for usage.");

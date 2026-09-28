@@ -9,6 +9,8 @@ Options:
   --working-directory DIR    Start in this directory (alias: --dir)
   --app-id ID                 Set Wayland app ID / X11 window class
   --title TITLE               Set the initial window title
+  --check-update              Check GitHub for a newer release
+  --update                    Download and install the newest release
   -h, --help                  Print this help
   -V, --version               Print the version
 
@@ -28,6 +30,8 @@ pub(crate) enum LaunchAction {
     Run(LaunchOptions),
     Help,
     Version,
+    CheckUpdate,
+    Update,
 }
 
 pub(crate) fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<LaunchAction, String> {
@@ -50,6 +54,12 @@ pub(crate) fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Lau
         }
         if argument == "-V" || argument == "--version" {
             return Ok(LaunchAction::Version);
+        }
+        if argument == "--check-update" {
+            return Ok(LaunchAction::CheckUpdate);
+        }
+        if argument == "--update" {
+            return Ok(LaunchAction::Update);
         }
 
         // Split Unix OS strings as bytes so paths do not need to be valid UTF-8.
@@ -194,6 +204,8 @@ mod tests {
         assert_eq!(run(&[]), LaunchOptions::default());
         assert_eq!(parse(["--help".into()]).unwrap(), LaunchAction::Help);
         assert_eq!(parse(["--version".into()]).unwrap(), LaunchAction::Version);
+        assert_eq!(parse(["--check-update".into()]).unwrap(), LaunchAction::CheckUpdate);
+        assert_eq!(parse(["--update".into()]).unwrap(), LaunchAction::Update);
         assert_eq!(
             run(&["--execute", "printf", "--help"]).command,
             ["printf", "--help"].map(OsString::from)
