@@ -76,6 +76,19 @@ On Intel Macs, replace `aarch64-apple-darwin` with `x86_64-apple-darwin` in thos
 
 Run Kokuban from a graphical desktop session. A new terminal window should open with your login shell. Type `pwd` or `echo hello` to try it, and `exit` to end the shell session. SSH, editors and media players are external programs: for example, type `ssh user@host` inside Kokuban to connect using your installed SSH client.
 
+### Updating
+
+Starting with v0.4, Kokuban checks the [latest GitHub release](https://github.com/guicybercode/kokuban.rs/releases/latest) in the background when it opens. When a newer version exists, macOS shows `vX available` at the right of the status bar and Linux adds it to the window title. Nothing is downloaded until you ask:
+
+```sh
+kokuban --check-update   # report whether a newer release exists
+kokuban --update         # download, verify and install it
+```
+
+On macOS the app menu also has **Check for Updates…** and **Install Update…**. The update downloads the archive for your computer (or, for `Kokuban.app`, the disk image) with its `.sha256`, refuses it unless the checksum matches, and replaces the executable or app bundle in place. Reopen Kokuban afterwards. If the executable lives in a directory you cannot write, such as `/usr/local/bin`, run `sudo kokuban --update`. Kokuban links no network library: checks and downloads run the system `curl`, `tar` and `shasum`/`sha256sum` (plus `hdiutil` for the app bundle).
+
+Turn the automatic check off with `check_on_startup = false` under `[update]` in `kokuban.toml`, or set `KOKUBAN_NO_UPDATE_CHECK=1`.
+
 ### Build and run from source
 
 Install Git and Rust through [rustup](https://rustup.rs/). The verified toolchain is **Rust 1.94.1**.
