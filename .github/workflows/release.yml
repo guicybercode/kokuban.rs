@@ -222,6 +222,37 @@ jobs:
             )
           fi
 
+      - name: Package Kokuban.app into a disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bash scripts/package-macos-dmg.sh "$RELEASE_TAG" "$RELEASE_TARGET" \
+            --binary "target/$RELEASE_TARGET/release/kokuban" \
+            --notices "$RUNNER_TEMP/THIRD_PARTY_LICENSES.txt" --output-dir dist
+
+      - name: Verify disk image checksum and bundled app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          image_name="kokuban-$RELEASE_TAG-$RELEASE_TARGET.dmg"
+          (cd dist && shasum -a 256 --check "$image_name.sha256")
+          mount_point="$RUNNER_TEMP/kokuban-dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "dist/$image_name"
+          trap 'hdiutil detach "$mount_point"' EXIT
+          app="$mount_point/Kokuban.app"
+          test -L "$mount_point/Applications"
+          expected_arch=x86_64
+          if [[ "$RELEASE_TARGET" == "aarch64-apple-darwin" ]]; then
+            expected_arch=arm64
+          fi
+          test "$(lipo -archs "$app/Contents/MacOS/kokuban")" = "$expected_arch"
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          cargo_version="$(cargo metadata --locked --no-deps --format-version 1 \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+          test "$bundle_version" = "$cargo_version"
+          codesign --verify --deep --strict "$app"
+
       - name: Upload the archive and SHA256 checksum for review
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -229,6 +260,8 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.tar.gz.sha256
+            dist/*.dmg
+            dist/*.dmg.sha256
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
