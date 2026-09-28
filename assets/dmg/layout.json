@@ -1,0 +1,10 @@
+{
+  "window": {"width": 660, "height": 412},
+  "background": {"width": 660, "height": 400},
+  "icon_size": 112,
+  "text_size": 13,
+  "icons": {
+    "Kokuban.app": [170, 228],
+    "Applications": [490, 228]
+  }
+}
