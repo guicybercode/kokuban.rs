@@ -4,7 +4,13 @@
 
 Use it for a local shell, an editor or multiplexer, an SSH session, or applications that display Kitty/Sixel graphics. Kokuban provides the terminal; the shell, SSH client, editor and media player remain the programs you choose and install.
 
-## What v0.3 brings
+## What v0.4 brings
+
+- **Updates from inside the terminal:** a background check at launch, `kokuban --update`, and **Install Update…** in the macOS menu, with checksum verification before anything is replaced.
+- **A Mac app:** a disk image with `Kokuban.app` alongside the standalone executables.
+- **Quieter, faster macOS:** frames only when something changed, a PTY reader that blocks instead of polling on a timer, and writes that wait for the PTY instead of sleeping.
+
+## Earlier in v0.3
 
 - **Text that survives interaction:** complete Unicode graphemes, font fallback and color emoji, selection that joins soft-wrapped lines, and retained text that reflows on resize.
 - **Omarchy integration:** launcher arguments and working directories, compatible copy/paste input, live palette changes without restarting the shell, and the system monospace font on Linux.
@@ -15,26 +21,26 @@ Kokuban implements its own VT/ANSI parser, grid and PTY integration. Its Rust ap
 
 ## Platforms and evidence
 
-The [v0.3 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.3) targets Linux x86_64 and macOS Apple Silicon/Intel. Linux release packages are built on Ubuntu 24.04. macOS packages are standalone executables without signing or notarization; see [installation requirements](README.md#installation).
+The [v0.4 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4) targets Linux x86_64 and macOS Apple Silicon/Intel. Linux release packages are built on Ubuntu 24.04. macOS packages are standalone executables and a `Kokuban.app` disk image, ad-hoc signed only and not notarized; see [installation requirements](README.md#installation).
 
 Automated Linux scenarios exercise actual windows, clipboard contents, rendered pixels and SSH workflows with Neovim, tmux and fzf. Launch arguments are tested under X11 and headless Weston/Wayland. These checks do not establish complete application compatibility or a physical Omarchy/Hyprland session. Broad Wayland interaction, OSC 52, audio and sustained media playback remain open work. Android is developed on the separate `codex/android-native` branch and is not part of this desktop release; Windows is unsupported.
 
-Start with [text preservation](docs/TERMINAL_TEXT.md), [Omarchy integration and validation](docs/OMARCHY.md), [Linux application checks](docs/LINUX_APPS.md), [video checks](docs/LINUX_VIDEO.md) and [performance measurements](docs/LINUX_PERFORMANCE.md). Reports identify the revisions and environments they tested; older measurements are not new v0.3 resource guarantees.
+Start with [text preservation](docs/TERMINAL_TEXT.md), [Omarchy integration and validation](docs/OMARCHY.md), [Linux application checks](docs/LINUX_APPS.md), [video checks](docs/LINUX_VIDEO.md) and [performance measurements](docs/LINUX_PERFORMANCE.md). Reports identify the revisions and environments they tested; older measurements are not new v0.4 resource guarantees.
 
 ## Participate and cite
 
 Bug reports, focused fixes, tests, documentation and platform feedback are welcome. Read the contribution guide and code of conduct before joining. Security reports use the private reporting channel.
 
 - [Install and run](README.md#installation)
-- [Download v0.3](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.3)
-- [Read the v0.3 changelog](CHANGELOG.md)
+- [Download v0.4](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4)
+- [Read the v0.4 changelog](CHANGELOG.md)
 - [Cite this repository](CITATION.cff)
 - [Contribute](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Report a security issue privately](SECURITY.md)
 - [BSD-4-Clause license](LICENSE)
 
-For a blog, presentation or article, cite **Kokuban v0.3 — guicybercode/kokuban.rs** and link to the [release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.3). For development builds or benchmark results, include the exact commit.
+For a blog, presentation or article, cite **Kokuban v0.4 — guicybercode/kokuban.rs** and link to the [release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4). For development builds or benchmark results, include the exact commit.
 
 Starting with v0.2, original project code and documentation use [BSD-4-Clause](LICENSE). Its advertising clause requires the following acknowledgment in advertising materials mentioning features or use of the software: “This product includes software developed by the Kokuban contributors.” Running the terminal by itself does not require a public announcement; redistribution also carries notice requirements. Citation metadata supplements these obligations. The published v0.1 release remains MIT.
 

@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.4 — 2026-09-28
+
+Self-update, macOS installer and desktop responsiveness update. The Git tag is `v0.4`; the Cargo package version is `0.4.0`.
+
+### Added
+
+- Update Kokuban from itself. At launch a background check asks GitHub for the latest release; macOS shows `vX available` in the status bar and Linux in the window title. `kokuban --check-update` reports it and `kokuban --update` downloads the archive for the running target (or the disk image for `Kokuban.app`), refuses it unless its `.sha256` matches and replaces the executable or bundle in place. The macOS app menu adds **Check for Updates…** and **Install Update…**. Turn the check off with `[update] check_on_startup = false` or `KOKUBAN_NO_UPDATE_CHECK=1`; it never runs for `KOKUBAN_EXIT_AFTER_FIRST_FRAME` smoke tests. No network library is linked: the system `curl`, `tar`, `shasum`/`sha256sum` and `hdiutil` do the work.
+- macOS disk images: each Mac release adds `kokuban-<tag>-<target>.dmg` with `Kokuban.app` (bundle ID `io.github.guicybercode.kokuban`, ad-hoc signed, not notarized) and a drag-to-Applications window. The release workflow checks the image checksum, architecture, bundle version and code signature.
+- macOS: `kokuban --version` prints the version instead of opening a window.
 
 ### Changed
 
@@ -13,6 +21,15 @@
 ### Fixed
 
 - macOS: output decoded while a frame was being drawn is no longer left undrawn until more output arrives.
+- macOS: `Kokuban.app` opened from Finder, the Dock or Launchpad starts the shell in the home directory instead of `/`.
+- macOS: when a split pane's shell exits, the remaining pane grows back to the full window. Its grid and PTY size used to stay at the split size until the next resize, leaving text in part of the window.
+
+### Validation scope and limits
+
+- Release targets remain Linux x86_64, macOS Apple Silicon and macOS Intel, using Rust 1.94.1 and the locked dependency graph. Linux packages are built on Ubuntu 24.04; macOS on macOS 15 with a macOS 11 deployment target.
+- macOS executables and `Kokuban.app` are ad-hoc signed only, without Developer ID signing or notarization.
+- The updater was exercised end to end against the published v0.3 archive on macOS Apple Silicon. Replacing `Kokuban.app` from a disk image can first be exercised against v0.4, and Linux updating relies on the same code path verified by CI unit tests rather than a live download. v0.3 and older have no updater: install v0.4 manually once.
+- Performance figures above come from the linked paired reports on their recorded hosts and revisions; they are not new measurements of the v0.4 binaries.
 
 ## v0.3 — 2026-09-13
 
