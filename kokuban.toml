@@ -25,6 +25,11 @@ show_shell = true
 show_cwd = true
 show_pane_index = true
 
+[update]
+# Check GitHub for a newer release in the background after launch.
+# Install it with `kokuban --update` or, on macOS, from the app menu.
+check_on_startup = true
+
 [prompt_marks]
 enabled = true
 show_indicator = true

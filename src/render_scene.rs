@@ -11,6 +11,8 @@ pub struct PaneRenderData<'a> {
     pub cwd: &'a str,
     pub prompt_mark_rows: Vec<usize>,
     pub show_cursor: bool,
+    /// Update notice shown at the right of the status bar.
+    pub update_notice: Option<&'a str>,
 }
 
 pub struct ConfirmOverlayInfo {

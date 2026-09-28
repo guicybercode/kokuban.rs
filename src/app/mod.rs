@@ -328,6 +328,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         }),
     );
 
+    let update_status: crate::update::SharedUpdateStatus =
+        Arc::new(Mutex::new(crate::update::UpdateStatus::Idle));
+
     let prompt_indicator_color = if config.prompt_marks.enabled && config.prompt_marks.show_indicator {
         Some(ColorConfig::parse_hex(&config.prompt_marks.indicator_color))
     } else {
@@ -366,6 +369,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         window_title.clone(),
         config.confirm.on_close_pane,
         config.confirm.on_quit,
+        update_status.clone(),
     );
 
     window.setContentView(Some(&view));
@@ -405,6 +409,13 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         .expect("Failed to spawn PTY reader thread");
 
     render_scheduler.request_render();
+
+    if crate::update::startup_check_enabled(config.update.check_on_startup) {
+        let update_render_scheduler = render_scheduler.clone();
+        crate::update::spawn_check(update_status, false, move || {
+            update_render_scheduler.request_render()
+        });
+    }
 
     app.activate();
     log::info!("Starting application run loop");
@@ -449,6 +460,20 @@ fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
             Some(objc2::sel!(terminate:)),
             &quit_key,
         );
+        // No target: AppKit routes these to the terminal view (first responder).
+        for (title, action) in [
+            ("Check for Updates…", objc2::sel!(checkForUpdates:)),
+            ("Install Update…", objc2::sel!(installUpdate:)),
+        ] {
+            let item = NSMenuItem::initWithTitle_action_keyEquivalent(
+                mtm.alloc(),
+                &NSString::from_str(title),
+                Some(action),
+                &NSString::from_str(""),
+            );
+            app_menu.addItem(&item);
+        }
+        app_menu.addItem(&NSMenuItem::separatorItem(mtm));
         app_menu.addItem(&quit_item);
         app_menu_item.setSubmenu(Some(&app_menu));
 
