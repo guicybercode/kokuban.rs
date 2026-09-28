@@ -831,6 +831,7 @@ pub(crate) fn launch(
         let _ = writer_proxy.send_event(LinuxEvent::WriterExited(classify_writer_exit(exit)));
     })
     .map_err(|error| format!("could not start the Linux terminal writer: {error}"))?;
+    let update_check_proxy = event_proxy.clone();
     let update_proxy = event_proxy.clone();
     let update_pending = redraw_pending.clone();
     let update_title_grid = grid.clone();
@@ -886,6 +887,12 @@ pub(crate) fn launch(
     );
     application.clipboard = clipboard;
     application.theme_watcher = theme_watcher;
+    if crate::update::startup_check_enabled(config.update.check_on_startup) {
+        // Linux has no status bar; the notice goes into the window title.
+        crate::update::spawn_check(application.update_status.clone(), false, move || {
+            let _ = update_check_proxy.send_event(LinuxEvent::WindowTitleChanged);
+        });
+    }
     application.app_id = options
         .app_id
         .unwrap_or_else(|| crate::app_icon::APP_ID.to_string());
@@ -940,6 +947,7 @@ struct LinuxWindow {
     writer: Option<TerminalWriter>,
     redraw_pending: Arc<AtomicBool>,
     window_title_pending: Arc<AtomicBool>,
+    update_status: crate::update::SharedUpdateStatus,
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
@@ -1001,6 +1009,7 @@ impl LinuxWindow {
             writer: Some(writer),
             redraw_pending,
             window_title_pending,
+            update_status: Arc::new(Mutex::new(crate::update::UpdateStatus::Idle)),
             reader_status: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
@@ -1013,9 +1022,14 @@ impl LinuxWindow {
         }
     }
 
+    fn title_with_update_notice(&self, title: &str) -> String {
+        crate::update::title_with_notice(title, &crate::update::read_status(&self.update_status))
+    }
+
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
         let initial_title =
             snapshot_window_title(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        let initial_title = self.title_with_update_notice(&initial_title);
         let attributes = Window::default_attributes()
             .with_title(normalized_window_title(&initial_title).into_owned())
             .with_window_icon(application_icon())
@@ -2018,7 +2032,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     return;
                 };
                 let title = match snapshot_window_title(self.grid.as_ref()) {
-                    Ok(title) => title,
+                    Ok(title) => self.title_with_update_notice(&title),
                     Err(error) => {
                         self.fail(event_loop, error.to_string());
                         return;

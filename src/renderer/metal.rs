@@ -520,19 +520,36 @@ impl MetalRenderer {
             cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
         }
 
+        // Update notice, right-aligned before the focus indicator. It is
+        // dropped when the bar is too narrow to keep the shell name visible.
+        let notice = pane.update_notice.filter(|notice| {
+            x1 - cell_w * (3.0 + notice.chars().count() as f32) > cursor_x + cell_w
+        });
+        let notice_width = notice.map_or(0.0, |notice| cell_w * (notice.chars().count() + 1) as f32);
+
         // " · /cwd"
         if !pane.cwd.is_empty() {
             for c in " · ".chars() {
                 cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
             }
             // Truncate cwd if too long
-            let max_cwd_chars = ((rect.width - cursor_x + rect.x - cell_w * 4.0) / cell_w) as usize;
+            let max_cwd_chars =
+                ((rect.width - cursor_x + rect.x - cell_w * 4.0 - notice_width) / cell_w).max(0.0) as usize;
             let cwd_display = status_cwd_suffix(pane.cwd, max_cwd_chars);
             for c in cwd_display.chars() {
-                if cursor_x + cell_w > x1 - cell_w * 3.0 {
+                if cursor_x + cell_w > x1 - cell_w * 3.0 - notice_width {
                     break;
                 }
                 cursor_x = self.render_char(c, cursor_x, text_y, light, bg, atlas, vertices);
+            }
+        }
+
+        if let Some(notice) = notice {
+            let notice_color =
+                Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255);
+            let mut notice_x = x1 - cell_w * (3.0 + notice.chars().count() as f32);
+            for c in notice.chars() {
+                notice_x = self.render_char(c, notice_x, text_y, notice_color, bg, atlas, vertices);
             }
         }
 

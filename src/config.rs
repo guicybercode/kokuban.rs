@@ -15,6 +15,7 @@ pub struct Config {
     pub images: ImagesConfig,
     pub confirm: ConfirmConfig,
     pub omarchy: OmarchyConfig,
+    pub update: UpdateConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,6 +110,21 @@ pub struct OmarchyConfig {
 impl Default for OmarchyConfig {
     fn default() -> Self {
         Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct UpdateConfig {
+    /// Ask GitHub for a newer release in the background after launch.
+    pub check_on_startup: bool,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            check_on_startup: true,
+        }
     }
 }
 
@@ -253,6 +269,7 @@ impl Default for Config {
             images: ImagesConfig::default(),
             confirm: ConfirmConfig::default(),
             omarchy: OmarchyConfig::default(),
+            update: UpdateConfig::default(),
         }
     }
 }

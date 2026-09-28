@@ -20,10 +20,11 @@ use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
 use crate::selection::GridPoint;
 use crate::terminal_writer::TerminalWriteQueueError;
+use crate::update::{self, SharedUpdateStatus, UpdateStatus};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
 use objc2::rc::Retained;
-use objc2::runtime::{Bool, ProtocolObject};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject};
 use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::*;
 use objc2_foundation::*;
@@ -324,6 +325,7 @@ struct ViewState {
     confirm_dialog: Option<ConfirmDialog>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
+    update_status: SharedUpdateStatus,
 }
 
 impl ViewState {
@@ -1100,6 +1102,42 @@ define_class!(
                 state.request_render();
             });
         }
+
+        // App menu actions: the items have no target, so AppKit sends them
+        // to this first responder.
+        #[unsafe(method(checkForUpdates:))]
+        fn check_for_updates(&self, _sender: Option<&AnyObject>) {
+            with_update_status(|status, scheduler| {
+                update::spawn_check(status, true, move || scheduler.request_render());
+            });
+        }
+
+        #[unsafe(method(installUpdate:))]
+        fn install_update(&self, _sender: Option<&AnyObject>) {
+            with_update_status(|status, scheduler| {
+                let available = update::read_status(&status).available_tag().map(str::to_string);
+                if let Some(tag) = available {
+                    update::spawn_install(status, tag, move || scheduler.request_render());
+                }
+            });
+        }
+
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, item: &NSMenuItem) -> Bool {
+            let Some(status) = with_update_status(|status, _| update::read_status(&status)) else {
+                return Bool::NO;
+            };
+            let busy = matches!(status, UpdateStatus::Checking | UpdateStatus::Installing(_));
+            if item.action() == Some(objc2::sel!(installUpdate:)) {
+                let title = match status.available_tag() {
+                    Some(tag) => format!("Install Update {tag}…"),
+                    None => "Install Update…".to_string(),
+                };
+                item.setTitle(&NSString::from_str(&title));
+                return Bool::new(status.available_tag().is_some());
+            }
+            Bool::new(!busy)
+        }
     }
 
     // SAFETY: NSObjectProtocol has no additional safety requirements.
@@ -1119,6 +1157,18 @@ define_class!(
         }
     }
 );
+
+/// Run `action` with the shared update status and the frame scheduler.
+fn with_update_status<T>(
+    action: impl FnOnce(SharedUpdateStatus, Arc<RenderScheduler>) -> T,
+) -> Option<T> {
+    let (status, scheduler) = VIEW_STATE.with(|state| {
+        let state = state.borrow();
+        let state = state.as_ref()?;
+        Some((state.update_status.clone(), state.render_scheduler.clone()))
+    })?;
+    Some(action(status, scheduler))
+}
 
 fn handle_pane_action(action: PaneAction) {
     VIEW_STATE.with(|state| {
@@ -1679,6 +1729,7 @@ fn render_frame() {
         let (layouts, dividers) = tree.layout_info(viewport);
 
         let focused_id = tree.focused;
+        let update_notice = update::read_status(&state.update_status).notice();
         let mut pane_render_data: Vec<PaneRenderData> = Vec::new();
 
         for (i, (id, rect)) in layouts.iter().enumerate() {
@@ -1706,6 +1757,7 @@ fn render_frame() {
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
+                    update_notice: update_notice.as_deref().filter(|_| *id == focused_id),
                 });
             }
         }
@@ -1855,6 +1907,7 @@ pub(super) fn create_terminal_view(
     window_title: Arc<WindowTitleMailbox>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
+    update_status: SharedUpdateStatus,
 ) -> Retained<TerminalView> {
     let view = mtm.alloc::<TerminalView>().set_ivars(());
     let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
@@ -1928,6 +1981,7 @@ pub(super) fn create_terminal_view(
             confirm_dialog: None,
             confirm_on_close_pane,
             confirm_on_quit,
+            update_status,
         });
     });
 
