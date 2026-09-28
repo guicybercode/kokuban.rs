@@ -24,6 +24,17 @@ pub struct PaneTree {
     kitty_options: KittyHandlerOptions,
     graphics_support: GraphicsSupport,
     on_input_failed: InputFailureNotifier,
+    /// Inputs of the last `relayout`, reused when a pane closes off the main
+    /// thread (shell exit) so the survivors grow back without the viewport.
+    last_layout: Option<LayoutParams>,
+}
+
+#[derive(Clone, Copy)]
+struct LayoutParams {
+    viewport: PixelRect,
+    cell_w: f32,
+    cell_h: f32,
+    status_bar_height: f32,
 }
 
 #[must_use]
@@ -65,6 +76,7 @@ impl PaneTree {
             kitty_options,
             graphics_support,
             on_input_failed,
+            last_layout: None,
         })
     }
 
@@ -189,6 +201,9 @@ impl PaneTree {
             let ids = self.pane_ids();
             self.focused = ids.first().copied().unwrap_or(0);
         }
+        if let Some(params) = self.last_layout {
+            self.relayout(params.viewport, params.cell_w, params.cell_h, params.status_bar_height);
+        }
         PaneCloseOutcome {
             should_terminate: false,
             closed_pane,
@@ -249,6 +264,12 @@ impl PaneTree {
 
     /// Recompute layout and update all pane rects. Also resize grids if needed.
     pub fn relayout(&mut self, viewport: PixelRect, cell_w: f32, cell_h: f32, status_bar_height: f32) {
+        self.last_layout = Some(LayoutParams {
+            viewport,
+            cell_w,
+            cell_h,
+            status_bar_height,
+        });
         let mut layout_results = Vec::new();
         let mut dividers = Vec::new();
         compute_layout(&self.root, viewport, &mut layout_results, &mut dividers, self.focused);
@@ -399,6 +420,54 @@ mod tests {
         assert!(last.should_terminate);
         assert_eq!(tree.pane_count(), 0);
         last.closed_pane
+            .expect("last pane should be returned for cleanup")
+            .retire();
+    }
+
+    #[test]
+    fn close_restores_full_size_grid_for_surviving_pane() {
+        let mut tree = PaneTree::new(
+            80,
+            24,
+            1_000,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            std::sync::Arc::new(|| {}),
+        )
+        .expect("pane tree should spawn its initial shell");
+        let viewport = PixelRect {
+            x: 0.0,
+            y: 0.0,
+            width: 800.0,
+            height: 480.0,
+        };
+        tree.relayout(viewport, 10.0, 20.0, 0.0);
+        let full_cols = tree.pane(1).unwrap().grid.cols();
+        let full_rows = tree.pane(1).unwrap().grid.rows();
+
+        let second = tree
+            .split(SplitDirection::Vertical, 10.0, 20.0)
+            .expect("split pane should spawn its shell");
+        tree.relayout(viewport, 10.0, 20.0, 0.0);
+        assert!(tree.pane(1).unwrap().grid.cols() < full_cols);
+
+        // The reader closes panes whose shell exited without a viewport, so
+        // close itself must grow the survivor back.
+        tree.close(second)
+            .closed_pane
+            .expect("closed split should be returned for cleanup")
+            .retire();
+
+        let survivor = tree.pane(1).unwrap();
+        assert_eq!(survivor.grid.cols(), full_cols);
+        assert_eq!(survivor.grid.rows(), full_rows);
+        assert_eq!(survivor.rect, viewport);
+
+        tree.close(1)
+            .closed_pane
             .expect("last pane should be returned for cleanup")
             .retire();
     }
