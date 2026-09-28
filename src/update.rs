@@ -406,6 +406,14 @@ impl UpdateStatus {
 
 pub type SharedUpdateStatus = Arc<Mutex<UpdateStatus>>;
 
+/// Window title carrying the update notice, for windows without a status bar.
+pub fn title_with_notice(title: &str, status: &UpdateStatus) -> String {
+    match status.available_tag() {
+        Some(tag) => format!("{title} · {tag} available (kokuban --update)"),
+        None => title.to_string(),
+    }
+}
+
 fn set_status(status: &SharedUpdateStatus, value: UpdateStatus) {
     *status.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = value;
 }
@@ -600,6 +608,17 @@ mod tests {
         assert_eq!(UpdateStatus::Available("v0.5".into()).notice().as_deref(), Some("v0.5 available"));
         assert_eq!(UpdateStatus::Available("v0.5".into()).available_tag(), Some("v0.5"));
         assert_eq!(UpdateStatus::Installed("v0.5".into()).available_tag(), None);
+    }
+
+    #[test]
+    fn window_title_mentions_only_available_updates() {
+        let available = UpdateStatus::Available("v0.5".into());
+        assert_eq!(
+            title_with_notice("vim", &available),
+            "vim · v0.5 available (kokuban --update)"
+        );
+        assert_eq!(title_with_notice("vim", &UpdateStatus::Idle), "vim");
+        assert_eq!(title_with_notice("vim", &UpdateStatus::Failed("x".into())), "vim");
     }
 
     #[test]

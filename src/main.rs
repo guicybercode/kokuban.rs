@@ -34,6 +34,7 @@ mod terminal_writer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
 mod renderer;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod update;
 mod window_title;
 
