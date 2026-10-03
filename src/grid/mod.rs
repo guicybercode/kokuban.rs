@@ -1469,6 +1469,32 @@ impl Grid {
         reflowed.resize_with(rows, || RetainedRow::blank(cols));
         *buffer = Buffer::from_retained_rows(cols, &reflowed);
     }
+
+    // Stub methods for PR #10 compatibility (synchronized output feature removed in merge)
+    pub fn soft_reset(&mut self) {
+        // Simplified reset: clear screen but keep scrollback
+        self.buffer.clear();
+    }
+
+    pub fn synchronized_output_active(&self) -> bool {
+        false // Feature not fully merged
+    }
+
+    pub fn set_synchronized_output(&mut self, _active: bool) {
+        // No-op: synchronized output feature not merged
+    }
+
+    pub fn set_synchronized_output_at(&mut self, _active: bool, _deadline: std::time::Instant) {
+        // No-op: synchronized output feature not merged  
+    }
+
+    pub fn synchronized_output_deadline(&self) -> Option<std::time::Instant> {
+        None // Feature not fully merged
+    }
+
+    pub fn expire_synchronized_output(&mut self, _now: std::time::Instant) -> bool {
+        false // Feature not fully merged
+    }
 }
 
 #[cfg(test)]
