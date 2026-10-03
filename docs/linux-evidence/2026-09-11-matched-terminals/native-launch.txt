@@ -1,0 +1,25 @@
+{
+  "backend": "wayland",
+  "headless_cli": "passed",
+  "child": {
+    "cwd": "/tmp/kokuban-launch-uj7p44_5/cwd with spaces",
+    "pwd": "/tmp/kokuban-launch-uj7p44_5/cwd with spaces",
+    "argv": [
+      "file with spaces.txt",
+      "a;$(false)`false`",
+      "--title=child argument",
+      ""
+    ],
+    "parent_pid": 10433,
+    "tty": [
+      true,
+      true,
+      true
+    ],
+    "term": "xterm-256color",
+    "term_program": "kokuban",
+    "cursor_response": "\u001b[1;1R"
+  },
+  "window_properties": null,
+  "result": "passed"
+}

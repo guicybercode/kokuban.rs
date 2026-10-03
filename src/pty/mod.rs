@@ -13,6 +13,8 @@ pub enum PtyError {
     Fork(String),
     #[error("Invalid shell environment: {0}")]
     InvalidShell(String),
+    #[error("Invalid command: {0}")]
+    InvalidCommand(String),
     #[error("Child process failed during {0}")]
     ChildSetup(&'static str),
     #[error("Timed out while starting the child process")]

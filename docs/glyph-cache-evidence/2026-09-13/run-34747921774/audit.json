@@ -1,0 +1,625 @@
+{
+  "run": "34747921774",
+  "integrity": "PASS",
+  "artifacts": [
+    {
+      "artifact": "glyph-cache-macos-latest-revisions",
+      "integrity": "PASS",
+      "comparison": "revisions",
+      "hashed_artifact_files": 51,
+      "original_source_differences": [
+        "src/glyph_atlas.rs"
+      ],
+      "records": 60,
+      "pairs": 6,
+      "cpu_affinity": null,
+      "affinity_note": "macOS affinity is not enforced; scheduling and core migration may affect timings",
+      "execution_binaries": {
+        "before": {
+          "path": "/Users/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-b0fced44846bfdc1",
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147"
+        },
+        "after": {
+          "path": "/Users/runner/work/_temp/kokuban-glyph-target-after/release/deps/kokuban-b0fced44846bfdc1",
+          "sha256": "dc53d35a207f3c1a7231dd97888c8ebb5466ed0464b6735bc57240977205df24"
+        }
+      },
+      "source_revisions": {
+        "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+        "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+      },
+      "binary_sizes": {
+        "before": 5269936,
+        "after": 5293296
+      },
+      "font_manifest_sha256": "c35fa807b0c745668d607465ae0b333da3d0d428cbedb83307b1859351a54e8c",
+      "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+      "workloads": [
+        {
+          "workload": "ascii-regular",
+          "median_paired_time_change_percent": -84.41654426941142,
+          "paired_time_change_percent": [
+            -84.43529821163422,
+            -84.3977903271886,
+            -84.88327685429925,
+            -81.89912955138418,
+            -85.35748070695418,
+            -84.26842754024882
+          ],
+          "median_AB_percent": -84.88327685429925,
+          "median_BA_percent": -84.26842754024882,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 30.894205729166664,
+            "after": 4.819553385416667
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "ascii-four-styles",
+          "median_paired_time_change_percent": -84.26980194785219,
+          "paired_time_change_percent": [
+            -84.17516918853252,
+            -84.36443470717185,
+            -85.55128938066697,
+            -84.15983888179805,
+            -83.76701547111836,
+            -86.003401256043
+          ],
+          "median_AB_percent": -84.17516918853252,
+          "median_BA_percent": -84.36443470717185,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 30.007160156250002,
+            "after": 4.69108203125
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 380,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "mixed-unicode",
+          "median_paired_time_change_percent": -40.46358358906464,
+          "paired_time_change_percent": [
+            -41.36647904940588,
+            -44.69049232455198,
+            -36.067539542592144,
+            -50.65110162648518,
+            -39.115223394540834,
+            -39.5606881287234
+          ],
+          "median_AB_percent": -39.115223394540834,
+          "median_BA_percent": -44.69049232455198,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 31.79074479166667,
+            "after": 18.38888932291667
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 151,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "unicode-scalars",
+          "median_paired_time_change_percent": -16.92208007235982,
+          "paired_time_change_percent": [
+            -16.641234094330674,
+            -17.202926050388964,
+            -26.429665781664845,
+            -38.886619881557024,
+            70.4111086159034,
+            4.708516506531988
+          ],
+          "median_AB_percent": -16.641234094330674,
+          "median_BA_percent": -17.202926050388964,
+          "faster_pairs": 4,
+          "median_ns_per_lookup": {
+            "before": 33.366971354166665,
+            "after": 27.67420703125
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 159,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "graphemes",
+          "median_paired_time_change_percent": 2.52647774528053,
+          "paired_time_change_percent": [
+            5.752091254752852,
+            -12.557431963448964,
+            -0.6991357641917916,
+            -13.365755001370239,
+            9.095995142121852,
+            9.442270294991612
+          ],
+          "median_AB_percent": 5.752091254752852,
+          "median_BA_percent": -12.557431963448964,
+          "faster_pairs": 3,
+          "median_ns_per_lookup": {
+            "before": 22.626463541666666,
+            "after": 23.094399739583334
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 32
+          },
+          "font_name": "Courier New"
+        }
+      ]
+    },
+    {
+      "artifact": "glyph-cache-ubuntu-24.04-arm-revisions",
+      "integrity": "PASS",
+      "comparison": "revisions",
+      "hashed_artifact_files": 52,
+      "original_source_differences": [
+        "src/glyph_atlas.rs"
+      ],
+      "records": 60,
+      "pairs": 6,
+      "cpu_affinity": [
+        0
+      ],
+      "affinity_note": "One Linux CPU; inherited by each process",
+      "execution_binaries": {
+        "before": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-deb8899795b6f51d",
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc"
+        },
+        "after": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-after/release/deps/kokuban-deb8899795b6f51d",
+          "sha256": "29edda4d86e63b8f22bc46f8648d7a0d45ef8e403ff65451f58debc0ad93b43c"
+        }
+      },
+      "source_revisions": {
+        "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+        "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+      },
+      "binary_sizes": {
+        "before": 6991472,
+        "after": 7057784
+      },
+      "font_manifest_sha256": "9292538df791b08f4363d9d3a8839626e09c27eed17b1e41e102496d597d8185",
+      "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+      "workloads": [
+        {
+          "workload": "ascii-regular",
+          "median_paired_time_change_percent": -54.82180605965905,
+          "paired_time_change_percent": [
+            -55.06084236656824,
+            -55.23385498080279,
+            -54.58759207666377,
+            -54.09447706103476,
+            -54.39687339349297,
+            -55.05602004265433
+          ],
+          "median_AB_percent": -54.58759207666377,
+          "median_BA_percent": -55.05602004265433,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 27.334859375,
+            "after": 12.383645833333333
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "ascii-four-styles",
+          "median_paired_time_change_percent": -54.910925599605164,
+          "paired_time_change_percent": [
+            -54.66877818879641,
+            -55.05976248957055,
+            -54.93117656145861,
+            -55.27679619274858,
+            -54.890674637751715,
+            -54.868384285964204
+          ],
+          "median_AB_percent": -54.890674637751715,
+          "median_BA_percent": -55.05976248957055,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 27.281041666666667,
+            "after": 12.28318359375
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 380,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "mixed-unicode",
+          "median_paired_time_change_percent": -29.58211871735068,
+          "paired_time_change_percent": [
+            -30.31799186594012,
+            -28.327385640787462,
+            -29.993898659415727,
+            -29.19739360107679,
+            -29.38893470204074,
+            -29.775302732660624
+          ],
+          "median_AB_percent": -29.993898659415727,
+          "median_BA_percent": -29.19739360107679,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 27.47353125,
+            "after": 19.363329427083336
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 151,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "unicode-scalars",
+          "median_paired_time_change_percent": -4.669037067962412,
+          "paired_time_change_percent": [
+            -4.75837800042163,
+            -5.731410030424755,
+            -6.1569998968735,
+            -4.312903433215227,
+            -4.579696135503193,
+            -2.391218395325781
+          ],
+          "median_AB_percent": -4.75837800042163,
+          "median_BA_percent": -4.312903433215227,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 27.32468359375,
+            "after": 26.070384114583334
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 159,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "graphemes",
+          "median_paired_time_change_percent": 0.5696595253993009,
+          "paired_time_change_percent": [
+            -0.4303640068315819,
+            1.5406910975788162,
+            1.5146660488901802,
+            0.9765805652874552,
+            0.16273848551114659,
+            -0.5178085892728536
+          ],
+          "median_AB_percent": 0.16273848551114659,
+          "median_BA_percent": 0.9765805652874552,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 27.487848958333334,
+            "after": 27.57762890625
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 32
+          },
+          "font_name": "DejaVu Sans Mono"
+        }
+      ]
+    },
+    {
+      "artifact": "glyph-cache-ubuntu-24.04-revisions",
+      "integrity": "PASS",
+      "comparison": "revisions",
+      "hashed_artifact_files": 52,
+      "original_source_differences": [
+        "src/glyph_atlas.rs"
+      ],
+      "records": 60,
+      "pairs": 6,
+      "cpu_affinity": [
+        0
+      ],
+      "affinity_note": "One Linux CPU; inherited by each process",
+      "execution_binaries": {
+        "before": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-74b60748afa29789",
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44"
+        },
+        "after": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-after/release/deps/kokuban-74b60748afa29789",
+          "sha256": "728eb32ff17049e7f7dee403544f6cdec02e20cf02cda14193c654c6441cb7d5"
+        }
+      },
+      "source_revisions": {
+        "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+        "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+      },
+      "binary_sizes": {
+        "before": 7393784,
+        "after": 7441048
+      },
+      "font_manifest_sha256": "740e7f973de8141ed3ba2cdc3efe4ab1100c8bf10bbb7883f2f37e4deb864bc2",
+      "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+      "workloads": [
+        {
+          "workload": "ascii-regular",
+          "median_paired_time_change_percent": -74.45527475748372,
+          "paired_time_change_percent": [
+            -81.7182543105666,
+            -73.79546448896153,
+            -74.56746219041032,
+            -74.47182074734185,
+            -74.3293204738704,
+            -74.43872876762558
+          ],
+          "median_AB_percent": -74.56746219041032,
+          "median_BA_percent": -74.43872876762558,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 29.32410286458333,
+            "after": 7.490760416666666
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "ascii-four-styles",
+          "median_paired_time_change_percent": -74.69797085323319,
+          "paired_time_change_percent": [
+            -81.00209640975383,
+            -74.58111819518074,
+            -74.65322524604446,
+            -74.6064665427914,
+            -74.88013112925992,
+            -74.7427164604219
+          ],
+          "median_AB_percent": -74.88013112925992,
+          "median_BA_percent": -74.6064665427914,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 29.601024739583334,
+            "after": 7.491427083333333
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 380,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "mixed-unicode",
+          "median_paired_time_change_percent": -48.429243791404545,
+          "paired_time_change_percent": [
+            -49.46835689285704,
+            -48.168226861406964,
+            -47.42668088074632,
+            -48.69026072140212,
+            -47.23581759104413,
+            -49.69217824905054
+          ],
+          "median_AB_percent": -47.42668088074632,
+          "median_BA_percent": -48.69026072140212,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 29.611279947916664,
+            "after": 15.238694010416665
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 151,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "unicode-scalars",
+          "median_paired_time_change_percent": -18.53758148217269,
+          "paired_time_change_percent": [
+            -18.540806616446876,
+            -19.829011855950405,
+            -18.53435634789851,
+            -18.46768437246554,
+            -18.763421430894873,
+            -17.04086750029652
+          ],
+          "median_AB_percent": -18.540806616446876,
+          "median_BA_percent": -18.46768437246554,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 29.348484374999998,
+            "after": 23.882712239583334
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 159,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "graphemes",
+          "median_paired_time_change_percent": -2.2757893516566434,
+          "paired_time_change_percent": [
+            -0.4728828982368488,
+            -2.3305805612998314,
+            -2.2209981420134555,
+            -0.5783047477901234,
+            -2.339076379684446,
+            -2.676996734035307
+          ],
+          "median_AB_percent": -2.2209981420134555,
+          "median_BA_percent": -2.3305805612998314,
+          "faster_pairs": 6,
+          "median_ns_per_lookup": {
+            "before": 29.623281249999998,
+            "after": 29.0207109375
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 32
+          },
+          "font_name": "DejaVu Sans Mono"
+        }
+      ]
+    }
+  ]
+}

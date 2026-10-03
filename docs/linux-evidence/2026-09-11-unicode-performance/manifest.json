@@ -1,0 +1,68 @@
+{
+  "date": "2026-09-11",
+  "purpose": "Paired evaluation of Unicode boundary and atlas cache allocation optimizations",
+  "source_revisions": {
+    "before": "b58e499",
+    "boundary_change": "ce4799b",
+    "atlas_change": "c51c006"
+  },
+  "compiler": "rustc 1.94.1 (e408947bf 2026-03-25) (Homebrew)",
+  "binary_profiles": "--release --locked; Linux binaries built on Debian 12 arm64 and run on Ubuntu 26.04 arm64",
+  "paired_linux_binary_sha256": {
+    "before": "68cc5a706b7119413e65013198b2ffc3f7e357cf66c9eb058aaeaba4e9cc61f3",
+    "after": "3df28923645b793c3d572e90bb8d1cf048c8e777912d269e08bb4527aea649e2"
+  },
+  "paired_samples": 5,
+  "paired_payload_bytes": 4194304,
+  "decoder_samples": 5,
+  "decoder_mib_per_workload": 8,
+  "paired_order": "before/after on odd samples, after/before on even samples",
+  "host": "Apple M4 macOS; Docker in Colima arm64 Linux VM; shared host, no other task builds/benchmarks during sampling",
+  "graphics": "Weston 14.0.2 headless pixman, LIBGL_ALWAYS_SOFTWARE=1, no physical display/GPU",
+  "validation": {
+    "linux": {
+      "main_tests_passed": 657,
+      "example_tests_passed": 196,
+      "benchmarks_ignored": 1,
+      "check": "passed",
+      "clippy": "passed",
+      "release_build": "passed",
+      "emoji_font": "Noto Color Emoji installed",
+      "x11_clipboard": "passed: exact UTF-8 paste/copy, compound graphemes, wrapped URL and four no-redraw resizes"
+    },
+    "macos": {
+      "main_tests_passed": 559,
+      "example_tests_passed": 196,
+      "check": "passed",
+      "clippy": "passed"
+    }
+  },
+  "limits": [
+    "DSR confirms processing, not frame presentation or input-to-photon latency",
+    "Before/after pixel output not compared by throughput runner; semantic and glyph tests run separately",
+    "Four-terminal exploratory run uses different pixel geometry and cannot establish equivalent visual performance",
+    "These results do not prove superiority on physical Omarchy/Hyprland"
+  ],
+  "evidence_sha256": {
+    "01-after.txt": "e692761ec29cdb5d3b49c86e18dd9ceede85c908f4ef22adb987322e4b630cfa",
+    "01-before.txt": "0f120b5d38f7da50fcb42150415d854ac29e4865a30e188cd73b14b9cb809e9d",
+    "02-after.txt": "d101141721dc113e1e9a475aaaaea28784080ccc5890cda656b75e9f5ee65b7b",
+    "02-before.txt": "c2e5885ab41f34fece710a919eb3554cb6dd2dc6628b49a7dfae682bbee7199f",
+    "03-after.txt": "c9837e7422965d61291ff8ad3d994e1b22273f9889b5fb65dc7ea85ed920e05e",
+    "03-before.txt": "1ab24437d327c1519dc519c4f40c6521521277930217a66f9bd5938436213acb",
+    "04-after.txt": "22a544fdd16354611db90576e209349e0d51e76f296d4d7b884db3b15e268f4d",
+    "04-before.txt": "f4220d07c83a1fe4c87b385bd0fb7c8010a6f512d62e970fcee58c110dbe75fd",
+    "05-after.txt": "16a047299121c94e66fb49270f99a85de000867c92d081bac84e8cb751bcc549",
+    "05-before.txt": "3a0128efb810a6242ea2cd42c5984103010b57c0972a917a8019f0f9928675c7",
+    "decoder.json": "de1f0c2fe98644acb68efaa2b1297a5c1aab3964df1cfd37d70f9e4c2656bf10",
+    "exploratory-four-terminals.json": "75fb7dd13231ee7d4cfd3ef1736c365fb4f5c44e80e304a7d999400da7ac4453",
+    "paired-pty.py": "a4cd00b0e166395429acbc9d728e349ed0f3cde63292a821e9f9031f16dc586a",
+    "paired-wayland.json": "eec91325971f00e91c108f4caba7d27a0fb63b8c66fde1786c2d1245d00175a6",
+    "system-packages.txt": "3afc182bf0734264e32f40f96c57ef9966df90ac7016e7c38dbfaa0038d28cb5"
+  },
+  "ci": {
+    "revision": "c51c006",
+    "status": "success",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34605347739"
+  }
+}

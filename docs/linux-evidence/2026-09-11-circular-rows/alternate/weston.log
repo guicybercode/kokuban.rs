@@ -1,0 +1,32 @@
+Date: 2026-09-11 UTC
+[15:58:39.017] weston 13.0.0
+               https://wayland.freedesktop.org
+               Bug reports to: https://gitlab.freedesktop.org/wayland/weston/issues/
+               Build: 13.0.0
+[15:58:39.017] Command line: weston --backend=headless-backend.so --use-pixman --socket=wayland-kokuban-paired --idle-time=0 --width=1280 --height=900 --log=/home/runner/work/_temp/kokuban-paired-evidence/weston.log
+[15:58:39.017] OS: Linux, 6.17.0-1022-azure, #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026, x86_64
+[15:58:39.017] Flight recorder: enabled
+[15:58:39.017] Starting with no config file.
+[15:58:39.025] Output repaint window is 7 ms maximum.
+[15:58:39.025] Loading module '/usr/lib/x86_64-linux-gnu/libweston-13/headless-backend.so'
+[15:58:39.036] Using Pixman renderer
+[15:58:39.036] Registered plugin API 'weston_windowed_output_api_v2' of size 16
+[15:58:39.037] Color manager: no-op
+[15:58:39.044] Output 'headless' attempts EOTF mode: SDR
+[15:58:39.044] Output 'headless' using color profile: stock sRGB color profile
+[15:58:39.044] Output 'headless' enabled with head(s) headless
+[15:58:39.044] Compositor capabilities:
+               arbitrary surface rotation: yes
+               screen capture uses y-flip: no
+               cursor planes: no
+               arbitrary resolutions: no
+               view mask clipping: yes
+               explicit sync: no
+               color operations: no
+               presentation clock: CLOCK_MONOTONIC_RAW, id 4
+               presentation clock resolution: 0.000000001 s
+[15:58:39.045] Loading module '/usr/lib/x86_64-linux-gnu/weston/desktop-shell.so'
+[15:58:39.045] launching '/usr/libexec/weston-keyboard'
+[15:58:39.045] launching '/usr/libexec/weston-desktop-shell'
+[16:00:04.741] caught signal 15
+[16:00:04.741] BUG: finalizing a layer with views still on it.

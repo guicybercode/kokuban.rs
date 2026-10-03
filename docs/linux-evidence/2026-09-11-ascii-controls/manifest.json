@@ -1,0 +1,635 @@
+{
+  "schema": 1,
+  "kind": "ascii-controls-classification-paired-evidence",
+  "date": "2026-09-11",
+  "conclusion": "No overall performance gain is demonstrated: ASCII, ANSI and Unicode medians decrease; short-line median increases slightly, with mixed pairwise results. Overlapping ranges do not prove noise.",
+  "measurement_run": {
+    "id": 34620206592,
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34620206592",
+    "harness_revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+    "conclusion": "success",
+    "raw_report": "ci-report.json",
+    "raw_report_sha256": "10643db29ca82a5c4a58294c3aca54107fd2a5adbf2b93fca16bf0b445a51c3e",
+    "raw_report_byte_identical_to_download": true,
+    "artifact": {
+      "id": 10271688906,
+      "name": "linux-paired-revision-measurements",
+      "zip_bytes_recorded_ci": 97403,
+      "zip_sha256_recorded_ci": "sha256:8f0b344efe8bdc7316eaf721516dfc3e89dca55fdedc9952d53f34f2758f8852",
+      "zip_independently_rehashed": false
+    }
+  },
+  "binaries": {
+    "before": {
+      "source_revision": "5d1712ec22ed26d701002a519dd974f2255b4d81",
+      "sha256_recorded_ci": "40245ee01db0eb6357418e80c943502e85364c77f5710271e9e894c14eb61c15",
+      "binary_bytes_retained": false,
+      "binary_independently_rehashed": false,
+      "source_directory": "/home/runner/work/_temp/kokuban-paired-source-before",
+      "target_directory": "/home/runner/work/_temp/kokuban-paired-build-before",
+      "cargo_inputs": {
+        "Cargo.toml": {
+          "sha256": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+          "bytes": 2021,
+          "retained": "../2026-09-11-utf8-dispatch/Cargo.toml"
+        },
+        "Cargo.lock": {
+          "sha256": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+          "bytes": 69307,
+          "retained": "../2026-09-11-utf8-dispatch/Cargo.lock"
+        }
+      },
+      "cargo_tree_sha256": "efe223d9deaa9639402da9644a7ccd0509457dec8c01d169238600a99b981771"
+    },
+    "after": {
+      "source_revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+      "sha256_recorded_ci": "284ac72cd25f5ff3b9000815045c44e7a0af3f617a3fb23f305e7b0bd3d1c4e6",
+      "binary_bytes_retained": false,
+      "binary_independently_rehashed": false,
+      "source_directory": "/home/runner/work/_temp/kokuban-paired-source-after",
+      "target_directory": "/home/runner/work/_temp/kokuban-paired-build-after",
+      "cargo_inputs": {
+        "Cargo.toml": {
+          "sha256": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+          "bytes": 2021,
+          "retained": "../2026-09-11-utf8-dispatch/Cargo.toml"
+        },
+        "Cargo.lock": {
+          "sha256": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+          "bytes": 69307,
+          "retained": "../2026-09-11-utf8-dispatch/Cargo.lock"
+        }
+      },
+      "cargo_tree_sha256": "32649be1c8446d2f40ec4164ac93c06e61a0ea0ef89adf7a5f6f4c4df580cde7"
+    }
+  },
+  "build_audit": {
+    "exact_git_archives": true,
+    "separate_source_and_target_directories": true,
+    "both_root_crates_compiled_in_log": true,
+    "build_flags": [
+      "--release",
+      "--locked"
+    ],
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_PROFILE_RELEASE_DEBUG": "0",
+    "application_changes": [
+      "src/parser/ansi.rs"
+    ],
+    "cargo_trees_equal_except_root_source_path": true,
+    "after_cargo_tree_retained": "after-cargo-tree.txt"
+  },
+  "harness": {
+    "scripts/compare-kokuban-revisions.py": {
+      "revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+      "sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd",
+      "bytes": 13551,
+      "url": "https://github.com/guicybercode/kokuban.rs/blob/5c1f436751a5ab714caf7d874940baff929d6469/scripts/compare-kokuban-revisions.py"
+    },
+    "scripts/compare-terminal-performance.py": {
+      "revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+      "sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12",
+      "bytes": 28687,
+      "url": "https://github.com/guicybercode/kokuban.rs/blob/5c1f436751a5ab714caf7d874940baff929d6469/scripts/compare-terminal-performance.py"
+    },
+    "scripts/linux-resource-smoke.py": {
+      "revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+      "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+      "bytes": 17732,
+      "url": "https://github.com/guicybercode/kokuban.rs/blob/5c1f436751a5ab714caf7d874940baff929d6469/scripts/linux-resource-smoke.py"
+    }
+  },
+  "workflow": {
+    "revision": "5c1f436751a5ab714caf7d874940baff929d6469",
+    "path": ".github/workflows/linux-paired-performance.yml",
+    "sha256": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4",
+    "retained": "../2026-09-11-utf8-dispatch/linux-paired-performance.yml"
+  },
+  "environment": {
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpu_model": "AMD EPYC 9V45 96-Core Processor",
+    "runner_cpu_count": 4,
+    "runner_affinity_observed": [
+      0
+    ],
+    "child_affinity": "Inherited from taskset; not read back individually for each terminal.",
+    "backend": "wayland",
+    "DISPLAY": null,
+    "WAYLAND_DISPLAY": "wayland-kokuban-paired",
+    "compositor": "Weston headless Pixman; see weston.log",
+    "font_match": {
+      "command": [
+        "fc-match",
+        "-f",
+        "%{family}\n%{file}\n",
+        "DejaVu Sans Mono"
+      ],
+      "status": 0,
+      "output": "DejaVu Sans Mono\n/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    },
+    "geometry_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "cell_pixels": [
+      9,
+      17
+    ],
+    "screen": "alternate",
+    "effective_history_lines": 0,
+    "requested_top_level_history_lines": 10000,
+    "settle_seconds": 1.0
+  },
+  "audit": {
+    "successful_terminal_processes": 10,
+    "workload_measurements": 40,
+    "protocol_rtt_observations": 300,
+    "execution_order_verified_against_log": [
+      {
+        "pair": 1,
+        "side": "before"
+      },
+      {
+        "pair": 1,
+        "side": "after"
+      },
+      {
+        "pair": 2,
+        "side": "after"
+      },
+      {
+        "pair": 2,
+        "side": "before"
+      },
+      {
+        "pair": 3,
+        "side": "before"
+      },
+      {
+        "pair": 3,
+        "side": "after"
+      },
+      {
+        "pair": 4,
+        "side": "after"
+      },
+      {
+        "pair": 4,
+        "side": "before"
+      },
+      {
+        "pair": 5,
+        "side": "before"
+      },
+      {
+        "pair": 5,
+        "side": "after"
+      }
+    ],
+    "config_sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "all_configs_byte_identical": true,
+    "payloads_regenerated_from_pinned_generator": true,
+    "all_geometries_match": true,
+    "all_final_DSR_replies_hex": "1b5b313b3552",
+    "samples": [
+      {
+        "directory": "01-before",
+        "terminal_pid_recorded_ci": 10076,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "bd2219561cc450153166efe8d97004a8db475dca61ac249ceb90db975e96c0f1",
+        "sample_sha256": "e77849a1ff4d29a8bdca77cdc726e96e971aa3881340ae08d4fe713a33cf3327",
+        "result_sha256": "a054b1dfa2b9912b5855674c8df1829c1a387eee9bce12024c0d53770df45062"
+      },
+      {
+        "directory": "02-before",
+        "terminal_pid_recorded_ci": 10108,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "bc100a8ef0b91c845dd31d6a9a6781dd5ede95dc75fb65e7757f139dd4602479",
+        "sample_sha256": "de66aaf8844f45f49e1d807b04601e2747d84364fdbfc9e9de50b9cd1ea5bbd5",
+        "result_sha256": "065d36be5dacebf5debd7a2ba2eccb08aa825c023230701e902c22bfb79bd0c9"
+      },
+      {
+        "directory": "03-before",
+        "terminal_pid_recorded_ci": 10118,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "dfe46a037000a4b4bddfa6b01ee8e8311e9fb2c25fa8b5229c6ba8c370e195c2",
+        "sample_sha256": "44fc8d6e3341d70ad465166443aacd3121ffb155ceaac5f3225f5af869bd1069",
+        "result_sha256": "ef64134e69f2c2dadd814575acebab25d59b4b56cffd66fe2b8426990d834945"
+      },
+      {
+        "directory": "04-before",
+        "terminal_pid_recorded_ci": 10151,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "8093bda5924990951203da3ab191c92a49824c2717c4f21a3d7a29c4e3cc7436",
+        "sample_sha256": "f467985dd7f31f6191e7dc96edd2c5086eed425516add20dfb7db77534bddaf8",
+        "result_sha256": "be150babc06fcf2976e29edf0c6bc2aa9309fa79a3f25adfb9b061d6c141a0a9"
+      },
+      {
+        "directory": "05-before",
+        "terminal_pid_recorded_ci": 10161,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "358f7b564509fcc270a96b2d839b91e6bb09ab288b588d88909bcc68ba460972",
+        "sample_sha256": "aea9684396ec3bbf79e8dfbd45940887c303e4cdaf00bd69397055924c5005a9",
+        "result_sha256": "c2a82caba2e92fdc7fc6b353c4377669d94e15d3e1d2a8b4377fe56da552b48a"
+      },
+      {
+        "directory": "01-after",
+        "terminal_pid_recorded_ci": 10086,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "320160e153ded173115bb79e8feb983468338bea4863e8311943f2a8f063be8e",
+        "sample_sha256": "d3b885db755fc099015b9564a75b469c90d8a28771dc27be7c164eb00bf5c8b8",
+        "result_sha256": "3f470b14e083e78f8e8e629d7c7f0f434180ec520296fb1257e2852df2b46f48"
+      },
+      {
+        "directory": "02-after",
+        "terminal_pid_recorded_ci": 10096,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "b2065845d3f22c3a1cfc00f46c4612b68ec4e5e783527f6c197175c072c4d5c7",
+        "sample_sha256": "5309c7b1ee7f2447c72ec0306f8f3f3f2e2dddff30e77231cafb617c505882c0",
+        "result_sha256": "6b46df397a7810cd9dfa544a9fd0184da06e0be7ba933e4254d940a64c760f66"
+      },
+      {
+        "directory": "03-after",
+        "terminal_pid_recorded_ci": 10128,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "c8d89959e48bcb92c9bf8cef9a992a8a88ca8527fa08e2097471635f66115af5",
+        "sample_sha256": "ad50d3729d05bcac574b55b7c5ef81267304821ba4432966f9165985c0d7e346",
+        "result_sha256": "c5a7bdd848cbe26f185b2611991d88a69c996f3eb9358fa10b7d1ddcd900af95"
+      },
+      {
+        "directory": "04-after",
+        "terminal_pid_recorded_ci": 10141,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "404e176a5d366bb8f39579c82da09b051dcd5c43de7afe9b70e66983834dc964",
+        "sample_sha256": "b4d7988ff85bb087079e6631f5f26a8383a6a273c80a394e980c004944d59697",
+        "result_sha256": "23f3bb76327d1b6f2e93952c1f67ea004e8ecc1484d4e4e8e69c2ed5fd6fb020"
+      },
+      {
+        "directory": "05-after",
+        "terminal_pid_recorded_ci": 10173,
+        "raw_sample_and_result_match_report": true,
+        "case_sha256": "0b1a2a3427c3b56a3e4e76da0a201dc4659a0f01c683e840d6ab3c4d6c1934c9",
+        "sample_sha256": "f81f57189ba55d2e18eaacb85a9fd5967020d29625832bfc1eaf6dcd93c33eb6",
+        "result_sha256": "4bd55bb653715c381360cc07dd1914f42a1cf0daa763ae3cebe294f2944db124"
+      }
+    ],
+    "original_artifact_inventory": "artifact-sha256.tsv"
+  },
+  "throughput": {
+    "ascii": {
+      "mib_per_second": {
+        "before": {
+          "count": 5,
+          "median": 133.56773007378158,
+          "min": 129.6025213664275,
+          "max": 136.08961447354358,
+          "median_absolute_deviation": 1.4586146150891182,
+          "samples": [
+            133.56773007378158,
+            132.49713986441958,
+            129.6025213664275,
+            136.08961447354358,
+            135.0263446888707
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 131.05852464320716,
+          "min": 126.29460970390222,
+          "max": 132.14373399019422,
+          "median_absolute_deviation": 0.7822159036601875,
+          "samples": [
+            126.29460970390222,
+            131.7492015715542,
+            130.27630873954698,
+            131.05852464320716,
+            132.14373399019422
+          ]
+        }
+      },
+      "ratio_of_medians_change_percent": -1.8786015373536302,
+      "pairwise_change_percent": {
+        "count": 5,
+        "median": -2.134850576988234,
+        "min": -5.445267630034401,
+        "max": 0.5198875500380451,
+        "median_absolute_deviation": 1.5703566613982756,
+        "samples": [
+          -5.445267630034401,
+          -0.5644939155899587,
+          0.5198875500380451,
+          -3.696894762909686,
+          -2.134850576988234
+        ]
+      },
+      "pairs_slower_after": 4,
+      "min_max_intervals_overlap": true,
+      "terminal_cpu_seconds": {
+        "before": {
+          "count": 5,
+          "median": 0.21,
+          "min": 0.19999999999999998,
+          "max": 0.21,
+          "median_absolute_deviation": 0.0,
+          "samples": [
+            0.21,
+            0.21,
+            0.21,
+            0.19999999999999998,
+            0.19999999999999998
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 0.21,
+          "min": 0.19999999999999998,
+          "max": 0.22,
+          "median_absolute_deviation": 0.0,
+          "samples": [
+            0.21,
+            0.21,
+            0.22,
+            0.21,
+            0.19999999999999998
+          ]
+        }
+      }
+    },
+    "ansi": {
+      "mib_per_second": {
+        "before": {
+          "count": 5,
+          "median": 114.46074099756424,
+          "min": 111.03892518933787,
+          "max": 115.02672315889474,
+          "median_absolute_deviation": 0.4102621276079077,
+          "samples": [
+            115.02672315889474,
+            114.64056706618798,
+            111.03892518933787,
+            114.46074099756424,
+            114.05047886995634
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 112.91631688041033,
+          "min": 111.61944203371347,
+          "max": 113.58404122523055,
+          "median_absolute_deviation": 0.6677243448202148,
+          "samples": [
+            113.201279589971,
+            113.58404122523055,
+            112.02631769161383,
+            111.61944203371347,
+            112.91631688041033
+          ]
+        }
+      },
+      "ratio_of_medians_change_percent": -1.3493046643711426,
+      "pairwise_change_percent": {
+        "count": 5,
+        "median": -0.9944386036635611,
+        "min": -2.4823349378030324,
+        "max": 0.889230961658094,
+        "median_absolute_deviation": 0.592534856757565,
+        "samples": [
+          -1.586973460421126,
+          -0.9215985824175488,
+          0.889230961658094,
+          -2.4823349378030324,
+          -0.9944386036635611
+        ]
+      },
+      "pairs_slower_after": 4,
+      "min_max_intervals_overlap": true,
+      "terminal_cpu_seconds": {
+        "before": {
+          "count": 5,
+          "median": 0.25,
+          "min": 0.24,
+          "max": 0.26,
+          "median_absolute_deviation": 0.010000000000000009,
+          "samples": [
+            0.24,
+            0.25,
+            0.25,
+            0.26,
+            0.24
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 0.25,
+          "min": 0.25,
+          "max": 0.25,
+          "median_absolute_deviation": 0.0,
+          "samples": [
+            0.25,
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ]
+        }
+      }
+    },
+    "unicode": {
+      "mib_per_second": {
+        "before": {
+          "count": 5,
+          "median": 40.075897764300485,
+          "min": 38.168876830337034,
+          "max": 40.89759175671503,
+          "median_absolute_deviation": 0.22936052019817055,
+          "samples": [
+            40.89759175671503,
+            39.846537244102315,
+            38.168876830337034,
+            40.16052927153046,
+            40.075897764300485
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 39.40577735674733,
+          "min": 39.05935931125944,
+          "max": 40.6305266511442,
+          "median_absolute_deviation": 0.3464180454878871,
+          "samples": [
+            40.49523221009772,
+            39.11964103062308,
+            39.05935931125944,
+            40.6305266511442,
+            39.40577735674733
+          ]
+        }
+      },
+      "ratio_of_medians_change_percent": -1.672128248989846,
+      "pairwise_change_percent": {
+        "count": 5,
+        "median": -0.9838221013374171,
+        "min": -1.824239353663848,
+        "max": 2.333006771146695,
+        "median_absolute_deviation": 0.8404172523264308,
+        "samples": [
+          -0.9838221013374171,
+          -1.824239353663848,
+          2.333006771146695,
+          1.1702967768079775,
+          -1.672128248989846
+        ]
+      },
+      "pairs_slower_after": 3,
+      "min_max_intervals_overlap": true,
+      "terminal_cpu_seconds": {
+        "before": {
+          "count": 5,
+          "median": 0.77,
+          "min": 0.7500000000000002,
+          "max": 0.8,
+          "median_absolute_deviation": 0.010000000000000231,
+          "samples": [
+            0.7500000000000002,
+            0.7800000000000002,
+            0.8,
+            0.76,
+            0.77
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 0.7700000000000002,
+          "min": 0.7400000000000002,
+          "max": 0.7800000000000002,
+          "median_absolute_deviation": 0.010000000000000009,
+          "samples": [
+            0.7400000000000002,
+            0.7800000000000002,
+            0.7800000000000002,
+            0.76,
+            0.7700000000000002
+          ]
+        }
+      }
+    },
+    "short_lines": {
+      "mib_per_second": {
+        "before": {
+          "count": 5,
+          "median": 53.17554466500566,
+          "min": 48.180338845373804,
+          "max": 54.43665796313782,
+          "median_absolute_deviation": 1.2611132981321589,
+          "samples": [
+            50.34669244662557,
+            48.180338845373804,
+            53.17554466500566,
+            53.191636234803696,
+            54.43665796313782
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 53.572481192674225,
+          "min": 52.1376872471195,
+          "max": 54.155946617939065,
+          "median_absolute_deviation": 0.5834654252648406,
+          "samples": [
+            52.1485066105829,
+            54.155946617939065,
+            53.572481192674225,
+            53.967062308980694,
+            52.1376872471195
+          ]
+        }
+      },
+      "ratio_of_medians_change_percent": 0.7464644324175262,
+      "pairwise_change_percent": {
+        "count": 5,
+        "median": 1.457796994162841,
+        "min": -4.223203264195763,
+        "max": 12.402585610165406,
+        "median_absolute_deviation": 2.121016382440799,
+        "samples": [
+          3.57881337660364,
+          12.402585610165406,
+          0.7464644324175262,
+          1.457796994162841,
+          -4.223203264195763
+        ]
+      },
+      "pairs_slower_after": 1,
+      "min_max_intervals_overlap": true,
+      "terminal_cpu_seconds": {
+        "before": {
+          "count": 5,
+          "median": 0.56,
+          "min": 0.54,
+          "max": 0.6200000000000001,
+          "median_absolute_deviation": 0.020000000000000018,
+          "samples": [
+            0.6000000000000001,
+            0.6200000000000001,
+            0.56,
+            0.56,
+            0.54
+          ]
+        },
+        "after": {
+          "count": 5,
+          "median": 0.56,
+          "min": 0.5500000000000003,
+          "max": 0.5800000000000001,
+          "median_absolute_deviation": 0.009999999999999787,
+          "samples": [
+            0.5800000000000001,
+            0.5500000000000003,
+            0.56,
+            0.56,
+            0.5800000000000001
+          ]
+        }
+      }
+    }
+  },
+  "protocol_rtt_seconds": {
+    "before": {
+      "count": 150,
+      "median": 3.6084499996036357e-05,
+      "min": 2.8783999994175247e-05,
+      "max": 4.736200003208069e-05,
+      "median_absolute_deviation": 1.227500007416893e-06
+    },
+    "after": {
+      "count": 150,
+      "median": 3.6570500014931895e-05,
+      "min": 2.599900000177513e-05,
+      "max": 4.594999995788385e-05,
+      "median_absolute_deviation": 1.7375000140873453e-06
+    }
+  },
+  "validation": "test-summary.json",
+  "retained_files_checksum_inventory": "evidence-sha256.txt",
+  "log_provenance": {
+    "measurement_full_log_bytes": 315212,
+    "measurement_full_log_sha256": "f639b29b078cf27ef79f723a60d856cd86a08fea2d09351f75c9f7347b10331c",
+    "full_log_retained": false,
+    "selected_lines_retained": "ci-log-excerpt.txt"
+  },
+  "limitations": [
+    "DSR processing throughput and protocol RTT only; no input-to-photon or rendered-equivalence proof.",
+    "Headless Weston/Pixman CI is not a physical Omarchy/Hyprland/GPU session and does not rank other terminals.",
+    "Five pairs describe this runner; overlapping ranges alone neither establish equivalence nor prove measurement noise.",
+    "This run used EPYC 9V45, while the original UTF-8 dispatch run used EPYC 7763; do not compare absolute speeds across the runs.",
+    "CPU counters are coarse; equal medians do not establish equal instruction cost.",
+    "Binary and artifact-zip hashes are recorded CI observations; bytes were not independently rehashed.",
+    "Artifact payload files were excluded from upload; sizes and hashes were independently regenerated from pinned scripts.",
+    "Shared Cargo inputs and workflow are referenced from the prior evidence package after byte-for-byte comparison."
+  ],
+  "original_unfavorable_utf8_evidence": "../2026-09-11-utf8-dispatch/manifest.json",
+  "rendering_equivalence_verified": false
+}

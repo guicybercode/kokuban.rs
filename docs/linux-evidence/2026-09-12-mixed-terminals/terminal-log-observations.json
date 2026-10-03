@@ -1,0 +1,142 @@
+{
+  "01-kokuban": [
+    "[2026-09-12T22:05:03Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "02-kokuban": [
+    "[2026-09-12T22:06:05Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "03-kokuban": [
+    "[2026-09-12T22:06:28Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "04-kokuban": [
+    "[2026-09-12T22:06:57Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "05-kokuban": [
+    "[2026-09-12T22:07:22Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "01-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "02-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "03-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "04-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "05-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "01-kitty": [
+    "[0.219] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.522] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.522] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ],
+  "02-kitty": [
+    "[0.223] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.531] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.531] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ],
+  "03-kitty": [
+    "[0.220] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.516] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.516] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ],
+  "04-kitty": [
+    "[0.221] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.520] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.520] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ],
+  "05-kitty": [
+    "[0.221] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.518] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.518] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ],
+  "preflight-baseline-kokuban": [
+    "[2026-09-12T22:04:50Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "preflight-baseline-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "preflight-baseline-kitty": [
+    "[0.695] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.995] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.995] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ],
+  "preflight-adjusted-kokuban": [
+    "[2026-09-12T22:04:57Z ERROR sctk_adwaita::config] XDG Settings Portal did not return response in time: timeout: 100ms, key: color-scheme"
+  ],
+  "preflight-adjusted-ghostty": [
+    "warning(gtk_ghostty_application): setting GDK_DEBUG=",
+    "warning(gtk_ghostty_application): setting GDK_DISABLE=gles-api,vulkan",
+    "warning(glib): WARNING: Adwaita: The resource style-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Adwaita: The resource style-hc-dark.css is deprecated and shouldn't be used anymore. Use style.css with media queries instead.",
+    "warning(glib): WARNING: Gtk: Unable to acquire the address of the accessibility bus: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files. If you are attempting to run GTK without a11y support, GTK_A11Y should be set to 'none'.",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default",
+    "warning(gtk_ghostty_application): unimplemented action=.cell_size",
+    "warning(gtk_ghostty_surface): gtk-xft-dpi has invalid value (-1), using default"
+  ],
+  "preflight-adjusted-kitty": [
+    "[0.218] Could not move child process into a systemd scope: [Errno 5] Failed to call StartTransientUnit: org.freedesktop.DBus.Error.Spawn.ChildExited: Process org.freedesktop.systemd1 exited with status 1",
+    "[0.515] [glfw error 65544]: process_desktop_settings: failed with error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files",
+    "[0.515] [glfw error 65544]: Notify: Failed to get server capabilities error: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Notifications was not provided by any .service files"
+  ]
+}

@@ -48,8 +48,8 @@ fragment float4 fragment_main(
     texture2d<float> atlas [[texture(0)]],
     sampler samp [[sampler(0)]]
 ) {
-    float coverage = atlas.sample(samp, in.uv).r;
-    return mix(in.bg_color, in.fg_color, coverage);
+    float4 glyph = atlas.sample(samp, in.uv);
+    return mix(in.bg_color, float4(in.fg_color.rgb * glyph.rgb, in.fg_color.a), glyph.a);
 }
 
 // Image fragment shader: samples RGBA texture directly

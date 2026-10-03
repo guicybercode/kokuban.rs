@@ -1,0 +1,85 @@
+{
+  "command": [
+    "/build/target/release/kokuban",
+    "-e",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/preflight-baseline-kokuban"
+  ],
+  "config": {
+    "filename": "kokuban.toml",
+    "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+    "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "history_limit": 0,
+    "history_unit": "lines"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      7.947000000285698e-05,
+      7.635400001504422e-05,
+      7.463100001814382e-05,
+      7.510200001092926e-05,
+      0.00010056099998223544,
+      8.431899999550296e-05,
+      8.006100000557126e-05,
+      8.200400000646368e-05,
+      8.379799999147508e-05,
+      7.516200000168283e-05,
+      5.364099999383143e-05,
+      6.211800001665324e-05,
+      5.12370000080864e-05,
+      6.061399997747685e-05,
+      5.909099999712453e-05,
+      4.9893999999994776e-05,
+      6.064500001912165e-05,
+      5.102599999418089e-05,
+      6.05239999913465e-05,
+      5.03259999788952e-05,
+      5.922199997598909e-05,
+      8.449899999618538e-05,
+      8.385799998222865e-05,
+      6.587400000057642e-05,
+      5.0965999975005616e-05,
+      6.127499997887753e-05,
+      5.1286999990907134e-05,
+      4.80000000209202e-05,
+      4.802999998787527e-05,
+      5.8660000007648705e-05
+    ],
+    "workloads": {
+      "geometry_probe": {
+        "bytes": 988,
+        "sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967",
+        "write_seconds": 1.1040999993383593e-05,
+        "drain_rtt_seconds": 7.739599999467828e-05,
+        "write_and_dsr_seconds": 8.843699998806187e-05,
+        "mib_per_second": 10.65425358997441,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.0,
+        "terminal_rss_before_kib": 17156,
+        "terminal_rss_after_kib": 17156
+      }
+    },
+    "term": "xterm-256color"
+  },
+  "status": "passed"
+}

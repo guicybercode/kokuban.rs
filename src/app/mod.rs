@@ -1,10 +1,12 @@
 pub mod confirm;
+mod reader;
+mod render_scheduler;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
 use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
-use crate::grid::{Grid, TerminalEvent};
+use crate::grid::Grid;
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
 use crate::pane::pane::Pane;
@@ -12,7 +14,7 @@ use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::parser::sixel::SixelImage;
 use crate::render_scene::ChromeColors;
-use crate::renderer::image_store::{ImageFormat, ImageStore};
+use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use crate::window_title::WINDOW_TITLE;
 
@@ -175,9 +177,19 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         sixel: config.images.sixel_graphics_enabled(),
     };
 
+    let reader_wake =
+        Arc::new(reader::ReaderWake::new().expect("Failed to create PTY reader wake socket"));
+    let input_failure_wake = reader_wake.clone();
     let pane_tree = Arc::new(Mutex::new(
-        PaneTree::new(cols, rows, scrollback_max, kitty_options, graphics_support)
-            .expect("Failed to create initial pane"),
+        PaneTree::new(
+            cols,
+            rows,
+            scrollback_max,
+            kitty_options,
+            graphics_support,
+            Arc::new(move || input_failure_wake.wake()),
+        )
+        .expect("Failed to create initial pane"),
     ));
 
     let scale_factor = 2.0f32;
@@ -297,6 +309,28 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         window.setHasShadow(true);
     }
 
+    // Frames run on the main queue only when requested (at most 60 Hz). The
+    // callback also applies window titles and termination requested elsewhere.
+    let frame_dirty = dirty.clone();
+    let frame_should_close = should_close.clone();
+    // Keep the callback sendable; recover the main-thread-only window by number per frame.
+    let frame_window_number = window.windowNumber();
+    let render_scheduler = render_scheduler::RenderScheduler::new(
+        dirty.clone(),
+        Box::new(move || {
+            if frame_should_close.load(Ordering::Acquire) {
+                let mtm = MainThreadMarker::new().expect("frames run on the main thread");
+                NSApplication::sharedApplication(mtm).terminate(None);
+                return;
+            }
+            window::sync_window_title(frame_window_number);
+            window::render_if_dirty(&frame_dirty);
+        }),
+    );
+
+    let update_status: crate::update::SharedUpdateStatus =
+        Arc::new(Mutex::new(crate::update::UpdateStatus::Idle));
+
     let prompt_indicator_color = if config.prompt_marks.enabled && config.prompt_marks.show_indicator {
         Some(ColorConfig::parse_hex(&config.prompt_marks.indicator_color))
     } else {
@@ -310,7 +344,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         pane_cleanup.clone(),
         atlas.clone(),
         dirty.clone(),
+        render_scheduler.clone(),
         should_close.clone(),
+        reader_wake.clone(),
         window_is_key.clone(),
         default_fg,
         default_bg,
@@ -333,6 +369,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         window_title.clone(),
         config.confirm.on_close_pane,
         config.confirm.on_quit,
+        update_status.clone(),
     );
 
     window.setContentView(Some(&view));
@@ -343,271 +380,41 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     window.makeKeyAndOrderFront(None);
     window.center();
 
-    // PTY reader thread: reads from ALL panes
+    // PTY reader thread: waits on ALL panes without periodic wakeups
     let reader_tree = pane_tree.clone();
-    let reader_dirty = dirty.clone();
-    let reader_should_close = should_close.clone();
-    let reader_image_store = image_store.clone();
+    let reader_render_scheduler = render_scheduler.clone();
     let reader_atlas = atlas.clone();
-    let reader_window_title = window_title.clone();
-    let reader_window_is_key = window_is_key.clone();
-    let reader_pane_cleanup = pane_cleanup.clone();
+    let reader_thread_wake = reader_wake.clone();
+    let reader_shared = reader::ReaderShared {
+        image_store: image_store.clone(),
+        window_title: window_title.clone(),
+        window_is_key: window_is_key.clone(),
+        should_close: should_close.clone(),
+        pane_cleanup: pane_cleanup.clone(),
+        kitty_enabled,
+        sixel_enabled,
+    };
 
     let reader_handle = std::thread::Builder::new()
         .name("pty-reader".to_string())
         .spawn(move || {
-            let mut buf = [0u8; 4096];
-
-            loop {
-                if reader_should_close.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                let mut any_data = false;
-                let mut dead_panes = Vec::new();
-
-                {
-                    // Lock atlas FIRST (canonical order: atlas → tree → image_store).
-                    // Keep it locked until the tree snapshot belongs to the same metric epoch.
-                    let ((cell_w, cell_h), mut tree) = snapshot_then_lock(
-                        reader_atlas.as_ref(),
-                        reader_tree.as_ref(),
-                        |atlas| (atlas.cell_width, atlas.cell_height),
-                    );
-                    let pane_ids = tree.pane_ids();
-
-                    for id in pane_ids {
-                        if tree.pane(id).is_some_and(|pane| pane.input_failed()) {
-                            dead_panes.push(id);
-                            continue;
-                        }
-                        let title_revision_before = tree
-                            .pane(id)
-                            .map(|pane| pane.grid.title_revision())
-                            .unwrap_or_default();
-                        let read_result = match tree.pane_mut(id) {
-                            Some(pane) => pane.pty.read(&mut buf),
-                            None => continue,
-                        };
-
-                        match read_result {
-                            Ok(0) => {
-                                log::info!("PTY EOF for pane {id}");
-                                dead_panes.push(id);
-                            }
-                            Ok(n) => {
-                                let mut parsed_bytes = 0;
-                                while parsed_bytes < n {
-                                    let (consumed, terminal_events) = {
-                                        let Some(pane) = tree.pane_mut(id) else {
-                                            break;
-                                        };
-                                        let step = pane.decoder.feed_until_event(
-                                            &buf[parsed_bytes..n],
-                                            &mut pane.grid,
-                                        );
-                                        (step.consumed, step.events)
-                                    };
-                                    debug_assert!(consumed > 0);
-                                    parsed_bytes += consumed;
-
-                                    for event in terminal_events {
-                                        match event {
-                                            TerminalEvent::Response(response) => {
-                                                if let Some(pane) = tree.pane(id) {
-                                                    pane.queue_input(response);
-                                                }
-                                            }
-                                            TerminalEvent::KittyGraphics {
-                                                command,
-                                                cursor_row,
-                                                cursor_col,
-                                            } => {
-                                                if !kitty_enabled {
-                                                    continue;
-                                                }
-                                                let mut hard_delete_candidates = {
-                                                    let Some(pane) = tree.pane_mut(id) else {
-                                                        continue;
-                                                    };
-                                                    let grid_cols = pane.grid.cols();
-                                                    let grid_rows = pane.grid.rows();
-                                                    let outcome = {
-                                                        let mut store =
-                                                            reader_image_store.lock().unwrap();
-                                                        pane.kitty_handler.process(
-                                                            command,
-                                                            &mut store,
-                                                            cursor_row,
-                                                            cursor_col,
-                                                            cell_w,
-                                                            cell_h,
-                                                            grid_cols,
-                                                            grid_rows,
-                                                            &mut pane.grid.image_placements,
-                                                        )
-                                                    };
-                                                    if let Some(image_id) =
-                                                        outcome.retransmitted_image_id
-                                                    {
-                                                        pane.grid
-                                                            .remove_hidden_primary_kitty_placements(
-                                                                image_id,
-                                                            );
-                                                    }
-                                                    if let Some(response) = outcome.response {
-                                                        pane.queue_input(response);
-                                                    }
-                                                    // Advance cursor for inline images
-                                                    if let Some(adv) = outcome.advance {
-                                                        pane.grid.advance_image_cursor(
-                                                            adv.cols,
-                                                            adv.rows,
-                                                        );
-                                                    }
-                                                    outcome.hard_delete_candidates
-                                                };
-
-                                                if !hard_delete_candidates.is_empty() {
-                                                    tree.retain_unreferenced_image_ids(
-                                                        &mut hard_delete_candidates,
-                                                    );
-                                                    if !hard_delete_candidates.is_empty() {
-                                                        let mut store =
-                                                            reader_image_store.lock().unwrap();
-                                                        for image_id in hard_delete_candidates {
-                                                            store.remove(image_id);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            TerminalEvent::SixelGraphics {
-                                                image,
-                                                cursor_row,
-                                                cursor_col,
-                                            } => {
-                                                if !sixel_enabled {
-                                                    continue;
-                                                }
-                                                let Some(pane) = tree.pane_mut(id) else {
-                                                    continue;
-                                                };
-                                                process_sixel_event(
-                                                    &mut pane.grid,
-                                                    &image,
-                                                    (cursor_row, cursor_col),
-                                                    (cell_w, cell_h),
-                                                    |image| {
-                                                        let mut store =
-                                                            reader_image_store.lock().unwrap();
-                                                        let image_id = store.next_id();
-                                                        store.store(
-                                                            &image.pixels,
-                                                            image.width,
-                                                            image.height,
-                                                            ImageFormat::Rgba,
-                                                            Some(image_id),
-                                                        )
-                                                    },
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-
-                                let focused_title_changed = id == tree.focused
-                                    && tree.pane(id).is_some_and(|pane| {
-                                        pane.grid.title_revision() != title_revision_before
-                                    });
-                                if focused_title_changed {
-                                    window::publish_focused_window_title(
-                                        &tree,
-                                        reader_window_title.as_ref(),
-                                    );
-                                }
-                                any_data = true;
-                            }
-                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                            Err(e) => {
-                                log::error!("PTY read error for pane {id}: {e}");
-                                dead_panes.push(id);
-                            }
-                        }
-                    }
-
-                    let mut retired_panes = Vec::new();
-                    let previous_focus = tree.focused_pane().map(|pane| pane.id);
-                    // Close dead panes
-                    for id in dead_panes {
-                        let outcome = tree.close(id);
-                        if let Some(pane) = outcome.closed_pane {
-                            retired_panes.push(pane);
-                        }
-                        if outcome.should_terminate {
-                            reader_should_close.store(true, Ordering::Relaxed);
-                            break;
-                        }
-                    }
-
-                    if tree.focused_pane().map(|pane| pane.id) != previous_focus {
-                        let detached_previous = previous_focus.and_then(|previous_focus| {
-                            retired_panes
-                                .iter()
-                                .find(|pane| pane.id == previous_focus)
-                        });
-                        window::dispatch_pane_focus_transition_locked(
-                            &tree,
-                            reader_window_is_key.as_ref(),
-                            previous_focus,
-                            detached_previous,
-                        );
-                        window::publish_focused_window_title(
-                            &tree,
-                            reader_window_title.as_ref(),
-                        );
-                    }
-
-                    drop(tree);
-                    for pane in retired_panes {
-                        reader_pane_cleanup.retire(pane);
-                    }
-                }
-
-                if any_data {
-                    reader_dirty.store(true, Ordering::Relaxed);
-                } else {
-                    std::thread::sleep(std::time::Duration::from_millis(2));
-                }
-            }
-
-            log::info!("PTY reader thread exiting");
+            reader::run_reader(
+                reader_atlas.as_ref(),
+                reader_tree.as_ref(),
+                &reader_render_scheduler,
+                reader_thread_wake.as_ref(),
+                &reader_shared,
+            );
         })
         .expect("Failed to spawn PTY reader thread");
 
-    // Render timer (60fps)
-    let timer_dirty = dirty.clone();
-    let timer_should_close = should_close.clone();
-    // Keep the NSTimer block sendable; recover the main-thread-only window by number per update.
-    let timer_window_number = window.windowNumber();
+    render_scheduler.request_render();
 
-    unsafe {
-        let interval = 1.0 / 60.0;
-        let timer_block = block2::RcBlock::new(move |_timer: std::ptr::NonNull<NSTimer>| {
-            if timer_should_close.load(Ordering::Acquire) {
-                let mtm = MainThreadMarker::new().unwrap();
-                let app = NSApplication::sharedApplication(mtm);
-                app.terminate(None);
-                return;
-            }
-            window::sync_window_title(timer_window_number);
-            window::render_if_dirty(&timer_dirty);
+    if crate::update::startup_check_enabled(config.update.check_on_startup) {
+        let update_render_scheduler = render_scheduler.clone();
+        crate::update::spawn_check(update_status, false, move || {
+            update_render_scheduler.request_render()
         });
-
-        let _timer = NSTimer::scheduledTimerWithTimeInterval_repeats_block(
-            interval,
-            true,
-            &timer_block,
-        );
     }
 
     app.activate();
@@ -615,6 +422,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     app.run();
 
     should_close.store(true, Ordering::Release);
+    reader_wake.wake();
     if reader_handle.join().is_err() {
         log::error!("PTY reader thread panicked during shutdown");
     }
@@ -652,6 +460,20 @@ fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
             Some(objc2::sel!(terminate:)),
             &quit_key,
         );
+        // No target: AppKit routes these to the terminal view (first responder).
+        for (title, action) in [
+            ("Check for Updates…", objc2::sel!(checkForUpdates:)),
+            ("Install Update…", objc2::sel!(installUpdate:)),
+        ] {
+            let item = NSMenuItem::initWithTitle_action_keyEquivalent(
+                mtm.alloc(),
+                &NSString::from_str(title),
+                Some(action),
+                &NSString::from_str(""),
+            );
+            app_menu.addItem(&item);
+        }
+        app_menu.addItem(&NSMenuItem::separatorItem(mtm));
         app_menu.addItem(&quit_item);
         app_menu_item.setSubmenu(Some(&app_menu));
 

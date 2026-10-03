@@ -1,0 +1,35 @@
+--- previous/audit.py
++++ current/audit.py
+@@ -12,8 +12,8 @@
+ import subprocess
+ from types import SimpleNamespace
+ 
+-RUN = 34721599354
+-REV = '74eaad83dbf813cb15bd883b45d52adf0dc729bd'
++RUN = 34746364220
++REV = 'd54f801e9dec41a6eb4f159397e45939c367531d'
+ TERMINALS = ['kokuban', 'ghostty', 'alacritty', 'kitty']
+ GEOMETRY = [24, 80, 720, 408]
+ WORKLOADS = ['ascii', 'ansi', 'unicode', 'short_lines']
+@@ -90,7 +90,7 @@
+         require(text in workflow and text in log, f'build/run recipe: {text}')
+     require(re.search(r'Compiling kokuban v[^\n]*\(/source\)', log), 'root crate built in /source')
+     require(REV in log, 'revision appears in CI log')
+-    require('kokuban v0.1.0 (/source)' in (artifact/'cargo-tree.txt').read_text(), 'source cargo tree')
++    require('kokuban v0.2.0 (/source)' in (artifact/'cargo-tree.txt').read_text(), 'source cargo tree')
+     require('rustc 1.94.1' in (artifact/'rustc.txt').read_text(), 'fixed Rust')
+     require(report['script_sha256'] == digest(snapshots['scripts/compare-terminal-performance.py']), 'harness hash')
+ 
+@@ -234,10 +234,10 @@
+     rust_log = rust_bytes.decode(errors='replace')
+     rust_results = re.findall(r'test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored[^\n]*', rust_log)
+     require(len(rust_results) == 3 and all(failed == '0' for _, failed, _ in rust_results), 'all Rust suites passed')
+-    require(rust_results == [('703', '0', '1'), ('0', '0', '0'), ('241', '0', '0')], 'fixed source test totals')
++    require(rust_results == [('729', '0', '1'), ('0', '0', '0'), ('248', '0', '0')], 'fixed source test totals')
+     warnings = {folder: (measurements/folder/'terminal.log').read_text(errors='replace').splitlines()
+                 for _, folder, _, _, _ in grouped if (measurements/folder/'terminal.log').stat().st_size}
+-    audit = {'schema': 1, 'date': '2026-09-12', 'run': {'id': RUN, 'url': run['url'],
++    audit = {'schema': 1, 'date': '2026-09-13', 'run': {'id': RUN, 'url': run['url'],
+              'source_revision': REV, 'harness_revision': REV, 'status': 'success',
+              'artifact_name': 'linux-four-terminal-comparison', 'raw_report_byte_identical': True,
+              'ci_log_sha256': digest(log_bytes), 'ci_log_bytes': len(log_bytes)},

@@ -1,0 +1,38 @@
+Date: 2026-09-13 UTC
+[07:57:15.615] weston 14.0.2
+               https://wayland.freedesktop.org
+               Bug reports to: https://gitlab.freedesktop.org/wayland/weston/issues/
+               Build: 14.0.2
+[07:57:15.615] Command line: weston --backend=headless --renderer=pixman --no-config --socket=wayland-kokuban-comparison --idle-time=0 --width=1280 --height=900 --log=/evidence/weston.log
+[07:57:15.615] OS: Linux, 6.17.0-1022-azure, #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026, x86_64
+[07:57:15.615] Flight recorder: enabled
+[07:57:15.615] Starting with no config file.
+[07:57:15.615] Output repaint window is 7 ms maximum.
+[07:57:15.615] Loading module '/usr/lib/x86_64-linux-gnu/libweston-14/headless-backend.so'
+[07:57:15.618] Using Pixman renderer
+[07:57:15.618] Registered plugin API 'weston_windowed_output_api_headless_v2' of size 16
+[07:57:15.618] Color manager: no-op
+                 protocol support: no
+[07:57:15.618] Output 'headless' attempts EOTF mode SDR and colorimetry mode default.
+[07:57:15.618] Output 'headless' using color profile: stock sRGB color profile
+[07:57:15.618] Output 'headless' enabled with head(s) headless
+[07:57:15.618] Compositor capabilities:
+               arbitrary surface rotation: yes
+               screen capture uses y-flip: no
+               cursor planes: no
+               arbitrary resolutions: no
+               view mask clipping: yes
+               explicit sync: no
+               color operations: no
+               presentation clock: CLOCK_MONOTONIC_RAW, id 4
+               presentation clock resolution: 0.000000001 s
+[07:57:15.619] Loading module '/usr/lib/x86_64-linux-gnu/weston/desktop-shell.so'
+[07:57:15.619] launching '/usr/libexec/weston-keyboard'
+[07:57:15.619] launching '/usr/libexec/weston-desktop-shell'
+[07:57:28.817] libwayland: failed to read client connection (pid 10692)
+[07:58:04.216] libwayland: failed to read client connection (pid 10767)
+[07:58:32.645] libwayland: failed to read client connection (pid 10829)
+[07:58:55.523] libwayland: failed to read client connection (pid 10879)
+[08:00:25.219] libwayland: failed to read client connection (pid 11058)
+[08:00:25.336] caught signal 15
+[08:00:25.337] BUG: finalizing a layer with views still on it.

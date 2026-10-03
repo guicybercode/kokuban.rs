@@ -4,6 +4,10 @@ Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH,
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
 
+## Preservação de texto em 2026-09-10
+
+A implementação de [grafemas, cópia de linhas lógicas e reflow](TERMINAL_TEXT.md) substitui as limitações de texto registradas nas auditorias históricas abaixo. Há testes compartilhados Linux/macOS do decoder real, seleção, resize, histórico e tela alternativa, formação de glifos com fontes de emoji e verificação do clipboard X11 após quatro mudanças de largura sem reimprimir a saída. As medições de desempenho abaixo continuam associadas aos commits indicados; o novo atlas RGBA tem seu custo de memória documentado separadamente.
+
 ## Primeira medição Linux release em 2026-09-05
 
 O código `29ac690`, publicado na `main`, passou no [workflow de medição](https://github.com/guicybercode/kokuban.rs/actions/runs/34005940902) e no [CI completo](https://github.com/guicybercode/kokuban.rs/actions/runs/34005916270), com **582 testes Linux e 484 macOS**. O executável release sem strip adicional ficou em 7,98 MiB; o repouso usou 11,93 MiB de RSS. A saída de 2,5 MiB foi processada com resposta final em 0,126 s, retendo 27,73 MiB após preencher o histórico. O vídeo 320×180 apresentou os 72 quadros e usou 8,75% de um núcleo do terminal, com RSS máximo amostrado de 28,70 MiB.

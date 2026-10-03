@@ -1,0 +1,24 @@
+[
+  {
+    "result": "passed",
+    "explicit_overrides": false,
+    "child": {
+      "pid": 9959,
+      "identity": "25463",
+      "parent_pid": 9953
+    },
+    "probes": 7,
+    "input_hex": "7468656d652d73657373696f6e2d7375727669766564"
+  },
+  {
+    "result": "passed",
+    "explicit_overrides": true,
+    "child": {
+      "pid": 10021,
+      "identity": "25653",
+      "parent_pid": 10016
+    },
+    "probes": 7,
+    "input_hex": "7468656d652d73657373696f6e2d7375727669766564"
+  }
+]

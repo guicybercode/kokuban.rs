@@ -29,32 +29,6 @@ pub struct SelectionState {
     end: Option<GridPoint>,
 }
 
-#[derive(Default)]
-pub(crate) struct SelectionContext {
-    revision: u64,
-    dropped_rows: usize,
-}
-
-/// Reconcile retained-history coordinates before selecting, copying or drawing.
-/// Full repaints and screen changes invalidate a selection; ordinary scrollback
-/// eviction only moves the selected rows that remain in history.
-pub(crate) fn sync_selection(
-    selection: &mut SelectionState,
-    context: &mut SelectionContext,
-    grid: &Grid,
-) {
-    let dropped_rows = grid
-        .total_lines_pushed
-        .saturating_sub(grid.scrollback_len());
-    if context.revision != grid.selection_revision() || dropped_rows < context.dropped_rows {
-        selection.clear();
-    } else {
-        selection.rebase_after_eviction(dropped_rows - context.dropped_rows);
-    }
-    context.revision = grid.selection_revision();
-    context.dropped_rows = dropped_rows;
-}
-
 impl SelectionState {
     pub fn start(&mut self, point: GridPoint) {
         self.anchor = Some(point);
@@ -173,10 +147,9 @@ impl SelectionState {
             .unwrap_or_default()
     }
 
-    /// Extract only retained rows and visible columns, rejecting output before
-    /// it exceeds the UTF-8 byte limit. Empty padding is trimmed without first
-    /// allocating it. Grid does not yet retain soft-wrap or grapheme metadata,
-    /// so physical rows remain separate and stored scalars are copied verbatim.
+    /// Copy logical text, joining automatically wrapped rows while preserving
+    /// explicit line breaks and printed spaces. Unwritten padding never enters
+    /// the result, and the UTF-8 byte limit is checked before each append.
     pub fn get_text_with_limit(
         &self,
         grid: &Grid,
@@ -186,7 +159,7 @@ impl SelectionState {
             Some(pair) => pair,
             None => return Ok(String::new()),
         };
-        let retained_rows = grid.scrollback_len().saturating_add(grid.rows());
+        let retained_rows = grid.retained_rows();
         let last_row = row_as_i64(retained_rows - 1);
         if end.row < 0 || start.row > last_row {
             return Ok(String::new());
@@ -202,32 +175,28 @@ impl SelectionState {
                 0
             };
             let col_end = if abs_row == end.row {
-                end.col.min(grid.cols() - 1)
+                end.col.saturating_add(1).min(grid.cols())
             } else {
-                grid.cols() - 1
-            };
+                grid.cols()
+            }
+            .min(grid.retained_row_len(row));
             if col_start < grid.cols() {
                 col_start = wide_leader(grid, row, col_start);
             }
-            let mut spaces = 0usize;
-            for col in col_start..=col_end {
+            for col in col_start..col_end {
                 let cell = retained_cell(grid, row, col);
                 if cell.flags.contains(CellFlags::WIDE_CONT) || cell.c == '\0' {
                     continue;
                 }
-                if cell.c == ' ' && cell.tail.is_none() {
-                    spaces += 1;
-                    continue;
+                if let Some(grapheme) = cell.grapheme.as_deref() {
+                    check_text_budget(&text, grapheme.len(), max_bytes)?;
+                    text.push_str(grapheme);
+                } else {
+                    check_text_budget(&text, cell.c.len_utf8(), max_bytes)?;
+                    text.push(cell.c);
                 }
-                let required = spaces
-                    .checked_add(cell.text_len())
-                    .ok_or(SelectionTextError::TooLarge)?;
-                check_text_budget(&text, required, max_bytes)?;
-                text.extend(std::iter::repeat_n(' ', spaces));
-                text.extend(cell.chars());
-                spaces = 0;
             }
-            if row != last {
+            if row != last && !grid.retained_row_wrapped(row) {
                 check_text_budget(&text, 1, max_bytes)?;
                 text.push('\n');
             }
@@ -247,11 +216,7 @@ fn viewport_row(grid: &Grid, vis_row: usize) -> usize {
 }
 
 fn retained_cell(grid: &Grid, row: usize, col: usize) -> &crate::grid::cell::Cell {
-    if row < grid.scrollback_len() {
-        grid.scrollback_cell_data(row, col)
-    } else {
-        grid.buffer.cell(row - grid.scrollback_len(), col)
-    }
+    grid.retained_cell_data(row, col)
 }
 
 fn wide_leader(grid: &Grid, row: usize, col: usize) -> usize {
@@ -283,10 +248,7 @@ fn check_text_budget(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        point_from_viewport, sync_selection, GridPoint, SelectionContext, SelectionState,
-        SelectionTextError,
-    };
+    use super::{point_from_viewport, GridPoint, SelectionState, SelectionTextError};
     use crate::grid::{cell::CellFlags, Grid};
 
     fn selected(start: GridPoint, end: GridPoint) -> SelectionState {
@@ -315,23 +277,80 @@ mod tests {
     }
 
     #[test]
-    fn copy_uses_the_visible_scrollback_projection_across_resize() {
-        let mut grid = Grid::new(4, 2, 10);
-        grid.set_cursor_pos(0, 2);
+    fn copy_joins_wrapped_urls_across_screen_and_history() {
+        let url = "https://example.com/very/long/path?query=terminal";
+        let mut grid = Grid::new(8, 3, 100);
+        grid.put_ascii(url.as_bytes());
+        let last = grid.scrollback_len() + grid.cursor_row;
+        let selection = selected(
+            GridPoint { row: 0, col: 0 },
+            GridPoint { row: last as i64, col: 7 },
+        );
+        assert_eq!(selection.get_text(&grid), url);
+        assert_eq!(selection.get_text_with_limit(&grid, url.len()), Ok(url.to_owned()));
+        assert_eq!(selection.get_text_with_limit(&grid, url.len() - 1), Err(SelectionTextError::TooLarge));
+        let reverse = selected(selection.end.unwrap(), selection.anchor.unwrap());
+        assert_eq!(reverse.get_text(&grid), url);
+    }
+
+    #[test]
+    fn copy_preserves_real_newlines_and_printed_spaces_at_wrap_boundaries() {
+        let mut grid = Grid::new(5, 6, 100);
+        grid.put_ascii(b"echo  hello  ");
+        grid.carriage_return();
+        grid.newline();
+        grid.put_ascii(b"next ");
+        let selection = selected(
+            GridPoint { row: 0, col: 0 },
+            GridPoint { row: 3, col: 4 },
+        );
+        assert_eq!(selection.get_text(&grid), "echo  hello  \nnext ");
+    }
+
+    #[test]
+    fn copy_omits_wide_glyph_wrap_padding_and_keeps_partial_selection() {
+        let mut grid = Grid::new(4, 4, 100);
+        grid.put_ascii(b"abc");
         grid.put_char('日');
-        grid.scroll_up(1);
+        grid.put_ascii(b"end");
+        let selection = selected(
+            GridPoint { row: 0, col: 1 },
+            GridPoint { row: 2, col: 0 },
+        );
+        assert_eq!(selection.get_text(&grid), "bc日end");
+    }
 
-        let mut selection = SelectionState::default();
-        selection.start(GridPoint { row: 0, col: 2 });
-        selection.update(GridPoint { row: 0, col: 2 });
+    #[test]
+    fn copy_preserves_wide_history_at_every_resized_width() {
+        let mut grid = Grid::new(4, 1, 10);
+        grid.put_ascii(b"ab");
+        grid.put_char('日');
+        grid.put_ascii(b"c");
+        for cols in [4, 3, 1, 4] {
+            grid.resize(cols, 1);
+            let selection = selected(
+                GridPoint { row: 0, col: 0 },
+                GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+            );
+            assert_eq!(selection.get_text(&grid), "ab日c", "width={cols}");
+        }
+    }
 
-        grid.resize(3, 2);
-        assert_eq!(selection.get_text(&grid), "");
-
-        grid.resize(4, 2);
-        selection.update(GridPoint { row: 0, col: 3 });
-        assert_eq!(selection.get_text(&grid), "日");
-        assert!(!selection.get_text(&grid).contains('\0'));
+    #[test]
+    fn copy_preserves_printed_spaces_in_compacted_history_after_reflow() {
+        let mut grid = Grid::new(80, 1, 10);
+        grid.put_ascii(b"ok   ");
+        grid.carriage_return();
+        grid.newline();
+        grid.put_ascii(b"next");
+        for cols in [40, 3, 1, 80] {
+            grid.resize(cols, 1);
+            let selection = selected(
+                GridPoint { row: 0, col: 0 },
+                GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+            );
+            assert_eq!(selection.get_text(&grid), "ok   \nnext", "width={cols}");
+        }
     }
 
     #[test]
@@ -497,10 +516,11 @@ mod tests {
     }
 
     #[test]
-    fn copy_preserves_stored_combining_scalars_and_nonbreaking_spaces() {
+    fn copy_preserves_combining_graphemes_and_nonbreaking_spaces() {
         let mut grid = Grid::new(5, 1, 10);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        parser.feed("e\u{301}\u{a0}  ".as_bytes(), &mut grid);
+        for character in "e\u{301}\u{a0}".chars() {
+            grid.put_char(character);
+        }
         let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 4 });
         assert_eq!(
             selection.get_text_with_limit(&grid, 5),
@@ -513,17 +533,19 @@ mod tests {
     }
 
     #[test]
-    fn copying_counts_all_combining_bytes_and_preserves_decomposed_text_in_history() {
-        let mut grid = Grid::new(5, 2, 2);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        let original = "e\u{301}日\u{302} \u{303}";
-        parser.feed(original.as_bytes(), &mut grid);
-        parser.feed(b"\x1b[S", &mut grid);
-        let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 4 });
-        assert_eq!(selection.get_text_with_limit(&grid, original.len()), Ok(original.to_string()));
-        assert_eq!(selection.get_text_with_limit(&grid, original.len() - 1), Err(SelectionTextError::TooLarge));
-        let wide_half = selected(GridPoint { row: 0, col: 2 }, GridPoint { row: 0, col: 2 });
-        assert_eq!(wide_half.get_text(&grid), "日\u{302}");
+    fn copy_never_splits_a_compound_emoji_or_combining_cluster() {
+        for grapheme in ["e\u{301}", "👩🏽‍💻", "🇧🇷", "1\u{fe0f}\u{20e3}", " \u{301}"] {
+            let mut grid = Grid::new(8, 2, 10);
+            for character in grapheme.chars() {
+                grid.put_char(character);
+            }
+            for col in 0..grid.cursor_col {
+                let selection = selected(GridPoint { row: 0, col }, GridPoint { row: 0, col });
+                assert_eq!(selection.get_text(&grid), grapheme);
+                assert_eq!(selection.get_text_with_limit(&grid, grapheme.len()), Ok(grapheme.to_owned()));
+                assert_eq!(selection.get_text_with_limit(&grid, grapheme.len() - 1), Err(SelectionTextError::TooLarge));
+            }
+        }
     }
 
     #[test]
@@ -580,149 +602,5 @@ mod tests {
         let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 0, col: 1 });
         assert!(selection.contains(0, 0, usize::MAX, 0));
         assert!(!selection.contains(usize::MAX, 0, 0, usize::MAX));
-    }
-
-    #[test]
-    fn selection_sync_rebases_evicted_history_once_and_clears_when_fully_lost() {
-        let mut grid = Grid::new(4, 2, 1);
-        write_row(&mut grid, 0, "old");
-        write_row(&mut grid, 1, "keep");
-        let mut selection = SelectionState::default();
-        let mut context = SelectionContext::default();
-        sync_selection(&mut selection, &mut context, &grid);
-        selection.start(GridPoint { row: 1, col: 0 });
-        selection.update(GridPoint { row: 1, col: 3 });
-        for expected_row in [1, 0] {
-            grid.scroll_up(1);
-            sync_selection(&mut selection, &mut context, &grid);
-            assert_eq!(selection.get_text(&grid), "keep");
-            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
-            sync_selection(&mut selection, &mut context, &grid);
-            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
-        }
-        assert_eq!(context.dropped_rows, 1);
-        grid.scroll_up(1);
-        sync_selection(&mut selection, &mut context, &grid);
-        assert!(!selection.is_active());
-    }
-
-    #[test]
-    fn selection_sync_invalidates_coordinates_on_grid_revision_changes() {
-        let changes: [fn(&mut Grid); 6] = [
-            |grid| grid.erase_in_display(2),
-            |grid| grid.erase_in_display(3),
-            |grid| grid.resize(5, 3),
-            |grid| grid.enter_alt_screen(),
-            |grid| grid.reset_terminal_state(),
-            |grid| {
-                grid.scroll_top = 1;
-                grid.scroll_up(1);
-            },
-        ];
-        for change in changes {
-            let mut grid = Grid::new(4, 3, 10);
-            let mut selection = SelectionState::default();
-            let mut context = SelectionContext::default();
-            sync_selection(&mut selection, &mut context, &grid);
-            selection.start(GridPoint { row: 0, col: 0 });
-            change(&mut grid);
-            sync_selection(&mut selection, &mut context, &grid);
-            assert!(!selection.is_active());
-            assert_eq!(context.revision, grid.selection_revision());
-        }
-        let mut grid = Grid::new(4, 3, 10);
-        grid.enter_alt_screen();
-        let mut context = SelectionContext::default();
-        let mut selection = SelectionState::default();
-        sync_selection(&mut selection, &mut context, &grid);
-        selection.start(GridPoint { row: 0, col: 0 });
-        grid.leave_alt_screen();
-        sync_selection(&mut selection, &mut context, &grid);
-        assert!(!selection.is_active());
-    }
-
-    #[test]
-    fn repaint_invalidates_selection_without_changing_the_paste_target_screen() {
-        let mut grid = Grid::new(4, 3, 10);
-        grid.enter_alt_screen();
-        grid.bracketed_paste = true;
-        let paste_screen = grid.screen_revision();
-        let mut context = SelectionContext::default();
-        let mut selection = SelectionState::default();
-        sync_selection(&mut selection, &mut context, &grid);
-        selection.start(GridPoint { row: 0, col: 0 });
-        grid.erase_in_display(2);
-        sync_selection(&mut selection, &mut context, &grid);
-        assert!(!selection.is_active());
-        assert_eq!(grid.screen_revision(), paste_screen);
-        assert!(grid.bracketed_paste);
-        grid.scroll_top = 1;
-        grid.scroll_up(1);
-        grid.resize(5, 3);
-        assert_eq!(grid.screen_revision(), paste_screen);
-        grid.leave_alt_screen();
-        assert_ne!(grid.screen_revision(), paste_screen);
-    }
-
-    #[test]
-    fn unchanged_geometry_and_viewport_scrolling_preserve_selection() {
-        let mut grid = Grid::new(4, 2, 10);
-        write_row(&mut grid, 0, "keep");
-        grid.scroll_up(1);
-        let mut context = SelectionContext::default();
-        let mut selection = SelectionState::default();
-        sync_selection(&mut selection, &mut context, &grid);
-        selection.start(GridPoint { row: 0, col: 0 });
-        selection.update(GridPoint { row: 0, col: 3 });
-        let revision = grid.selection_revision();
-        grid.resize(4, 2);
-        grid.scroll_viewport_up(1);
-        sync_selection(&mut selection, &mut context, &grid);
-        assert_eq!(selection.get_text(&grid), "keep");
-        assert_eq!(grid.selection_revision(), revision);
-        grid.scroll_to_bottom();
-        sync_selection(&mut selection, &mut context, &grid);
-        assert_eq!(selection.get_text(&grid), "keep");
-    }
-
-    #[test]
-    fn clear_before_copy_or_drag_cannot_select_replacement_text() {
-        let mut grid = Grid::new(4, 2, 10);
-        write_row(&mut grid, 0, "old");
-        let mut context = SelectionContext::default();
-        let mut selection = SelectionState::default();
-        sync_selection(&mut selection, &mut context, &grid);
-        selection.start(GridPoint { row: 0, col: 0 });
-        selection.update(GridPoint { row: 0, col: 2 });
-        assert_eq!(selection.get_text(&grid), "old");
-
-        grid.erase_in_display(2);
-        write_row(&mut grid, 0, "new");
-        // Copy and drag can arrive before the next render callback.
-        sync_selection(&mut selection, &mut context, &grid);
-        assert_eq!(selection.get_text(&grid), "");
-        selection.update(GridPoint { row: 0, col: 2 });
-        assert!(!selection.is_active());
-
-        selection.start(GridPoint { row: 0, col: 0 });
-        selection.update(GridPoint { row: 0, col: 2 });
-        sync_selection(&mut selection, &mut context, &grid);
-        assert_eq!(selection.get_text(&grid), "new");
-    }
-
-    #[test]
-    fn screen_round_trip_between_frames_invalidates_old_selection() {
-        let mut grid = Grid::new(4, 2, 10);
-        write_row(&mut grid, 0, "old");
-        let mut context = SelectionContext::default();
-        let mut selection = SelectionState::default();
-        sync_selection(&mut selection, &mut context, &grid);
-        selection.start(GridPoint { row: 0, col: 0 });
-        selection.update(GridPoint { row: 0, col: 2 });
-
-        grid.enter_alt_screen();
-        grid.leave_alt_screen();
-        sync_selection(&mut selection, &mut context, &grid);
-        assert!(!selection.is_active());
     }
 }

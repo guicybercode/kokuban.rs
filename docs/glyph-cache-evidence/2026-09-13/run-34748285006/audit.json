@@ -1,0 +1,841 @@
+{
+  "run": "34748285006",
+  "integrity": "PASS",
+  "artifacts": [
+    {
+      "artifact": "glyph-cache-macos-latest-same-binary",
+      "integrity": "PASS",
+      "comparison": "same-binary",
+      "hashed_artifact_files": 40,
+      "original_source_differences": [],
+      "records": 60,
+      "pairs": 6,
+      "cpu_affinity": null,
+      "settings": {
+        "pairs": 6,
+        "iterations": 10000,
+        "warmup": 1000,
+        "timeout": 180.0
+      },
+      "affinity_note": "macOS affinity is not enforced; scheduling and core migration may affect timings",
+      "execution_binaries": {
+        "before": {
+          "path": "/Users/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-b0fced44846bfdc1",
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147"
+        },
+        "after": {
+          "path": "/Users/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-b0fced44846bfdc1",
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147"
+        }
+      },
+      "source_revisions": {
+        "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+      },
+      "binary_sizes": {
+        "before": 5269936
+      },
+      "font_manifest_sha256": "c35fa807b0c745668d607465ae0b333da3d0d428cbedb83307b1859351a54e8c",
+      "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+      "workloads": [
+        {
+          "workload": "ascii-regular",
+          "median_paired_time_change_percent": -0.917408864399379,
+          "paired_time_change_percent": [
+            -0.8448910242868415,
+            0.537081843337489,
+            -3.6526798184017957,
+            7.889479359915124,
+            -0.9899267045119163,
+            -14.623782839872238
+          ],
+          "median_AB_percent": -0.9899267045119163,
+          "median_BA_percent": 0.537081843337489,
+          "faster_pairs": 4,
+          "median_ns_per_lookup": {
+            "before": 34.817925390625,
+            "after": 33.278949609375005
+          },
+          "median_elapsed_ms": {
+            "before": 133.7008335,
+            "after": 127.79116650000002
+          },
+          "elapsed_ms_range": {
+            "before": [
+              122.82475,
+              138.45975
+            ],
+            "after": [
+              117.104083,
+              147.111666
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "ascii-four-styles",
+          "median_paired_time_change_percent": 0.6947761637981256,
+          "paired_time_change_percent": [
+            3.934571377037503,
+            0.9782077460870591,
+            0.41134458150919195,
+            9.566762645218333,
+            -0.32008015920508787,
+            -1.2984082008753743
+          ],
+          "median_AB_percent": 0.41134458150919195,
+          "median_BA_percent": 0.9782077460870591,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 34.07042643229167,
+            "after": 35.021875
+          },
+          "median_elapsed_ms": {
+            "before": 130.8304375,
+            "after": 134.484
+          },
+          "elapsed_ms_range": {
+            "before": [
+              125.139417,
+              136.525875
+            ],
+            "after": [
+              125.34725,
+              141.897583
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 380,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "mixed-unicode",
+          "median_paired_time_change_percent": 0.3504863340485349,
+          "paired_time_change_percent": [
+            14.675766300996512,
+            13.840364486878695,
+            -8.985060627508215,
+            1.1032534822978348,
+            -0.40228081420076506,
+            -6.284679972456717
+          ],
+          "median_AB_percent": -0.40228081420076506,
+          "median_BA_percent": 1.1032534822978348,
+          "faster_pairs": 3,
+          "median_ns_per_lookup": {
+            "before": 34.12770182291666,
+            "after": 32.99835598958333
+          },
+          "median_elapsed_ms": {
+            "before": 131.05037499999997,
+            "after": 126.71368699999998
+          },
+          "elapsed_ms_range": {
+            "before": [
+              120.090833,
+              146.541791
+            ],
+            "after": [
+              124.25370899999999,
+              166.823709
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 151,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "unicode-scalars",
+          "median_paired_time_change_percent": -2.0260191872985858,
+          "paired_time_change_percent": [
+            6.0244130915589915,
+            -2.913580372582388,
+            -5.0323649774144865,
+            13.497383455740957,
+            -1.1384580020147832,
+            -6.288939221318554
+          ],
+          "median_AB_percent": -1.1384580020147832,
+          "median_BA_percent": -2.913580372582388,
+          "faster_pairs": 4,
+          "median_ns_per_lookup": {
+            "before": 33.86585286458333,
+            "after": 34.12229283854167
+          },
+          "median_elapsed_ms": {
+            "before": 130.044875,
+            "after": 131.0296045
+          },
+          "elapsed_ms_range": {
+            "before": [
+              125.688958,
+              148.538583
+            ],
+            "after": [
+              118.481042,
+              152.718958
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 159,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "Courier New"
+        },
+        {
+          "workload": "graphemes",
+          "median_paired_time_change_percent": -0.37446258074843447,
+          "paired_time_change_percent": [
+            0.0498292157743219,
+            0.10689913153344595,
+            -0.7987543772711908,
+            17.70845095570837,
+            -11.51419130263822,
+            -1.3335285054840418
+          ],
+          "median_AB_percent": -0.7987543772711908,
+          "median_BA_percent": 0.10689913153344595,
+          "faster_pairs": 3,
+          "median_ns_per_lookup": {
+            "before": 24.023871484375,
+            "after": 24.314664713541667
+          },
+          "median_elapsed_ms": {
+            "before": 92.2516665,
+            "after": 93.3683125
+          },
+          "elapsed_ms_range": {
+            "before": [
+              83.308625,
+              99.004167
+            ],
+            "after": [
+              83.413375,
+              99.0535
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 32
+          },
+          "font_name": "Courier New"
+        }
+      ]
+    },
+    {
+      "artifact": "glyph-cache-ubuntu-24.04-arm-same-binary",
+      "integrity": "PASS",
+      "comparison": "same-binary",
+      "hashed_artifact_files": 41,
+      "original_source_differences": [],
+      "records": 60,
+      "pairs": 6,
+      "cpu_affinity": [
+        0
+      ],
+      "settings": {
+        "pairs": 6,
+        "iterations": 10000,
+        "warmup": 1000,
+        "timeout": 180.0
+      },
+      "affinity_note": "One Linux CPU; inherited by each process",
+      "execution_binaries": {
+        "before": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-deb8899795b6f51d",
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc"
+        },
+        "after": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-deb8899795b6f51d",
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc"
+        }
+      },
+      "source_revisions": {
+        "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+      },
+      "binary_sizes": {
+        "before": 6991472
+      },
+      "font_manifest_sha256": "9292538df791b08f4363d9d3a8839626e09c27eed17b1e41e102496d597d8185",
+      "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+      "workloads": [
+        {
+          "workload": "ascii-regular",
+          "median_paired_time_change_percent": 0.45238805000628735,
+          "paired_time_change_percent": [
+            1.7343452806804187,
+            -3.0708984776536803,
+            -0.4489828197048429,
+            0.6054891148417436,
+            0.65571133062917,
+            0.299286985170831
+          ],
+          "median_AB_percent": 0.65571133062917,
+          "median_BA_percent": 0.299286985170831,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 26.906078515624998,
+            "after": 26.997248046875
+          },
+          "median_elapsed_ms": {
+            "before": 103.31934149999998,
+            "after": 103.6694325
+          },
+          "elapsed_ms_range": {
+            "before": [
+              102.944002,
+              106.407588
+            ],
+            "after": [
+              102.669407,
+              104.967828
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "ascii-four-styles",
+          "median_paired_time_change_percent": -0.4603000054022098,
+          "paired_time_change_percent": [
+            0.6441669682472286,
+            -0.7830890475639428,
+            0.606755793181295,
+            -0.1375109632404767,
+            -0.9103394473528538,
+            -1.250768103039225
+          ],
+          "median_AB_percent": 0.606755793181295,
+          "median_BA_percent": -0.7830890475639428,
+          "faster_pairs": 4,
+          "median_ns_per_lookup": {
+            "before": 27.203154947916666,
+            "after": 27.047971875
+          },
+          "median_elapsed_ms": {
+            "before": 104.460115,
+            "after": 103.864212
+          },
+          "elapsed_ms_range": {
+            "before": [
+              103.159279,
+              105.869585
+            ],
+            "after": [
+              103.609681,
+              105.008076
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 380,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "mixed-unicode",
+          "median_paired_time_change_percent": -0.3027872179409681,
+          "paired_time_change_percent": [
+            -0.7535398616035577,
+            0.8371323729127002,
+            -0.6066518988431558,
+            -0.33023572940350987,
+            0.9117400316017727,
+            -0.2753387064784263
+          ],
+          "median_AB_percent": -0.6066518988431558,
+          "median_BA_percent": -0.2753387064784263,
+          "faster_pairs": 4,
+          "median_ns_per_lookup": {
+            "before": 26.98613854166667,
+            "after": 26.953684375
+          },
+          "median_elapsed_ms": {
+            "before": 103.62677200000002,
+            "after": 103.502148
+          },
+          "elapsed_ms_range": {
+            "before": [
+              102.443655,
+              104.479851
+            ],
+            "after": [
+              102.848796,
+              104.026504
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 151,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "unicode-scalars",
+          "median_paired_time_change_percent": 0.6150906435189827,
+          "paired_time_change_percent": [
+            1.0382590825284441,
+            1.7898299412995913,
+            0.22593092208979615,
+            1.0042503649481693,
+            -0.40485841136643425,
+            -0.6771629535306833
+          ],
+          "median_AB_percent": 0.22593092208979615,
+          "median_BA_percent": 1.0042503649481693,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 27.010475911458336,
+            "after": 27.190938541666668
+          },
+          "median_elapsed_ms": {
+            "before": 103.72022750000002,
+            "after": 104.413204
+          },
+          "elapsed_ms_range": {
+            "before": [
+              103.136974,
+              105.043884
+            ],
+            "after": [
+              103.348631,
+              105.369081
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 159,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "graphemes",
+          "median_paired_time_change_percent": 0.1111259957444572,
+          "paired_time_change_percent": [
+            1.001019884461064,
+            0.026747581208817654,
+            1.349065731494639,
+            -0.741165898389518,
+            0.19550441028009674,
+            -0.24655058901835836
+          ],
+          "median_AB_percent": 1.001019884461064,
+          "median_BA_percent": -0.24655058901835836,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 27.148407161458334,
+            "after": 27.182803125
+          },
+          "median_elapsed_ms": {
+            "before": 104.2498835,
+            "after": 104.381964
+          },
+          "elapsed_ms_range": {
+            "before": [
+              103.078076,
+              104.475904
+            ],
+            "after": [
+              103.541446,
+              105.275782
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 32
+          },
+          "font_name": "DejaVu Sans Mono"
+        }
+      ]
+    },
+    {
+      "artifact": "glyph-cache-ubuntu-24.04-same-binary",
+      "integrity": "PASS",
+      "comparison": "same-binary",
+      "hashed_artifact_files": 41,
+      "original_source_differences": [],
+      "records": 60,
+      "pairs": 6,
+      "cpu_affinity": [
+        0
+      ],
+      "settings": {
+        "pairs": 6,
+        "iterations": 10000,
+        "warmup": 1000,
+        "timeout": 180.0
+      },
+      "affinity_note": "One Linux CPU; inherited by each process",
+      "execution_binaries": {
+        "before": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-74b60748afa29789",
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44"
+        },
+        "after": {
+          "path": "/home/runner/work/_temp/kokuban-glyph-target-before/release/deps/kokuban-74b60748afa29789",
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44"
+        }
+      },
+      "source_revisions": {
+        "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+      },
+      "binary_sizes": {
+        "before": 7393784
+      },
+      "font_manifest_sha256": "740e7f973de8141ed3ba2cdc3efe4ab1100c8bf10bbb7883f2f37e4deb864bc2",
+      "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+      "workloads": [
+        {
+          "workload": "ascii-regular",
+          "median_paired_time_change_percent": 0.21903299789925448,
+          "paired_time_change_percent": [
+            -6.605660306239004,
+            0.08550292749663167,
+            -0.06991671551188462,
+            0.7420513361263865,
+            1.0617691525267454,
+            0.3525630683018773
+          ],
+          "median_AB_percent": -0.06991671551188462,
+          "median_BA_percent": 0.3525630683018773,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 29.261821223958336,
+            "after": 29.412965494791667
+          },
+          "median_elapsed_ms": {
+            "before": 112.36539350000001,
+            "after": 112.9457875
+          },
+          "elapsed_ms_range": {
+            "before": [
+              111.79873,
+              122.117103
+            ],
+            "after": [
+              111.720564,
+              114.050462
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "ascii-four-styles",
+          "median_paired_time_change_percent": 0.02786998521698705,
+          "paired_time_change_percent": [
+            -8.479417272113727,
+            0.04338725773132658,
+            -1.0587523480204364,
+            0.25011691200985187,
+            0.01235271270264752,
+            0.5505589612185771
+          ],
+          "median_AB_percent": -1.0587523480204364,
+          "median_BA_percent": 0.25011691200985187,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 29.572865364583333,
+            "after": 29.58110755208333
+          },
+          "median_elapsed_ms": {
+            "before": 113.559803,
+            "after": 113.59145299999999
+          },
+          "elapsed_ms_range": {
+            "before": [
+              113.251838,
+              124.587276
+            ],
+            "after": [
+              113.118822,
+              114.023001
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 380,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "mixed-unicode",
+          "median_paired_time_change_percent": -0.5988482025933279,
+          "paired_time_change_percent": [
+            -0.5333671099333527,
+            1.494817116068538,
+            -1.2305219425431122,
+            -0.6643292952533033,
+            -0.16466891482919832,
+            -1.1175104075029552
+          ],
+          "median_AB_percent": -0.5333671099333527,
+          "median_BA_percent": -0.6643292952533033,
+          "faster_pairs": 5,
+          "median_ns_per_lookup": {
+            "before": 29.277944010416668,
+            "after": 29.143074609375
+          },
+          "median_elapsed_ms": {
+            "before": 112.427305,
+            "after": 111.9094065
+          },
+          "elapsed_ms_range": {
+            "before": [
+              111.559801,
+              113.744623
+            ],
+            "after": [
+              111.4553,
+              113.227416
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 151,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "unicode-scalars",
+          "median_paired_time_change_percent": -0.16581332903584697,
+          "paired_time_change_percent": [
+            -0.9279278927519526,
+            -3.163590090670768,
+            -0.0760166230524343,
+            -0.04754332178815113,
+            0.0911120863608636,
+            -0.25561003501925966
+          ],
+          "median_AB_percent": -0.0760166230524343,
+          "median_BA_percent": -0.25561003501925966,
+          "faster_pairs": 5,
+          "median_ns_per_lookup": {
+            "before": 29.300464192708333,
+            "after": 29.256018098958336
+          },
+          "median_elapsed_ms": {
+            "before": 112.5137825,
+            "after": 112.34310950000001
+          },
+          "elapsed_ms_range": {
+            "before": [
+              111.599903,
+              116.817473
+            ],
+            "after": [
+              111.390112,
+              113.121847
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 159,
+            "grapheme_glyphs": 0
+          },
+          "font_name": "DejaVu Sans Mono"
+        },
+        {
+          "workload": "graphemes",
+          "median_paired_time_change_percent": 0.40329019853726045,
+          "paired_time_change_percent": [
+            0.6995416061729649,
+            1.3221820637265729,
+            -0.8469344498772577,
+            0.49215638508393106,
+            0.31442401199058984,
+            -0.2806289846780916
+          ],
+          "median_AB_percent": 0.31442401199058984,
+          "median_BA_percent": 0.49215638508393106,
+          "faster_pairs": 2,
+          "median_ns_per_lookup": {
+            "before": 29.256949479166664,
+            "after": 29.420759244791668
+          },
+          "median_elapsed_ms": {
+            "before": 112.34668599999999,
+            "after": 112.9757155
+          },
+          "elapsed_ms_range": {
+            "before": [
+              111.887768,
+              114.207658
+            ],
+            "after": [
+              112.311289,
+              113.367128
+            ]
+          },
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          },
+          "glyph_counts": {
+            "scalar_glyphs": 95,
+            "grapheme_glyphs": 32
+          },
+          "font_name": "DejaVu Sans Mono"
+        }
+      ]
+    }
+  ]
+}

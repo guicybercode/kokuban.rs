@@ -1,3 +1,5 @@
+use super::reader::ReaderWake;
+use super::render_scheduler::RenderScheduler;
 use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
@@ -16,13 +18,13 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
-use crate::renderer::pane_scene::image_intersects_content;
-use crate::selection::{point_from_viewport, GridPoint};
+use crate::selection::GridPoint;
 use crate::terminal_writer::TerminalWriteQueueError;
+use crate::update::{self, SharedUpdateStatus, UpdateStatus};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
 use objc2::rc::Retained;
-use objc2::runtime::{Bool, ProtocolObject};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject};
 use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::*;
 use objc2_foundation::*;
@@ -30,7 +32,6 @@ use objc2_metal::*;
 use objc2_quartz_core::*;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -294,9 +295,11 @@ struct ViewState {
     pane_cleanup: PaneCleanup,
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
+    render_scheduler: Arc<RenderScheduler>,
     window_title: Arc<WindowTitleMailbox>,
     applied_window_title: String,
     should_close: Arc<AtomicBool>,
+    reader_wake: Arc<ReaderWake>,
     renderer: MetalRenderer,
     metal_layer: Retained<CAMetalLayer>,
     scale_factor: f32,
@@ -322,6 +325,22 @@ struct ViewState {
     confirm_dialog: Option<ConfirmDialog>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
+    update_status: SharedUpdateStatus,
+}
+
+impl ViewState {
+    /// Mark the terminal content changed so the next frame redraws it.
+    fn request_render(&self) {
+        self.render_scheduler.request_render();
+    }
+
+    /// Stop the app and wake the reader so it observes shutdown.
+    fn request_close(&self) {
+        self.should_close.store(true, Ordering::Relaxed);
+        self.reader_wake.wake();
+        // The frame callback performs termination on the main thread.
+        self.render_scheduler.request_frame();
+    }
 }
 
 // Keep AppKit title updates independent from the potentially long-held PaneTree lock.
@@ -570,9 +589,9 @@ define_class!(
                                 ConfirmAction::QuitApp,
                                 None,
                             ));
-                            state.dirty.store(true, Ordering::Relaxed);
+                            state.request_render();
                         } else {
-                            state.should_close.store(true, Ordering::Relaxed);
+                            state.request_close();
                         }
                     }
                 });
@@ -586,7 +605,6 @@ define_class!(
                     if let Some(state) = state.as_mut() {
                         let mut tree = state.pane_tree.lock().unwrap();
                         if let Some(pane) = tree.focused_pane_mut() {
-                            pane.sync_selection();
                             if pane.selection.is_active() {
                                 let text = pane.selection.get_text(&pane.grid);
                                 pane.selection.clear();
@@ -594,7 +612,7 @@ define_class!(
                                 if !text.is_empty() {
                                     copy_to_clipboard(&text);
                                 }
-                                state.dirty.store(true, Ordering::Relaxed);
+                                state.request_render();
                                 return true;
                             }
                             // No selection: send Ctrl-C
@@ -802,7 +820,7 @@ define_class!(
                     }
                     drop(tree);
                     if viewport_changed {
-                        state.dirty.store(true, Ordering::Relaxed);
+                        state.request_render();
                     }
                 }
             });
@@ -845,7 +863,6 @@ define_class!(
                                 let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
                                 if let Some((_id, point)) = grid_pt {
                                     if let Some(pane) = tree.pane_mut(pane_id) {
-                                        pane.sync_selection();
                                         pane.selection.start(point);
                                     }
                                 }
@@ -853,7 +870,7 @@ define_class!(
                         }
                     }
                     drop(tree);
-                    state.dirty.store(true, Ordering::Relaxed);
+                    state.request_render();
                 }
             });
         }
@@ -887,14 +904,13 @@ define_class!(
                             let grid_pt = pixel_to_grid_point(event, state, &tree, cell_w, cell_h);
                             if let Some((_id, point)) = grid_pt {
                                 if let Some(pane) = tree.focused_pane_mut() {
-                                    pane.sync_selection();
                                     pane.selection.update(point);
                                 }
                             }
                         }
                     }
                     drop(tree);
-                    state.dirty.store(true, Ordering::Relaxed);
+                    state.request_render();
                 }
             });
         }
@@ -960,7 +976,7 @@ define_class!(
                                 MacScrollbackAction::End => { pane.grid.scroll_to_bottom(); }
                             }
                             drop(tree);
-                            state.dirty.store(true, Ordering::Relaxed);
+                            state.request_render();
                             return true;
                         }
                     }
@@ -980,7 +996,7 @@ define_class!(
                         pane.grid.scroll_to_bottom();
                         if pane.selection.is_active() {
                             pane.selection.clear();
-                            state.dirty.store(true, Ordering::Relaxed);
+                            state.request_render();
                         }
                         if let Some(bytes) =
                             translate_key_event(event, pane.grid.application_cursor_keys)
@@ -1034,7 +1050,7 @@ define_class!(
                                     state.status_bar_height = status_bar_height;
                                     state.metal_layer.setContentsScale(new_scale as f64);
                                     state.metal_layer.setDrawableSize(backing_size);
-                                    state.dirty.store(true, Ordering::Relaxed);
+                                    state.request_render();
                                 }
                                 Err(error) => log::error!(
                                     "Failed to rebuild glyph atlas for scale {new_scale}: {error}; \
@@ -1083,8 +1099,44 @@ define_class!(
                 let mut tree = state.pane_tree.lock().unwrap();
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
                 drop(tree);
-                state.dirty.store(true, Ordering::Relaxed);
+                state.request_render();
             });
+        }
+
+        // App menu actions: the items have no target, so AppKit sends them
+        // to this first responder.
+        #[unsafe(method(checkForUpdates:))]
+        fn check_for_updates(&self, _sender: Option<&AnyObject>) {
+            with_update_status(|status, scheduler| {
+                update::spawn_check(status, true, move || scheduler.request_render());
+            });
+        }
+
+        #[unsafe(method(installUpdate:))]
+        fn install_update(&self, _sender: Option<&AnyObject>) {
+            with_update_status(|status, scheduler| {
+                let available = update::read_status(&status).available_tag().map(str::to_string);
+                if let Some(tag) = available {
+                    update::spawn_install(status, tag, move || scheduler.request_render());
+                }
+            });
+        }
+
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, item: &NSMenuItem) -> Bool {
+            let Some(status) = with_update_status(|status, _| update::read_status(&status)) else {
+                return Bool::NO;
+            };
+            let busy = matches!(status, UpdateStatus::Checking | UpdateStatus::Installing(_));
+            if item.action() == Some(objc2::sel!(installUpdate:)) {
+                let title = match status.available_tag() {
+                    Some(tag) => format!("Install Update {tag}…"),
+                    None => "Install Update…".to_string(),
+                };
+                item.setTitle(&NSString::from_str(&title));
+                return Bool::new(status.available_tag().is_some());
+            }
+            Bool::new(!busy)
         }
     }
 
@@ -1105,6 +1157,18 @@ define_class!(
         }
     }
 );
+
+/// Run `action` with the shared update status and the frame scheduler.
+fn with_update_status<T>(
+    action: impl FnOnce(SharedUpdateStatus, Arc<RenderScheduler>) -> T,
+) -> Option<T> {
+    let (status, scheduler) = VIEW_STATE.with(|state| {
+        let state = state.borrow();
+        let state = state.as_ref()?;
+        Some((state.update_status.clone(), state.render_scheduler.clone()))
+    })?;
+    Some(action(status, scheduler))
+}
 
 fn handle_pane_action(action: PaneAction) {
     VIEW_STATE.with(|state| {
@@ -1163,7 +1227,7 @@ fn handle_pane_action(action: PaneAction) {
                         ConfirmAction::ClosePane(id),
                         proc_name,
                     ));
-                    state.dirty.store(true, Ordering::Relaxed);
+                    state.request_render();
                     return;
                 }
                 // No confirmation — close immediately
@@ -1181,7 +1245,7 @@ fn handle_pane_action(action: PaneAction) {
                     if let Some(pane) = closed_pane {
                         state.pane_cleanup.retire(pane);
                     }
-                    state.should_close.store(true, Ordering::Relaxed);
+                    state.request_close();
                     return;
                 }
                 let size = state.metal_layer.drawableSize();
@@ -1271,7 +1335,6 @@ fn handle_pane_action(action: PaneAction) {
                             // scroll_offset = sb_len - sb_index (with 2 lines context)
                             let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
                             pane.grid.scroll_offset = offset.min(sb_len);
-                            pane.grid.mark_all_dirty();
                         }
                     }
                 }
@@ -1292,7 +1355,6 @@ fn handle_pane_action(action: PaneAction) {
                             let sb_index = target_row - evicted;
                             let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
                             pane.grid.scroll_offset = offset.min(sb_len);
-                            pane.grid.mark_all_dirty();
                         } else {
                             // Target is in the visible buffer or beyond — snap to bottom
                             pane.grid.scroll_to_bottom();
@@ -1317,7 +1379,9 @@ fn handle_pane_action(action: PaneAction) {
         if let Some(pane) = closed_pane {
             state.pane_cleanup.retire(pane);
         }
-        state.dirty.store(true, Ordering::Relaxed);
+        // Splits and closes change the PTYs the reader must poll.
+        state.reader_wake.wake();
+        state.request_render();
     });
 }
 
@@ -1337,12 +1401,12 @@ fn handle_confirm_key(key_code: u16, character: Option<char>) {
         match result {
             ConfirmResult::Confirmed => {
                 let action = state.confirm_dialog.take().unwrap().action;
-                state.dirty.store(true, Ordering::Relaxed);
+                state.request_render();
                 execute_confirm_action(state, action);
             }
             ConfirmResult::Cancelled => {
                 state.confirm_dialog = None;
-                state.dirty.store(true, Ordering::Relaxed);
+                state.request_render();
             }
             ConfirmResult::Pending => {
                 // Ignore unrecognized keys
@@ -1375,7 +1439,7 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
                 if let Some(pane) = closed_pane {
                     state.pane_cleanup.retire(pane);
                 }
-                state.should_close.store(true, Ordering::Relaxed);
+                state.request_close();
                 return;
             }
             let size = state.metal_layer.drawableSize();
@@ -1399,9 +1463,10 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
             if let Some(pane) = closed_pane {
                 state.pane_cleanup.retire(pane);
             }
+            state.reader_wake.wake();
         }
         ConfirmAction::QuitApp => {
-            state.should_close.store(true, Ordering::Relaxed);
+            state.request_close();
         }
     }
 }
@@ -1439,7 +1504,7 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     state.status_bar_height = status_bar_height;
     log::info!("Font zoom: {new_size}pt");
 
-    state.dirty.store(true, Ordering::Relaxed);
+    state.request_render();
 }
 
 fn update_pane_geometry(
@@ -1492,9 +1557,29 @@ fn pixel_to_grid_point(
     cell_w: f32,
     cell_h: f32,
 ) -> Option<(PaneId, GridPoint)> {
-    let (pane_id, col, vis_row) = pixel_to_cell(event, state, tree, cell_w, cell_h)?;
+    let loc = event.locationInWindow();
+    let scale = state.scale_factor;
+
+    let size = state.metal_layer.drawableSize();
+    let view_h = size.height as f32 / scale;
+
+    let px = loc.x as f32 * scale;
+    let py = (view_h - loc.y as f32) * scale;
+
+    let pane_id = tree.pane_at(px, py).unwrap_or(tree.focused);
     let pane = tree.pane(pane_id)?;
-    Some((pane_id, point_from_viewport(&pane.grid, vis_row, col)))
+    let rect = pane.rect;
+
+    let local_x = px - rect.x;
+    let local_y = py - rect.y;
+
+    let col = (local_x / cell_w) as usize;
+    let vis_row = (local_y / cell_h) as usize;
+
+    Some((
+        pane_id,
+        crate::selection::point_from_viewport(&pane.grid, vis_row, col),
+    ))
 }
 
 fn copy_to_clipboard(text: &str) {
@@ -1612,32 +1697,6 @@ fn bracketed_paste_len(payload_len: usize) -> Option<usize> {
         .checked_add(BRACKETED_PASTE_END.len())
 }
 
-/// Consume the current request before reading the grid. Later producer updates
-/// belong to the next frame and must never be cleared by this one.
-struct FrameRedraw<'a> {
-    dirty: &'a AtomicBool,
-    retry: bool,
-}
-
-impl<'a> FrameRedraw<'a> {
-    fn begin(dirty: &'a AtomicBool) -> Self {
-        dirty.swap(false, Ordering::Relaxed);
-        Self { dirty, retry: true }
-    }
-
-    fn finish(mut self, still_animating: bool) {
-        self.retry = still_animating;
-    }
-}
-
-impl Drop for FrameRedraw<'_> {
-    fn drop(&mut self) {
-        if self.retry {
-            self.dirty.store(true, Ordering::Relaxed);
-        }
-    }
-}
-
 fn render_frame() {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -1646,9 +1705,6 @@ fn render_frame() {
             None => return,
         };
 
-        // Forced AppKit draws also consume pending updates and retry if the
-        // drawable is temporarily unavailable.
-        let redraw = FrameRedraw::begin(state.dirty.as_ref());
         let size = state.metal_layer.drawableSize();
         let drawable = match state.metal_layer.nextDrawable() {
             Some(d) => d,
@@ -1656,9 +1712,13 @@ fn render_frame() {
         };
         let texture = drawable.texture();
 
+        // Clear before reading pane state: output decoded after this point
+        // marks the next frame dirty instead of being overwritten below.
+        state.dirty.store(false, Ordering::Relaxed);
+
         // Lock atlas FIRST (canonical order: atlas → tree → image_store)
         let mut atlas = state.atlas.lock().unwrap();
-        let mut tree = state.pane_tree.lock().unwrap();
+        let tree = state.pane_tree.lock().unwrap();
 
         let viewport = PixelRect {
             x: 0.0,
@@ -1668,13 +1728,8 @@ fn render_frame() {
         };
         let (layouts, dividers) = tree.layout_info(viewport);
 
-        for (id, _) in &layouts {
-            if let Some(pane) = tree.pane_mut(*id) {
-                pane.sync_selection();
-            }
-        }
-
         let focused_id = tree.focused;
+        let update_notice = update::read_status(&state.update_status).notice();
         let mut pane_render_data: Vec<PaneRenderData> = Vec::new();
 
         for (i, (id, rect)) in layouts.iter().enumerate() {
@@ -1694,7 +1749,6 @@ fn render_frame() {
                     Vec::new()
                 };
                 pane_render_data.push(PaneRenderData {
-                    id: *id,
                     grid: &pane.grid,
                     rect: *rect,
                     selection: sel,
@@ -1703,6 +1757,7 @@ fn render_frame() {
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
+                    update_notice: update_notice.as_deref().filter(|_| *id == focused_id),
                 });
             }
         }
@@ -1728,11 +1783,11 @@ fn render_frame() {
         });
 
         let img_store = state.image_store.lock().unwrap();
-        let presented = state.renderer.draw_frame(
+        state.renderer.draw_frame(
             &pane_render_data,
             &dividers,
             &mut atlas,
-            Some(ProtocolObject::from_ref(&*drawable)),
+            ProtocolObject::from_ref(&*drawable),
             &texture,
             size.width as f32,
             size.height as f32,
@@ -1752,46 +1807,13 @@ fn render_frame() {
 
         // Keep rendering during fade-in animation
         let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
-        if presented {
-            redraw.finish(still_animating);
+        if still_animating {
+            state.request_render();
         }
     });
 }
 
 pub fn render_if_dirty(dirty: &AtomicBool) {
-    // The timer runs without PTY output: both synchronized-update expiration and
-    // a visible Kitty animation can request their next frame independently.
-    VIEW_STATE.with(|state| {
-        if let Some(state) = state.borrow().as_ref() {
-            // Keep the reader's canonical atlas → tree → image_store lock order.
-            let Ok(atlas) = state.atlas.try_lock() else { return };
-            if let Ok(mut tree) = state.pane_tree.try_lock() {
-                let now = std::time::Instant::now();
-                let mut visible_images = HashSet::new();
-                for id in tree.pane_ids() {
-                    if let Some(pane) = tree.pane_mut(id) {
-                        if pane.grid.expire_synchronized_output(now) {
-                            dirty.store(true, Ordering::Relaxed);
-                        }
-                        let content_size = [pane.rect.width,
-                            (pane.rect.height - state.status_bar_height).max(0.0)];
-                        for placement in &pane.grid.image_placements {
-                            if image_intersects_content(&placement.mode,
-                                [atlas.cell_width, atlas.cell_height], content_size)
-                            {
-                                visible_images.insert(placement.image_id);
-                            }
-                        }
-                    }
-                }
-                if let Ok(mut store) = state.image_store.try_lock() {
-                    if store.advance_animations(now, &visible_images).changed {
-                        dirty.store(true, Ordering::Relaxed);
-                    }
-                }
-            }
-        }
-    });
     if dirty.load(Ordering::Relaxed) {
         render_frame();
     }
@@ -1860,7 +1882,9 @@ pub(super) fn create_terminal_view(
     pane_cleanup: PaneCleanup,
     atlas: Arc<Mutex<GlyphAtlas>>,
     dirty: Arc<AtomicBool>,
+    render_scheduler: Arc<RenderScheduler>,
     should_close: Arc<AtomicBool>,
+    reader_wake: Arc<ReaderWake>,
     window_is_key: Arc<AtomicBool>,
     default_fg: (u8, u8, u8),
     default_bg: (u8, u8, u8),
@@ -1883,6 +1907,7 @@ pub(super) fn create_terminal_view(
     window_title: Arc<WindowTitleMailbox>,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
+    update_status: SharedUpdateStatus,
 ) -> Retained<TerminalView> {
     let view = mtm.alloc::<TerminalView>().set_ivars(());
     let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
@@ -1926,9 +1951,11 @@ pub(super) fn create_terminal_view(
             pane_cleanup,
             atlas,
             dirty,
+            render_scheduler,
             window_title,
             applied_window_title: WINDOW_TITLE.to_string(),
             should_close,
+            reader_wake,
             renderer,
             metal_layer,
             scale_factor,
@@ -1954,6 +1981,7 @@ pub(super) fn create_terminal_view(
             confirm_dialog: None,
             confirm_on_close_pane,
             confirm_on_quit,
+            update_status,
         });
     });
 
@@ -1965,7 +1993,7 @@ mod tests {
     use super::{
         bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
         dispatch_pane_focus_transition_with, dispatch_window_focus_transition_with,
-        focus_report_bytes, FrameRedraw,
+        focus_report_bytes,
         mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
         sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
         MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
@@ -1984,60 +2012,8 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Barrier, Mutex};
+    use std::sync::{Arc, Mutex};
     use std::thread;
-
-    #[test]
-    fn frame_completion_preserves_output_arriving_after_grid_snapshot() {
-        let dirty = Arc::new(AtomicBool::new(true));
-        let grid_released = Arc::new(Barrier::new(2));
-        let output_arrived = Arc::new(Barrier::new(2));
-        let reader = {
-            let dirty = Arc::clone(&dirty);
-            let grid_released = Arc::clone(&grid_released);
-            let output_arrived = Arc::clone(&output_arrived);
-            thread::spawn(move || {
-                grid_released.wait();
-                dirty.store(true, Ordering::Relaxed);
-                output_arrived.wait();
-            })
-        };
-
-        let frame = FrameRedraw::begin(&dirty);
-        assert!(!dirty.load(Ordering::Relaxed));
-        grid_released.wait();
-        output_arrived.wait();
-        frame.finish(false);
-        reader.join().unwrap();
-
-        assert!(dirty.load(Ordering::Relaxed));
-        FrameRedraw::begin(&dirty).finish(false);
-        assert!(!dirty.load(Ordering::Relaxed));
-    }
-
-    #[test]
-    fn missing_drawable_retries_even_when_appkit_forces_a_clean_frame() {
-        for initially_dirty in [false, true] {
-            let dirty = AtomicBool::new(initially_dirty);
-            let frame = FrameRedraw::begin(&dirty);
-            assert!(!dirty.load(Ordering::Relaxed));
-            // An early return before finish corresponds to nextDrawable = None.
-            drop(frame);
-            assert!(dirty.load(Ordering::Relaxed));
-            FrameRedraw::begin(&dirty).finish(false);
-            assert!(!dirty.load(Ordering::Relaxed));
-        }
-    }
-
-    #[test]
-    fn dialog_fade_requests_frames_until_the_final_frame() {
-        let dirty = AtomicBool::new(true);
-        for still_animating in [true, true, false] {
-            assert!(dirty.load(Ordering::Relaxed));
-            FrameRedraw::begin(&dirty).finish(still_animating);
-            assert_eq!(dirty.load(Ordering::Relaxed), still_animating);
-        }
-    }
 
     #[derive(Clone, Copy)]
     struct FocusTarget {

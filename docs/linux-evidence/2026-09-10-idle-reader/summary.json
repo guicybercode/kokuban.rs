@@ -1,0 +1,73 @@
+{
+  "purpose": "Verify removal of periodic idle reader wakeups; not a CPU/power benchmark",
+  "environment": "Ubuntu 26.04 arm64 Docker in Colima VM on macOS/Apple M4; Xvfb 1280x900x24",
+  "rust": "1.94.1, --release --locked, built in Debian 12 arm64",
+  "trace_command": [
+    "strace",
+    "-f",
+    "-ttt",
+    "-e",
+    "trace=poll,ppoll,prctl",
+    "-o",
+    "/tmp/idle-trace-{before,after}.log",
+    "KOKUBAN_BINARY",
+    "-e",
+    "python3",
+    "/tmp/kokuban-idle-trace-child.py",
+    "/tmp/idle-trace-{before,after}.json"
+  ],
+  "extraction": "Identify reader TID using prctl(PR_SET_NAME, \"terminal-reader\"); retain all its trace lines; count = 0 (Timeout) over the full trace, including startup. Child signals DSR barrier then sleeps three seconds and exits.",
+  "observations": {
+    "before": {
+      "source_revision": "da14f90",
+      "binary_sha256": "28d8033a4cff1921a58e9d88f1a2561a0333149842911eec330841497dba5e0d",
+      "binary_bytes": 9301352,
+      "reader_tid": 3831,
+      "idle_seconds_after_dsr": 3.005326271057129,
+      "reader_timeout_returns_over_entire_trace": 109,
+      "terminal_exit_code": 0
+    },
+    "after": {
+      "source_revision": "b5952ce",
+      "binary_sha256": "68cc5a706b7119413e65013198b2ffc3f7e357cf66c9eb058aaeaba4e9cc61f3",
+      "binary_bytes": 10183976,
+      "reader_tid": 3965,
+      "idle_seconds_after_dsr": 3.005403757095337,
+      "reader_timeout_returns_over_entire_trace": 0,
+      "terminal_exit_code": 0
+    }
+  },
+  "validation": {
+    "macos": {
+      "main_tests_passed": 555,
+      "example_tests_passed": 194,
+      "check": "passed",
+      "clippy": "passed"
+    },
+    "linux": {
+      "main_tests_passed": 653,
+      "example_tests_passed": 194,
+      "ignored_benchmarks": 1,
+      "check": "passed",
+      "clippy": "passed",
+      "release_build": "passed",
+      "native_wayland_launch": "passed",
+      "emoji_raster_with_noto_color_emoji": "passed in a separate targeted run after installing the font"
+    }
+  },
+  "tradeoffs": [
+    "Two owned Unix socket descriptors per active reader",
+    "No CPU, battery or latency ratio inferred from one strace run",
+    "Reader still wakes for data, EOF, errors, signals or explicit cancellation; other application threads are outside this count",
+    "The after revision also includes merged text preservation/grapheme changes; this trace only validates removal of the reader timeout, not total performance between these revisions"
+  ],
+  "evidence_sha256": {
+    "after-interval.json": "6783ac8cf92dfc3271991b3906d72d0cdfe9bd0f0a673317153638f721419ef1",
+    "after-reader.txt": "3987a1af03f2c5f828843af4b3b4990c07f4b814d102e4245d6151b69fcbf15b",
+    "before-interval.json": "9ad03a752c96e4885144180f9f5c1241a9e77d904123ab9405cecee7a57ae4bc",
+    "before-reader.txt": "091aef0287088b1c01e8ebcf89e9eedf2e740ec3b2c96e2ad4c269d3e729ce3b",
+    "child.py": "83465bbac544b40395e8679a34537ce48ee857888c616dd5e1e3d969f6996fe4",
+    "wayland-launch.json": "352b01b100a0dc8344b20be5b8b9a3097899e21ad867652226b9e698a9c714cb"
+  },
+  "after_environment_note": "Noto Color Emoji installed before the final after trace; initial before trace used the package inventory in ../2026-09-10-modern-terminals/system-packages.txt"
+}

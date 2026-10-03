@@ -1,0 +1,14 @@
+[font]
+size = 10.5
+[font.normal]
+family = "DejaVu Sans Mono"
+[window]
+decorations = "None"
+[window.padding]
+x = 0
+y = 0
+[window.dimensions]
+columns = 80
+lines = 24
+[scrolling]
+history = 0

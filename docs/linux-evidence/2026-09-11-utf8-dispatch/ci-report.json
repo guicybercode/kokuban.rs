@@ -1,0 +1,2615 @@
+{
+  "schema": 1,
+  "kind": "paired-kokuban-revisions",
+  "status": "passed",
+  "created_utc": "2026-09-11T15:51:48Z",
+  "backend": "wayland",
+  "screen": "alternate",
+  "pairs_requested": 5,
+  "bytes_requested_per_workload": 33554432,
+  "requested_geometry": [
+    24,
+    80
+  ],
+  "font_pixels": 14.0,
+  "scrollback_lines": 10000,
+  "timeout_seconds": 120.0,
+  "settle_seconds": 1.0,
+  "environment_note": "GitHub ubuntu-24.04 runner; Weston headless pixman; both binaries on CPU 0; DSR processing only, no physical display or GPU comparison",
+  "binaries_identical": false,
+  "allow_identical_binaries": false,
+  "comparison_mode": "revision-comparison",
+  "source_refs_verified_by_runner": false,
+  "rendering_equivalence_verified": false,
+  "measurement_scope": "PTY processing throughput and DSR RTT; no presentation latency or terminal ranking",
+  "terminals": {
+    "before": {
+      "path": "/home/runner/work/_temp/kokuban-paired-binaries/before",
+      "source_ref": "48afe697858fa6e725cafbaf406d9ed261f08d62",
+      "samples": [
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/before",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/01-before"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              7.233499997028048e-05,
+              7.215400000859518e-05,
+              7.23040000139008e-05,
+              7.116199998336015e-05,
+              7.219499997290768e-05,
+              7.327599996642675e-05,
+              7.13219999965986e-05,
+              7.211399997686385e-05,
+              7.033099996078818e-05,
+              7.206399999404312e-05,
+              7.148299999926166e-05,
+              7.090200000448021e-05,
+              7.188400002178241e-05,
+              7.103199999392018e-05,
+              7.16729999794552e-05,
+              7.238500000994463e-05,
+              7.185399999798392e-05,
+              7.093199997143529e-05,
+              7.02309999951467e-05,
+              7.151299996621674e-05,
+              7.224399996630382e-05,
+              7.228399999803514e-05,
+              7.54710000023806e-05,
+              7.27959999835548e-05,
+              7.315599998491962e-05,
+              7.154299999001523e-05,
+              7.263499998089173e-05,
+              7.181400002309601e-05,
+              7.105200000978584e-05,
+              7.23050000033254e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.43246205600001986,
+                "drain_rtt_seconds": 0.00026659499997094827,
+                "write_and_dsr_seconds": 0.4327286509999908,
+                "mib_per_second": 73.94922969622418,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39,
+                "terminal_rss_before_kib": 15416,
+                "terminal_rss_after_kib": 15416
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.48874464299996134,
+                "drain_rtt_seconds": 0.00034834699999919394,
+                "write_and_dsr_seconds": 0.48909298999996054,
+                "mib_per_second": 65.4271529285871,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.42999999999999994,
+                "terminal_rss_before_kib": 15416,
+                "terminal_rss_after_kib": 15416
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.4819158990000005,
+                "drain_rtt_seconds": 0.0007770140000502579,
+                "write_and_dsr_seconds": 1.4826929130000508,
+                "mib_per_second": 21.582331177178006,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4299999999999997,
+                "terminal_rss_before_kib": 36660,
+                "terminal_rss_after_kib": 36660
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.3843177969999942,
+                "drain_rtt_seconds": 0.0007130749999646468,
+                "write_and_dsr_seconds": 1.385030871999959,
+                "mib_per_second": 23.104176765709173,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.33,
+                "terminal_rss_before_kib": 36660,
+                "terminal_rss_after_kib": 36660
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 1
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/before",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/02-before"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              5.0795000049674854e-05,
+              5.6734999986929324e-05,
+              5.008300001918542e-05,
+              5.572400004894007e-05,
+              5.0043000044297514e-05,
+              5.7165999976405146e-05,
+              4.984299999932773e-05,
+              5.586399998946945e-05,
+              4.9622000005911104e-05,
+              5.6083999993461475e-05,
+              5.002300002843185e-05,
+              5.970000000843356e-05,
+              4.9791999970238976e-05,
+              5.833799997390088e-05,
+              4.9622000005911104e-05,
+              5.63749999855645e-05,
+              4.9642000021776767e-05,
+              5.9630000009747164e-05,
+              4.992200001652236e-05,
+              5.6744999994862155e-05,
+              5.827800003999073e-05,
+              4.9622000005911104e-05,
+              5.5513000006612856e-05,
+              4.9391999993986246e-05,
+              5.613399997628221e-05,
+              4.9300999990009586e-05,
+              5.804800002806587e-05,
+              6.042299997943701e-05,
+              4.936199997018775e-05,
+              5.8318000014878635e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.437826460999986,
+                "drain_rtt_seconds": 0.0002535810000381389,
+                "write_and_dsr_seconds": 0.43808004200002415,
+                "mib_per_second": 73.0458987879064,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.38000000000000006,
+                "terminal_rss_before_kib": 15680,
+                "terminal_rss_after_kib": 15680
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.5019201609999868,
+                "drain_rtt_seconds": 0.00028902700000799086,
+                "write_and_dsr_seconds": 0.5022091879999948,
+                "mib_per_second": 63.71839189255867,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.44999999999999996,
+                "terminal_rss_before_kib": 15680,
+                "terminal_rss_after_kib": 15680
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.5324009710000155,
+                "drain_rtt_seconds": 0.0008848840000155178,
+                "write_and_dsr_seconds": 1.533285855000031,
+                "mib_per_second": 20.870191541955645,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4799999999999995,
+                "terminal_rss_before_kib": 36864,
+                "terminal_rss_after_kib": 39728
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.3696504719999893,
+                "drain_rtt_seconds": 0.0007155499999953463,
+                "write_and_dsr_seconds": 1.3703660219999847,
+                "mib_per_second": 23.35142405672674,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.3200000000000003,
+                "terminal_rss_before_kib": 39728,
+                "terminal_rss_after_kib": 39728
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 2
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/before",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/03-before"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              4.8550000030900264e-05,
+              5.187599998635051e-05,
+              4.7227999971255485e-05,
+              4.519399999480811e-05,
+              4.494300003443641e-05,
+              4.617600001211031e-05,
+              0.00013731500001767927,
+              5.40500000170141e-05,
+              4.4060999982775684e-05,
+              4.362099997479163e-05,
+              3.925300001128562e-05,
+              4.73680000254717e-05,
+              3.792000001112683e-05,
+              3.758999997671708e-05,
+              3.7539999993896345e-05,
+              3.892199998745127e-05,
+              4.967200004557526e-05,
+              4.935100002967374e-05,
+              4.751799997393391e-05,
+              4.728800001885247e-05,
+              4.78289999819026e-05,
+              4.715699998314449e-05,
+              4.7397999992426776e-05,
+              4.715699998314449e-05,
+              4.700699997783886e-05,
+              4.649599998174381e-05,
+              4.883100001507046e-05,
+              4.8058999993827456e-05,
+              4.687699998839889e-05,
+              4.670700002407102e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4369549770000276,
+                "drain_rtt_seconds": 0.0002422399999773006,
+                "write_and_dsr_seconds": 0.4371972170000049,
+                "mib_per_second": 73.1933991449337,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39,
+                "terminal_rss_before_kib": 15764,
+                "terminal_rss_after_kib": 15764
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.4928582580000125,
+                "drain_rtt_seconds": 0.0005708809999873665,
+                "write_and_dsr_seconds": 0.49342913899999985,
+                "mib_per_second": 64.85219320018179,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.43999999999999995,
+                "terminal_rss_before_kib": 15764,
+                "terminal_rss_after_kib": 15764
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.4763431689999607,
+                "drain_rtt_seconds": 0.0007451440000068033,
+                "write_and_dsr_seconds": 1.4770883129999675,
+                "mib_per_second": 21.664222241004612,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.42,
+                "terminal_rss_before_kib": 36924,
+                "terminal_rss_after_kib": 36928
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.3348383879999801,
+                "drain_rtt_seconds": 0.0007256480000137344,
+                "write_and_dsr_seconds": 1.3355640359999938,
+                "mib_per_second": 23.959912988141824,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.2800000000000002,
+                "terminal_rss_before_kib": 39520,
+                "terminal_rss_after_kib": 39520
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 3
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/before",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/04-before"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              7.376699994665614e-05,
+              8.062000000563785e-05,
+              7.324599999947168e-05,
+              7.266500000469023e-05,
+              8.328500001653083e-05,
+              8.245300000453426e-05,
+              7.295500000736865e-05,
+              7.373700003654449e-05,
+              8.063999996466009e-05,
+              7.27949999941302e-05,
+              7.271499998751096e-05,
+              7.27949999941302e-05,
+              7.27959999835548e-05,
+              8.136100001365776e-05,
+              7.306500003778638e-05,
+              7.309599999416605e-05,
+              7.188400002178241e-05,
+              7.26949999716453e-05,
+              7.17439999675662e-05,
+              7.192300000724572e-05,
+              7.017000001496854e-05,
+              6.525100002363615e-05,
+              7.998800003861106e-05,
+              8.048900002677328e-05,
+              9.258199997930205e-05,
+              0.00014198399998122113,
+              7.33969999942019e-05,
+              8.280299999796625e-05,
+              7.369700000481316e-05,
+              7.241500003374313e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.43045840900003896,
+                "drain_rtt_seconds": 0.0002565059999710684,
+                "write_and_dsr_seconds": 0.43071491500001,
+                "mib_per_second": 74.29496702925833,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39,
+                "terminal_rss_before_kib": 15672,
+                "terminal_rss_after_kib": 15672
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.48495206799998414,
+                "drain_rtt_seconds": 0.0002774260000251161,
+                "write_and_dsr_seconds": 0.48522949400000925,
+                "mib_per_second": 65.94809723793652,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.42999999999999994,
+                "terminal_rss_before_kib": 15672,
+                "terminal_rss_after_kib": 15672
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.4822696589999964,
+                "drain_rtt_seconds": 0.0006701149999912559,
+                "write_and_dsr_seconds": 1.4829397739999877,
+                "mib_per_second": 21.578738424492578,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4299999999999997,
+                "terminal_rss_before_kib": 36856,
+                "terminal_rss_after_kib": 36856
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.4045671659999925,
+                "drain_rtt_seconds": 0.0006286280000153965,
+                "write_and_dsr_seconds": 1.405195794000008,
+                "mib_per_second": 22.77262587127498,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.3499999999999996,
+                "terminal_rss_before_kib": 36856,
+                "terminal_rss_after_kib": 36856
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 4
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/before",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/05-before"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              6.72749999921507e-05,
+              7.511900003009941e-05,
+              7.581099998787977e-05,
+              7.480900001155533e-05,
+              7.432800003925877e-05,
+              7.5470000012956e-05,
+              7.311600001003171e-05,
+              8.11310000017329e-05,
+              6.469999999580978e-05,
+              7.413800000222182e-05,
+              7.515000004332251e-05,
+              8.217300000978867e-05,
+              7.443900000225767e-05,
+              7.449800000358664e-05,
+              7.350700002461963e-05,
+              7.377700001143239e-05,
+              7.438799997316892e-05,
+              7.426799999166178e-05,
+              6.535099998927762e-05,
+              7.393700002467085e-05,
+              8.363500000996282e-05,
+              6.431999997857929e-05,
+              7.399800000484902e-05,
+              8.4757999957219e-05,
+              7.428799995068402e-05,
+              8.059999998977219e-05,
+              7.929800000283649e-05,
+              7.955799998171642e-05,
+              6.51309999852856e-05,
+              7.265500005360082e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4343538040000112,
+                "drain_rtt_seconds": 0.0002253189999805727,
+                "write_and_dsr_seconds": 0.4345791229999918,
+                "mib_per_second": 73.63434807459942,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39,
+                "terminal_rss_before_kib": 17656,
+                "terminal_rss_after_kib": 17656
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.5037103029999912,
+                "drain_rtt_seconds": 0.0002993460000197956,
+                "write_and_dsr_seconds": 0.504009649000011,
+                "mib_per_second": 63.49077228286684,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.44999999999999996,
+                "terminal_rss_before_kib": 17656,
+                "terminal_rss_after_kib": 17656
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.4666300950000277,
+                "drain_rtt_seconds": 0.0012681059999977151,
+                "write_and_dsr_seconds": 1.4678982010000254,
+                "mib_per_second": 21.799856053111494,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4099999999999997,
+                "terminal_rss_before_kib": 38836,
+                "terminal_rss_after_kib": 38836
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.3297633500000074,
+                "drain_rtt_seconds": 0.0006250120000004245,
+                "write_and_dsr_seconds": 1.3303883620000079,
+                "mib_per_second": 24.053125393058103,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.2799999999999994,
+                "terminal_rss_before_kib": 38836,
+                "terminal_rss_after_kib": 38836
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 5
+        }
+      ],
+      "sha256": "f9904f831e7d43d5fbe3abb57bca5df777775127a3c80dd81c91e457aa805c2a",
+      "version_observation": {
+        "command": [
+          "/home/runner/work/_temp/kokuban-paired-binaries/before",
+          "--version"
+        ],
+        "status": 0,
+        "output": "kokuban 0.1.0"
+      },
+      "version": "kokuban 0.1.0",
+      "summary": {
+        "ascii": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 0.4345791229999918,
+            "min": 0.43071491500001,
+            "max": 0.43808004200002415,
+            "median_absolute_deviation": 0.002618094000013116,
+            "samples": [
+              0.4327286509999908,
+              0.43808004200002415,
+              0.4371972170000049,
+              0.43071491500001,
+              0.4345791229999918
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 73.63434807459942,
+            "min": 73.0458987879064,
+            "max": 74.29496702925833,
+            "median_absolute_deviation": 0.44094892966572274,
+            "samples": [
+              73.94922969622418,
+              73.0458987879064,
+              73.1933991449337,
+              74.29496702925833,
+              73.63434807459942
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 0.39,
+            "min": 0.38000000000000006,
+            "max": 0.39,
+            "median_absolute_deviation": 0.0,
+            "samples": [
+              0.39,
+              0.38000000000000006,
+              0.39,
+              0.39,
+              0.39
+            ]
+          }
+        },
+        "ansi": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 0.49342913899999985,
+            "min": 0.48522949400000925,
+            "max": 0.504009649000011,
+            "median_absolute_deviation": 0.008199644999990596,
+            "samples": [
+              0.48909298999996054,
+              0.5022091879999948,
+              0.49342913899999985,
+              0.48522949400000925,
+              0.504009649000011
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 64.85219320018179,
+            "min": 63.49077228286684,
+            "max": 65.94809723793652,
+            "median_absolute_deviation": 1.0959040377547353,
+            "samples": [
+              65.4271529285871,
+              63.71839189255867,
+              64.85219320018179,
+              65.94809723793652,
+              63.49077228286684
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 0.43999999999999995,
+            "min": 0.42999999999999994,
+            "max": 0.44999999999999996,
+            "median_absolute_deviation": 0.010000000000000009,
+            "samples": [
+              0.42999999999999994,
+              0.44999999999999996,
+              0.43999999999999995,
+              0.42999999999999994,
+              0.44999999999999996
+            ]
+          }
+        },
+        "unicode": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 1.4826929130000508,
+            "min": 1.4678982010000254,
+            "max": 1.533285855000031,
+            "median_absolute_deviation": 0.005604600000083337,
+            "samples": [
+              1.4826929130000508,
+              1.533285855000031,
+              1.4770883129999675,
+              1.4829397739999877,
+              1.4678982010000254
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 21.582331177178006,
+            "min": 20.870191541955645,
+            "max": 21.799856053111494,
+            "median_absolute_deviation": 0.08189106382660682,
+            "samples": [
+              21.582331177178006,
+              20.870191541955645,
+              21.664222241004612,
+              21.578738424492578,
+              21.799856053111494
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 1.4299999999999997,
+            "min": 1.4099999999999997,
+            "max": 1.4799999999999995,
+            "median_absolute_deviation": 0.009999999999999787,
+            "samples": [
+              1.4299999999999997,
+              1.4799999999999995,
+              1.42,
+              1.4299999999999997,
+              1.4099999999999997
+            ]
+          }
+        },
+        "short_lines": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 1.3703660219999847,
+            "min": 1.3303883620000079,
+            "max": 1.405195794000008,
+            "median_absolute_deviation": 0.03480198599999085,
+            "samples": [
+              1.385030871999959,
+              1.3703660219999847,
+              1.3355640359999938,
+              1.405195794000008,
+              1.3303883620000079
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 23.35142405672674,
+            "min": 22.77262587127498,
+            "max": 24.053125393058103,
+            "median_absolute_deviation": 0.5787981854517597,
+            "samples": [
+              23.104176765709173,
+              23.35142405672674,
+              23.959912988141824,
+              22.77262587127498,
+              24.053125393058103
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 1.3200000000000003,
+            "min": 1.2799999999999994,
+            "max": 1.3499999999999996,
+            "median_absolute_deviation": 0.02999999999999936,
+            "samples": [
+              1.33,
+              1.3200000000000003,
+              1.2800000000000002,
+              1.3499999999999996,
+              1.2799999999999994
+            ]
+          }
+        }
+      },
+      "protocol_rtt_seconds": {
+        "count": 150,
+        "median": 7.14979999827392e-05,
+        "min": 3.7539999993896345e-05,
+        "max": 0.00014198399998122113,
+        "median_absolute_deviation": 8.27500002742454e-06,
+        "samples": [
+          7.233499997028048e-05,
+          7.215400000859518e-05,
+          7.23040000139008e-05,
+          7.116199998336015e-05,
+          7.219499997290768e-05,
+          7.327599996642675e-05,
+          7.13219999965986e-05,
+          7.211399997686385e-05,
+          7.033099996078818e-05,
+          7.206399999404312e-05,
+          7.148299999926166e-05,
+          7.090200000448021e-05,
+          7.188400002178241e-05,
+          7.103199999392018e-05,
+          7.16729999794552e-05,
+          7.238500000994463e-05,
+          7.185399999798392e-05,
+          7.093199997143529e-05,
+          7.02309999951467e-05,
+          7.151299996621674e-05,
+          7.224399996630382e-05,
+          7.228399999803514e-05,
+          7.54710000023806e-05,
+          7.27959999835548e-05,
+          7.315599998491962e-05,
+          7.154299999001523e-05,
+          7.263499998089173e-05,
+          7.181400002309601e-05,
+          7.105200000978584e-05,
+          7.23050000033254e-05,
+          5.0795000049674854e-05,
+          5.6734999986929324e-05,
+          5.008300001918542e-05,
+          5.572400004894007e-05,
+          5.0043000044297514e-05,
+          5.7165999976405146e-05,
+          4.984299999932773e-05,
+          5.586399998946945e-05,
+          4.9622000005911104e-05,
+          5.6083999993461475e-05,
+          5.002300002843185e-05,
+          5.970000000843356e-05,
+          4.9791999970238976e-05,
+          5.833799997390088e-05,
+          4.9622000005911104e-05,
+          5.63749999855645e-05,
+          4.9642000021776767e-05,
+          5.9630000009747164e-05,
+          4.992200001652236e-05,
+          5.6744999994862155e-05,
+          5.827800003999073e-05,
+          4.9622000005911104e-05,
+          5.5513000006612856e-05,
+          4.9391999993986246e-05,
+          5.613399997628221e-05,
+          4.9300999990009586e-05,
+          5.804800002806587e-05,
+          6.042299997943701e-05,
+          4.936199997018775e-05,
+          5.8318000014878635e-05,
+          4.8550000030900264e-05,
+          5.187599998635051e-05,
+          4.7227999971255485e-05,
+          4.519399999480811e-05,
+          4.494300003443641e-05,
+          4.617600001211031e-05,
+          0.00013731500001767927,
+          5.40500000170141e-05,
+          4.4060999982775684e-05,
+          4.362099997479163e-05,
+          3.925300001128562e-05,
+          4.73680000254717e-05,
+          3.792000001112683e-05,
+          3.758999997671708e-05,
+          3.7539999993896345e-05,
+          3.892199998745127e-05,
+          4.967200004557526e-05,
+          4.935100002967374e-05,
+          4.751799997393391e-05,
+          4.728800001885247e-05,
+          4.78289999819026e-05,
+          4.715699998314449e-05,
+          4.7397999992426776e-05,
+          4.715699998314449e-05,
+          4.700699997783886e-05,
+          4.649599998174381e-05,
+          4.883100001507046e-05,
+          4.8058999993827456e-05,
+          4.687699998839889e-05,
+          4.670700002407102e-05,
+          7.376699994665614e-05,
+          8.062000000563785e-05,
+          7.324599999947168e-05,
+          7.266500000469023e-05,
+          8.328500001653083e-05,
+          8.245300000453426e-05,
+          7.295500000736865e-05,
+          7.373700003654449e-05,
+          8.063999996466009e-05,
+          7.27949999941302e-05,
+          7.271499998751096e-05,
+          7.27949999941302e-05,
+          7.27959999835548e-05,
+          8.136100001365776e-05,
+          7.306500003778638e-05,
+          7.309599999416605e-05,
+          7.188400002178241e-05,
+          7.26949999716453e-05,
+          7.17439999675662e-05,
+          7.192300000724572e-05,
+          7.017000001496854e-05,
+          6.525100002363615e-05,
+          7.998800003861106e-05,
+          8.048900002677328e-05,
+          9.258199997930205e-05,
+          0.00014198399998122113,
+          7.33969999942019e-05,
+          8.280299999796625e-05,
+          7.369700000481316e-05,
+          7.241500003374313e-05,
+          6.72749999921507e-05,
+          7.511900003009941e-05,
+          7.581099998787977e-05,
+          7.480900001155533e-05,
+          7.432800003925877e-05,
+          7.5470000012956e-05,
+          7.311600001003171e-05,
+          8.11310000017329e-05,
+          6.469999999580978e-05,
+          7.413800000222182e-05,
+          7.515000004332251e-05,
+          8.217300000978867e-05,
+          7.443900000225767e-05,
+          7.449800000358664e-05,
+          7.350700002461963e-05,
+          7.377700001143239e-05,
+          7.438799997316892e-05,
+          7.426799999166178e-05,
+          6.535099998927762e-05,
+          7.393700002467085e-05,
+          8.363500000996282e-05,
+          6.431999997857929e-05,
+          7.399800000484902e-05,
+          8.4757999957219e-05,
+          7.428799995068402e-05,
+          8.059999998977219e-05,
+          7.929800000283649e-05,
+          7.955799998171642e-05,
+          6.51309999852856e-05,
+          7.265500005360082e-05
+        ]
+      }
+    },
+    "after": {
+      "path": "/home/runner/work/_temp/kokuban-paired-binaries/after",
+      "source_ref": "4614d9ee235986e5497e7aca192040c01c3e5a93",
+      "samples": [
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/after",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/01-after"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              5.6846000006771646e-05,
+              5.0463999968997086e-05,
+              4.801900001893955e-05,
+              4.75790000109555e-05,
+              4.68469999646004e-05,
+              4.810900003349161e-05,
+              4.783899998983543e-05,
+              4.703700000163735e-05,
+              4.669600002671359e-05,
+              4.7147999964636256e-05,
+              4.684700002144382e-05,
+              4.719800000430041e-05,
+              4.6886999996331724e-05,
+              4.649599998174381e-05,
+              4.677700002275742e-05,
+              4.641699996454918e-05,
+              4.6907000012197386e-05,
+              4.819899999120025e-05,
+              4.69869999619732e-05,
+              4.710799998974835e-05,
+              4.827999998724408e-05,
+              4.7217999963322654e-05,
+              4.684700002144382e-05,
+              4.642600003990083e-05,
+              4.667700000027253e-05,
+              4.69869999619732e-05,
+              4.7047000009570183e-05,
+              4.728800001885247e-05,
+              4.704799999899478e-05,
+              4.669700001613819e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4362985099999719,
+                "drain_rtt_seconds": 0.00024787099999912243,
+                "write_and_dsr_seconds": 0.436546380999971,
+                "mib_per_second": 73.30252133950842,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39000000000000007,
+                "terminal_rss_before_kib": 15712,
+                "terminal_rss_after_kib": 15712
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.49976000200001636,
+                "drain_rtt_seconds": 0.0002643610000063745,
+                "write_and_dsr_seconds": 0.5000243630000227,
+                "mib_per_second": 63.99680539771197,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.45999999999999996,
+                "terminal_rss_before_kib": 15712,
+                "terminal_rss_after_kib": 15712
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.4027457050000294,
+                "drain_rtt_seconds": 0.0007418389999997999,
+                "write_and_dsr_seconds": 1.4034875440000292,
+                "mib_per_second": 22.8003231088321,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.3599999999999999,
+                "terminal_rss_before_kib": 36900,
+                "terminal_rss_after_kib": 36904
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.4830229449999592,
+                "drain_rtt_seconds": 0.0007833150000351452,
+                "write_and_dsr_seconds": 1.4838062599999944,
+                "mib_per_second": 21.566156549744903,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4399999999999995,
+                "terminal_rss_before_kib": 36904,
+                "terminal_rss_after_kib": 36904
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 1
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/after",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/02-after"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              5.166699997971591e-05,
+              5.747699998437383e-05,
+              5.024300003242388e-05,
+              5.553300002247852e-05,
+              5.064399999810121e-05,
+              6.025199996884112e-05,
+              6.243600000743754e-05,
+              5.007400000067719e-05,
+              5.589300002384334e-05,
+              6.0562999976809806e-05,
+              5.001300002049902e-05,
+              5.5492999990747194e-05,
+              4.9541999999291875e-05,
+              5.52129999960016e-05,
+              4.9541999999291875e-05,
+              5.546300002379212e-05,
+              4.951199997549338e-05,
+              5.587399999740228e-05,
+              4.9451999984739814e-05,
+              5.954000005203852e-05,
+              5.903999999645748e-05,
+              5.019400003902774e-05,
+              5.487200002107784e-05,
+              4.933199994638926e-05,
+              5.4691999991973717e-05,
+              4.9300999990009586e-05,
+              5.803800002013304e-05,
+              4.935199996225492e-05,
+              5.602400000270791e-05,
+              4.9962999980834866e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4386472479999952,
+                "drain_rtt_seconds": 0.00022052999997868028,
+                "write_and_dsr_seconds": 0.4388677779999739,
+                "mib_per_second": 72.91478666938599,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39000000000000007,
+                "terminal_rss_before_kib": 15740,
+                "terminal_rss_after_kib": 15740
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.5203465850000271,
+                "drain_rtt_seconds": 0.0002563259999988077,
+                "write_and_dsr_seconds": 0.5206029110000259,
+                "mib_per_second": 61.467120480672364,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.47,
+                "terminal_rss_before_kib": 15740,
+                "terminal_rss_after_kib": 15740
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.397704291000025,
+                "drain_rtt_seconds": 0.0006874970000012581,
+                "write_and_dsr_seconds": 1.3983917880000263,
+                "mib_per_second": 22.88340775240685,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.35,
+                "terminal_rss_before_kib": 38836,
+                "terminal_rss_after_kib": 38836
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.4994182679999994,
+                "drain_rtt_seconds": 0.0006916959999898609,
+                "write_and_dsr_seconds": 1.5001099639999893,
+                "mib_per_second": 21.33176824405894,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4500000000000002,
+                "terminal_rss_before_kib": 38836,
+                "terminal_rss_after_kib": 38836
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 2
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/after",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/03-after"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              5.635399998027424e-05,
+              0.00012843799999018302,
+              5.962099999123893e-05,
+              6.566199999724631e-05,
+              6.134399995971762e-05,
+              6.121400002712107e-05,
+              6.106300003239085e-05,
+              5.913000001100954e-05,
+              6.0974000007263385e-05,
+              5.023400001391565e-05,
+              5.5241999973532074e-05,
+              4.9642000021776767e-05,
+              5.601399999477508e-05,
+              4.856999998992251e-05,
+              5.8889000001727254e-05,
+              4.9813000032372656e-05,
+              5.546300002379212e-05,
+              4.9292000028344773e-05,
+              5.8738999996421626e-05,
+              4.8671000001832e-05,
+              5.834899997125831e-05,
+              4.915100004154738e-05,
+              5.5173000021113694e-05,
+              4.8779999985981704e-05,
+              5.788700002540281e-05,
+              5.034299999806535e-05,
+              5.8158000001640175e-05,
+              4.900099997939833e-05,
+              5.4771999998592946e-05,
+              4.8550000030900264e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4370421110000393,
+                "drain_rtt_seconds": 0.00022435699997913616,
+                "write_and_dsr_seconds": 0.43726646800001845,
+                "mib_per_second": 73.18180732059746,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.39000000000000007,
+                "terminal_rss_before_kib": 15624,
+                "terminal_rss_after_kib": 15624
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.5108495009999956,
+                "drain_rtt_seconds": 0.0002855309999745259,
+                "write_and_dsr_seconds": 0.5111350319999701,
+                "mib_per_second": 62.605690961579825,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.45999999999999996,
+                "terminal_rss_before_kib": 15624,
+                "terminal_rss_after_kib": 15624
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.5606952719999754,
+                "drain_rtt_seconds": 0.0007275410000033844,
+                "write_and_dsr_seconds": 1.5614228129999788,
+                "mib_per_second": 20.494109101006398,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.5100000000000002,
+                "terminal_rss_before_kib": 36828,
+                "terminal_rss_after_kib": 36828
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.484416848999956,
+                "drain_rtt_seconds": 0.00076361900005395,
+                "write_and_dsr_seconds": 1.48518046800001,
+                "mib_per_second": 21.54620181326755,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4400000000000004,
+                "terminal_rss_before_kib": 36828,
+                "terminal_rss_after_kib": 39716
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 3
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/after",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/04-after"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              5.072400000472044e-05,
+              5.6905999997525214e-05,
+              5.0603999966369884e-05,
+              5.601399999477508e-05,
+              5.811800002675227e-05,
+              6.009100002302148e-05,
+              5.027300005622237e-05,
+              5.5754000015895144e-05,
+              5.8980000005703914e-05,
+              5.498199999465214e-05,
+              4.893100003755535e-05,
+              5.9290000024248e-05,
+              5.809800001088661e-05,
+              4.9803000024439825e-05,
+              5.488199997216725e-05,
+              5.003300003636468e-05,
+              5.578400003969364e-05,
+              4.943099997944955e-05,
+              5.8648999981869565e-05,
+              4.968199999666467e-05,
+              5.629499997894527e-05,
+              4.944199997680698e-05,
+              5.843899998581037e-05,
+              5.454099999724349e-05,
+              5.7566999998925894e-05,
+              5.6846000006771646e-05,
+              5.6926000013390876e-05,
+              5.5843999973603786e-05,
+              5.588400000533511e-05,
+              5.474199997479445e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4358990329999983,
+                "drain_rtt_seconds": 0.0002624470000114343,
+                "write_and_dsr_seconds": 0.43616148000000976,
+                "mib_per_second": 73.36720888083659,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.4,
+                "terminal_rss_before_kib": 15628,
+                "terminal_rss_after_kib": 15628
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.5071287359999701,
+                "drain_rtt_seconds": 0.00025631599999087484,
+                "write_and_dsr_seconds": 0.507385051999961,
+                "mib_per_second": 63.06839692437334,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.45999999999999996,
+                "terminal_rss_before_kib": 15628,
+                "terminal_rss_after_kib": 15628
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.3925380720000362,
+                "drain_rtt_seconds": 0.0006574819999514148,
+                "write_and_dsr_seconds": 1.3931955539999876,
+                "mib_per_second": 22.96875653281202,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.3600000000000003,
+                "terminal_rss_before_kib": 36808,
+                "terminal_rss_after_kib": 36808
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.4891653520000432,
+                "drain_rtt_seconds": 0.0006926269999780743,
+                "write_and_dsr_seconds": 1.4898579790000213,
+                "mib_per_second": 21.478556039367906,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4399999999999995,
+                "terminal_rss_before_kib": 36808,
+                "terminal_rss_after_kib": 39224
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 4
+        },
+        {
+          "command": [
+            "/home/runner/work/_temp/kokuban-paired-binaries/after",
+            "-e",
+            "/usr/bin/python3",
+            "/home/runner/work/kokuban.rs/kokuban.rs/scripts/compare-terminal-performance.py",
+            "--child-dir",
+            "/home/runner/work/_temp/kokuban-paired-evidence/measurements/05-after"
+          ],
+          "config": {
+            "filename": "kokuban.toml",
+            "text": "[font]\nfamily = \"DejaVu Sans Mono\"\nsize = 14.0\n[window]\ncolumns = 80\nrows = 24\nscrollback_lines = 0\n[images]\nenabled = false\n",
+            "sha256": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+            "history_limit": 0,
+            "history_unit": "lines"
+          },
+          "measurements": {
+            "initial_geometry": [
+              24,
+              80,
+              720,
+              408
+            ],
+            "protocol_rtt_seconds": [
+              5.0383000029796676e-05,
+              5.2538000034019205e-05,
+              4.973200003632883e-05,
+              4.9472000000605476e-05,
+              4.785900000570109e-05,
+              5.06040000232133e-05,
+              4.869100001769766e-05,
+              4.791899999645466e-05,
+              4.675600001746716e-05,
+              4.6897000004264555e-05,
+              4.7809000022880355e-05,
+              4.650699997910124e-05,
+              4.6556000029340794e-05,
+              4.6577000034631055e-05,
+              4.627599997775178e-05,
+              4.6886999996331724e-05,
+              4.6316000009483105e-05,
+              4.684700002144382e-05,
+              4.875099995160781e-05,
+              6.02020000428638e-05,
+              5.138500000612112e-05,
+              4.683700001351099e-05,
+              4.685700002937665e-05,
+              4.674699999895893e-05,
+              4.662700001745179e-05,
+              4.676700001482459e-05,
+              4.651599999760947e-05,
+              4.660699994474271e-05,
+              4.637699998966127e-05,
+              4.6316000009483105e-05
+            ],
+            "workloads": {
+              "ascii": {
+                "bytes": 33554380,
+                "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+                "write_seconds": 0.4298198739999748,
+                "drain_rtt_seconds": 0.00022902500001009685,
+                "write_and_dsr_seconds": 0.4300488989999849,
+                "mib_per_second": 74.41002751860707,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.38000000000000006,
+                "terminal_rss_before_kib": 15584,
+                "terminal_rss_after_kib": 15584
+              },
+              "ansi": {
+                "bytes": 33554392,
+                "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+                "write_seconds": 0.4970110449999652,
+                "drain_rtt_seconds": 0.00028933800001595955,
+                "write_and_dsr_seconds": 0.49730038299998114,
+                "mib_per_second": 64.34735010656237,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 0.45999999999999996,
+                "terminal_rss_before_kib": 15584,
+                "terminal_rss_after_kib": 18472
+              },
+              "unicode": {
+                "bytes": 33554400,
+                "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+                "write_seconds": 1.4063591799999813,
+                "drain_rtt_seconds": 0.0007418179999945096,
+                "write_and_dsr_seconds": 1.4071009979999758,
+                "mib_per_second": 22.741771577097854,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.3600000000000003,
+                "terminal_rss_before_kib": 39676,
+                "terminal_rss_after_kib": 39676
+              },
+              "short_lines": {
+                "bytes": 33554430,
+                "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+                "write_seconds": 1.4748747739999999,
+                "drain_rtt_seconds": 0.0007943859999954839,
+                "write_and_dsr_seconds": 1.4756691599999954,
+                "mib_per_second": 21.685076140407695,
+                "reply_hex": "1b5b313b3552",
+                "geometry_before": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "geometry_after": [
+                  24,
+                  80,
+                  720,
+                  408
+                ],
+                "terminal_cpu_seconds": 1.4299999999999997,
+                "terminal_rss_before_kib": 39676,
+                "terminal_rss_after_kib": 39676
+              }
+            },
+            "term": "xterm-256color"
+          },
+          "status": "passed",
+          "pair": 5
+        }
+      ],
+      "sha256": "eee0104dc055a3408e7a774938e206cc6c84d53ae4473edd9fac10eab44efead",
+      "version_observation": {
+        "command": [
+          "/home/runner/work/_temp/kokuban-paired-binaries/after",
+          "--version"
+        ],
+        "status": 0,
+        "output": "kokuban 0.1.0"
+      },
+      "version": "kokuban 0.1.0",
+      "summary": {
+        "ascii": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 0.436546380999971,
+            "min": 0.4300488989999849,
+            "max": 0.4388677779999739,
+            "median_absolute_deviation": 0.0007200870000474424,
+            "samples": [
+              0.436546380999971,
+              0.4388677779999739,
+              0.43726646800001845,
+              0.43616148000000976,
+              0.4300488989999849
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 73.30252133950842,
+            "min": 72.91478666938599,
+            "max": 74.41002751860707,
+            "median_absolute_deviation": 0.12071401891095945,
+            "samples": [
+              73.30252133950842,
+              72.91478666938599,
+              73.18180732059746,
+              73.36720888083659,
+              74.41002751860707
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 0.39000000000000007,
+            "min": 0.38000000000000006,
+            "max": 0.4,
+            "median_absolute_deviation": 0.0,
+            "samples": [
+              0.39000000000000007,
+              0.39000000000000007,
+              0.39000000000000007,
+              0.4,
+              0.38000000000000006
+            ]
+          }
+        },
+        "ansi": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 0.507385051999961,
+            "min": 0.49730038299998114,
+            "max": 0.5206029110000259,
+            "median_absolute_deviation": 0.0073606889999382474,
+            "samples": [
+              0.5000243630000227,
+              0.5206029110000259,
+              0.5111350319999701,
+              0.507385051999961,
+              0.49730038299998114
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 63.06839692437334,
+            "min": 61.467120480672364,
+            "max": 64.34735010656237,
+            "median_absolute_deviation": 0.928408473338628,
+            "samples": [
+              63.99680539771197,
+              61.467120480672364,
+              62.605690961579825,
+              63.06839692437334,
+              64.34735010656237
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 0.45999999999999996,
+            "min": 0.45999999999999996,
+            "max": 0.47,
+            "median_absolute_deviation": 0.0,
+            "samples": [
+              0.45999999999999996,
+              0.47,
+              0.45999999999999996,
+              0.45999999999999996,
+              0.45999999999999996
+            ]
+          }
+        },
+        "unicode": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 1.4034875440000292,
+            "min": 1.3931955539999876,
+            "max": 1.5614228129999788,
+            "median_absolute_deviation": 0.005095756000002893,
+            "samples": [
+              1.4034875440000292,
+              1.3983917880000263,
+              1.5614228129999788,
+              1.3931955539999876,
+              1.4071009979999758
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 22.8003231088321,
+            "min": 20.494109101006398,
+            "max": 22.96875653281202,
+            "median_absolute_deviation": 0.08308464357475032,
+            "samples": [
+              22.8003231088321,
+              22.88340775240685,
+              20.494109101006398,
+              22.96875653281202,
+              22.741771577097854
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 1.3600000000000003,
+            "min": 1.35,
+            "max": 1.5100000000000002,
+            "median_absolute_deviation": 4.440892098500626e-16,
+            "samples": [
+              1.3599999999999999,
+              1.35,
+              1.5100000000000002,
+              1.3600000000000003,
+              1.3600000000000003
+            ]
+          }
+        },
+        "short_lines": {
+          "write_and_dsr_seconds": {
+            "count": 5,
+            "median": 1.48518046800001,
+            "min": 1.4756691599999954,
+            "max": 1.5001099639999893,
+            "median_absolute_deviation": 0.004677511000011236,
+            "samples": [
+              1.4838062599999944,
+              1.5001099639999893,
+              1.48518046800001,
+              1.4898579790000213,
+              1.4756691599999954
+            ]
+          },
+          "mib_per_second": {
+            "count": 5,
+            "median": 21.54620181326755,
+            "min": 21.33176824405894,
+            "max": 21.685076140407695,
+            "median_absolute_deviation": 0.06764577389964543,
+            "samples": [
+              21.566156549744903,
+              21.33176824405894,
+              21.54620181326755,
+              21.478556039367906,
+              21.685076140407695
+            ]
+          },
+          "terminal_cpu_seconds": {
+            "count": 5,
+            "median": 1.4399999999999995,
+            "min": 1.4299999999999997,
+            "max": 1.4500000000000002,
+            "median_absolute_deviation": 8.881784197001252e-16,
+            "samples": [
+              1.4399999999999995,
+              1.4500000000000002,
+              1.4400000000000004,
+              1.4399999999999995,
+              1.4299999999999997
+            ]
+          }
+        }
+      },
+      "protocol_rtt_seconds": {
+        "count": 150,
+        "median": 4.998800000066694e-05,
+        "min": 4.627599997775178e-05,
+        "max": 0.00012843799999018302,
+        "median_absolute_deviation": 3.2364999924539006e-06,
+        "samples": [
+          5.6846000006771646e-05,
+          5.0463999968997086e-05,
+          4.801900001893955e-05,
+          4.75790000109555e-05,
+          4.68469999646004e-05,
+          4.810900003349161e-05,
+          4.783899998983543e-05,
+          4.703700000163735e-05,
+          4.669600002671359e-05,
+          4.7147999964636256e-05,
+          4.684700002144382e-05,
+          4.719800000430041e-05,
+          4.6886999996331724e-05,
+          4.649599998174381e-05,
+          4.677700002275742e-05,
+          4.641699996454918e-05,
+          4.6907000012197386e-05,
+          4.819899999120025e-05,
+          4.69869999619732e-05,
+          4.710799998974835e-05,
+          4.827999998724408e-05,
+          4.7217999963322654e-05,
+          4.684700002144382e-05,
+          4.642600003990083e-05,
+          4.667700000027253e-05,
+          4.69869999619732e-05,
+          4.7047000009570183e-05,
+          4.728800001885247e-05,
+          4.704799999899478e-05,
+          4.669700001613819e-05,
+          5.166699997971591e-05,
+          5.747699998437383e-05,
+          5.024300003242388e-05,
+          5.553300002247852e-05,
+          5.064399999810121e-05,
+          6.025199996884112e-05,
+          6.243600000743754e-05,
+          5.007400000067719e-05,
+          5.589300002384334e-05,
+          6.0562999976809806e-05,
+          5.001300002049902e-05,
+          5.5492999990747194e-05,
+          4.9541999999291875e-05,
+          5.52129999960016e-05,
+          4.9541999999291875e-05,
+          5.546300002379212e-05,
+          4.951199997549338e-05,
+          5.587399999740228e-05,
+          4.9451999984739814e-05,
+          5.954000005203852e-05,
+          5.903999999645748e-05,
+          5.019400003902774e-05,
+          5.487200002107784e-05,
+          4.933199994638926e-05,
+          5.4691999991973717e-05,
+          4.9300999990009586e-05,
+          5.803800002013304e-05,
+          4.935199996225492e-05,
+          5.602400000270791e-05,
+          4.9962999980834866e-05,
+          5.635399998027424e-05,
+          0.00012843799999018302,
+          5.962099999123893e-05,
+          6.566199999724631e-05,
+          6.134399995971762e-05,
+          6.121400002712107e-05,
+          6.106300003239085e-05,
+          5.913000001100954e-05,
+          6.0974000007263385e-05,
+          5.023400001391565e-05,
+          5.5241999973532074e-05,
+          4.9642000021776767e-05,
+          5.601399999477508e-05,
+          4.856999998992251e-05,
+          5.8889000001727254e-05,
+          4.9813000032372656e-05,
+          5.546300002379212e-05,
+          4.9292000028344773e-05,
+          5.8738999996421626e-05,
+          4.8671000001832e-05,
+          5.834899997125831e-05,
+          4.915100004154738e-05,
+          5.5173000021113694e-05,
+          4.8779999985981704e-05,
+          5.788700002540281e-05,
+          5.034299999806535e-05,
+          5.8158000001640175e-05,
+          4.900099997939833e-05,
+          5.4771999998592946e-05,
+          4.8550000030900264e-05,
+          5.072400000472044e-05,
+          5.6905999997525214e-05,
+          5.0603999966369884e-05,
+          5.601399999477508e-05,
+          5.811800002675227e-05,
+          6.009100002302148e-05,
+          5.027300005622237e-05,
+          5.5754000015895144e-05,
+          5.8980000005703914e-05,
+          5.498199999465214e-05,
+          4.893100003755535e-05,
+          5.9290000024248e-05,
+          5.809800001088661e-05,
+          4.9803000024439825e-05,
+          5.488199997216725e-05,
+          5.003300003636468e-05,
+          5.578400003969364e-05,
+          4.943099997944955e-05,
+          5.8648999981869565e-05,
+          4.968199999666467e-05,
+          5.629499997894527e-05,
+          4.944199997680698e-05,
+          5.843899998581037e-05,
+          5.454099999724349e-05,
+          5.7566999998925894e-05,
+          5.6846000006771646e-05,
+          5.6926000013390876e-05,
+          5.5843999973603786e-05,
+          5.588400000533511e-05,
+          5.474199997479445e-05,
+          5.0383000029796676e-05,
+          5.2538000034019205e-05,
+          4.973200003632883e-05,
+          4.9472000000605476e-05,
+          4.785900000570109e-05,
+          5.06040000232133e-05,
+          4.869100001769766e-05,
+          4.791899999645466e-05,
+          4.675600001746716e-05,
+          4.6897000004264555e-05,
+          4.7809000022880355e-05,
+          4.650699997910124e-05,
+          4.6556000029340794e-05,
+          4.6577000034631055e-05,
+          4.627599997775178e-05,
+          4.6886999996331724e-05,
+          4.6316000009483105e-05,
+          4.684700002144382e-05,
+          4.875099995160781e-05,
+          6.02020000428638e-05,
+          5.138500000612112e-05,
+          4.683700001351099e-05,
+          4.685700002937665e-05,
+          4.674699999895893e-05,
+          4.662700001745179e-05,
+          4.676700001482459e-05,
+          4.651599999760947e-05,
+          4.660699994474271e-05,
+          4.637699998966127e-05,
+          4.6316000009483105e-05
+        ]
+      }
+    }
+  },
+  "payloads": {
+    "ascii": {
+      "path": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/ascii.bin",
+      "bytes": 33554380,
+      "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a"
+    },
+    "ansi": {
+      "path": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/ansi.bin",
+      "bytes": 33554392,
+      "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e"
+    },
+    "unicode": {
+      "path": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/unicode.bin",
+      "bytes": 33554400,
+      "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5"
+    },
+    "short_lines": {
+      "path": "/home/runner/work/_temp/kokuban-paired-evidence/measurements/short_lines.bin",
+      "bytes": 33554430,
+      "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b"
+    }
+  },
+  "execution_order": [
+    {
+      "pair": 1,
+      "side": "before"
+    },
+    {
+      "pair": 1,
+      "side": "after"
+    },
+    {
+      "pair": 2,
+      "side": "after"
+    },
+    {
+      "pair": 2,
+      "side": "before"
+    },
+    {
+      "pair": 3,
+      "side": "before"
+    },
+    {
+      "pair": 3,
+      "side": "after"
+    },
+    {
+      "pair": 4,
+      "side": "after"
+    },
+    {
+      "pair": 4,
+      "side": "before"
+    },
+    {
+      "pair": 5,
+      "side": "before"
+    },
+    {
+      "pair": 5,
+      "side": "after"
+    }
+  ],
+  "in_progress": null,
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "python": "3.12.3 (main, Jul 15 2026, 23:46:41) [GCC 13.3.0]",
+  "cpu_count": 4,
+  "cpu_affinity": [
+    0
+  ],
+  "script_sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd",
+  "comparator_sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12",
+  "pty_driver_helpers_sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+  "hardware": {
+    "command": [
+      "lscpu"
+    ],
+    "status": 0,
+    "output": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7763 64-Core Processor\nCPU family:                              25\nModel:                                   1\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                1\nBogoMIPS:                                4890.84\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves user_shstk clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload umip vaes vpclmulqdq rdpid fsrm\nVirtualization:                          AMD-V\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               64 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                1 MiB (2 instances)\nL3 cache:                                32 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Vulnerable: No microcode\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected"
+  },
+  "font_match": {
+    "command": [
+      "fc-match",
+      "-f",
+      "%{family}\n%{file}\n",
+      "DejaVu Sans Mono"
+    ],
+    "status": 0,
+    "output": "DejaVu Sans Mono\n/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+  },
+  "environment": {
+    "DISPLAY": null,
+    "WAYLAND_DISPLAY": "wayland-kokuban-paired",
+    "XDG_CURRENT_DESKTOP": null,
+    "XDG_SESSION_TYPE": null,
+    "LIBGL_ALWAYS_SOFTWARE": null,
+    "MESA_LOADER_DRIVER_OVERRIDE": null,
+    "GDK_SCALE": null,
+    "GDK_DPI_SCALE": null,
+    "WINIT_X11_SCALE_FACTOR": null
+  },
+  "comparability": {
+    "geometry_and_history_checks_passed": true,
+    "reasons": [],
+    "geometries_rows_cols_pixels": [
+      [
+        24,
+        80,
+        720,
+        408
+      ]
+    ],
+    "rendering_equivalence_verified": false,
+    "rendering_limitations": [
+      "DSR validates the final marker reply, not workload text or rendered pixels",
+      "Unicode grapheme and font fallback fidelity must be checked separately from this throughput workload",
+      "Installed fallback fonts can differ between terminals and affect rendered output"
+    ],
+    "ranking": null,
+    "scope": "PTY processing throughput and DSR RTT; no presentation latency or terminal ranking",
+    "paired_inputs_validated": true
+  },
+  "paired_summary": {
+    "ascii": {
+      "after_over_before_elapsed_ratio": {
+        "count": 5,
+        "median": 1.0017981554155113,
+        "min": 0.9895756060053372,
+        "max": 1.0126454060686512,
+        "median_absolute_deviation": 0.007024301778293163,
+        "samples": [
+          1.0088224571938045,
+          1.0017981554155113,
+          1.0001583976231339,
+          1.0126454060686512,
+          0.9895756060053372
+        ]
+      },
+      "after_over_before_throughput_ratio": {
+        "count": 5,
+        "median": 0.9982050721437339,
+        "min": 0.9875125033966785,
+        "max": 1.0105342067158902,
+        "median_absolute_deviation": 0.006950374283761218,
+        "samples": [
+          0.9912546978599727,
+          0.9982050721437339,
+          0.9998416274626994,
+          0.9875125033966785,
+          1.0105342067158902
+        ]
+      },
+      "elapsed_change_percent": {
+        "count": 5,
+        "median": 0.17981554155113155,
+        "min": -1.0424393994662773,
+        "max": 1.2645406068651166,
+        "median_absolute_deviation": 0.7024301778293163,
+        "samples": [
+          0.8822457193804478,
+          0.17981554155113155,
+          0.015839762313385464,
+          1.2645406068651166,
+          -1.0424393994662773
+        ]
+      }
+    },
+    "ansi": {
+      "after_over_before_elapsed_ratio": {
+        "count": 5,
+        "median": 1.035883355076787,
+        "min": 0.986688219137587,
+        "max": 1.0456599573478345,
+        "median_absolute_deviation": 0.009776602271047485,
+        "samples": [
+          1.0223502957997068,
+          1.036625620238615,
+          1.035883355076787,
+          1.0456599573478345,
+          0.986688219137587
+        ]
+      },
+      "after_over_before_throughput_ratio": {
+        "count": 5,
+        "median": 0.9653596566631509,
+        "min": 0.9563338377576929,
+        "max": 1.0134913750911592,
+        "median_absolute_deviation": 0.00902581890545806,
+        "samples": [
+          0.9781383192321337,
+          0.9646684207648809,
+          0.9653596566631509,
+          0.9563338377576929,
+          1.0134913750911592
+        ]
+      },
+      "elapsed_change_percent": {
+        "count": 5,
+        "median": 3.588335507678697,
+        "min": -1.3311780862413025,
+        "max": 4.565995734783446,
+        "median_absolute_deviation": 0.9776602271047485,
+        "samples": [
+          2.235029579970682,
+          3.662562023861504,
+          3.588335507678697,
+          4.565995734783446,
+          -1.3311780862413025
+        ]
+      }
+    },
+    "unicode": {
+      "after_over_before_elapsed_ratio": {
+        "count": 5,
+        "median": 0.9465800582807407,
+        "min": 0.9120228843433751,
+        "max": 1.057095096655885,
+        "median_absolute_deviation": 0.012002081162831968,
+        "samples": [
+          0.9465800582807407,
+          0.9120228843433751,
+          1.057095096655885,
+          0.9394822220204333,
+          0.9585821394435726
+        ]
+      },
+      "after_over_before_throughput_ratio": {
+        "count": 5,
+        "median": 1.0564346789813903,
+        "min": 0.9459886846164501,
+        "max": 1.0964637150743926,
+        "median_absolute_deviation": 0.013227259552034853,
+        "samples": [
+          1.0564346789813903,
+          1.0964637150743926,
+          0.9459886846164501,
+          1.06441609703845,
+          1.0432074194293555
+        ]
+      },
+      "elapsed_change_percent": {
+        "count": 5,
+        "median": -5.3419941719259345,
+        "min": -8.797711565662492,
+        "max": 5.709509665588497,
+        "median_absolute_deviation": 1.2002081162831963,
+        "samples": [
+          -5.3419941719259345,
+          -8.797711565662492,
+          5.709509665588497,
+          -6.05177779795667,
+          -4.141786055642738
+        ]
+      }
+    },
+    "short_lines": {
+      "after_over_before_elapsed_ratio": {
+        "count": 5,
+        "median": 1.0946783121568129,
+        "min": 1.060249386855205,
+        "max": 1.112024903312099,
+        "median_absolute_deviation": 0.01734659115528614,
+        "samples": [
+          1.0713163800149852,
+          1.0946783121568129,
+          1.112024903312099,
+          1.060249386855205,
+          1.1092017956182232
+        ]
+      },
+      "after_over_before_throughput_ratio": {
+        "count": 5,
+        "median": 0.9135103791631068,
+        "min": 0.8992604365437863,
+        "max": 0.9431743252086097,
+        "median_absolute_deviation": 0.014249942619320555,
+        "samples": [
+          0.9334310747549779,
+          0.9135103791631068,
+          0.8992604365437863,
+          0.9431743252086097,
+          0.9015492076828467
+        ]
+      },
+      "elapsed_change_percent": {
+        "count": 5,
+        "median": 9.467831215681288,
+        "min": 6.024938685520498,
+        "max": 11.202490331209901,
+        "median_absolute_deviation": 1.734659115528613,
+        "samples": [
+          7.131638001498519,
+          9.467831215681288,
+          11.202490331209901,
+          6.024938685520498,
+          10.92017956182232
+        ]
+      }
+    }
+  }
+}

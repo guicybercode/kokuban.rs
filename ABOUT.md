@@ -1,15 +1,47 @@
 # About Kokuban
 
-Kokuban is an open-source terminal emulator written in Rust and maintained at [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs). The name 黒板 (*kokuban*) means “blackboard” in Japanese.
+**Kokuban is a native Rust terminal for Linux and macOS, built around development workflows, faithful text handling and terminal graphics.** The name 黒板 (*kokuban*) means “blackboard” in Japanese. Source code, releases and project discussions live at [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs).
 
-The project aims to provide a small native terminal for development workflows, interactive shells, SSH and terminal graphics. It contains its own VT/ANSI parser, grid, PTY handling and rendering integration. macOS uses Metal; Linux uses a CPU renderer with winit and softbuffer. The Rust application also relies on native operating-system APIs and font libraries.
+Use it for a local shell, an editor or multiplexer, an SSH session, or applications that display Kitty/Sixel graphics. Kokuban provides the terminal; the shell, SSH client, editor and media player remain the programs you choose and install.
 
-The v0.1 desktop release includes static Kitty/Sixel images, Linux native Kitty animation, Linux clipboard/selection and video through an external mpv player. Linux tests exercise SSH with Neovim, tmux and fzf. SSH on desktop uses the system's client; mpv performs video decoding. These external programs are not bundled with Kokuban.
+## What v0.4 brings
 
-Android APK work and emulator evidence are on the separate `codex/android-native` branch. Android is not included in the v0.1 desktop release. Windows is not supported. Compatibility, Unicode grapheme handling, Wayland behavior and sustained media performance remain active development areas; see the [roadmap](docs/ROADMAP.md) and the measured [Linux release baseline](docs/LINUX_PERFORMANCE.md).
+- **Updates from inside the terminal:** a background check at launch, `kokuban --update`, and **Install Update…** in the macOS menu, with checksum verification before anything is replaced.
+- **A Mac app:** a disk image with `Kokuban.app` alongside the standalone executables.
+- **Quieter, faster macOS:** frames only when something changed, a PTY reader that blocks instead of polling on a timer, and writes that wait for the PTY instead of sleeping.
+
+## Earlier in v0.3
+
+- **Text that survives interaction:** complete Unicode graphemes, font fallback and color emoji, selection that joins soft-wrapped lines, and retained text that reflows on resize.
+- **Omarchy integration:** launcher arguments and working directories, compatible copy/paste input, live palette changes without restarting the shell, and the system monospace font on Linux.
+- **Native platform rendering:** Metal on macOS, with panes and font zoom; winit and softbuffer on Linux, with asynchronous clipboard access and native Kitty animation.
+- **Inspectable performance work:** compact scrollback rows, less Linux alpha-blending and glyph-painting work, and direct ASCII glyph-cache slots on both platforms. The [README performance tables](README.md#performance) retain CPU, memory, throughput, microbenchmark gains and regressions with measured revisions.
+
+Kokuban implements its own VT/ANSI parser, grid and PTY integration. Its Rust application uses native operating-system APIs and font libraries. Static Kitty/Sixel images work on both desktop platforms; Linux video tests use external mpv for decoding and Kitty output.
+
+## Platforms and evidence
+
+The [v0.4 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4) targets Linux x86_64 and macOS Apple Silicon/Intel. Linux release packages are built on Ubuntu 24.04. macOS packages are standalone executables and a `Kokuban.app` disk image, ad-hoc signed only and not notarized; see [installation requirements](README.md#installation).
+
+Automated Linux scenarios exercise actual windows, clipboard contents, rendered pixels and SSH workflows with Neovim, tmux and fzf. Launch arguments are tested under X11 and headless Weston/Wayland. These checks do not establish complete application compatibility or a physical Omarchy/Hyprland session. Broad Wayland interaction, OSC 52, audio and sustained media playback remain open work. Android is developed on the separate `codex/android-native` branch and is not part of this desktop release; Windows is unsupported.
+
+Start with [text preservation](docs/TERMINAL_TEXT.md), [Omarchy integration and validation](docs/OMARCHY.md), [Linux application checks](docs/LINUX_APPS.md), [video checks](docs/LINUX_VIDEO.md) and [performance measurements](docs/LINUX_PERFORMANCE.md). Reports identify the revisions and environments they tested; older measurements are not new v0.4 resource guarantees.
+
+## Participate and cite
+
+Bug reports, focused fixes, tests, documentation and platform feedback are welcome. Read the contribution guide and code of conduct before joining. Security reports use the private reporting channel.
 
 - [Install and run](README.md#installation)
-- [Download v0.1](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.1)
+- [Download v0.4](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4)
+- [Read the v0.4 changelog](CHANGELOG.md)
+- [Cite this repository](CITATION.cff)
 - [Contribute](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 - [Report a security issue privately](SECURITY.md)
-- [MIT license](LICENSE)
+- [BSD-4-Clause license](LICENSE)
+
+For a blog, presentation or article, cite **Kokuban v0.4 — guicybercode/kokuban.rs** and link to the [release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4). For development builds or benchmark results, include the exact commit.
+
+Starting with v0.2, original project code and documentation use [BSD-4-Clause](LICENSE). Its advertising clause requires the following acknowledgment in advertising materials mentioning features or use of the software: “This product includes software developed by the Kokuban contributors.” Running the terminal by itself does not require a public announcement; redistribution also carries notice requirements. Citation metadata supplements these obligations. The published v0.1 release remains MIT.
+
+Third-party code, content and assets retain their own licenses, including the derived Unicode tables under MIT and the Contributor Covenant code of conduct under CC-BY-4.0. See [third-party licensing](docs/THIRD_PARTY.md).

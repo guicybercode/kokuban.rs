@@ -1,0 +1,17 @@
+{
+  "bytes": 2621440,
+  "lines": 32768,
+  "sha256": "f8ed82accb71d2871678550b5e115ec6ef3a9788c7554fcc797d5073fbf2956a",
+  "write_seconds": 0.07810250199997881,
+  "roundtrip_seconds": 0.0003879719999986264,
+  "write_and_terminal_roundtrip_seconds": 0.07849047399997744,
+  "bytes_per_second_including_terminal_roundtrip": 33398193.008756112,
+  "marker": "RESOURCE_OUTPUT_DONE_32768",
+  "reply_hex": "1b5b313b323752",
+  "winsize_rows_cols_pixels": [
+    24,
+    80,
+    720,
+    408
+  ]
+}

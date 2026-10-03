@@ -1,0 +1,134 @@
+{
+  "pairs": [
+    {
+      "before": {
+        "ascii": 257.98,
+        "short-lines": 61.6,
+        "ansi": 219.37,
+        "unicode": 159.22
+      },
+      "before_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,257.98,255.85,258.71\nshort-lines,61.60,61.57,61.73\nansi,219.37,215.58,221.45\nunicode,159.22,147.05,160.23\n",
+      "after": {
+        "ascii": 283.45,
+        "short-lines": 69.37,
+        "ansi": 226.47,
+        "unicode": 187.31
+      },
+      "after_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,283.45,279.88,284.81\nshort-lines,69.37,68.68,70.03\nansi,226.47,220.28,235.37\nunicode,187.31,173.27,189.24\n"
+    },
+    {
+      "after": {
+        "ascii": 280.71,
+        "short-lines": 68.82,
+        "ansi": 227.75,
+        "unicode": 184.25
+      },
+      "after_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,280.71,278.14,283.50\nshort-lines,68.82,67.90,70.64\nansi,227.75,219.57,232.89\nunicode,184.25,177.43,191.44\n",
+      "before": {
+        "ascii": 258.14,
+        "short-lines": 61.98,
+        "ansi": 218.64,
+        "unicode": 158.48
+      },
+      "before_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,258.14,255.91,260.86\nshort-lines,61.98,60.12,62.48\nansi,218.64,214.36,221.63\nunicode,158.48,155.96,159.39\n"
+    },
+    {
+      "before": {
+        "ascii": 240.37,
+        "short-lines": 59.91,
+        "ansi": 208.78,
+        "unicode": 152.62
+      },
+      "before_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,240.37,183.29,245.41\nshort-lines,59.91,57.34,60.04\nansi,208.78,205.59,212.42\nunicode,152.62,150.94,154.43\n",
+      "after": {
+        "ascii": 275.2,
+        "short-lines": 68.66,
+        "ansi": 220.98,
+        "unicode": 181.49
+      },
+      "after_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,275.20,273.38,279.61\nshort-lines,68.66,63.02,68.71\nansi,220.98,219.10,225.94\nunicode,181.49,180.92,184.50\n"
+    },
+    {
+      "after": {
+        "ascii": 279.96,
+        "short-lines": 69.13,
+        "ansi": 224.45,
+        "unicode": 181.2
+      },
+      "after_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,279.96,278.71,282.58\nshort-lines,69.13,67.17,69.53\nansi,224.45,221.30,228.50\nunicode,181.20,177.77,182.59\n",
+      "before": {
+        "ascii": 253.3,
+        "short-lines": 61.33,
+        "ansi": 216.57,
+        "unicode": 156.04
+      },
+      "before_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,253.30,249.24,256.02\nshort-lines,61.33,60.85,61.72\nansi,216.57,213.91,218.64\nunicode,156.04,154.94,156.71\n"
+    },
+    {
+      "before": {
+        "ascii": 254.63,
+        "short-lines": 61.35,
+        "ansi": 216.82,
+        "unicode": 156.99
+      },
+      "before_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,254.63,250.48,256.84\nshort-lines,61.35,61.07,61.54\nansi,216.82,214.60,218.48\nunicode,156.99,155.22,157.98\n",
+      "after": {
+        "ascii": 281.71,
+        "short-lines": 68.97,
+        "ansi": 224.84,
+        "unicode": 184.06
+      },
+      "after_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,281.71,275.35,281.98\nshort-lines,68.97,68.66,69.10\nansi,224.84,223.66,227.81\nunicode,184.06,182.99,186.26\n"
+    },
+    {
+      "after": {
+        "ascii": 281.36,
+        "short-lines": 68.74,
+        "ansi": 221.99,
+        "unicode": 181.33
+      },
+      "after_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,281.36,280.40,283.43\nshort-lines,68.74,68.27,69.47\nansi,221.99,219.07,224.25\nunicode,181.33,177.77,183.85\n",
+      "before": {
+        "ascii": 256.66,
+        "short-lines": 61.29,
+        "ansi": 216.3,
+        "unicode": 157.46
+      },
+      "before_raw": "decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=16; samples=5\nworkload,median_MiB_s,min_MiB_s,max_MiB_s\nascii,256.66,253.51,257.74\nshort-lines,61.29,60.67,61.38\nansi,216.30,212.89,216.86\nunicode,157.46,155.84,159.29\n"
+    }
+  ],
+  "summary": {
+    "ascii": {
+      "throughput_change_percent_median": 10.2,
+      "min": 8.74,
+      "max": 14.49,
+      "pairs_slower": 0,
+      "before_median_MiB_s": 255.645,
+      "after_median_MiB_s": 281.03499999999997
+    },
+    "short-lines": {
+      "throughput_change_percent_median": 12.52,
+      "min": 11.04,
+      "max": 14.61,
+      "pairs_slower": 0,
+      "before_median_MiB_s": 61.34,
+      "after_median_MiB_s": 68.895
+    },
+    "ansi": {
+      "throughput_change_percent_median": 3.67,
+      "min": 2.63,
+      "max": 5.84,
+      "pairs_slower": 0,
+      "before_median_MiB_s": 216.695,
+      "after_median_MiB_s": 224.64499999999998
+    },
+    "unicode": {
+      "throughput_change_percent_median": 16.75,
+      "min": 15.16,
+      "max": 18.92,
+      "pairs_slower": 0,
+      "before_median_MiB_s": 157.22500000000002,
+      "after_median_MiB_s": 182.775
+    }
+  }
+}

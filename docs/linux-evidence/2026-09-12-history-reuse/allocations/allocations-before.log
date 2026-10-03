@@ -1,0 +1,4 @@
+   Compiling kokuban v0.1.0 (/tmp/kokuban-history-reuse/source-before)
+    Finished `release` profile [optimized] target(s) in 1.72s
+     Running `target/release/examples/history-allocations`
+lines=10000 cols=80 history=1000 allocations=10000 requested_bytes=32000000

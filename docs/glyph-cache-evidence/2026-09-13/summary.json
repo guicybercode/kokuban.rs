@@ -1,0 +1,2571 @@
+{
+  "scope": "Independent elapsed-time runs; samples are not pooled or adjusted by other runs.",
+  "runs": [
+    {
+      "run": "34747921774",
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34747921774",
+      "artifacts": [
+        {
+          "artifact": "glyph-cache-macos-latest-revisions",
+          "hardware": [
+            "Chip: Apple M1 (Virtual)",
+            "Total Number of Cores: 3"
+          ],
+          "comparison": "revisions",
+          "settings": {
+            "pairs": 6,
+            "iterations": 1000,
+            "warmup": 100,
+            "timeout": 180.0
+          },
+          "harness_revision": "af046a62166e93d70b0f2d22ec86bb207685f1ff",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+            "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.439994791666667,
+                  32.167752604166665,
+                  30.234916666666667,
+                  28.197265625,
+                  31.553494791666665,
+                  32.0342890625
+                ],
+                "after": [
+                  4.582247395833333,
+                  5.018880208333333,
+                  4.570528645833333,
+                  5.103950520833333,
+                  4.6202265625,
+                  5.039497395833333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 30.894205729166664,
+                "after": 4.819553385416667
+              },
+              "paired_time_change_percent": [
+                -84.43529821163422,
+                -84.39779032718859,
+                -84.88327685429925,
+                -81.89912955138418,
+                -85.35748070695418,
+                -84.26842754024882
+              ],
+              "median_paired_time_change_percent": -84.4165442694114,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  30.188908854166666,
+                  29.135848958333334,
+                  31.7724609375,
+                  29.825411458333335,
+                  28.69325,
+                  36.023763020833336
+                ],
+                "after": [
+                  4.77734375,
+                  4.5555546875,
+                  4.5907109375,
+                  4.724393229166667,
+                  4.657770833333333,
+                  5.0421015625
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 30.007160156250002,
+                "after": 4.69108203125
+              },
+              "paired_time_change_percent": [
+                -84.17516918853252,
+                -84.36443470717184,
+                -85.55128938066697,
+                -84.15983888179804,
+                -83.76701547111836,
+                -86.003401256043
+              ],
+              "median_paired_time_change_percent": -84.26980194785219,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  31.23046875,
+                  33.6535390625,
+                  28.884005208333335,
+                  33.86328125,
+                  29.587565104166668,
+                  32.35102083333334
+                ],
+                "after": [
+                  18.3115234375,
+                  18.613606770833332,
+                  18.466255208333333,
+                  16.71115625,
+                  18.014322916666668,
+                  19.552734375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 31.79074479166667,
+                "after": 18.38888932291667
+              },
+              "paired_time_change_percent": [
+                -41.36647904940588,
+                -44.69049232455199,
+                -36.067539542592144,
+                -50.651101626485186,
+                -39.115223394540834,
+                -39.5606881287234
+              ],
+              "median_paired_time_change_percent": -40.46358358906464,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  31.568359375,
+                  35.065755208333336,
+                  33.348958333333336,
+                  32.8819453125,
+                  35.56586197916667,
+                  33.384984375
+                ],
+                "after": [
+                  26.314994791666667,
+                  29.033419270833335,
+                  24.534940104166665,
+                  20.095268229166667,
+                  60.6081796875,
+                  34.956921875
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 33.366971354166665,
+                "after": 27.67420703125
+              },
+              "paired_time_change_percent": [
+                -16.64123409433067,
+                -17.202926050388967,
+                -26.429665781664845,
+                -38.886619881557024,
+                70.4111086159034,
+                4.70851650653199
+              ],
+              "median_paired_time_change_percent": -16.92208007235982,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  22.515950520833332,
+                  22.7176640625,
+                  22.535263020833334,
+                  23.756510416666668,
+                  22.514973958333332,
+                  24.803494791666665
+                ],
+                "after": [
+                  23.811088541666667,
+                  19.864908854166668,
+                  22.3777109375,
+                  20.5812734375,
+                  24.562934895833333,
+                  27.1455078125
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 22.626463541666666,
+                "after": 23.094399739583334
+              },
+              "paired_time_change_percent": [
+                5.752091254752845,
+                -12.557431963448963,
+                -0.6991357641917939,
+                -13.365755001370239,
+                9.095995142121849,
+                9.442270294991605
+              ],
+              "median_paired_time_change_percent": 2.526477745280525,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-arm-revisions",
+          "hardware": [
+            "Model name:                              Neoverse-N2"
+          ],
+          "comparison": "revisions",
+          "settings": {
+            "pairs": 6,
+            "iterations": 1000,
+            "warmup": 100,
+            "timeout": 180.0
+          },
+          "harness_revision": "af046a62166e93d70b0f2d22ec86bb207685f1ff",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+            "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.355098958333333,
+                  27.616997395833334,
+                  27.314619791666665,
+                  27.105841145833335,
+                  27.455885416666668,
+                  27.312583333333333
+                ],
+                "after": [
+                  12.293151041666667,
+                  12.363065104166667,
+                  12.4042265625,
+                  12.443078125,
+                  12.5207421875,
+                  12.275361979166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.334859375,
+                "after": 12.383645833333333
+              },
+              "paired_time_change_percent": [
+                -55.06084236656823,
+                -55.233854980802796,
+                -54.58759207666377,
+                -54.094477061034766,
+                -54.396873393492974,
+                -55.05602004265433
+              ],
+              "median_paired_time_change_percent": -54.82180605965905,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.099986979166665,
+                  27.335203125,
+                  27.343140625,
+                  27.364447916666666,
+                  27.226880208333334,
+                  27.166861979166665
+                ],
+                "after": [
+                  12.284755208333333,
+                  12.284505208333334,
+                  12.323231770833333,
+                  12.2382578125,
+                  12.281861979166667,
+                  12.26084375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.281041666666667,
+                "after": 12.28318359375
+              },
+              "paired_time_change_percent": [
+                -54.66877818879641,
+                -55.05976248957055,
+                -54.93117656145861,
+                -55.27679619274857,
+                -54.89067463775172,
+                -54.8683842859642
+              ],
+              "median_paired_time_change_percent": -54.910925599605164,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.735739583333334,
+                  27.193815104166667,
+                  27.8584609375,
+                  27.2530390625,
+                  27.47421875,
+                  27.47284375
+                ],
+                "after": [
+                  19.3268203125,
+                  19.490518229166668,
+                  19.502622395833335,
+                  19.295861979166666,
+                  19.399838541666668,
+                  19.292721354166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.47353125,
+                "after": 19.363329427083336
+              },
+              "paired_time_change_percent": [
+                -30.31799186594012,
+                -28.327385640787462,
+                -29.99389865941573,
+                -29.197393601076794,
+                -29.388934702040736,
+                -29.775302732660624
+              ],
+              "median_paired_time_change_percent": -29.58211871735068,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.299765625,
+                  27.7674453125,
+                  27.7016171875,
+                  27.2175625,
+                  27.3496015625,
+                  26.826674479166666
+                ],
+                "after": [
+                  26.000739583333335,
+                  26.175979166666668,
+                  25.996028645833334,
+                  26.0436953125,
+                  26.097072916666665,
+                  26.185190104166665
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.32468359375,
+                "after": 26.070384114583334
+              },
+              "paired_time_change_percent": [
+                -4.758378000421626,
+                -5.731410030424755,
+                -6.156999896873505,
+                -4.312903433215231,
+                -4.579696135503197,
+                -2.391218395325778
+              ],
+              "median_paired_time_change_percent": -4.669037067962412,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.615309895833335,
+                  27.360388020833334,
+                  27.203294270833332,
+                  27.197630208333333,
+                  27.675729166666667,
+                  27.683270833333335
+                ],
+                "after": [
+                  27.496463541666667,
+                  27.781927083333333,
+                  27.615333333333332,
+                  27.463236979166666,
+                  27.720768229166666,
+                  27.539924479166668
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.487848958333334,
+                "after": 27.57762890625
+              },
+              "paired_time_change_percent": [
+                -0.43036400683158504,
+                1.5406910975788168,
+                1.5146660488901897,
+                0.976580565287466,
+                0.162738485511138,
+                -0.5178085892728501
+              ],
+              "median_paired_time_change_percent": 0.569659525399302,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-revisions",
+          "hardware": [
+            "Model name:                              AMD EPYC 7763 64-Core Processor"
+          ],
+          "comparison": "revisions",
+          "settings": {
+            "pairs": 6,
+            "iterations": 1000,
+            "warmup": 100,
+            "timeout": 180.0
+          },
+          "harness_revision": "af046a62166e93d70b0f2d22ec86bb207685f1ff",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+            "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  40.99633854166667,
+                  28.963338541666666,
+                  29.408255208333333,
+                  29.330690104166667,
+                  29.161674479166667,
+                  29.317515625
+                ],
+                "after": [
+                  7.494846354166667,
+                  7.589708333333333,
+                  7.479265625,
+                  7.487591145833333,
+                  7.486,
+                  7.4939296875
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.32410286458333,
+                "after": 7.490760416666666
+              },
+              "paired_time_change_percent": [
+                -81.7182543105666,
+                -73.79546448896153,
+                -74.56746219041032,
+                -74.47182074734184,
+                -74.3293204738704,
+                -74.43872876762558
+              ],
+              "median_paired_time_change_percent": -74.4552747574837,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  39.43373697916667,
+                  29.514497395833335,
+                  29.4929453125,
+                  29.542205729166668,
+                  29.7607109375,
+                  29.65984375
+                ],
+                "after": [
+                  7.491583333333334,
+                  7.502255208333334,
+                  7.475510416666666,
+                  7.5018098958333335,
+                  7.4758515625,
+                  7.491270833333333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.601024739583334,
+                "after": 7.491427083333333
+              },
+              "paired_time_change_percent": [
+                -81.00209640975383,
+                -74.58111819518074,
+                -74.65322524604446,
+                -74.6064665427914,
+                -74.88013112925994,
+                -74.7427164604219
+              ],
+              "median_paired_time_change_percent": -74.69797085323319,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  30.146565104166665,
+                  29.368885416666668,
+                  29.538395833333333,
+                  29.6841640625,
+                  29.0386875,
+                  30.301119791666668
+                ],
+                "after": [
+                  15.2335546875,
+                  15.2224140625,
+                  15.529315104166667,
+                  15.2308671875,
+                  15.322026041666666,
+                  15.243833333333333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.611279947916664,
+                "after": 15.238694010416665
+              },
+              "paired_time_change_percent": [
+                -49.468356892857045,
+                -48.16822686140697,
+                -47.42668088074632,
+                -48.69026072140211,
+                -47.235817591044125,
+                -49.69217824905054
+              ],
+              "median_paired_time_change_percent": -48.429243791404545,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.230190104166667,
+                  29.758703125,
+                  29.26739583333333,
+                  29.457255208333333,
+                  29.429572916666668,
+                  29.245427083333333
+                ],
+                "after": [
+                  23.810677083333335,
+                  23.857846354166668,
+                  23.842872395833332,
+                  24.017182291666668,
+                  23.907578125,
+                  24.261752604166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.348484374999998,
+                "after": 23.882712239583334
+              },
+              "paired_time_change_percent": [
+                -18.54080661644688,
+                -19.829011855950405,
+                -18.534356347898505,
+                -18.46768437246554,
+                -18.763421430894876,
+                -17.04086750029652
+              ],
+              "median_paired_time_change_percent": -18.53758148217269,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.368286458333333,
+                  29.642783854166666,
+                  29.694442708333334,
+                  29.541265625,
+                  29.7012265625,
+                  29.603778645833334
+                ],
+                "after": [
+                  29.229408854166667,
+                  28.951934895833332,
+                  29.0349296875,
+                  29.370427083333333,
+                  29.0064921875,
+                  28.811286458333335
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.623281249999998,
+                "after": 29.0207109375
+              },
+              "paired_time_change_percent": [
+                -0.47288289823684826,
+                -2.330580561299833,
+                -2.220998142013453,
+                -0.578304747790126,
+                -2.339076379684446,
+                -2.6769967340353085
+              ],
+              "median_paired_time_change_percent": -2.275789351656643,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          }
+        }
+      ]
+    },
+    {
+      "run": "34747922686",
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34747922686",
+      "artifacts": [
+        {
+          "artifact": "glyph-cache-macos-latest-same-binary",
+          "hardware": [
+            "Chip: Apple M1 (Virtual)",
+            "Total Number of Cores: 3"
+          ],
+          "comparison": "same-binary",
+          "settings": {
+            "pairs": 6,
+            "iterations": 1000,
+            "warmup": 100,
+            "timeout": 180.0
+          },
+          "harness_revision": "af046a62166e93d70b0f2d22ec86bb207685f1ff",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  34.71484375,
+                  38.21234895833334,
+                  34.64691927083334,
+                  33.229166666666664,
+                  36.985458333333334,
+                  35.1182734375
+                ],
+                "after": [
+                  34.346028645833336,
+                  40.929796875,
+                  41.0086796875,
+                  35.094075520833336,
+                  31.481013020833334,
+                  33.865234375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 34.91655859375,
+                "after": 34.720052083333336
+              },
+              "paired_time_change_percent": [
+                -1.0624132628183514,
+                7.111439078581028,
+                18.3616914593101,
+                5.612264890282126,
+                -14.882728403392775,
+                -3.568054291535816
+              ],
+              "median_paired_time_change_percent": 2.2749258137318873,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  41.2352421875,
+                  35.264322916666664,
+                  32.17925260416666,
+                  33.0886484375,
+                  34.32790625,
+                  35.5616328125
+                ],
+                "after": [
+                  35.67914322916667,
+                  31.3995234375,
+                  32.4774296875,
+                  35.4033203125,
+                  33.101669270833334,
+                  41.841903645833334
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 34.796114583333335,
+                "after": 34.25249479166666
+              },
+              "paired_time_change_percent": [
+                -13.47415138989435,
+                -10.959517040209722,
+                0.9266128303263566,
+                6.995365432867717,
+                -3.5721286647555583,
+                17.660243179626445
+              ],
+              "median_paired_time_change_percent": -1.322757917214601,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  34.153645833333336,
+                  39.954317708333335,
+                  35.15874479166666,
+                  42.40625,
+                  155.5343984375,
+                  38.1066640625
+                ],
+                "after": [
+                  63.9699453125,
+                  33.9482421875,
+                  36.125109375,
+                  45.013020833333336,
+                  34.275065104166664,
+                  48.744791666666664
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 39.03049088541667,
+                "after": 40.56906510416667
+              },
+              "paired_time_change_percent": [
+                87.30048799085017,
+                -15.032356614565934,
+                2.7485753233215116,
+                6.147138295259147,
+                -77.96303232693585,
+                27.916711855749753
+              ],
+              "median_paired_time_change_percent": 4.447856809290329,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  41.27875520833334,
+                  34.6823984375,
+                  48.988497395833335,
+                  36.12065885416666,
+                  38.212020833333334,
+                  39.882596354166665
+                ],
+                "after": [
+                  40.7863515625,
+                  37.074434895833335,
+                  43.2898203125,
+                  41.445528645833335,
+                  40.6317265625,
+                  41.255208333333336
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 39.04730859375,
+                "after": 41.020779947916665
+              },
+              "paired_time_change_percent": [
+                -1.1928742602536846,
+                6.896975313411335,
+                -11.632683969233215,
+                14.741895526228532,
+                6.332315528981125,
+                3.441631449912519
+              ],
+              "median_paired_time_change_percent": 4.886973489446822,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  41.2783203125,
+                  23.310872395833332,
+                  36.392684895833334,
+                  25.502822916666666,
+                  52.08832552083334,
+                  26.834309895833332
+                ],
+                "after": [
+                  37.40625,
+                  31.991643229166666,
+                  31.6027578125,
+                  23.104598958333334,
+                  25.940971354166667,
+                  29.915580729166667
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 31.613497395833335,
+                "after": 30.759169270833333
+              },
+              "paired_time_change_percent": [
+                -9.380396981239203,
+                37.23915040985324,
+                -13.161785389133907,
+                -9.403758815915397,
+                -50.198108511299196,
+                11.48257900163765
+              ],
+              "median_paired_time_change_percent": -9.3920778985773,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-arm-same-binary",
+          "hardware": [
+            "Model name:                              Neoverse-N2"
+          ],
+          "comparison": "same-binary",
+          "settings": {
+            "pairs": 6,
+            "iterations": 1000,
+            "warmup": 100,
+            "timeout": 180.0
+          },
+          "harness_revision": "af046a62166e93d70b0f2d22ec86bb207685f1ff",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.362265625,
+                  27.059255208333333,
+                  27.6023984375,
+                  27.170072916666665,
+                  27.4348125,
+                  27.350661458333335
+                ],
+                "after": [
+                  27.5142109375,
+                  27.363497395833335,
+                  26.879333333333335,
+                  27.326848958333333,
+                  27.086942708333332,
+                  27.703966145833334
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.356463541666667,
+                "after": 27.345173177083332
+              },
+              "paired_time_change_percent": [
+                0.5553096902954247,
+                1.1243553643941473,
+                -2.619573461356628,
+                0.5770173755054397,
+                -1.2679867655981503,
+                1.2917592067681172
+              ],
+              "median_paired_time_change_percent": 0.5661635329004322,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.402143229166665,
+                  27.038005208333335,
+                  26.882684895833332,
+                  26.9045,
+                  27.208864583333334,
+                  27.4104765625
+                ],
+                "after": [
+                  27.139778645833335,
+                  27.289432291666667,
+                  27.162174479166666,
+                  27.294411458333332,
+                  27.1216953125,
+                  27.2929921875
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.123434895833334,
+                "after": 27.22580338541667
+              },
+              "paired_time_change_percent": [
+                -0.9574600831006363,
+                0.9299024887229557,
+                1.0396639488068793,
+                1.4492425368742623,
+                -0.32037085033944646,
+                -0.42861120904672534
+              ],
+              "median_paired_time_change_percent": 0.3047658191917546,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.117901041666666,
+                  26.977981770833335,
+                  27.310557291666665,
+                  27.055734375,
+                  27.810700520833333,
+                  27.359703125
+                ],
+                "after": [
+                  26.972731770833335,
+                  27.8322421875,
+                  27.028984375,
+                  27.50175,
+                  27.114299479166668,
+                  27.280388020833332
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.214229166666666,
+                "after": 27.19734375
+              },
+              "paired_time_change_percent": [
+                -0.5353263536520769,
+                3.166509726054567,
+                -1.0310039215222555,
+                1.6485068149254323,
+                -2.504075872324696,
+                -0.2898975321636188
+              ],
+              "median_paired_time_change_percent": -0.41261194290784786,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.217197916666667,
+                  27.15209375,
+                  27.108716145833334,
+                  27.084755208333334,
+                  27.327598958333333,
+                  27.4192890625
+                ],
+                "after": [
+                  27.081609375,
+                  27.2616171875,
+                  27.346161458333334,
+                  27.26176302083333,
+                  27.22746875,
+                  26.9815859375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.184645833333335,
+                "after": 27.24454296875
+              },
+              "paired_time_change_percent": [
+                -0.49817230297479753,
+                0.40337013605074024,
+                0.8759002500252855,
+                0.6535329972099602,
+                -0.36640690053305613,
+                -1.5963328735558835
+              ],
+              "median_paired_time_change_percent": 0.01848161775884205,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.310432291666668,
+                  27.663776041666665,
+                  27.19263541666667,
+                  27.133903645833332,
+                  27.482440104166667,
+                  27.716861979166666
+                ],
+                "after": [
+                  27.492208333333334,
+                  27.750322916666665,
+                  27.458143229166666,
+                  27.710114583333333,
+                  27.670213541666666,
+                  27.149674479166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.396436197916668,
+                "after": 27.5812109375
+              },
+              "paired_time_change_percent": [
+                0.6655919603371974,
+                0.31285271710428386,
+                0.976396029408999,
+                2.1235828984322414,
+                0.6832487828165368,
+                -2.0463626092532605
+              ],
+              "median_paired_time_change_percent": 0.6744203715768671,
+              "faster_pairs": 1,
+              "slower_pairs": 5
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-same-binary",
+          "hardware": [
+            "Model name:                              AMD EPYC 7763 64-Core Processor"
+          ],
+          "comparison": "same-binary",
+          "settings": {
+            "pairs": 6,
+            "iterations": 1000,
+            "warmup": 100,
+            "timeout": 180.0
+          },
+          "harness_revision": "af046a62166e93d70b0f2d22ec86bb207685f1ff",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.2117578125,
+                  29.298221354166667,
+                  29.4545859375,
+                  29.405559895833335,
+                  29.289377604166667,
+                  29.2083671875
+                ],
+                "after": [
+                  29.414169270833334,
+                  29.266026041666667,
+                  29.5335078125,
+                  28.9206640625,
+                  29.0953671875,
+                  29.934208333333334
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.293799479166665,
+                "after": 29.340097656250002
+              },
+              "paired_time_change_percent": [
+                0.6929109149560242,
+                -0.1098882833562187,
+                0.26794426907736923,
+                -1.6489937108867703,
+                -0.6623917356272768,
+                2.4850452651936195
+              ],
+              "median_paired_time_change_percent": 0.07902799286057527,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.4980234375,
+                  29.926015625,
+                  29.7967890625,
+                  29.9128671875,
+                  29.999565104166667,
+                  29.349752604166667
+                ],
+                "after": [
+                  29.615877604166666,
+                  29.9593359375,
+                  29.583158854166665,
+                  29.64559375,
+                  29.899013020833333,
+                  29.757705729166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.854828125,
+                "after": 29.70164973958333
+              },
+              "paired_time_change_percent": [
+                0.3995324192360705,
+                0.11134229466940315,
+                -0.7169571455677204,
+                -0.8935065830522837,
+                -0.3351784700351135,
+                1.3899712563235855
+              ],
+              "median_paired_time_change_percent": -0.11191808768285516,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.034236979166668,
+                  29.147260416666665,
+                  29.327234375,
+                  29.272783854166665,
+                  29.1451484375,
+                  28.972739583333333
+                ],
+                "after": [
+                  28.93303125,
+                  29.196598958333333,
+                  29.342890625,
+                  29.1001171875,
+                  29.308736979166667,
+                  29.267359375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.146204427083333,
+                "after": 29.23197916666667
+              },
+              "paired_time_change_percent": [
+                -0.34857375187536954,
+                0.1692733415125769,
+                0.05338467923639012,
+                -0.5898539323313745,
+                0.5612891010573273,
+                1.0168862037339021
+              ],
+              "median_paired_time_change_percent": 0.1113290103744835,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.5056953125,
+                  29.148671875,
+                  29.355986979166666,
+                  29.264697916666666,
+                  29.334645833333333,
+                  29.179588541666668
+                ],
+                "after": [
+                  29.578697916666666,
+                  29.339575520833332,
+                  29.709932291666668,
+                  29.43478125,
+                  29.574549479166667,
+                  29.2734609375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.299671875,
+                "after": 29.50466536458333
+              },
+              "paired_time_change_percent": [
+                0.24741868779394327,
+                0.6549308546612176,
+                1.2057006046200636,
+                0.5811894379284421,
+                0.8178167454155005,
+                0.3217056871767987
+              ],
+              "median_paired_time_change_percent": 0.6180601462948299,
+              "faster_pairs": 0,
+              "slower_pairs": 6
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.780013020833334,
+                  29.735239583333332,
+                  29.636174479166666,
+                  29.51905208333333,
+                  29.440416666666668,
+                  29.4104921875
+                ],
+                "after": [
+                  30.8929375,
+                  29.870260416666667,
+                  29.439736979166668,
+                  29.619268229166668,
+                  29.199966145833333,
+                  29.522526041666666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.57761328125,
+                "after": 29.570897135416665
+              },
+              "paired_time_change_percent": [
+                3.7371524263206,
+                0.4540768301359632,
+                -0.6628301508283085,
+                0.3394964904374964,
+                -0.8167361337164003,
+                0.3809315854097939
+              ],
+              "median_paired_time_change_percent": 0.36021403792364515,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          }
+        }
+      ]
+    },
+    {
+      "run": "34748283639",
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34748283639",
+      "artifacts": [
+        {
+          "artifact": "glyph-cache-macos-latest-revisions",
+          "hardware": [
+            "Chip: Apple M1 (Virtual)",
+            "Total Number of Cores: 3"
+          ],
+          "comparison": "revisions",
+          "settings": {
+            "pairs": 6,
+            "iterations": 10000,
+            "warmup": 1000,
+            "timeout": 180.0
+          },
+          "harness_revision": "8d7b14124200f6fda8c9c0e2cea053317a63a3cd",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+            "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  40.16832682291667,
+                  49.63565520833333,
+                  38.03039296875,
+                  42.017024739583334,
+                  46.33324661458333,
+                  36.72625859375
+                ],
+                "after": [
+                  10.705848697916666,
+                  6.893435416666667,
+                  10.563151041666666,
+                  7.15673828125,
+                  7.854058333333334,
+                  8.955598958333333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 41.09267578125,
+                "after": 8.404828645833334
+              },
+              "paired_time_change_percent": [
+                -73.34753636835873,
+                -86.11192823438478,
+                -72.22444940196509,
+                -82.96705127122485,
+                -83.04876323762454,
+                -75.61527010579461
+              ],
+              "median_paired_time_change_percent": -79.29116068850973,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  45.1794703125,
+                  45.58458125,
+                  45.4083984375,
+                  40.87778854166667,
+                  38.0912109375,
+                  36.77809244791667
+                ],
+                "after": [
+                  10.161176041666666,
+                  9.096017708333333,
+                  7.091438802083333,
+                  7.99130859375,
+                  5.002311197916667,
+                  9.432758333333334
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 43.02862942708333,
+                "after": 8.543663151041667
+              },
+              "paired_time_change_percent": [
+                -77.50930683475647,
+                -80.0458456370413,
+                -84.3829796995726,
+                -80.45073161038428,
+                -86.86754483567233,
+                -74.35223605821443
+              ],
+              "median_paired_time_change_percent": -80.2482886237128,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  42.19174270833334,
+                  48.1917859375,
+                  45.5878796875,
+                  39.277658333333335,
+                  48.439615885416664,
+                  36.626508333333334
+                ],
+                "after": [
+                  21.8339734375,
+                  22.643934635416667,
+                  23.870290625,
+                  27.493467708333334,
+                  24.93134765625,
+                  41.79458541666666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 43.88981119791667,
+                "after": 24.400819140625
+              },
+              "paired_time_change_percent": [
+                -48.25060062478161,
+                -53.012875130248084,
+                -47.63895406272837,
+                -30.002273875373177,
+                -48.5310789515243,
+                14.110209568161135
+              ],
+              "median_paired_time_change_percent": -47.94477734375499,
+              "faster_pairs": 5,
+              "slower_pairs": 1
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  43.69253463541666,
+                  45.128743489583336,
+                  45.66957447916667,
+                  37.25133463541667,
+                  45.356271875,
+                  39.206825260416664
+                ],
+                "after": [
+                  30.807986197916666,
+                  39.90102005208333,
+                  34.53806432291667,
+                  44.342003125,
+                  31.7953015625,
+                  37.45227864583333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 44.410639062499996,
+                "after": 35.995171484375
+              },
+              "paired_time_change_percent": [
+                -29.48913022559221,
+                -11.584021697184344,
+                -24.374017676315162,
+                19.03466965406895,
+                -29.898776402684657,
+                -4.475105043393368
+              ],
+              "median_paired_time_change_percent": -17.97901968674975,
+              "faster_pairs": 5,
+              "slower_pairs": 1
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  48.055880989583336,
+                  41.47923177083333,
+                  30.724034375,
+                  31.984212239583332,
+                  33.68154296875,
+                  29.761479947916666
+                ],
+                "after": [
+                  29.121864322916668,
+                  46.389811197916664,
+                  29.826877083333333,
+                  36.401150260416664,
+                  29.39797109375,
+                  33.71666666666667
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 32.83287760416667,
+                "after": 31.771771875
+              },
+              "paired_time_change_percent": [
+                -39.39999907767966,
+                11.838646034269784,
+                -2.920050409775221,
+                13.80974459445019,
+                -12.717861170951494,
+                13.289617067671621
+              ],
+              "median_paired_time_change_percent": 4.459297812247281,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-arm-revisions",
+          "hardware": [
+            "Model name:                              Neoverse-N2"
+          ],
+          "comparison": "revisions",
+          "settings": {
+            "pairs": 6,
+            "iterations": 10000,
+            "warmup": 1000,
+            "timeout": 180.0
+          },
+          "harness_revision": "8d7b14124200f6fda8c9c0e2cea053317a63a3cd",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+            "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.933322395833333,
+                  27.1272578125,
+                  27.151048177083332,
+                  27.369987239583335,
+                  27.443651041666666,
+                  27.4065015625
+                ],
+                "after": [
+                  12.283469010416667,
+                  12.26868515625,
+                  12.28701484375,
+                  12.26681015625,
+                  12.280792708333333,
+                  12.312109375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.26051770833333,
+                "after": 12.282130859375
+              },
+              "paired_time_change_percent": [
+                -54.393042084117496,
+                -54.773588834339535,
+                -54.74570718739038,
+                -55.1815276752875,
+                -55.25087864698517,
+                -55.07595397784547
+              ],
+              "median_paired_time_change_percent": -54.9247714060925,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.07422890625,
+                  27.117132552083334,
+                  27.27284375,
+                  27.087471875,
+                  27.0741125,
+                  27.11726796875
+                ],
+                "after": [
+                  12.275497916666666,
+                  12.279698177083333,
+                  12.2942421875,
+                  12.27475390625,
+                  12.2738421875,
+                  12.28443359375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.102302213541666,
+                "after": 12.277598046875
+              },
+              "paired_time_change_percent": [
+                -54.65984291123096,
+                -54.71608897622946,
+                -54.92130450276203,
+                -54.68475624859324,
+                -54.66576351302375,
+                -54.69885237736114
+              ],
+              "median_paired_time_change_percent": -54.69180431297719,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.952785677083334,
+                  27.314413802083333,
+                  26.67025598958333,
+                  26.902618489583332,
+                  26.948528125,
+                  27.49637161458333
+                ],
+                "after": [
+                  19.2943015625,
+                  19.34229453125,
+                  19.354390885416667,
+                  19.343504947916667,
+                  19.332370052083334,
+                  19.304435416666667
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 26.95065690104167,
+                "after": 19.33733229166667
+              },
+              "paired_time_change_percent": [
+                -28.414443710339654,
+                -29.18649226228418,
+                -27.430801965395613,
+                -28.098058724631393,
+                -28.261870324009276,
+                -29.79278980057094
+              ],
+              "median_paired_time_change_percent": -28.338157017174467,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.917076302083334,
+                  26.895496354166667,
+                  27.317282552083334,
+                  26.9169109375,
+                  27.036524479166665,
+                  27.301952083333333
+                ],
+                "after": [
+                  26.003028645833332,
+                  25.98713046875,
+                  26.135580729166666,
+                  26.151027083333332,
+                  26.187509635416667,
+                  26.178633854166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 26.976800390625,
+                "after": 26.143303906249997
+              },
+              "paired_time_change_percent": [
+                -3.395791006392679,
+                -3.3773903015399953,
+                -4.325839587680891,
+                -2.845363109998089,
+                -3.140251419535156,
+                -4.1144245867034694
+              ],
+              "median_paired_time_change_percent": -3.386590653966337,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.0643015625,
+                  27.166586197916665,
+                  27.575890625,
+                  27.391353385416668,
+                  27.3193375,
+                  27.472874739583332
+                ],
+                "after": [
+                  27.33133515625,
+                  27.518059635416666,
+                  27.534730989583334,
+                  27.310967708333333,
+                  27.454120052083333,
+                  27.478916927083333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.355345442708334,
+                "after": 27.466518489583333
+              },
+              "paired_time_change_percent": [
+                0.9866635321563288,
+                1.2937710868027752,
+                -0.149259496189591,
+                -0.2934709941208369,
+                0.4933595189976048,
+                0.021993284493437848
+              ],
+              "median_paired_time_change_percent": 0.2576764017455213,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-revisions",
+          "hardware": [
+            "Model name:                              INTEL(R) XEON(R) PLATINUM 8573C"
+          ],
+          "comparison": "revisions",
+          "settings": {
+            "pairs": 6,
+            "iterations": 10000,
+            "warmup": 1000,
+            "timeout": 180.0
+          },
+          "harness_revision": "8d7b14124200f6fda8c9c0e2cea053317a63a3cd",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266",
+            "after": "ddccc9bc4146629c34c089486d56897b0b3e3515"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  20.663227604166668,
+                  16.258233072916667,
+                  16.778848958333334,
+                  16.296083854166667,
+                  17.119805989583334,
+                  16.970996875
+                ],
+                "after": [
+                  6.644147916666666,
+                  6.637913541666666,
+                  6.64102890625,
+                  6.672525520833333,
+                  6.789238541666666,
+                  6.64031484375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 16.87492291666667,
+                "after": 6.642588411458333
+              },
+              "paired_time_change_percent": [
+                -67.84554647538752,
+                -59.17198682110018,
+                -60.42023548372377,
+                -59.05442325563839,
+                -60.3427834065548,
+                -60.87257046442653
+              ],
+              "median_paired_time_change_percent": -60.38150944513929,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  18.984900260416666,
+                  16.452809114583335,
+                  16.5818453125,
+                  16.737711979166665,
+                  16.73868984375,
+                  16.417745052083333
+                ],
+                "after": [
+                  6.625661458333333,
+                  6.633679947916667,
+                  6.538844270833334,
+                  6.723922135416666,
+                  6.66146640625,
+                  6.654983854166667
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 16.659778645833335,
+                "after": 6.644331901041667
+              },
+              "paired_time_change_percent": [
+                -65.1003620379941,
+                -59.680563351113406,
+                -60.56624490457576,
+                -59.82771035977979,
+                -60.20317917093551,
+                -59.46468998602106
+              ],
+              "median_paired_time_change_percent": -60.01544476535766,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  16.861857552083332,
+                  16.492802864583332,
+                  16.201915625,
+                  16.395485677083332,
+                  16.374903385416665,
+                  16.483308854166665
+                ],
+                "after": [
+                  10.82068125,
+                  10.872781510416667,
+                  10.800979947916666,
+                  10.840071875,
+                  10.847607291666666,
+                  10.909366927083333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 16.439397265624997,
+                "after": 10.843839583333333
+              },
+              "paired_time_change_percent": [
+                -35.82746612241976,
+                -34.07559891614971,
+                -33.33516728570998,
+                -33.88380137984184,
+                -33.75467911873336,
+                -33.81567363930299
+              ],
+              "median_paired_time_change_percent": -33.84973750957242,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  16.568434114583333,
+                  17.336997135416667,
+                  16.433883072916668,
+                  17.311876822916666,
+                  16.273436197916666,
+                  16.30358125
+                ],
+                "after": [
+                  16.215172916666667,
+                  15.866315885416666,
+                  16.062906770833333,
+                  16.108159114583334,
+                  15.944781510416666,
+                  16.014229427083333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 16.50115859375,
+                "after": 16.038568098958333
+              },
+              "paired_time_change_percent": [
+                -2.1321338846724824,
+                -8.482906460171446,
+                -2.257386768771097,
+                -6.953132353274993,
+                -2.0195776939972543,
+                -1.7747746245424856
+              ],
+              "median_paired_time_change_percent": -2.1947603267217897,
+              "faster_pairs": 6,
+              "slower_pairs": 0
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  20.071890625,
+                  19.453265364583334,
+                  19.709581510416665,
+                  20.0900875,
+                  19.5032328125,
+                  19.843679166666668
+                ],
+                "after": [
+                  20.167766666666665,
+                  19.642015885416665,
+                  19.989300260416666,
+                  20.1722171875,
+                  19.6892078125,
+                  19.933836197916666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 19.776630338541665,
+                "after": 19.961568229166666
+              },
+              "paired_time_change_percent": [
+                0.4776632329156483,
+                0.970276800813985,
+                1.4192018732217537,
+                0.408807017391033,
+                0.9535598625516339,
+                0.4543362674470419
+              ],
+              "median_paired_time_change_percent": 0.7156115477336411,
+              "faster_pairs": 0,
+              "slower_pairs": 6
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 14824,
+              "scalar_cache_bytes": 14384
+            }
+          }
+        }
+      ]
+    },
+    {
+      "run": "34748285006",
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34748285006",
+      "artifacts": [
+        {
+          "artifact": "glyph-cache-macos-latest-same-binary",
+          "hardware": [
+            "Chip: Apple M1 (Virtual)",
+            "Total Number of Cores: 3"
+          ],
+          "comparison": "same-binary",
+          "settings": {
+            "pairs": 6,
+            "iterations": 10000,
+            "warmup": 1000,
+            "timeout": 180.0
+          },
+          "harness_revision": "8d7b14124200f6fda8c9c0e2cea053317a63a3cd",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  36.0572265625,
+                  34.12698567708333,
+                  33.47018229166667,
+                  35.50886510416667,
+                  31.985611979166666,
+                  35.71937942708333
+                ],
+                "after": [
+                  35.75258229166667,
+                  34.310275520833336,
+                  32.247623697916666,
+                  38.3103296875,
+                  31.668977864583333,
+                  30.495854947916666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 34.817925390625,
+                "after": 33.278949609375005
+              },
+              "paired_time_change_percent": [
+                -0.8448910242868424,
+                0.5370818433374946,
+                -3.652679818401794,
+                7.88947935991513,
+                -0.989926704511912,
+                -14.623782839872234
+              ],
+              "median_paired_time_change_percent": -0.9174088643993772,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  35.55361328125,
+                  34.22679036458333,
+                  35.33679453125,
+                  32.58838984375,
+                  32.74733072916667,
+                  33.9140625
+                ],
+                "after": [
+                  36.95249557291667,
+                  34.56159947916667,
+                  35.482150520833336,
+                  35.70604375,
+                  32.642513020833334,
+                  33.47371953125
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 34.07042643229167,
+                "after": 35.021875
+              },
+              "paired_time_change_percent": [
+                3.934571377037499,
+                0.9782077460870564,
+                0.4113445815091987,
+                9.56676264521834,
+                -0.3200801592050828,
+                -1.2984082008753783
+              ],
+              "median_paired_time_change_percent": 0.6947761637981276,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  31.273654427083333,
+                  38.161924739583334,
+                  35.55211588541667,
+                  32.60359166666667,
+                  33.00671640625,
+                  35.24868723958333
+                ],
+                "after": [
+                  35.86330286458333,
+                  43.44367421875,
+                  32.35773671875,
+                  32.96329192708333,
+                  32.87393671875,
+                  33.033420052083336
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 34.12770182291666,
+                "after": 32.99835598958333
+              },
+              "paired_time_change_percent": [
+                14.675766300996518,
+                13.840364486878688,
+                -8.985060627508211,
+                1.103253482297828,
+                -0.40228081420076167,
+                -6.284679972456719
+              ],
+              "median_paired_time_change_percent": 0.35048633404853313,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  33.84665807291667,
+                  38.68192265625,
+                  33.88504765625,
+                  35.040950520833334,
+                  32.731499479166665,
+                  32.925076041666664
+                ],
+                "after": [
+                  35.88572057291667,
+                  37.55489375,
+                  32.17982838541667,
+                  39.770561979166665,
+                  32.35886510416667,
+                  30.854438020833335
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 33.86585286458333,
+                "after": 34.12229283854167
+              },
+              "paired_time_change_percent": [
+                6.024413091558989,
+                -2.9135803725823917,
+                -5.032364977414483,
+                13.497383455740962,
+                -1.138458002014786,
+                -6.288939221318557
+              ],
+              "median_paired_time_change_percent": -2.026019187298589,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  25.78233515625,
+                  25.304958854166667,
+                  23.484906510416668,
+                  21.694954427083335,
+                  24.562836458333333,
+                  22.0158203125
+                ],
+                "after": [
+                  25.795182291666666,
+                  25.332009635416668,
+                  23.297319791666666,
+                  25.536794791666665,
+                  21.734624479166666,
+                  21.722233072916666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 24.023871484375,
+                "after": 24.314664713541667
+              },
+              "paired_time_change_percent": [
+                0.04982921577432187,
+                0.10689913153345554,
+                -0.7987543772711936,
+                17.708450955708365,
+                -11.51419130263822,
+                -1.3335285054840385
+              ],
+              "median_paired_time_change_percent": -0.37446258074843586,
+              "faster_pairs": 3,
+              "slower_pairs": 3
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-arm-same-binary",
+          "hardware": [
+            "Model name:                              Neoverse-N2"
+          ],
+          "comparison": "same-binary",
+          "settings": {
+            "pairs": 6,
+            "iterations": 10000,
+            "warmup": 1000,
+            "timeout": 180.0
+          },
+          "harness_revision": "8d7b14124200f6fda8c9c0e2cea053317a63a3cd",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.869364322916667,
+                  27.710309375,
+                  26.85740989583333,
+                  26.942792708333332,
+                  27.09652734375,
+                  26.808333854166666
+                ],
+                "after": [
+                  27.335371875,
+                  26.85935390625,
+                  26.736824739583334,
+                  27.105928385416668,
+                  27.27420234375,
+                  26.888567708333333
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 26.906078515624998,
+                "after": 26.997248046875
+              },
+              "paired_time_change_percent": [
+                1.734345280680416,
+                -3.070898477653683,
+                -0.4489828197048462,
+                0.6054891148417507,
+                0.6557113306291606,
+                0.2992869851708324
+              ],
+              "median_paired_time_change_percent": 0.45238805000629156,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.864395572916667,
+                  27.225378645833334,
+                  27.18093125,
+                  27.09575625,
+                  27.229569270833334,
+                  27.570204427083333
+                ],
+                "after": [
+                  27.037447135416667,
+                  27.0121796875,
+                  27.345853125,
+                  27.058496614583333,
+                  26.981687760416666,
+                  27.225365104166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.203154947916666,
+                "after": 27.047971875
+              },
+              "paired_time_change_percent": [
+                0.6441669682472284,
+                -0.7830890475639452,
+                0.6067557931813017,
+                -0.13751096324047252,
+                -0.9103394473528592,
+                -1.2507681030392237
+              ],
+              "median_paired_time_change_percent": -0.46030000540220883,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.98689765625,
+                  26.67803515625,
+                  27.20829453125,
+                  26.985379427083334,
+                  26.84547447916667,
+                  27.08056640625
+                ],
+                "after": [
+                  26.783540625,
+                  26.901365625,
+                  27.043234895833333,
+                  26.8962640625,
+                  27.090235416666665,
+                  27.006003125
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 26.98613854166667,
+                "after": 26.953684375
+              },
+              "paired_time_change_percent": [
+                -0.7535398616035582,
+                0.8371323729126967,
+                -0.606651898843158,
+                -0.3302357294035052,
+                0.911740031601771,
+                -0.27533870647842296
+              ],
+              "median_paired_time_change_percent": -0.3027872179409641,
+              "faster_pairs": 4,
+              "slower_pairs": 2
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  26.858586979166667,
+                  26.957373697916665,
+                  26.97266171875,
+                  27.048290104166668,
+                  27.355178125,
+                  27.09719817708333
+                ],
+                "after": [
+                  27.137448697916668,
+                  27.43986484375,
+                  27.033601302083333,
+                  27.31992265625,
+                  27.244428385416665,
+                  26.913705989583335
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.010475911458336,
+                "after": 27.190938541666668
+              },
+              "paired_time_change_percent": [
+                1.0382590825284366,
+                1.7898299412995922,
+                0.22593092208980092,
+                1.0042503649481782,
+                -0.40485841136643774,
+                -0.6771629535306856
+              ],
+              "median_paired_time_change_percent": 0.6150906435189896,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  27.143852864583334,
+                  27.152961458333333,
+                  26.843248958333334,
+                  27.186720052083334,
+                  27.207266666666666,
+                  27.030562239583332
+                ],
+                "after": [
+                  27.415568229166666,
+                  27.16022421875,
+                  27.20538203125,
+                  26.985221354166665,
+                  27.260458072916666,
+                  26.963918229166666
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 27.148407161458334,
+                "after": 27.182803125
+              },
+              "paired_time_change_percent": [
+                1.001019884461063,
+                0.02674758120881915,
+                1.3490657314946475,
+                -0.7411658983895175,
+                0.19550441028008958,
+                -0.24655058901835725
+              ],
+              "median_paired_time_change_percent": 0.11112599574445436,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          }
+        },
+        {
+          "artifact": "glyph-cache-ubuntu-24.04-same-binary",
+          "hardware": [
+            "Model name:                              AMD EPYC 7763 64-Core Processor"
+          ],
+          "comparison": "same-binary",
+          "settings": {
+            "pairs": 6,
+            "iterations": 10000,
+            "warmup": 1000,
+            "timeout": 180.0
+          },
+          "harness_revision": "8d7b14124200f6fda8c9c0e2cea053317a63a3cd",
+          "fixture_sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "source_revisions": {
+            "before": "b6cd9ad8b1204a4cb67587ecb042bd5cb8986266"
+          },
+          "summary": [
+            {
+              "workload": "ascii-regular",
+              "samples_ns_per_lookup": {
+                "before": [
+                  31.80132890625,
+                  29.25125234375,
+                  29.114252604166666,
+                  29.211113541666666,
+                  29.272390104166668,
+                  29.2947734375
+                ],
+                "after": [
+                  29.700641145833334,
+                  29.276263020833333,
+                  29.093896875,
+                  29.427875,
+                  29.5831953125,
+                  29.398055989583334
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.261821223958336,
+                "after": 29.412965494791667
+              },
+              "paired_time_change_percent": [
+                -6.6056603062390025,
+                0.08550292749662791,
+                -0.06991671551188627,
+                0.7420513361263925,
+                1.061769152526737,
+                0.3525630683018699
+              ],
+              "median_paired_time_change_percent": 0.2190329978992489,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "ascii-four-styles",
+              "samples_ns_per_lookup": {
+                "before": [
+                  32.444603125,
+                  29.574375260416666,
+                  29.7732515625,
+                  29.492666145833333,
+                  29.57135546875,
+                  29.513708072916668
+                ],
+                "after": [
+                  29.69348984375,
+                  29.587206770833333,
+                  29.4580265625,
+                  29.56643229166667,
+                  29.575008333333333,
+                  29.6761984375
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.572865364583333,
+                "after": 29.58110755208333
+              },
+              "paired_time_change_percent": [
+                -8.479417272113732,
+                0.043387257731319906,
+                -1.0587523480204308,
+                0.25011691200984565,
+                0.01235271270265681,
+                0.5505589612185835
+              ],
+              "median_paired_time_change_percent": 0.027869985216988358,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            },
+            {
+              "workload": "mixed-unicode",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.336960416666667,
+                  29.05203151041667,
+                  29.459615364583332,
+                  29.218927604166666,
+                  29.15366953125,
+                  29.620995572916666
+                ],
+                "after": [
+                  29.18048671875,
+                  29.48630625,
+                  29.097108333333335,
+                  29.024817708333334,
+                  29.1056625,
+                  29.289977864583335
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.277944010416668,
+                "after": 29.143074609375
+              },
+              "paired_time_change_percent": [
+                -0.5333671099333581,
+                1.4948171160685364,
+                -1.2305219425431169,
+                -0.6643292952533075,
+                -0.16466891482920243,
+                -1.117510407502953
+              ],
+              "median_paired_time_change_percent": -0.5988482025933328,
+              "faster_pairs": 5,
+              "slower_pairs": 1
+            },
+            {
+              "workload": "unicode-scalars",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.279534635416667,
+                  30.421216927083332,
+                  29.410713541666667,
+                  29.32139375,
+                  29.062474739583333,
+                  29.279423958333332
+                ],
+                "after": [
+                  29.007841666666668,
+                  29.458814322916666,
+                  29.388356510416667,
+                  29.307453385416668,
+                  29.088954166666667,
+                  29.2045828125
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.300464192708333,
+                "after": 29.256018098958336
+              },
+              "paired_time_change_percent": [
+                -0.9279278927519563,
+                -3.163590090670765,
+                -0.07601662305243284,
+                -0.04754332178814602,
+                0.0911120863608561,
+                -0.2556100350192603
+              ],
+              "median_paired_time_change_percent": -0.16581332903584656,
+              "faster_pairs": 5,
+              "slower_pairs": 1
+            },
+            {
+              "workload": "graphemes",
+              "samples_ns_per_lookup": {
+                "before": [
+                  29.18961328125,
+                  29.137439583333332,
+                  29.741577604166668,
+                  29.303492708333334,
+                  29.21040625,
+                  29.330040104166667
+                ],
+                "after": [
+                  29.393806770833333,
+                  29.52268958333333,
+                  29.4896859375,
+                  29.44771171875,
+                  29.30225078125,
+                  29.247731510416667
+                ]
+              },
+              "median_ns_per_lookup": {
+                "before": 29.256949479166664,
+                "after": 29.420759244791668
+              },
+              "paired_time_change_percent": [
+                0.6995416061729598,
+                1.3221820637265624,
+                -0.8469344498772569,
+                0.49215638508393056,
+                0.31442401199059944,
+                -0.2806289846780885
+              ],
+              "median_paired_time_change_percent": 0.403290198537265,
+              "faster_pairs": 2,
+              "slower_pairs": 4
+            }
+          ],
+          "footprint_scope": "Rust size_of_val inline storage; excludes backing heap allocations and process RSS",
+          "footprints": {
+            "before": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            },
+            "after": {
+              "atlas_bytes": 488,
+              "scalar_cache_bytes": 48
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

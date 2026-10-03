@@ -1,0 +1,35 @@
+Date: 2026-09-11 UTC
+[17:13:16.051] weston 14.0.2
+               https://wayland.freedesktop.org
+               Bug reports to: https://gitlab.freedesktop.org/wayland/weston/issues/
+               Build: 14.0.2
+[17:13:16.051] Command line: weston --backend=headless --renderer=pixman --no-config --socket=wayland-kokuban-comparison --idle-time=0 --width=1280 --height=900 --log=/evidence/weston.log
+[17:13:16.051] OS: Linux, 6.17.0-1022-azure, #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026, x86_64
+[17:13:16.051] Flight recorder: enabled
+[17:13:16.051] Starting with no config file.
+[17:13:16.051] Output repaint window is 7 ms maximum.
+[17:13:16.051] Loading module '/usr/lib/x86_64-linux-gnu/libweston-14/headless-backend.so'
+[17:13:16.054] Using Pixman renderer
+[17:13:16.054] Registered plugin API 'weston_windowed_output_api_headless_v2' of size 16
+[17:13:16.054] Color manager: no-op
+                 protocol support: no
+[17:13:16.054] Output 'headless' attempts EOTF mode SDR and colorimetry mode default.
+[17:13:16.054] Output 'headless' using color profile: stock sRGB color profile
+[17:13:16.055] Output 'headless' enabled with head(s) headless
+[17:13:16.055] Compositor capabilities:
+               arbitrary surface rotation: yes
+               screen capture uses y-flip: no
+               cursor planes: no
+               arbitrary resolutions: no
+               view mask clipping: yes
+               explicit sync: no
+               color operations: no
+               presentation clock: CLOCK_MONOTONIC_RAW, id 4
+               presentation clock resolution: 0.000000001 s
+[17:13:16.055] Loading module '/usr/lib/x86_64-linux-gnu/weston/desktop-shell.so'
+[17:13:16.055] launching '/usr/libexec/weston-keyboard'
+[17:13:16.055] launching '/usr/libexec/weston-desktop-shell'
+[17:13:22.662] libwayland: failed to read client connection (pid 10548)
+[17:13:56.357] libwayland: failed to read client connection (pid 10692)
+[17:15:47.828] caught signal 15
+[17:15:47.829] BUG: finalizing a layer with views still on it.

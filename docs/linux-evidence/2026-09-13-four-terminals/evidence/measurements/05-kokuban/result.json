@@ -1,0 +1,139 @@
+{
+  "initial_geometry": [
+    24,
+    80,
+    720,
+    408
+  ],
+  "protocol_rtt_seconds": [
+    8.548099998506586e-05,
+    7.630400000380178e-05,
+    7.548299998916264e-05,
+    7.318799998756731e-05,
+    7.439999995995095e-05,
+    7.400999999163105e-05,
+    7.301799996639602e-05,
+    0.00014380200002506172,
+    8.284699998739598e-05,
+    8.105299997396287e-05,
+    7.511199999044038e-05,
+    7.31080000377915e-05,
+    7.343800001535783e-05,
+    7.443099997317404e-05,
+    7.30380000391051e-05,
+    7.480100003931511e-05,
+    7.378899999821442e-05,
+    7.380899995723667e-05,
+    7.298799999944094e-05,
+    7.343900000478243e-05,
+    7.472100003269588e-05,
+    7.419000002073517e-05,
+    7.257699996898737e-05,
+    7.260799998221046e-05,
+    7.286700002850921e-05,
+    7.284800000206815e-05,
+    7.427999997844381e-05,
+    7.41310000194062e-05,
+    7.374900002332652e-05,
+    7.28980000417323e-05
+  ],
+  "workloads": {
+    "ascii": {
+      "bytes": 33554380,
+      "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+      "write_seconds": 0.4532796159999748,
+      "drain_rtt_seconds": 0.0002603510000085407,
+      "write_and_dsr_seconds": 0.45353996699998333,
+      "mib_per_second": 70.55596581841424,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 0.45999999999999996,
+      "terminal_rss_before_kib": 17336,
+      "terminal_rss_after_kib": 17336
+    },
+    "ansi": {
+      "bytes": 33554392,
+      "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+      "write_seconds": 0.5701505230000521,
+      "drain_rtt_seconds": 0.00030013699995379284,
+      "write_and_dsr_seconds": 0.5704506600000059,
+      "mib_per_second": 56.095932736806745,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 0.5799999999999998,
+      "terminal_rss_before_kib": 17336,
+      "terminal_rss_after_kib": 17336
+    },
+    "unicode": {
+      "bytes": 33554400,
+      "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+      "write_seconds": 0.8712121080000088,
+      "drain_rtt_seconds": 0.00043201500000122905,
+      "write_and_dsr_seconds": 0.87164412300001,
+      "mib_per_second": 36.71219553719346,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 0.8799999999999999,
+      "terminal_rss_before_kib": 48208,
+      "terminal_rss_after_kib": 48212
+    },
+    "short_lines": {
+      "bytes": 33554430,
+      "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+      "write_seconds": 0.8658624150000378,
+      "drain_rtt_seconds": 0.0005261719999793968,
+      "write_and_dsr_seconds": 0.8663885870000172,
+      "mib_per_second": 36.93492570516829,
+      "reply_hex": "1b5b313b3552",
+      "geometry_before": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "geometry_after": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "terminal_cpu_seconds": 0.8700000000000001,
+      "terminal_rss_before_kib": 51100,
+      "terminal_rss_after_kib": 51100
+    }
+  },
+  "term": "xterm-256color"
+}

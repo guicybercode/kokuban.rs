@@ -1,0 +1,781 @@
+{
+  "status": "passed",
+  "run_id": 34744896010,
+  "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34744896010",
+  "revisions": {
+    "before": "24782c344714727be4f8981cd0d1d10f047aa9f4",
+    "after": "965843d698edb94ac705f28c7948d26adef3edf2",
+    "harness": "4a80b7e5d42fa9a4f205a5c42b06648eb7a77948"
+  },
+  "sources": {
+    "before": {
+      "git_blobs_verified": 1167,
+      "archive_sha256": "c4e678845503402f4525886d607ae877cb3c9c339b9db5db9d7b0a8ca2076590",
+      "fresh_root": true,
+      "original_runtime_prefix_preserved": true,
+      "build": {
+        "source": "/home/runner/work/_temp/kokuban-frame-source-before",
+        "target": "/home/runner/work/_temp/kokuban-frame-target-before",
+        "binary": "/home/runner/work/_temp/kokuban-frame-target-before/release/deps/kokuban-74b60748afa29789",
+        "binary_sha256": "b592cceaa5aa4df2842ca8339e9e485d67b2ee392bf3a9951dd2180a05f4b056",
+        "cargo_messages_sha256": "2783df437598a86201477437bd26c1acc9176f3d371bb4cfec1b4e7e387b41b4",
+        "source_revision": "24782c344714727be4f8981cd0d1d10f047aa9f4",
+        "root": "/home/runner/work/_temp/kokuban-frame-source-before",
+        "original_sha256": "2a32561c388cce350a9265a8499c2554b92831c93b1280414a6ea01e0f3f367d",
+        "injected_sha256": "95be827522db426e8cb1d26d19644654004253007c7c943c5867693d98bde76e",
+        "preserved_prefix_sha256": "b0db9ce0de99226fb53c11cdc5e653f43743a099e392c5152eb252d9e916a2b8",
+        "cargo_sha256": {
+          "Cargo.toml": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+          "Cargo.lock": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        }
+      }
+    },
+    "after": {
+      "git_blobs_verified": 1167,
+      "archive_sha256": "ba578c5a81105331d1e02be3fabbfb0ddabbe4a9099625f6908fe4eed21981dc",
+      "fresh_root": true,
+      "original_runtime_prefix_preserved": true,
+      "build": {
+        "source": "/home/runner/work/_temp/kokuban-frame-source-after",
+        "target": "/home/runner/work/_temp/kokuban-frame-target-after",
+        "binary": "/home/runner/work/_temp/kokuban-frame-target-after/release/deps/kokuban-74b60748afa29789",
+        "binary_sha256": "d3dd15331b1785ada901fbb3ab009bb16ceb55479c70e259e5b5f4ecb06a3991",
+        "cargo_messages_sha256": "0acea78004d0f07849ed05e9efa2229296d033c4836d7daeb00bddeb9c0e40dd",
+        "source_revision": "965843d698edb94ac705f28c7948d26adef3edf2",
+        "root": "/home/runner/work/_temp/kokuban-frame-source-after",
+        "original_sha256": "1dc62d4d535dbcf463f44fc1722c7f3d4c8a71ddd1747cf22613dd7eefa6f087",
+        "injected_sha256": "4b009f694ddc7e764f4c5c424377c6e6b522d0f99a1fa7d2974e1c37e5e45921",
+        "preserved_prefix_sha256": "b918bdd8790c0dc54c09f6d513a877e468b9882990418de42b4d25fef5bca913",
+        "cargo_sha256": {
+          "Cargo.toml": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+          "Cargo.lock": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+        }
+      }
+    }
+  },
+  "pinned_harness_sha256": {
+    "scripts/compare-frame-revisions.py": "aca1571e38d6df1619b1203a4b90da19619e3a51fb4ada70ce8ce7570d4ce9bf",
+    "scripts/test_compare_frame_revisions.py": "03df89e5f9997beee428ef5a27fb30a2d4abf9e8541d8c73a065e13d87b488cf",
+    ".github/workflows/linux-render-performance.yml": "3def45138e2d1bfdf13c852d699aaa3e3d129bc7930f280dc16decf9d08dbbe2"
+  },
+  "benchmark_sha256": "b4e01fbfb366231b737074eb10c2d7a05f7cc87107bc054859e3b41410ed256a",
+  "dependencies_identical": true,
+  "cpu_affinity": [
+    0
+  ],
+  "fonts_identity_and_recorded_hashes_verified": true,
+  "source_files_changed": [
+    "src/glyph_atlas.rs",
+    "src/linux_window.rs",
+    "src/renderer/metal.rs",
+    "src/software_raster.rs"
+  ],
+  "limitations": [
+    "Test binary hashes were checked in CI; executable bytes are not included for independent rehash.",
+    "Font identity and recorded CI hashes checked; font bytes themselves are not supplied.",
+    "Affinity observed on harness and inherited by children, not independently read back per child.",
+    "CPU paint and damage only; excludes snapshot creation, cold glyph rasterization, PTY, presentation, GPU and input-to-photon latency.",
+    "Reference frames cover these six fixtures, not every glyph/style/rendering condition.",
+    "One CPU on AMD EPYC7763 native x86_64 Linux. Do not combine with ARM VM measurements.",
+    "Five alternating process pairs. Fixture and integral/incremental order remain fixed within each process because samples_per_process=1.",
+    "Plain ASCII full paint is +0.314% median, slower in3/5 pairs; one pair is+4.062%. Overlap does not prove equivalence or that any regression is noise.",
+    "The local approximately5% ASCII full-paint regression was not reproduced at that magnitude on this x86 host; its cause remains unproven.",
+    "Full Rust correctness CI is separate from the ignored benchmark."
+  ],
+  "summary": [
+    {
+      "content": "ascii",
+      "change": "single-row",
+      "incremental": false,
+      "samples_ns": {
+        "before": [
+          940762.5233333333,
+          948414.17,
+          945221.3466666667,
+          941290.5533333333,
+          946887.73
+        ],
+        "after": [
+          934735.5933333334,
+          939024.3266666667,
+          941146.4166666666,
+          941912.5566666666,
+          937275.7633333333
+        ]
+      },
+      "median_ns": {
+        "before": 945221.3466666667,
+        "after": 939024.3266666667
+      },
+      "range_ns": {
+        "before": [
+          940762.5233333333,
+          948414.17
+        ],
+        "after": [
+          934735.5933333334,
+          941912.5566666666
+        ]
+      },
+      "latency_change_percent": -0.6556157477667912,
+      "paired_latency_change_percent": [
+        -0.6406430794718698,
+        -0.9900572587747569,
+        -0.4311085455666386,
+        0.06607984443598447,
+        -1.0151115451318304
+      ],
+      "slower_pairs": 1,
+      "min_max_overlap": true,
+      "paired_change_median_percent": -0.6406430794718698
+    },
+    {
+      "content": "ascii",
+      "change": "single-row",
+      "incremental": true,
+      "samples_ns": {
+        "before": [
+          259243.68,
+          257138.36333333334,
+          256464.83666666667,
+          257361.65333333332,
+          257385.32333333333
+        ],
+        "after": [
+          248583.55666666667,
+          250177.31,
+          249716.15666666668,
+          254212.45666666667,
+          249933.8
+        ]
+      },
+      "median_ns": {
+        "before": 257361.65333333332,
+        "after": 249933.8
+      },
+      "range_ns": {
+        "before": [
+          256464.83666666667,
+          259243.68
+        ],
+        "after": [
+          248583.55666666667,
+          254212.45666666667
+        ]
+      },
+      "latency_change_percent": -2.8861538761226435,
+      "paired_latency_change_percent": [
+        -4.112008953635171,
+        -2.707123605787909,
+        -2.6314250669659645,
+        -1.2236464235749311,
+        -2.895084784489854
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -2.707123605787909
+    },
+    {
+      "content": "ascii",
+      "change": "full-screen",
+      "incremental": false,
+      "samples_ns": {
+        "before": [
+          947544.6233333333,
+          948911.0266666666,
+          941646.5833333334,
+          942129.1966666667,
+          939915.7166666667
+        ],
+        "after": [
+          945084.74,
+          949075.68,
+          979897.79,
+          942726.28,
+          937118.7366666667
+        ]
+      },
+      "median_ns": {
+        "before": 942129.1966666667,
+        "after": 945084.74
+      },
+      "range_ns": {
+        "before": [
+          939915.7166666667,
+          948911.0266666666
+        ],
+        "after": [
+          937118.7366666667,
+          979897.79
+        ]
+      },
+      "latency_change_percent": 0.3137089205801358,
+      "paired_latency_change_percent": [
+        -0.25960606738284486,
+        0.01735182000275337,
+        4.062161679731391,
+        0.06337595050083245,
+        -0.2975777455790696
+      ],
+      "slower_pairs": 3,
+      "min_max_overlap": true,
+      "paired_change_median_percent": 0.01735182000275337
+    },
+    {
+      "content": "ascii",
+      "change": "full-screen",
+      "incremental": true,
+      "samples_ns": {
+        "before": [
+          948063.06,
+          943692.2166666667,
+          939292.8066666666,
+          942068.55,
+          943142.62
+        ],
+        "after": [
+          940441.98,
+          946952.64,
+          938598.7833333333,
+          943284.4266666666,
+          933921.5833333334
+        ]
+      },
+      "median_ns": {
+        "before": 943142.62,
+        "after": 940441.98
+      },
+      "range_ns": {
+        "before": [
+          939292.8066666666,
+          948063.06
+        ],
+        "after": [
+          933921.5833333334,
+          946952.64
+        ]
+      },
+      "latency_change_percent": -0.2863448160152049,
+      "paired_latency_change_percent": [
+        -0.803857920590223,
+        0.3454964739298072,
+        -0.07388785780190199,
+        0.1290645640029675,
+        -0.9776927127592483
+      ],
+      "slower_pairs": 2,
+      "min_max_overlap": true,
+      "paired_change_median_percent": -0.07388785780190199
+    },
+    {
+      "content": "ascii-after-emoji",
+      "change": "single-row",
+      "incremental": false,
+      "samples_ns": {
+        "before": [
+          1050796.2333333334,
+          1065007.0066666666,
+          1055055.2633333334,
+          1054926.2133333334,
+          1049521.66
+        ],
+        "after": [
+          946436.57,
+          943275.05,
+          937038.9633333334,
+          939139.9633333334,
+          940637.46
+        ]
+      },
+      "median_ns": {
+        "before": 1054926.2133333334,
+        "after": 940637.46
+      },
+      "range_ns": {
+        "before": [
+          1049521.66,
+          1065007.0066666666
+        ],
+        "after": [
+          937038.9633333334,
+          946436.57
+        ]
+      },
+      "latency_change_percent": -10.833814904665818,
+      "paired_latency_change_percent": [
+        -9.931484337575514,
+        -11.430155473593718,
+        -11.185793209271356,
+        -10.975767644842293,
+        -10.374650104886829
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -10.975767644842293
+    },
+    {
+      "content": "ascii-after-emoji",
+      "change": "single-row",
+      "incremental": true,
+      "samples_ns": {
+        "before": [
+          364363.12,
+          363742.2966666667,
+          363764.34,
+          366209.6766666667,
+          364252.21
+        ],
+        "after": [
+          249030.16,
+          250116.62666666668,
+          249323.36666666667,
+          249941.29,
+          249238.81333333332
+        ]
+      },
+      "median_ns": {
+        "before": 364252.21,
+        "after": 249323.36666666667
+      },
+      "range_ns": {
+        "before": [
+          363742.2966666667,
+          366209.6766666667
+        ],
+        "after": [
+          249030.16,
+          250116.62666666668
+        ]
+      },
+      "latency_change_percent": -31.55199616588005,
+      "paired_latency_change_percent": [
+        -31.65330234300332,
+        -31.237959137902116,
+        -31.460195722685004,
+        -31.749130095351664,
+        -31.57520901977965
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -31.57520901977965
+    },
+    {
+      "content": "ascii-after-emoji",
+      "change": "full-screen",
+      "incremental": false,
+      "samples_ns": {
+        "before": [
+          1061958.87,
+          1070424.5233333334,
+          1054782.2733333334,
+          1060123.6433333333,
+          1063435.8766666667
+        ],
+        "after": [
+          946197.7233333334,
+          950581.97,
+          944061.5833333334,
+          941833.8766666667,
+          942131.34
+        ]
+      },
+      "median_ns": {
+        "before": 1061958.87,
+        "after": 944061.5833333334
+      },
+      "range_ns": {
+        "before": [
+          1054782.2733333334,
+          1070424.5233333334
+        ],
+        "after": [
+          941833.8766666667,
+          950581.97
+        ]
+      },
+      "latency_change_percent": -11.101869384702889,
+      "paired_latency_change_percent": [
+        -10.900718468189519,
+        -11.195796688227977,
+        -10.49701846525155,
+        -11.158110415755807,
+        -11.406850128744484
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -11.158110415755807
+    },
+    {
+      "content": "ascii-after-emoji",
+      "change": "full-screen",
+      "incremental": true,
+      "samples_ns": {
+        "before": [
+          1062530.04,
+          1069436.84,
+          1056134.1466666667,
+          1060548.3366666667,
+          1066084.17
+        ],
+        "after": [
+          944077.1866666666,
+          943256.3833333333,
+          938735.1066666667,
+          940735.8866666667,
+          939355.25
+        ]
+      },
+      "median_ns": {
+        "before": 1062530.04,
+        "after": 940735.8866666667
+      },
+      "range_ns": {
+        "before": [
+          1056134.1466666667,
+          1069436.84
+        ],
+        "after": [
+          938735.1066666667,
+          944077.1866666666
+        ]
+      },
+      "latency_change_percent": -11.462655054282822,
+      "paired_latency_change_percent": [
+        -11.148188651055301,
+        -11.798775948906604,
+        -11.115921246418436,
+        -11.297217284463802,
+        -11.887327808272396
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -11.297217284463802
+    },
+    {
+      "content": "unicode",
+      "change": "single-row",
+      "incremental": false,
+      "samples_ns": {
+        "before": [
+          1384263.4666666666,
+          1389097.7933333332,
+          1372607.0133333334,
+          1378878.0466666666,
+          1390517.6033333333
+        ],
+        "after": [
+          1302625.0266666666,
+          1306360.0533333332,
+          1293634.6166666667,
+          1293712.6966666668,
+          1298513.8233333332
+        ]
+      },
+      "median_ns": {
+        "before": 1384263.4666666666,
+        "after": 1298513.8233333332
+      },
+      "range_ns": {
+        "before": [
+          1372607.0133333334,
+          1390517.6033333333
+        ],
+        "after": [
+          1293634.6166666667,
+          1306360.0533333332
+        ]
+      },
+      "latency_change_percent": -6.194604235263112,
+      "paired_latency_change_percent": [
+        -5.897608509208652,
+        -5.95622139759212,
+        -5.753460087230988,
+        -6.176423666029107,
+        -6.616513144418279
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -5.95622139759212
+    },
+    {
+      "content": "unicode",
+      "change": "single-row",
+      "incremental": true,
+      "samples_ns": {
+        "before": [
+          308043.83,
+          304807.39666666667,
+          306156.5833333333,
+          309811.43,
+          306363.3333333333
+        ],
+        "after": [
+          217787.32333333333,
+          223155.07666666666,
+          215846.21,
+          216486.60666666666,
+          225237.32
+        ]
+      },
+      "median_ns": {
+        "before": 306363.3333333333,
+        "after": 217787.32333333333
+      },
+      "range_ns": {
+        "before": [
+          304807.39666666667,
+          309811.43
+        ],
+        "after": [
+          215846.21,
+          225237.32
+        ]
+      },
+      "latency_change_percent": -28.91207933934652,
+      "paired_latency_change_percent": [
+        -29.29989107935279,
+        -26.78816882166869,
+        -29.498099420258526,
+        -30.123105313878618,
+        -26.480327280244587
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -29.29989107935279
+    },
+    {
+      "content": "unicode",
+      "change": "full-screen",
+      "incremental": false,
+      "samples_ns": {
+        "before": [
+          1391018.95,
+          1392395.3733333333,
+          1384515.58,
+          1380027.23,
+          1420515.69
+        ],
+        "after": [
+          1307214.22,
+          1316832.2966666666,
+          1301188.5633333332,
+          1296573.6866666668,
+          1295427.22
+        ]
+      },
+      "median_ns": {
+        "before": 1391018.95,
+        "after": 1301188.5633333332
+      },
+      "range_ns": {
+        "before": [
+          1380027.23,
+          1420515.69
+        ],
+        "after": [
+          1295427.22,
+          1316832.2966666666
+        ]
+      },
+      "latency_change_percent": -6.457883745341264,
+      "paired_latency_change_percent": [
+        -6.0247008137451985,
+        -5.426840544993484,
+        -6.018496134703433,
+        -6.047238889143747,
+        -8.805849233527297
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -6.0247008137451985
+    },
+    {
+      "content": "unicode",
+      "change": "full-screen",
+      "incremental": true,
+      "samples_ns": {
+        "before": [
+          1384358.4133333333,
+          1371642.16,
+          1372690.17,
+          1376991.3466666667,
+          1368970.1333333333
+        ],
+        "after": [
+          1318203.7333333334,
+          1314461.96,
+          1294350.69,
+          1301948.52,
+          1292835.97
+        ]
+      },
+      "median_ns": {
+        "before": 1372690.17,
+        "after": 1301948.52
+      },
+      "range_ns": {
+        "before": [
+          1368970.1333333333,
+          1384358.4133333333
+        ],
+        "after": [
+          1292835.97,
+          1318203.7333333334
+        ]
+      },
+      "latency_change_percent": -5.153504523165631,
+      "paired_latency_change_percent": [
+        -4.7787248853213615,
+        -4.168740336765387,
+        -5.7070037880434406,
+        -5.4497674838934635,
+        -5.561418870983892
+      ],
+      "slower_pairs": 0,
+      "min_max_overlap": false,
+      "paired_change_median_percent": -5.4497674838934635
+    }
+  ],
+  "processes": 10,
+  "samples": 120,
+  "timed_frames": 36000,
+  "prewarm_frames": 3600,
+  "pixel_pairs_verified_byte_for_byte": 12,
+  "ascii_pre_post_emoji_pairs_verified_byte_for_byte": 8,
+  "pixel_inventory": {
+    "before": {
+      "ascii-after-emoji-full-screen-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "634fc1c849dc1a3b7989e36137987cdc2ef737e41f3788705d1aa0088e564b3d"
+      },
+      "ascii-single-row-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "ascii-after-emoji-single-row-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "unicode-full-screen-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "0c41c900b0ddfcb4272766969896bef58bd05a8e48cce2c07331baa238ab61e1"
+      },
+      "ascii-full-screen-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "unicode-single-row-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "ac3e59f49dad1c37738b52ea6c733bb4945d0d379e91d53b7544b9163c0ee6b1"
+      },
+      "ascii-single-row-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "d46008a94e45873678b090b168b8d5988167d1bd9905bf81ea9177ab0ff4f53b"
+      },
+      "ascii-after-emoji-single-row-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "d46008a94e45873678b090b168b8d5988167d1bd9905bf81ea9177ab0ff4f53b"
+      },
+      "ascii-after-emoji-full-screen-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "ascii-full-screen-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "634fc1c849dc1a3b7989e36137987cdc2ef737e41f3788705d1aa0088e564b3d"
+      },
+      "unicode-single-row-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "0c41c900b0ddfcb4272766969896bef58bd05a8e48cce2c07331baa238ab61e1"
+      },
+      "unicode-full-screen-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "02114636ce25a69e580a3691c1d859f3daf6ffc771b868c4681647795c5b340d"
+      }
+    },
+    "after": {
+      "ascii-after-emoji-full-screen-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "634fc1c849dc1a3b7989e36137987cdc2ef737e41f3788705d1aa0088e564b3d"
+      },
+      "ascii-single-row-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "ascii-after-emoji-single-row-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "unicode-full-screen-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "0c41c900b0ddfcb4272766969896bef58bd05a8e48cce2c07331baa238ab61e1"
+      },
+      "ascii-full-screen-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "unicode-single-row-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "ac3e59f49dad1c37738b52ea6c733bb4945d0d379e91d53b7544b9163c0ee6b1"
+      },
+      "ascii-single-row-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "d46008a94e45873678b090b168b8d5988167d1bd9905bf81ea9177ab0ff4f53b"
+      },
+      "ascii-after-emoji-single-row-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "d46008a94e45873678b090b168b8d5988167d1bd9905bf81ea9177ab0ff4f53b"
+      },
+      "ascii-after-emoji-full-screen-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "fbcfd1eb22132dfd90ee93330391634ecde718de9e9d5b728603d4624cb52e3f"
+      },
+      "ascii-full-screen-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "634fc1c849dc1a3b7989e36137987cdc2ef737e41f3788705d1aa0088e564b3d"
+      },
+      "unicode-single-row-0.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "0c41c900b0ddfcb4272766969896bef58bd05a8e48cce2c07331baa238ab61e1"
+      },
+      "unicode-full-screen-1.xrgb8888le": {
+        "bytes": 2937600,
+        "sha256": "02114636ce25a69e580a3691c1d859f3daf6ffc771b868c4681647795c5b340d"
+      }
+    }
+  },
+  "fixtures": [
+    {
+      "line": "frame-repaint fixture content=ascii change=single-row cols=120 rows=40 width=1080 height=680 cell_width=9 cell_height=17 warmup=30 samples=1 steps=300 mono_cells=4800 color_cells=0 bands=[(340, 357), (340, 357)] frame0=ef2b9fe5ee539285 frame1=acdb04707958ea9d",
+      "width": 1080,
+      "height": 680
+    },
+    {
+      "line": "frame-repaint fixture content=ascii change=full-screen cols=120 rows=40 width=1080 height=680 cell_width=9 cell_height=17 warmup=30 samples=1 steps=300 mono_cells=4800 color_cells=0 bands=[(0, 680), (0, 680)] frame0=ef2b9fe5ee539285 frame1=a002a28649852555",
+      "width": 1080,
+      "height": 680
+    },
+    {
+      "line": "frame-repaint fixture content=ascii-after-emoji change=single-row cols=120 rows=40 width=1080 height=680 cell_width=9 cell_height=17 warmup=30 samples=1 steps=300 mono_cells=4800 color_cells=0 bands=[(340, 357), (340, 357)] frame0=ef2b9fe5ee539285 frame1=acdb04707958ea9d",
+      "width": 1080,
+      "height": 680
+    },
+    {
+      "line": "frame-repaint fixture content=ascii-after-emoji change=full-screen cols=120 rows=40 width=1080 height=680 cell_width=9 cell_height=17 warmup=30 samples=1 steps=300 mono_cells=4800 color_cells=0 bands=[(0, 680), (0, 680)] frame0=ef2b9fe5ee539285 frame1=a002a28649852555",
+      "width": 1080,
+      "height": 680
+    },
+    {
+      "line": "frame-repaint fixture content=unicode change=single-row cols=120 rows=40 width=1080 height=680 cell_width=9 cell_height=17 warmup=30 samples=1 steps=300 mono_cells=2800 color_cells=800 bands=[(340, 357), (340, 357)] frame0=a91b82d4cf4bc8a5 frame1=4d2937d1d76cb4c1",
+      "width": 1080,
+      "height": 680
+    },
+    {
+      "line": "frame-repaint fixture content=unicode change=full-screen cols=120 rows=40 width=1080 height=680 cell_width=9 cell_height=17 warmup=30 samples=1 steps=300 mono_cells=2800 color_cells=800 bands=[(0, 680), (0, 680)] frame0=a91b82d4cf4bc8a5 frame1=df65546331845185",
+      "width": 1080,
+      "height": 680
+    }
+  ],
+  "raw_report_sha256": "b2756cb8ca6ac0fe2d6945d7fcc9d6a59d96e9e3b47d5fecf5c0ab12a7293372",
+  "recommendation": "Integrate after separate correctness CI. All eight emoji/Unicode cases improve in five of five pairs with disjoint ranges. Preserve the small plain ASCII full-paint regression and the separate local ARM result; no universal or end-to-end performance claim."
+}

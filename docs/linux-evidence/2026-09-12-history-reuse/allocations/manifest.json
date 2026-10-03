@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "platform": "macOS headless",
+  "before_revision": "4d382d8f6d515a4b54dcd82c1c4df3e035ba7590",
+  "after_revision": "794d03dd5a2679f95b3c3c588e2616bee2a04b52",
+  "source_verification": {
+    "source-before": {
+      "revision": "4d382d8f6d515a4b54dcd82c1c4df3e035ba7590",
+      "tracked_source_files_verified": 646,
+      "source_directory": "/tmp/kokuban-history-reuse/source-before",
+      "example_fixture_still_present_at_audit": true
+    },
+    "source-after": {
+      "revision": "794d03dd5a2679f95b3c3c588e2616bee2a04b52",
+      "tracked_source_files_verified": 646,
+      "source_directory": "/tmp/kokuban-history-reuse/source-after",
+      "example_fixture_still_present_at_audit": false
+    }
+  },
+  "warmup_lines": 1100,
+  "measured_lines": 10000,
+  "columns": 80,
+  "rows": 24,
+  "history_rows": 1000,
+  "before": {
+    "allocation_calls": 10000,
+    "cumulative_requested_bytes": 32000000
+  },
+  "after": {
+    "allocation_calls": 0,
+    "cumulative_requested_bytes": 0
+  },
+  "counter_scope": "alloc/realloc calls and requested sizes during the measured loop; deallocations not subtracted. Not RSS, retained bytes, allocation timing or whole-application allocation count.",
+  "evidence_sha256": {
+    "allocations-v2.log": "32b034af804287893ad80d042b207130a60f0b2a0ad59e34b1c2ec603566175d",
+    "history-allocations.rs": "dba9a91b370b19979156071c3c50e6444286038c63635ab80fda8c29e7e4643d",
+    "allocations-before.log": "efc394dd0ddd7d9557a77b794acb2958d421907e14d1a11ef75d7fa02bf32714"
+  }
+}

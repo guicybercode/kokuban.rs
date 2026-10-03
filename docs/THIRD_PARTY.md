@@ -1,9 +1,35 @@
 # Third-party software in release packages
 
-Kokuban's own code is offered under the [MIT license](../LICENSE). Dependencies
-keep their own licenses. Each release archive includes
+Starting with v0.2, Kokuban's original code and documentation are offered under
+[BSD-4-Clause](../LICENSE). The published v0.1 release remains under MIT.
+Dependencies and other third-party material keep their own licenses. Each release archive includes
 `THIRD_PARTY_LICENSES.txt` and `THIRD_PARTY_SOURCES/option-ext-0.2.0.crate` beside
 the executable. Keep these files when redistributing that archive.
+
+The generated Unicode boundary tables also contain code derived from
+`unicode-segmentation`, under its MIT option. Release archives retain that
+code's original copyright and permission notice in
+`THIRD_PARTY_LICENSES/unicode-segmentation/`. See the
+[table provenance](UNICODE_GRAPHEME_TABLES.md) for the pinned source and checks.
+Changing Kokuban's project license does not change these third-party terms.
+
+The [Code of Conduct](../CODE_OF_CONDUCT.md) adapts Contributor Covenant 2.0
+and retains its separate Creative Commons Attribution 4.0 International
+license and attribution. It is not relicensed under Kokuban's project license.
+
+## Kokuban acknowledgment
+
+The project's [BSD-4-Clause license](../LICENSE) requires retention of its
+copyright notice, conditions and disclaimer when redistributing source or
+binaries. Its advertising clause requires this acknowledgment in advertising
+materials mentioning features or use of the software:
+
+> This product includes software developed by the Kokuban contributors.
+
+Running Kokuban by itself does not require a public announcement. Citation
+metadata supplements the required license notices. See the complete project
+license for all conditions and the [SPDX BSD-4-Clause reference](https://spdx.org/licenses/BSD-4-Clause.html)
+for the standard license form.
 
 ## Generation and scope
 
@@ -52,13 +78,9 @@ at release time.
 
 ## Current dependency observations
 
-The v0.1 lockfile inventory selects **151 packages for Linux x86_64** and **89
+The v0.2 lockfile inventory selects **156 packages for Linux x86_64** and **97
 packages for each macOS architecture**, excluding Kokuban itself and including
 the conservative build dependency closure described above.
-
-Unicode composition adds `unicode-normalization 0.1.25`, `tinyvec 1.13.2` and
-`tinyvec_macros 0.1.1` to both target graphs. Their published crates include
-license texts; the existing generator collects them without supplements.
 
 Most declare MIT and/or Apache-2.0. The selected graphs also contain BSD-2-Clause,
 BSD-3-Clause, ISC, Zlib, 0BSD, Unlicense, Unicode-3.0, MPL-2.0, and an optional
@@ -82,7 +104,7 @@ The package includes its original published `.crate` source archive, the full
 MPL text, a relative path to that source, and its SHA-256. Recipients can unpack
 the archive with `tar -xzf THIRD_PARTY_SOURCES/option-ext-0.2.0.crate` and exercise
 the rights granted by the MPL on that covered source. Kokuban does not change
-those source files or relicense them under MIT.
+those source files or relicense them under Kokuban's project license.
 
 Before copying the archive, the generator checks its SHA-256 against the exact
 package entry in `Cargo.lock`, compares every archived file with the extracted

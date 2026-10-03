@@ -1,0 +1,175 @@
+{
+  "date": "2026-09-11",
+  "purpose": "Uniform row suffix optimization: correctness validation, diagnostic profiling, decoder screening and paired Linux replication",
+  "source_revisions": {
+    "before": "a27b8ce",
+    "after": "4bcf68c"
+  },
+  "optimization": "Skip unchanged uniform row suffixes when clearing rows and skip known blank suffixes while finding retained content; all Cell fields participate in equality.",
+  "local_binary_sha256": {
+    "decoder_before": "2a5a70d6675fc2ed3c977af4f7c6bd609fdba675986064c59595395a498d9c03",
+    "decoder_after": "9714b747ab0f0a406185aa7bb39f9526c2653a1c527931ea4612d63cb6a41d63",
+    "linux_before": "3df28923645b793c3d572e90bb8d1cf048c8e777912d269e08bb4527aea649e2",
+    "linux_after": "b12eaa0fbdd698d0ca29c6d70db17a03cb0eaeb381a377df25e3c76cbdc71f9b"
+  },
+  "local_environment": "Shared Apple M4 macOS host; Linux binaries run under Ubuntu 26.04 arm64 Docker/Colima and Weston headless pixman",
+  "decoder_screening": {
+    "file": "decoder-screening.json",
+    "paired_samples": 3,
+    "mib_per_workload": 4,
+    "rows": 40,
+    "columns": 120,
+    "scrollback_lines": 10000,
+    "chunk_bytes": 16384,
+    "order": "before/after on odd pairs; after/before on even pairs",
+    "scope": "Decoder only; no PTY, font atlas or renderer"
+  },
+  "profile": {
+    "file": "profile-before.txt",
+    "scope": "Diagnostic macOS sample captured while running the baseline short-lines workload; benchmark interrupted after sampling and not counted as a completed throughput run"
+  },
+  "other_attempts": {
+    "initial-candidate.txt": "Unpaired 8 MiB candidate run with three samples; highly variable shared-host load",
+    "baseline-recheck.txt": "Subsequent unpaired 8 MiB baseline sample; not a controlled pair with the first run",
+    "preliminary-vm-summary.json": "Console summary only; raw 4 MiB paired report became unreadable and 32 MiB retry failed during host/VM storage fault",
+    "ci-invalid-build.json": "Rejected for revision attribution: workflow34609339282 reused the baseline Cargo output for the candidate; report status passed only reflects metric/geometry checks, not valid source-to-binary provenance."
+  },
+  "validation": {
+    "linux": {
+      "main_tests_passed": 661,
+      "example_tests_passed": 200,
+      "benchmarks_ignored": 1,
+      "check": "passed",
+      "clippy": "passed",
+      "x11_clipboard": "Exact UTF-8, compound graphemes and wrapped URL after four resizes passed"
+    },
+    "macos": {
+      "main_tests_passed": 563,
+      "example_tests_passed": 200,
+      "check": "passed",
+      "clippy": "passed"
+    },
+    "ci": {
+      "revision": "4bcf68c",
+      "status": "success",
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34606995498"
+    },
+    "harness": {
+      "python_tests_passed": 13,
+      "ci_status": "success",
+      "ci_revision": "eb20d92",
+      "ci_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34611011443"
+    }
+  },
+  "limits": [
+    "DSR acknowledges processing, not frame presentation or input-to-photon latency.",
+    "Throughput harness does not prove visual equivalence; correctness tests run separately.",
+    "Software rendering in a VM/CI runner does not establish superiority over Ghostty, Alacritty or Kitty on physical Omarchy/Hyprland."
+  ],
+  "evidence_sha256": {
+    "baseline-recheck.txt": "0b31cef101e16c328ff57add1bfd6ce27eb3c8f0ee4457f05665c2a47eca53e8",
+    "ci-alternate-build-log.txt": "576ab655b2f6822e140fc87a0b5247b2a9ebeba40d29e9c6a7caf0173b3cb0f1",
+    "ci-alternate-report.json": "155c9ad4eb639bb332ffa73bf46906dd1bb8033a92cf907aab1b06d9257b59c4",
+    "ci-alternate-rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "ci-alternate-system-packages.txt": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4",
+    "ci-invalid-build.json": "e0eae8608d055d5a36604107c27abe13366b75d4e9a4b54677fc38ca7fbf3080",
+    "ci-primary-build-log.txt": "66f18be8432972273c2c31500f001b8e4ad3c1226b5d8ca3f2f5cd4e09b8eb42",
+    "ci-primary-report.json": "1bc5e153d5c71867953f6590b46fa204cd4e6064db450d297d5dcdfeaac5cc53",
+    "ci-primary-rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "ci-primary-system-packages.txt": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4",
+    "decoder-screening.json": "3c169e70ea19869a287d21e6129911aa81bd69ed1b0f60dc1a76ab1f2b151c49",
+    "initial-candidate.txt": "fbc3e801961104feac01e451144a515831aa9a8d86b500c5ddb98bd854a664d6",
+    "preliminary-vm-summary.json": "3de5089288e6de39898212bea09c40ac4ff9747c31e2bf7fb5b7fb046fd0b5cf",
+    "profile-before.txt": "21dba82a2c1a19195b2f53c17d1759c590082355b710a7764947fd11482b68f2"
+  },
+  "rejected_ci_build": {
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34609339282",
+    "harness_revision": "ce26eeb",
+    "identical_binary_sha256": "17813d50031c33a904b14ce0ca25fe53caedd05e1c7402680fbf26fca0192ded",
+    "evidence": "Build log shows only source-before compiled; candidate build finished in0.12s without compiling the root crate.",
+    "fix": "c03a131 uses distinct Cargo target directories for the two source archives.",
+    "usable_for_revision_comparison": false
+  },
+  "paired_ci_alternate": {
+    "status": "passed",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34610172666",
+    "harness_revision": "c03a13183d48bbd1eb93a39314fb92c9baa4fbc7",
+    "report": "ci-alternate-report.json",
+    "build_log_excerpt": "ci-alternate-build-log.txt",
+    "source_build_inputs_sha256_verified_against_git": {
+      "before": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      },
+      "after": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      }
+    },
+    "binary_sha256": {
+      "before": "17813d50031c33a904b14ce0ca25fe53caedd05e1c7402680fbf26fca0192ded",
+      "after": "2a8e064303adfaa3b7d21376c5dd26ee844240d546cb3e4fa0768fce4fe836a6"
+    },
+    "samples_per_revision": 5,
+    "requested_bytes_per_workload": 33554432,
+    "screen": "alternate",
+    "effective_geometry_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "cpu_affinity": [
+      0
+    ],
+    "platform": "Ubuntu 24.04 x86_64 GitHub runner; AMD EPYC 9V74; Weston 13 headless pixman; DejaVu Sans Mono 14; Rust 1.94.1 release locked",
+    "throughput_median_after_over_before": {
+      "ascii": 1.0067811495648673,
+      "ansi": 1.2172477667547232,
+      "unicode": 1.4083462701168705,
+      "short_lines": 3.282998553938381
+    }
+  },
+  "paired_ci_primary": {
+    "status": "passed",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34610695516",
+    "harness_revision": "d50c734f8a73c2754c6312a3d4dd366acc30e7ab",
+    "report": "ci-primary-report.json",
+    "build_log_excerpt": "ci-primary-build-log.txt",
+    "source_build_inputs_sha256_verified_against_git": {
+      "before": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      },
+      "after": {
+        "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+        "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+      }
+    },
+    "binary_sha256": {
+      "before": "17813d50031c33a904b14ce0ca25fe53caedd05e1c7402680fbf26fca0192ded",
+      "after": "2a8e064303adfaa3b7d21376c5dd26ee844240d546cb3e4fa0768fce4fe836a6"
+    },
+    "samples_per_revision": 5,
+    "requested_bytes_per_workload": 33554432,
+    "screen": "primary",
+    "scrollback_lines": 10000,
+    "effective_geometry_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "cpu_affinity": [
+      0
+    ],
+    "platform": "Ubuntu 24.04 x86_64 GitHub runner; AMD EPYC 7763; Weston 13 headless pixman; DejaVu Sans Mono 14; Rust 1.94.1 release locked",
+    "throughput_median_after_over_before": {
+      "ascii": 0.9966568966176058,
+      "ansi": 1.1649306771996013,
+      "unicode": 1.493494760484172,
+      "short_lines": 1.643810663326889
+    },
+    "cross_scenario_limit": "Primary and alternate runs used different CPU models; compare revisions within each scenario, not absolute rates between scenarios."
+  }
+}

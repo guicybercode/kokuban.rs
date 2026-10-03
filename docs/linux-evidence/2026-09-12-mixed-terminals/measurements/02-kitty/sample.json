@@ -1,0 +1,184 @@
+{
+  "command": [
+    "/usr/bin/kitty",
+    "--config",
+    "NONE",
+    "--override",
+    "font_family=DejaVu Sans Mono",
+    "--override",
+    "font_size=10.5",
+    "--override",
+    "scrollback_lines=0",
+    "--override",
+    "remember_window_size=no",
+    "--override",
+    "window_padding_width=0",
+    "--override",
+    "window_margin_width=0",
+    "--override",
+    "initial_window_width=80c",
+    "--override",
+    "initial_window_height=24c",
+    "--override",
+    "hide_window_decorations=yes",
+    "--override",
+    "shell_integration=disabled",
+    "--override",
+    "linux_display_server=wayland",
+    "--override",
+    "modify_font=cell_width 1px",
+    "--override",
+    "modify_font=cell_height 0px",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/02-kitty"
+  ],
+  "config": {
+    "filename": "kitty.conf",
+    "text": "font_family DejaVu Sans Mono\nfont_size 10.5\nscrollback_lines 0\nremember_window_size no\nwindow_padding_width 0\nwindow_margin_width 0\ninitial_window_width 80c\ninitial_window_height 24c\nhide_window_decorations yes\nshell_integration disabled\nlinux_display_server wayland\nmodify_font cell_width 1px\nmodify_font cell_height 0px\n",
+    "sha256": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "history_limit": 0,
+    "history_unit": "lines"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      0.0031578539999941313,
+      0.003153437000037229,
+      0.003149290999999721,
+      0.003152736000004097,
+      0.003198053999994954,
+      0.003203602999974464,
+      0.008777293000036934,
+      0.0031496519999905104,
+      0.00315139399998543,
+      0.0031464770000297904,
+      0.0031452239999794074,
+      0.003149992000032853,
+      0.008081564999997681,
+      0.003144793999979356,
+      0.00315463900000168,
+      0.003142550999996274,
+      0.0031511229999523493,
+      0.0031558000000018183,
+      0.00798051200001737,
+      0.0031474580000008245,
+      0.003145915999994031,
+      0.0031541270000161603,
+      0.003152365000005375,
+      0.0031435020000003533,
+      0.00315261600002259,
+      0.007982156000025498,
+      0.0031587049999757255,
+      0.003147167999998146,
+      0.003171734000034121,
+      0.003146366000009948
+    ],
+    "workloads": {
+      "ascii": {
+        "bytes": 33554380,
+        "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+        "write_seconds": 0.38684988800002884,
+        "drain_rtt_seconds": 0.0035462479999637253,
+        "write_and_dsr_seconds": 0.39039613599999257,
+        "mib_per_second": 81.96789736908707,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.6100000000000001,
+        "terminal_rss_before_kib": 188908,
+        "terminal_rss_after_kib": 188908
+      },
+      "ansi": {
+        "bytes": 33554392,
+        "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+        "write_seconds": 1.718842197000015,
+        "drain_rtt_seconds": 0.04988668199996482,
+        "write_and_dsr_seconds": 1.7687288789999798,
+        "mib_per_second": 18.092067265345822,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 2.0299999999999994,
+        "terminal_rss_before_kib": 188940,
+        "terminal_rss_after_kib": 188940
+      },
+      "unicode": {
+        "bytes": 33554400,
+        "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+        "write_seconds": 0.5238076620000243,
+        "drain_rtt_seconds": 0.01282901799999081,
+        "write_and_dsr_seconds": 0.5366366800000151,
+        "mib_per_second": 59.630604233801115,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.9300000000000006,
+        "terminal_rss_before_kib": 190656,
+        "terminal_rss_after_kib": 190656
+      },
+      "short_lines": {
+        "bytes": 33554430,
+        "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+        "write_seconds": 1.16064978899999,
+        "drain_rtt_seconds": 0.03782080199999882,
+        "write_and_dsr_seconds": 1.1984705909999889,
+        "mib_per_second": 26.70069531364217,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 1.6500000000000004,
+        "terminal_rss_before_kib": 190656,
+        "terminal_rss_after_kib": 190656
+      }
+    },
+    "term": "xterm-kitty"
+  },
+  "status": "passed"
+}

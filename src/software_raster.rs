@@ -136,44 +136,52 @@ pub(crate) fn draw_glyph_a8(
     };
     let rgb = rgb & RGB_MASK;
 
+    // Validation and clipping above guarantee both row slices fit. Keeping
+    // indexing outside the pixel loop lets LLVM vectorize the alpha blend.
+    let width = clipped.width as usize;
+    let source_x = (glyph.atlas_x + clipped.source_x) as usize;
+    let source_y = (glyph.atlas_y + clipped.source_y) as usize;
+    let destination_x = clipped.destination_x as usize;
+    let destination_y = clipped.destination_y as usize;
+    for row in 0..clipped.height as usize {
+        let source_start = (source_y + row) * atlas_size.0 as usize + source_x;
+        let destination_start = (destination_y + row) * frame_size.0 as usize + destination_x;
+        let source = &atlas[source_start..source_start + width];
+        let destination = &mut frame[destination_start..destination_start + width];
+        for (pixel, &coverage) in destination.iter_mut().zip(source) {
+            *pixel = blend_rgb(*pixel, rgb, coverage);
+        }
+    }
+}
+
+/// Blend an RGBA emoji glyph from the atlas without tinting its font colors.
+pub(crate) fn draw_glyph_rgba(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    atlas: &[u8],
+    atlas_size: (u32, u32),
+    glyph: GlyphEntry,
+    destination: (i32, i32),
+) {
+    if !buffer_contains_surface(frame.len(), frame_size)
+        || !buffer_contains_surface(atlas.len() / 4, atlas_size)
+        || !glyph_fits_atlas(glyph, atlas_size)
+    {
+        return;
+    }
+    let Some(clipped) = clip_rect(destination, (glyph.pixel_w, glyph.pixel_h), frame_size) else {
+        return;
+    };
     for row in 0..clipped.height {
-        let Some(source_y) = glyph
-            .atlas_y
-            .checked_add(clipped.source_y)
-            .and_then(|y| y.checked_add(row))
-        else {
-            return;
-        };
-        let Some(destination_y) = clipped.destination_y.checked_add(row) else {
-            return;
-        };
-
-        for column in 0..clipped.width {
-            let Some(source_x) = glyph
-                .atlas_x
-                .checked_add(clipped.source_x)
-                .and_then(|x| x.checked_add(column))
-            else {
-                return;
-            };
-            let Some(destination_x) = clipped.destination_x.checked_add(column) else {
-                return;
-            };
-            let Some(source_index) = pixel_index(atlas_size.0, source_x, source_y) else {
-                return;
-            };
-            let Some(destination_index) = pixel_index(frame_size.0, destination_x, destination_y)
-            else {
-                return;
-            };
-            let Some(&coverage) = atlas.get(source_index) else {
-                return;
-            };
-
-            let Some(destination_pixel) = frame.get_mut(destination_index) else {
-                return;
-            };
-            *destination_pixel = blend_rgb(*destination_pixel, rgb, coverage);
+        let source_start = ((glyph.atlas_y + clipped.source_y + row) as usize
+            * atlas_size.0 as usize + (glyph.atlas_x + clipped.source_x) as usize) * 4;
+        let destination_start = (clipped.destination_y + row) as usize * frame_size.0 as usize
+            + clipped.destination_x as usize;
+        let source = &atlas[source_start..source_start + clipped.width as usize * 4];
+        let destination = &mut frame[destination_start..destination_start + clipped.width as usize];
+        for (pixel, rgba) in destination.iter_mut().zip(source.chunks_exact(4)) {
+            let rgb = u32::from(rgba[0]) << 16 | u32::from(rgba[1]) << 8 | u32::from(rgba[2]);
+            *pixel = blend_rgb(*pixel, rgb, rgba[3]);
         }
     }
 }
@@ -197,21 +205,18 @@ pub(crate) fn fill_rect(
     };
     let rgb = rgb & RGB_MASK;
 
-    for row in 0..clipped.height {
-        let Some(y) = clipped.destination_y.checked_add(row) else {
-            return;
-        };
-        for column in 0..clipped.width {
-            let Some(x) = clipped.destination_x.checked_add(column) else {
-                return;
-            };
-            let Some(index) = pixel_index(frame_size.0, x, y) else {
-                return;
-            };
-            let Some(pixel) = frame.get_mut(index) else {
-                return;
-            };
-            *pixel = blend_rgb(*pixel, rgb, alpha);
+    let width = clipped.width as usize;
+    let destination_x = clipped.destination_x as usize;
+    let destination_y = clipped.destination_y as usize;
+    for row in 0..clipped.height as usize {
+        let start = (destination_y + row) * frame_size.0 as usize + destination_x;
+        let destination = &mut frame[start..start + width];
+        if alpha == u8::MAX {
+            destination.fill(rgb);
+        } else {
+            for pixel in destination {
+                *pixel = blend_rgb(*pixel, rgb, alpha);
+            }
         }
     }
 }
@@ -270,33 +275,68 @@ fn clip_rect(
     })
 }
 
-fn pixel_index(row_width: u32, x: u32, y: u32) -> Option<usize> {
-    let index = u64::from(y)
-        .checked_mul(u64::from(row_width))?
-        .checked_add(u64::from(x))?;
-    usize::try_from(index).ok()
-}
-
 fn blend_rgb(destination: u32, foreground: u32, coverage: u8) -> u32 {
     let coverage = u32::from(coverage);
     let inverse = 255 - coverage;
-
-    let blend_channel = |shift: u32| {
-        let destination = (destination >> shift) & 0xff_u32;
-        let foreground = (foreground >> shift) & 0xff_u32;
-        (foreground * coverage + destination * inverse + 127) / 255
-    };
-
-    (blend_channel(16) << 16) | (blend_channel(8) << 8) | blend_channel(0)
+    // Red and blue occupy independent 16-bit lanes. Each weighted sum plus
+    // rounding is at most 65153, and the correction stays below 65536, so
+    // neither multiplication nor addition carries into the adjacent lane.
+    // (n + 128 + ((n + 128) >> 8)) >> 8 equals (n + 127) / 255 here.
+    let red_blue = (foreground & 0x00ff_00ff) * coverage
+        + (destination & 0x00ff_00ff) * inverse
+        + 0x0080_0080;
+    let red_blue = ((red_blue + ((red_blue >> 8) & 0x00ff_00ff)) >> 8) & 0x00ff_00ff;
+    let green = ((foreground >> 8) & 255) * coverage
+        + ((destination >> 8) & 255) * inverse
+        + 128;
+    red_blue | (((green + (green >> 8)) >> 8) << 8)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_glyph_a8, fill_rect};
+    use super::{blend_rgb, draw_glyph_a8, draw_glyph_rgba, fill_rect};
     use crate::glyph_atlas::GlyphEntry;
+
+    #[test]
+    fn packed_blend_matches_independent_channels_for_all_channel_pairs_and_alphas() {
+        for coverage in 0..=255_u32 {
+            for foreground in 0..=255_u32 {
+                for destination in 0..=255_u32 {
+                    // Every channel independently covers all 256x256 pairs;
+                    // different bijections also exercise adjacent lane values.
+                    let fg = 0xa500_0000 | foreground << 16
+                        | ((foreground * 73) & 255) << 8 | (foreground ^ 0x5b);
+                    let dst = 0xc300_0000 | destination << 16
+                        | (destination ^ 0xa7) << 8 | ((destination * 97) & 255);
+                    let mut expected = 0;
+                    for shift in [0, 8, 16] {
+                        let value = (((fg >> shift) & 255) * coverage
+                            + ((dst >> shift) & 255) * (255 - coverage) + 127) / 255;
+                        expected |= value << shift;
+                    }
+                    assert_eq!(blend_rgb(dst, fg, coverage as u8), expected,
+                        "foreground={fg:08x}, destination={dst:08x}, alpha={coverage}");
+                }
+            }
+        }
+    }
 
     const BACKGROUND: u32 = 0x0010_2030;
     const FOREGROUND: u32 = 0xffe0_4020;
+
+    #[test]
+    fn colored_grapheme_clips_to_frame_and_preserves_rgb_and_alpha() {
+        let atlas = [255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 255];
+        let mut frame = [0xffffff; 2];
+        draw_glyph_rgba(&mut frame, (2, 1), &atlas, (3, 1), glyph(0, 0, 3, 1), (-1, 0));
+        assert_eq!(frame, [0x7fff7f, 0x0000ff]);
+
+        // Bad atlas extents and truncated RGBA buffers must not write pixels.
+        let expected = frame;
+        draw_glyph_rgba(&mut frame, (2, 1), &atlas, (3, 1), glyph(2, 0, 3, 1), (0, 0));
+        draw_glyph_rgba(&mut frame, (2, 1), &atlas[..11], (3, 1), glyph(0, 0, 3, 1), (0, 0));
+        assert_eq!(frame, expected);
+    }
 
     fn glyph(atlas_x: u32, atlas_y: u32, pixel_w: u32, pixel_h: u32) -> GlyphEntry {
         GlyphEntry {
@@ -306,6 +346,7 @@ mod tests {
             pixel_h,
             bearing_x: 0,
             bearing_y: 0,
+            color: false,
         }
     }
 
@@ -483,6 +524,65 @@ mod tests {
         fill_rect(&mut frame, (2, 1), (1, 0), (1, 1), FOREGROUND, 0);
 
         assert_eq!(frame, [0x00e0_4020, BACKGROUND]);
+    }
+
+    #[test]
+    fn clipped_rows_match_scalar_reference_for_every_alpha() {
+        let atlas: Vec<u8> = (0..=255).collect();
+        let entry = glyph(0, 0, 16, 16);
+        for origin in [(-5, -3), (0, 0), (9, 7), (16, 16), (-16, -16)] {
+            let initial: Vec<u32> = (0..259)
+                .map(|index| 0xa500_0000 | (index * 17_891) as u32)
+                .collect();
+            let mut actual = initial.clone();
+            let mut expected = initial.clone();
+            for y in 0..16i32 {
+                for x in 0..16i32 {
+                    let source_x = x - origin.0;
+                    let source_y = y - origin.1;
+                    if !(0..16).contains(&source_x) || !(0..16).contains(&source_y) {
+                        continue;
+                    }
+                    let alpha = u32::from(atlas[(source_y * 16 + source_x) as usize]);
+                    let pixel = &mut expected[(y * 16 + x) as usize];
+                    let mut blended = 0;
+                    for shift in [0, 8, 16] {
+                        let foreground = (FOREGROUND >> shift) & 255;
+                        let background = (*pixel >> shift) & 255;
+                        blended |= ((foreground * alpha + background * (255 - alpha) + 127)
+                            / 255) << shift;
+                    }
+                    *pixel = blended;
+                }
+            }
+            draw_glyph_a8(&mut actual, (16, 16), &atlas, (16, 16), entry, origin, FOREGROUND);
+            assert_eq!(actual, expected, "glyph at {origin:?}");
+
+            for alpha in 0..=255u8 {
+                actual.clone_from(&initial);
+                expected.clone_from(&initial);
+                for y in 0..16i32 {
+                    for x in 0..16i32 {
+                        if alpha == 0 || !(origin.0..origin.0 + 16).contains(&x)
+                            || !(origin.1..origin.1 + 16).contains(&y) {
+                            continue;
+                        }
+                        let alpha = u32::from(alpha);
+                        let pixel = &mut expected[(y * 16 + x) as usize];
+                        let mut blended = 0;
+                        for shift in [0, 8, 16] {
+                            let foreground = (FOREGROUND >> shift) & 255;
+                            let background = (*pixel >> shift) & 255;
+                            blended |= ((foreground * alpha + background * (255 - alpha) + 127)
+                                / 255) << shift;
+                        }
+                        *pixel = blended;
+                    }
+                }
+                fill_rect(&mut actual, (16, 16), origin, (16, 16), FOREGROUND, alpha);
+                assert_eq!(actual, expected, "rectangle at {origin:?}, alpha={alpha}");
+            }
+        }
     }
 
     #[test]

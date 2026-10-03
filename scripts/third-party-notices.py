@@ -238,7 +238,7 @@ def render(metadata: dict, target: str) -> tuple[str, dict[str, bytes], int]:
              "Scope: target-filtered normal and build dependency closure; dev-only "
              "edges excluded. Build/proc-macro packages are included conservatively.\n"
              "Declared license expressions and upstream notices remain unchanged. "
-             "Kokuban's MIT license does not replace third-party licenses.\n"]
+             "Kokuban's project license does not replace third-party licenses.\n"]
     sources = {}
     for package in packages:
         name = f"{package['name']} {package['version']}"

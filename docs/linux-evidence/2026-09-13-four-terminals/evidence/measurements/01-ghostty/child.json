@@ -1,0 +1,10 @@
+{
+  "pid": 10746,
+  "start_ticks": 22136,
+  "cpu_ticks": 5,
+  "cpu_seconds": 0.05,
+  "rss_kib": 25064,
+  "hwm_kib": 25064,
+  "threads": 1,
+  "monotonic_seconds": 221.428242873
+}

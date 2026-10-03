@@ -1,0 +1,370 @@
+{
+  "date": "2026-09-11",
+  "purpose": "Paired Linux CI evidence for copying known uniform scalar row suffixes into primary-screen scrollback.",
+  "source_revisions": {
+    "before": "4bcf68c7ba48809a9e9fa74a2f376a0a54612fc9",
+    "after": "48afe697858fa6e725cafbaf406d9ed261f08d62"
+  },
+  "optimization": "Buffer::extract_row clones the unknown prefix, then copies all scalar Cell fields from the known uniform suffix template. Unknown suffixes and suffix templates owning a grapheme Arc use ordinary per-cell cloning to preserve allocation ownership.",
+  "paired_ci_primary": {
+    "status": "passed",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34613367069",
+    "run_id": 34613367069,
+    "harness_revision": "48afe697858fa6e725cafbaf406d9ed261f08d62",
+    "report": "ci-primary-report.json",
+    "build_log_excerpt": "ci-primary-build-log.txt",
+    "workflow_snapshot": "ci-primary-workflow.yml",
+    "workflow_source_path": ".github/workflows/linux-paired-performance.yml",
+    "build_log_excerpt_original_line_numbers": [
+      1258,
+      1600,
+      1754,
+      2096
+    ],
+    "full_ci_log_sha256": "9f37668a03f013baadde5649d974c90e9a6a9f796b9ce54692a11c886767b52c",
+    "build_provenance": {
+      "source_archives": "Each exact revision was exported with git archive into a separate source directory.",
+      "target_directories": {
+        "before": "/home/runner/work/_temp/kokuban-paired-build-before",
+        "after": "/home/runner/work/_temp/kokuban-paired-build-after"
+      },
+      "root_crate_compiled_for_both_revisions": true,
+      "source_build_inputs_sha256_verified_against_git": {
+        "before": {
+          "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+          "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+        },
+        "after": {
+          "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+          "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+        }
+      },
+      "binary_sha256": {
+        "before": "2a8e064303adfaa3b7d21376c5dd26ee844240d546cb3e4fa0768fce4fe836a6",
+        "after": "f9904f831e7d43d5fbe3abb57bca5df777775127a3c80dd81c91e457aa805c2a"
+      },
+      "build_artifact_directories": {
+        "before": "ci-primary-before-build",
+        "after": "ci-primary-after-build"
+      },
+      "identical_binary_guard_enabled": true,
+      "binaries_identical": false,
+      "runtime_source_files_changed": [
+        "src/grid/buffer.rs"
+      ]
+    },
+    "harness_files_sha256_verified_against_git": {
+      "scripts/compare-kokuban-revisions.py": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd",
+      "scripts/compare-terminal-performance.py": "c63f14a5384b1e4893f23a4f064adc2a583b126e5bcf838264566d70098cc7ab",
+      "scripts/linux-resource-smoke.py": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281"
+    },
+    "toolchain": {
+      "version": "Rust 1.94.1",
+      "host": "x86_64-unknown-linux-gnu",
+      "profile": "release",
+      "locked": true,
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_RELEASE_DEBUG": "0",
+      "observation": "ci-primary-rustc.txt"
+    },
+    "configuration": {
+      "file": "ci-primary-kokuban.toml",
+      "sha256": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a",
+      "screen": "primary",
+      "scrollback_lines": 10000,
+      "font_family": "DejaVu Sans Mono",
+      "font_pixels": 14.0,
+      "images_enabled": false,
+      "requested_geometry_rows_cols": [
+        24,
+        80
+      ],
+      "effective_geometry_rows_cols_pixels": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "backend": "wayland",
+      "settle_seconds": 1.0,
+      "timeout_seconds_per_sample": 120.0
+    },
+    "environment": {
+      "platform": "Ubuntu 24.04 x86_64 GitHub hosted runner",
+      "cpu_model": "AMD EPYC 7763 64-Core Processor",
+      "cpu_affinity": [
+        0
+      ],
+      "compositor": "Weston 13.0.0 headless pixman; virtual output 1280x900",
+      "cpu_observation": "ci-primary-cpu.txt",
+      "kernel_observation": "ci-primary-kernel.txt",
+      "system_packages": "ci-primary-system-packages.txt",
+      "compositor_log": "ci-primary-weston.log",
+      "font_match": "DejaVu Sans Mono\n/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    },
+    "pairs": 5,
+    "samples_per_revision": 5,
+    "requested_bytes_per_workload": 33554432,
+    "order": "before/after on odd pairs; after/before on even pairs",
+    "execution_order": [
+      {
+        "pair": 1,
+        "side": "before"
+      },
+      {
+        "pair": 1,
+        "side": "after"
+      },
+      {
+        "pair": 2,
+        "side": "after"
+      },
+      {
+        "pair": 2,
+        "side": "before"
+      },
+      {
+        "pair": 3,
+        "side": "before"
+      },
+      {
+        "pair": 3,
+        "side": "after"
+      },
+      {
+        "pair": 4,
+        "side": "after"
+      },
+      {
+        "pair": 4,
+        "side": "before"
+      },
+      {
+        "pair": 5,
+        "side": "before"
+      },
+      {
+        "pair": 5,
+        "side": "after"
+      }
+    ],
+    "workload_results": {
+      "ascii": {
+        "payload_bytes": 33554380,
+        "payload_sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+        "throughput_mib_per_second": {
+          "before": {
+            "median": 53.04543974052412,
+            "samples": [
+              50.95809505984283,
+              53.04543974052412,
+              53.095667656659764,
+              52.484000594902334,
+              53.93943172437662
+            ]
+          },
+          "after": {
+            "median": 52.77099142333491,
+            "samples": [
+              52.77099142333491,
+              51.61660598816718,
+              52.144872768220445,
+              53.206344150971105,
+              53.79968561690578
+            ]
+          }
+        },
+        "ratio_of_throughput_medians_after_over_before": 0.9948261656698165,
+        "change_in_throughput_medians_percent": -0.517383433018348,
+        "paired_throughput_ratio_after_over_before": {
+          "median": 0.9974092031932239,
+          "min": 0.9730639663023591,
+          "max": 1.035576219271209,
+          "samples": [
+            1.035576219271209,
+            0.9730639663023591,
+            0.982092797201693,
+            1.0137631191959657,
+            0.9974092031932239
+          ]
+        }
+      },
+      "ansi": {
+        "payload_bytes": 33554392,
+        "payload_sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+        "throughput_mib_per_second": {
+          "before": {
+            "median": 42.49559799265562,
+            "samples": [
+              42.49559799265562,
+              44.41172423373061,
+              41.95982812277801,
+              40.54897098858353,
+              45.298971598485224
+            ]
+          },
+          "after": {
+            "median": 47.14300171444936,
+            "samples": [
+              46.020000659881745,
+              47.598516549153516,
+              43.95486629970057,
+              47.14300171444936,
+              47.43113954223133
+            ]
+          }
+        },
+        "ratio_of_throughput_medians_after_over_before": 1.1093620031561138,
+        "change_in_throughput_medians_percent": 10.936200315611377,
+        "paired_throughput_ratio_after_over_before": {
+          "median": 1.071755653949651,
+          "min": 1.0470687935842102,
+          "max": 1.1626189411248529,
+          "samples": [
+            1.0829357117844356,
+            1.071755653949651,
+            1.047546385821336,
+            1.1626189411248529,
+            1.0470687935842102
+          ]
+        }
+      },
+      "unicode": {
+        "payload_bytes": 33554400,
+        "payload_sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+        "throughput_mib_per_second": {
+          "before": {
+            "median": 18.380113600135964,
+            "samples": [
+              18.234632249513297,
+              19.217246744499946,
+              18.380113600135964,
+              18.124319121381813,
+              19.060131216871717
+            ]
+          },
+          "after": {
+            "median": 18.335665758733075,
+            "samples": [
+              18.335665758733075,
+              18.488285489285754,
+              18.642194309223342,
+              17.882540879535558,
+              18.291316158917798
+            ]
+          }
+        },
+        "ratio_of_throughput_medians_after_over_before": 0.997581742835226,
+        "change_in_throughput_medians_percent": -0.24182571647739515,
+        "paired_throughput_ratio_after_over_before": {
+          "median": 0.9866600096683896,
+          "min": 0.9596637059206929,
+          "max": 1.0142589275990894,
+          "samples": [
+            1.0055407483867669,
+            0.9620673416485729,
+            1.0142589275990894,
+            0.9866600096683896,
+            0.9596637059206929
+          ]
+        }
+      },
+      "short_lines": {
+        "payload_bytes": 33554430,
+        "payload_sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+        "throughput_mib_per_second": {
+          "before": {
+            "median": 5.92912687191132,
+            "samples": [
+              5.628393404783063,
+              5.794945778639692,
+              6.054073049548486,
+              6.057189635992643,
+              5.92912687191132
+            ]
+          },
+          "after": {
+            "median": 6.77704671311171,
+            "samples": [
+              6.695036483612135,
+              6.991994287909887,
+              6.81995128989552,
+              6.318798211206743,
+              6.77704671311171
+            ]
+          }
+        },
+        "ratio_of_throughput_medians_after_over_before": 1.1430092253915716,
+        "change_in_throughput_medians_percent": 14.300922539157156,
+        "paired_throughput_ratio_after_over_before": {
+          "median": 1.1430092253915716,
+          "min": 1.0431897614133767,
+          "max": 1.206567680699023,
+          "samples": [
+            1.1895111094975395,
+            1.206567680699023,
+            1.1265062766965048,
+            1.0431897614133767,
+            1.1430092253915716
+          ]
+        }
+      }
+    },
+    "statistic_definitions": {
+      "mib_per_second": "Payload bytes / 1048576 / elapsed write-and-DSR seconds.",
+      "ratio_of_throughput_medians_after_over_before": "Median after throughput divided by median before throughput; the percentage columns use this ratio.",
+      "paired_throughput_ratio_after_over_before": "After throughput divided by before throughput within each numbered pair, then summarized; its median can differ from the ratio of throughput medians.",
+      "sample_order": "Each side sample array is ordered by pair number 1 through 5, not chronological launch order."
+    }
+  },
+  "validation": {
+    "scope": "Read-only audit of retained CI artifacts and repository objects; no new terminal measurements.",
+    "samples_passed": 10,
+    "workload_observations_verified": 40,
+    "protocol_rtt_observations_verified": 300,
+    "report_matches_individual_sample_and_result_files": true,
+    "all_sample_configs_match_retained_configuration": true,
+    "source_refs_and_cargo_inputs_match_repository_objects": true,
+    "binary_hashes_match_build_artifact_records": true,
+    "all_three_harness_file_hashes_match_harness_revision": true,
+    "payload_byte_counts_and_hashes_independently_reproduced": true,
+    "all_workload_geometries_match_before_and_after": true,
+    "throughput_and_paired_distributions_independently_recomputed": true,
+    "child_error_artifacts": 0,
+    "rendering_equivalence_verified": false,
+    "log_note": "Weston reports finalizing a layer with views still on it after its cleanup SIGTERM at 15:05:45.707 UTC; the completed passing report was printed at 15:05:45.698 UTC. This is a compositor teardown diagnostic, not a failed throughput sample."
+  },
+  "limits": [
+    "DSR acknowledges terminal processing, not frame presentation, input-to-photon latency or rendered workload contents.",
+    "Unicode grapheme and font fallback fidelity require separate checks; this throughput run does not establish visual equivalence.",
+    "This is one paired primary-screen CI scenario on a hosted VM with software composition, not physical Omarchy/Hyprland or GPU performance evidence.",
+    "Only two Kokuban revisions are compared. No Ghostty, Alacritty or Kitty measurement, four-terminal ranking or local screening is included.",
+    "Do not pool these samples with alternate-screen runs, earlier optimization runs or the separate four-terminal experiment.",
+    "ASCII and Unicode median rates changed by less than one percent with overlapping sample ranges; this run does not establish a stable regression or speedup for them.",
+    "The original binaries and payload files are not retained in this package. Binary hashes were cross-checked against build records; payload bytes and hashes were regenerated independently during audit.",
+    "The raw report preserves original CI absolute paths as provenance; these paths are not local package links. Individual per-process artifacts remain in the original CI artifact; their measurements and configuration text are preserved in the raw report.",
+    "The build log file is an excerpt of the two root-crate compilation and completion messages; the immutable workflow snapshot records archive and target-directory isolation. The full CI log is identified by URL and SHA256."
+  ],
+  "evidence_sha256": {
+    "ci-primary-after-build/Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+    "ci-primary-after-build/Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+    "ci-primary-after-build/binary-sha256.txt": "dd7a6f64636f2a5681209de06a1b49086e62dc6f60aeb6984cf1f87791bb134b",
+    "ci-primary-after-build/cargo-tree.txt": "32649be1c8446d2f40ec4164ac93c06e61a0ea0ef89adf7a5f6f4c4df580cde7",
+    "ci-primary-after-revision.txt": "1e351db93215376b0a731a74b49a2c26afa4dc6bd6a5abc4a65783217a76d2ab",
+    "ci-primary-before-build/Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+    "ci-primary-before-build/Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+    "ci-primary-before-build/binary-sha256.txt": "a01c8b87c61cf9ca2b84a85f9de99141986dfe56a7f73daa895112789df6fca6",
+    "ci-primary-before-build/cargo-tree.txt": "efe223d9deaa9639402da9644a7ccd0509457dec8c01d169238600a99b981771",
+    "ci-primary-before-revision.txt": "815215b4985f51626f3544c1968cab6a365eeea7f9ae35da4e74f1f719eb668c",
+    "ci-primary-build-log.txt": "60d77d7401999ee2781a5aeb8492e6dac062e80db285a2e040b49ee428e83586",
+    "ci-primary-cpu.txt": "d893a2e1fe38c883e9c6304826742490a3e71cb4324cac80c4809870147219b4",
+    "ci-primary-harness-revision.txt": "1e351db93215376b0a731a74b49a2c26afa4dc6bd6a5abc4a65783217a76d2ab",
+    "ci-primary-kernel.txt": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d",
+    "ci-primary-kokuban.toml": "59c4e7de4eab75d29a14e6818c24b77bb732db27f401a68f17f3b49cdb2ed86a",
+    "ci-primary-report.json": "b73cd81f8972e6423419fae18184cd4c5d5718f8631ad6c4ba0a7f524e7001bd",
+    "ci-primary-rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "ci-primary-system-packages.txt": "74d3fce0ff0b66fdf9f4a5ecb1fec441761de2c7041ec481c803e25f78c391f4",
+    "ci-primary-weston.log": "bc2a748dfba79f152256a057949dbb2bb5091d364438075c6b9961c38247f6b0",
+    "ci-primary-workflow.yml": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4"
+  }
+}

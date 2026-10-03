@@ -1,0 +1,872 @@
+{
+  "status": "passed",
+  "run_id": 34747011215,
+  "four_terminal_measurements_complete": true,
+  "ranking": null,
+  "source_revision": "55c48f4a9c21045f49a739cbcf45841096a7987a",
+  "harness_revision": "6f9bbbff723dea07aaaa072cd744a796c2bd7114",
+  "hardware_model": "AMD EPYC 7763 64-Core Processor",
+  "summary": {
+    "kokuban": {
+      "version": "kokuban 0.2.0",
+      "processes": 3,
+      "measured_events": 120,
+      "upper_bound_ms": {
+        "median": 2.3130365,
+        "min": 2.143098,
+        "max": 2.5361149999999997,
+        "p95": 2.480096,
+        "p99": 2.52078
+      },
+      "per_process_median_ms": [
+        2.2989415,
+        2.2944685,
+        2.3381320000000003
+      ],
+      "per_process_upper_bound_ms_distributions": [
+        {
+          "count": 40,
+          "median": 2.2989414999999997,
+          "p95": 2.461862,
+          "p99": 2.48802,
+          "min": 2.148225,
+          "max": 2.48802,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 2.2944685,
+          "p95": 2.4844440000000003,
+          "p99": 2.52078,
+          "min": 2.143098,
+          "max": 2.52078,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 2.338132,
+          "p95": 2.4770600000000003,
+          "p99": 2.5361149999999997,
+          "min": 2.158955,
+          "max": 2.5361149999999997,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        }
+      ],
+      "injection_median_ms": 0.016346000000000003,
+      "capture_median_ms": 0.5814405,
+      "validation_success_median_ms": 0.7479285,
+      "capture_counts_per_event": {
+        "2": 120
+      },
+      "pooled_p95_sorted_index_0_based": 113,
+      "pooled_p99_sorted_index_0_based": 118,
+      "pooled_tail_flag": true,
+      "p99_is_second_largest_of_120": true
+    },
+    "ghostty": {
+      "version": "Ghostty 1.3.0-dev+0000000",
+      "processes": 3,
+      "measured_events": 120,
+      "upper_bound_ms": {
+        "median": 14.323430499999999,
+        "min": 12.053466,
+        "max": 16.76617,
+        "p95": 15.87463,
+        "p99": 16.436559
+      },
+      "per_process_median_ms": [
+        14.352089,
+        14.4235495,
+        14.223047
+      ],
+      "per_process_upper_bound_ms_distributions": [
+        {
+          "count": 40,
+          "median": 14.352089,
+          "p95": 15.797626,
+          "p99": 16.76617,
+          "min": 12.053466,
+          "max": 16.76617,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 14.4235495,
+          "p95": 15.650053,
+          "p99": 16.436559,
+          "min": 12.559875,
+          "max": 16.436559,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 14.223047000000001,
+          "p95": 16.001075,
+          "p99": 16.421433,
+          "min": 12.561137,
+          "max": 16.421433,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        }
+      ],
+      "injection_median_ms": 0.017838,
+      "capture_median_ms": 0.535411,
+      "validation_success_median_ms": 0.745673,
+      "capture_counts_per_event": {
+        "8": 48,
+        "7": 45,
+        "6": 14,
+        "10": 3,
+        "9": 10
+      },
+      "pooled_p95_sorted_index_0_based": 113,
+      "pooled_p99_sorted_index_0_based": 118,
+      "pooled_tail_flag": true,
+      "p99_is_second_largest_of_120": true
+    },
+    "alacritty": {
+      "version": "alacritty 0.16.1",
+      "processes": 3,
+      "measured_events": 120,
+      "upper_bound_ms": {
+        "median": 14.312959,
+        "min": 12.096732000000001,
+        "max": 16.308792999999998,
+        "p95": 15.563531000000001,
+        "p99": 16.111619
+      },
+      "per_process_median_ms": [
+        14.26118,
+        14.314802499999999,
+        14.358265
+      ],
+      "per_process_upper_bound_ms_distributions": [
+        {
+          "count": 40,
+          "median": 14.26118,
+          "p95": 15.453348,
+          "p99": 16.308792999999998,
+          "min": 12.096732000000001,
+          "max": 16.308792999999998,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 14.314802499999999,
+          "p95": 15.440152000000001,
+          "p99": 15.600259999999999,
+          "min": 12.356066,
+          "max": 15.600259999999999,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 14.358265,
+          "p95": 15.839853000000002,
+          "p99": 16.111619,
+          "min": 12.494292,
+          "max": 16.111619,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        }
+      ],
+      "injection_median_ms": 0.020128,
+      "capture_median_ms": 0.527276,
+      "validation_success_median_ms": 0.744295,
+      "capture_counts_per_event": {
+        "10": 23,
+        "8": 33,
+        "9": 63,
+        "7": 1
+      },
+      "pooled_p95_sorted_index_0_based": 113,
+      "pooled_p99_sorted_index_0_based": 118,
+      "pooled_tail_flag": true,
+      "p99_is_second_largest_of_120": true
+    },
+    "kitty": {
+      "version": "kitty 0.45.0 created by Kovid Goyal",
+      "processes": 3,
+      "measured_events": 120,
+      "upper_bound_ms": {
+        "median": 15.1821625,
+        "min": 13.346976,
+        "max": 17.416885999999998,
+        "p95": 16.326934,
+        "p99": 16.974178
+      },
+      "per_process_median_ms": [
+        14.0369945,
+        15.595391,
+        15.536593000000002
+      ],
+      "per_process_upper_bound_ms_distributions": [
+        {
+          "count": 40,
+          "median": 14.036994499999999,
+          "p95": 14.975240000000001,
+          "p99": 15.170440000000001,
+          "min": 13.346976,
+          "max": 15.170440000000001,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 15.595391,
+          "p95": 16.475845999999997,
+          "p99": 17.416885999999998,
+          "min": 14.389880000000002,
+          "max": 17.416885999999998,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        },
+        {
+          "count": 40,
+          "median": 15.536593,
+          "p95": 16.326934,
+          "p99": 16.89282,
+          "min": 14.327784,
+          "max": 16.89282,
+          "percentile_method": "nearest rank",
+          "p99_has_at_least_100_samples": false
+        }
+      ],
+      "injection_median_ms": 0.02114,
+      "capture_median_ms": 0.793994,
+      "validation_success_median_ms": 0.7407845,
+      "capture_counts_per_event": {
+        "7": 75,
+        "8": 22,
+        "9": 4,
+        "6": 19
+      },
+      "pooled_p95_sorted_index_0_based": 113,
+      "pooled_p99_sorted_index_0_based": 118,
+      "pooled_tail_flag": true,
+      "p99_is_second_largest_of_120": true
+    }
+  },
+  "snapshots": [
+    {
+      "file": "measurements/01-kokuban/initial.xwd",
+      "sha256": "53163f0bcc1400c058a80a46dd4d7897a19177b90b04a6765862e4202dab99e0",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-kokuban/first-transition.xwd",
+      "sha256": "638015dd893dd77092f75709d56373045f9090a155d985e6f55bebbfaabbd722",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-kokuban/final.xwd",
+      "sha256": "638015dd893dd77092f75709d56373045f9090a155d985e6f55bebbfaabbd722",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-kokuban/initial.xwd",
+      "sha256": "53163f0bcc1400c058a80a46dd4d7897a19177b90b04a6765862e4202dab99e0",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-kokuban/first-transition.xwd",
+      "sha256": "638015dd893dd77092f75709d56373045f9090a155d985e6f55bebbfaabbd722",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-kokuban/final.xwd",
+      "sha256": "638015dd893dd77092f75709d56373045f9090a155d985e6f55bebbfaabbd722",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-kokuban/initial.xwd",
+      "sha256": "53163f0bcc1400c058a80a46dd4d7897a19177b90b04a6765862e4202dab99e0",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-kokuban/first-transition.xwd",
+      "sha256": "638015dd893dd77092f75709d56373045f9090a155d985e6f55bebbfaabbd722",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-kokuban/final.xwd",
+      "sha256": "638015dd893dd77092f75709d56373045f9090a155d985e6f55bebbfaabbd722",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-ghostty/initial.xwd",
+      "sha256": "9537275c711b801e132e736c1531646dfe6ae9f93237a4d2101817a2396b8470",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-ghostty/first-transition.xwd",
+      "sha256": "927791b6c3daeb9176e3471a5fee1f257674578371d5cf271e1991b60bd61ea9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-ghostty/final.xwd",
+      "sha256": "927791b6c3daeb9176e3471a5fee1f257674578371d5cf271e1991b60bd61ea9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-ghostty/initial.xwd",
+      "sha256": "9537275c711b801e132e736c1531646dfe6ae9f93237a4d2101817a2396b8470",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-ghostty/first-transition.xwd",
+      "sha256": "927791b6c3daeb9176e3471a5fee1f257674578371d5cf271e1991b60bd61ea9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-ghostty/final.xwd",
+      "sha256": "927791b6c3daeb9176e3471a5fee1f257674578371d5cf271e1991b60bd61ea9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-ghostty/initial.xwd",
+      "sha256": "9537275c711b801e132e736c1531646dfe6ae9f93237a4d2101817a2396b8470",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-ghostty/first-transition.xwd",
+      "sha256": "927791b6c3daeb9176e3471a5fee1f257674578371d5cf271e1991b60bd61ea9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-ghostty/final.xwd",
+      "sha256": "927791b6c3daeb9176e3471a5fee1f257674578371d5cf271e1991b60bd61ea9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-alacritty/initial.xwd",
+      "sha256": "aadadbcd1866d78c236bddd408311eb313276a7a91f4da52974b8e393e3c9189",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-alacritty/first-transition.xwd",
+      "sha256": "45b035c4419eb049c84fc5b705921f8a6ab87355a000ffd69c529e6da26c48ac",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-alacritty/final.xwd",
+      "sha256": "45b035c4419eb049c84fc5b705921f8a6ab87355a000ffd69c529e6da26c48ac",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-alacritty/initial.xwd",
+      "sha256": "aadadbcd1866d78c236bddd408311eb313276a7a91f4da52974b8e393e3c9189",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-alacritty/first-transition.xwd",
+      "sha256": "45b035c4419eb049c84fc5b705921f8a6ab87355a000ffd69c529e6da26c48ac",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-alacritty/final.xwd",
+      "sha256": "45b035c4419eb049c84fc5b705921f8a6ab87355a000ffd69c529e6da26c48ac",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-alacritty/initial.xwd",
+      "sha256": "aadadbcd1866d78c236bddd408311eb313276a7a91f4da52974b8e393e3c9189",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-alacritty/first-transition.xwd",
+      "sha256": "45b035c4419eb049c84fc5b705921f8a6ab87355a000ffd69c529e6da26c48ac",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-alacritty/final.xwd",
+      "sha256": "45b035c4419eb049c84fc5b705921f8a6ab87355a000ffd69c529e6da26c48ac",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-kitty/initial.xwd",
+      "sha256": "75b2affb95c35d125f587a9b6f42562b85192fe6fb63a33311ae4a9d5f4319bc",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-kitty/first-transition.xwd",
+      "sha256": "85605f4804ea8052cea75d569298e2a83d1d5e52f70b2f8bb4eb17a60a8e1de9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/01-kitty/final.xwd",
+      "sha256": "85605f4804ea8052cea75d569298e2a83d1d5e52f70b2f8bb4eb17a60a8e1de9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-kitty/initial.xwd",
+      "sha256": "75b2affb95c35d125f587a9b6f42562b85192fe6fb63a33311ae4a9d5f4319bc",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-kitty/first-transition.xwd",
+      "sha256": "85605f4804ea8052cea75d569298e2a83d1d5e52f70b2f8bb4eb17a60a8e1de9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/02-kitty/final.xwd",
+      "sha256": "85605f4804ea8052cea75d569298e2a83d1d5e52f70b2f8bb4eb17a60a8e1de9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-kitty/initial.xwd",
+      "sha256": "75b2affb95c35d125f587a9b6f42562b85192fe6fb63a33311ae4a9d5f4319bc",
+      "pixels_checked": 262548,
+      "color": [
+        29,
+        173,
+        83
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-kitty/first-transition.xwd",
+      "sha256": "85605f4804ea8052cea75d569298e2a83d1d5e52f70b2f8bb4eb17a60a8e1de9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    },
+    {
+      "file": "measurements/03-kitty/final.xwd",
+      "sha256": "85605f4804ea8052cea75d569298e2a83d1d5e52f70b2f8bb4eb17a60a8e1de9",
+      "pixels_checked": 262548,
+      "color": [
+        211,
+        47,
+        149
+      ],
+      "xwd_header_size": 101,
+      "color_records": 0,
+      "bits_per_pixel": 32
+    }
+  ],
+  "snapshot_pixels_checked": 9451728,
+  "event_records_checked_including_warmup": 540,
+  "capture_records_checked_including_warmup": 3393,
+  "recorded_binary_digest_agreement": true,
+  "binary_retained_for_independent_hashing": false,
+  "recorded_font_digests_match_processing_baseline": true,
+  "limitations": [
+    "120 measured events plus 15 warmups per terminal, across three fresh processes. Events within each process are correlated; per-process quantiles are retained.",
+    "Pooled nearest-rank p95 is sorted event 114 and p99 event 119 of 120. Per-process p99 from 40 measurements equals that process maximum.",
+    "Persistent Xlib upper bounds start immediately before XTest press/release and XFlush and end after successful XGetWindowAttributes/XGetImage plus an owned XWD byte copy. Scheduling, previous failed validation and polling are included. Final XDestroyImage, parsing and successful validation follow the capture-completion timestamp; never subtract observer costs as independent.",
+    "Every event hash corresponds to the independently decoded retained image of its expected color. Intermediate captures themselves retain records/hashes rather than separate bitmaps.",
+    "Kitty window normalized from721x409 to720x408 before child startup/warmup; all later XWD and PTY dimensions are exact.",
+    "Source/harness pins, source-tree, manifests and recorded binary digests agree; executable and font file bytes are not retained here for independent rehashing.",
+    "The opaque rectangle verifies background repaint, not glyph/Unicode fidelity or arbitrary interactive application behavior.",
+    "Observed values apply to the host recorded in hardware_model with persistent Xlib capture. Do not interpret differences from earlier xwd subprocess runs on other hosts as application-code improvements. No physical presentation or hardware GPU latency claim."
+  ],
+  "observer": "xlib",
+  "helper_sha256": "0903eb953d354715b974039130f2b48035ca241f20e73fd658a055b41ab0aab1",
+  "native_linux_abi_layout_probe": {
+    "status": "passed_not_skipped",
+    "test_suite_count": 26,
+    "compiler": [
+      "/usr/bin/cc",
+      "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0"
+    ],
+    "recorded_header_sha256": {
+      "/usr/include/X11/Xlib.h": "7430c535c4e2b0a31d002d5f9d8f21c6b9f7232e9aad2e297662b90c2591f64d",
+      "/usr/include/X11/Xutil.h": "cb4d55a41d9fa470f780d747b65ef6ef1df28f79334b5d2ed9c1b673a41708e4",
+      "/usr/include/X11/extensions/XTest.h": "a414a0c6932131e6a128c8b74d293c7be396b51ca89419d040f4ac17cb31b925"
+    },
+    "raw_probe_stdout_retained": false,
+    "evidence": "Verbose test log confirms the native C-compiled struct offsets/sizes comparison passed; test source and compiler/header prerequisites retained."
+  },
+  "observer_loaded_libraries_sha256": {
+    "/usr/lib/x86_64-linux-gnu/libXtst.so.6.1.0": "7c4e3d0fbc7d9058973d337aa19c22e3e2999d58f2ad9ee27488bfb18da3ad04",
+    "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0": "c7acb54e5a5d252af46e77f7eac662740b64ca5173ba870c01af3932acc0a710"
+  },
+  "observer_library_bytes_retained": false,
+  "observer_package_versions": {
+    "libx11-6:amd64": "2:1.8.13-1",
+    "libxtst6:amd64": "2:1.2.5-1build1"
+  },
+  "preflights": [
+    {
+      "phase": "baseline",
+      "terminal": "kokuban",
+      "geometry": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "baseline",
+      "terminal": "ghostty",
+      "geometry": [
+        24,
+        80,
+        640,
+        384
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "baseline",
+      "terminal": "alacritty",
+      "geometry": [
+        24,
+        80,
+        640,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "baseline",
+      "terminal": "kitty",
+      "geometry": [
+        24,
+        80,
+        640,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "adjusted",
+      "terminal": "kokuban",
+      "geometry": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "adjusted",
+      "terminal": "ghostty",
+      "geometry": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "adjusted",
+      "terminal": "alacritty",
+      "geometry": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    },
+    {
+      "phase": "adjusted",
+      "terminal": "kitty",
+      "geometry": [
+        24,
+        80,
+        720,
+        408
+      ],
+      "payload_sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967"
+    }
+  ],
+  "harness_files_verified": {
+    "compare-terminal-frame-latency.py": "df123b6ccc633586a9730eef965645240ee7a2d23ff78870866ad33e9a45f56f",
+    "compare-terminal-performance.py": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12",
+    "linux-resource-smoke.py": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+    "terminal-frame-xlib.py": "0903eb953d354715b974039130f2b48035ca241f20e73fd658a055b41ab0aab1",
+    "test_compare_terminal_frame_latency.py": "e35d4c6e8fbeae6858309f372d26a9dc953488bc2088615ceb73914d181b93da"
+  },
+  "no_subprocess_in_timed_xlib_path": {
+    "status": "verified_by_source_call_path_and_passing_integration_test",
+    "syscall_trace_retained": false,
+    "details": "Actual samples select Xlib; inject/capture and wait_color execute no subprocess launch. Startup/window discovery/focus/dpkg/library loading are before timing. Terminal child process remains intentional."
+  },
+  "measurement_audit": "PASS: four terminals, 120 measured events each, real Linux ABI probe, calibrated geometry, raw event/timestamp formulas and every retained color image verified. These are observed upper bounds for opaque background updates in this environment, not a general terminal ranking."
+}

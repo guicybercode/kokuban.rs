@@ -1,9 +1,95 @@
 # Changelog
 
-## Unreleased
+## v0.4 — 2026-09-28
 
-- Embed the supplied Kokuban icon for the macOS Dock and Linux X11 window.
-- Add a matching Linux desktop launcher for application menus and Wayland icons.
+Self-update, macOS installer and desktop responsiveness update. The Git tag is `v0.4`; the Cargo package version is `0.4.0`.
+
+### Added
+
+- Update Kokuban from itself. At launch a background check asks GitHub for the latest release; macOS shows `vX available` in the status bar and Linux in the window title. `kokuban --check-update` reports it and `kokuban --update` downloads the archive for the running target (or the disk image for `Kokuban.app`), refuses it unless its `.sha256` matches and replaces the executable or bundle in place. The macOS app menu adds **Check for Updates…** and **Install Update…**. Turn the check off with `[update] check_on_startup = false` or `KOKUBAN_NO_UPDATE_CHECK=1`; it never runs for `KOKUBAN_EXIT_AFTER_FIRST_FRAME` smoke tests. No network library is linked: the system `curl`, `tar`, `shasum`/`sha256sum` and `hdiutil` do the work.
+- macOS disk images: each Mac release adds `kokuban-<tag>-<target>.dmg` with `Kokuban.app` (bundle ID `io.github.guicybercode.kokuban`, ad-hoc signed, not notarized) and a drag-to-Applications window. The release workflow checks the image checksum, architecture, bundle version and code signature.
+- macOS: `kokuban --version` prints the version instead of opening a window.
+
+### Changed
+
+- Build release binaries with fat LTO and one codegen unit. Linux x86_64 PTY throughput rose 5–35% by workload and warmed glyph lookups up to 72% faster, while x86_64 full-frame CPU repaints became about 1–2% slower and clean release builds take longer; the [release profile report](docs/linux-evidence/2026-09-15-release-lto/README.md) lists every platform and control.
+- macOS: the PTY reader blocks in `poll` instead of sleeping 2 ms between scans, reads without holding the atlas and pane-tree locks, and decodes each wakeup under one lock. End-to-end throughput rose 20–393% by workload and idle wakeups fell from 93.8/s to 11.9/s on an Apple M4; the [paired report](docs/macos-evidence/2026-09-15-poll-reader/README.md) keeps A/A controls and limits.
+- Wait for PTY writability instead of sleeping 1 ms after each `EAGAIN`. Large pastes into a draining macOS program went from 0.71 to 23.07 MiB/s; cancellation with a full input queue is now observed within 10 ms. See the [write report](docs/macos-evidence/2026-09-15-pty-writable-wait/README.md).
+- Refresh the application icon: the same chalkboard artwork without the irregular white border, used for the macOS Dock and the Linux X11 window and launcher.
+- macOS: frames are scheduled on the main queue only when content, titles or shutdown need them, still capped at 60 Hz, instead of a repeating 60 Hz timer. Idle wakeups fell from 8.0/s to 0.17/s and idle CPU by about 80%, with PTY throughput unchanged within noise; see the [render scheduling report](docs/macos-evidence/2026-09-15-on-demand-render/README.md).
+
+### Fixed
+
+- macOS: output decoded while a frame was being drawn is no longer left undrawn until more output arrives.
+- macOS: `Kokuban.app` opened from Finder, the Dock or Launchpad starts the shell in the home directory instead of `/`.
+- macOS: when a split pane's shell exits, the remaining pane grows back to the full window. Its grid and PTY size used to stay at the split size until the next resize, leaving text in part of the window.
+
+### Validation scope and limits
+
+- Release targets remain Linux x86_64, macOS Apple Silicon and macOS Intel, using Rust 1.94.1 and the locked dependency graph. Linux packages are built on Ubuntu 24.04; macOS on macOS 15 with a macOS 11 deployment target.
+- macOS executables and `Kokuban.app` are ad-hoc signed only, without Developer ID signing or notarization.
+- The updater was exercised end to end against the published v0.3 archive on macOS Apple Silicon. Replacing `Kokuban.app` from a disk image can first be exercised against v0.4, and Linux updating relies on the same code path verified by CI unit tests rather than a live download. v0.3 and older have no updater: install v0.4 manually once.
+- Performance figures above come from the linked paired reports on their recorded hosts and revisions; they are not new measurements of the v0.4 binaries.
+
+## v0.3 — 2026-09-13
+
+Desktop performance and distribution update. The Git tag is `v0.3`; the Cargo package version is `0.3.0`.
+
+### Changed
+
+- Store immutable scrollback rows with compact default-cell suffixes while preserving logical width, styled blanks, complete graphemes, selection and resize reflow. The [paired history report](docs/linux-evidence/2026-09-13-compact-history/README.md) records the throughput improvements and regressions by workload.
+- Cache glyph color classification to avoid repeating the scan during Linux painting; remove unused grid dirty flags. Preserve complete before/after frame comparisons in the [renderer report](docs/linux-evidence/2026-09-13-glyph-color/summary.md).
+
+- Reduce Linux software alpha-blending work and filter glyph painting against damaged frame bands; preserve pixel-equivalence checks for clipping, overhang and underlines.
+- Use direct cache slots for ASCII glyphs across regular, bold, italic and bold-italic styles on Linux and macOS. The [integration report](docs/LINUX_DAMAGE_CACHE_2026-09-13.md) records measured gains, Unicode and grapheme costs, and 14 KiB additional inline atlas storage.
+- Add controlled CPU repaint and warmed glyph-lookup measurements, plus an Xlib observer for synthetic X11 input-to-readback tests. Preserve raw measurements and offline integrity checks; each report defines its timing boundaries and hardware limits.
+
+- Exclude development Python scripts and raw benchmark snapshots from binary release archives and Cargo source packages. Keep the tools in the repository for CI and reproducible measurements; archive documentation links to the matching source revision. Building and running the Rust application do not require Python.
+- Classify development tools and documentation separately from application code in GitHub language statistics.
+- Expand README performance details with process CPU/RSS, short video observations, a four-terminal throughput comparison and optimization tradeoffs. Measurements retain their original commit identities; they are not new measurements of the v0.3 binaries.
+
+### Validation scope and limits
+
+- Release targets remain Linux x86_64, macOS Apple Silicon and macOS Intel, using Rust 1.94.1 and the locked dependency graph.
+- Linux packages are built on Ubuntu 24.04. Native macOS tests/builds run on macOS 15 with a macOS 11 deployment target; binaries remain unsigned, unnotarized standalone executables.
+- Linux launch checks cover X11 and headless Weston/Wayland; graphical interaction and release rendering checks use X11. Physical Omarchy/Hyprland, broad Wayland interaction, OSC 52, audio and sustained media playback remain incomplete or unverified. Android is not shipped.
+- CPU repaint and warmed glyph lookup timings exclude PTY processing and physical display presentation. Retained benchmark gains, regressions and resource figures apply only to their recorded workloads, revisions and hosts.
+
+See the [v0.2…v0.3 comparison](https://github.com/guicybercode/kokuban.rs/compare/v0.2...v0.3), [installation instructions](README.md#installation) and [performance details](README.md#performance).
+
+## v0.2 — 2026-09-13
+
+Desktop release focused on text preservation, Omarchy integration and measured performance work. The Git tag is `v0.2`; the Cargo package version is `0.2.0`.
+
+### Added
+
+- Complete Unicode grapheme storage and shaping, including combining characters, flags, ZWJ sequences and installed color-emoji font fallback on Linux and macOS.
+- Logical-line copying that preserves explicit breaks and joins automatic wraps; resize reflow across retained text and history, with text-aware cursor restoration.
+- Persistent XDG configuration after the launch-directory `kokuban.toml` lookup.
+- Linux command launching with `-e`/`--execute`/`--`, working-directory, title and app-ID options, plus a desktop entry declaring `xdg-terminal-exec` capabilities.
+- Omarchy live palette updates with explicit configuration overrides, invalid-theme recovery and no shell restart. Linux uses the system monospace font by default; explicit fonts remain supported.
+- `Ctrl+Insert` copy alongside `Ctrl+Shift+C`, matching Omarchy's universal copy mapping. Existing paste shortcuts and ordinary `Ctrl+C`/`Ctrl+V` application input are preserved.
+- Kokuban artwork in the macOS Dock and Linux X11 window, plus a matching Linux application-menu launcher.
+- Community code of conduct, updated security guidance, citation metadata and a Portuguese release announcement.
+
+### Changed and fixed
+
+- Change the license for original project code and documentation to BSD-4-Clause starting with v0.2, including its advertising acknowledgment requirement. The published v0.1 MIT license and third-party licenses remain unchanged.
+- Batch ASCII and mixed UTF-8 processing, reduce repeated Unicode boundary/width work and glyph-cache allocations, and scroll full-screen rows through a circular origin.
+- Repaint changed Linux frame bands with buffer-age tracking; reuse row metadata and bulk pixel operations where applicable.
+- Block idle PTY reads until output or explicit shutdown instead of waking periodically.
+- Keep macOS selection aligned with complete graphemes; safely truncate Unicode status paths and reject malformed Unicode color values without invalid string slicing.
+- Expand regression coverage for Unicode copy after resize, X11/Wayland launching, live theme pixels, retained PTY sessions and system-font selection. Theme tests wait for actual font/window geometry before printing their fixture.
+- Add paired revision and cross-terminal benchmark tooling with verified build identities and cell geometry. Retain gains and regressions; revert the history-row reuse experiment after a measured throughput regression.
+
+### Validation scope and limits
+
+- Linux launch checks cover X11 and headless Weston/Wayland; clipboard, theme and other graphical interaction checks use X11. Physical Omarchy/Hyprland validation and broad Wayland interaction remain pending.
+- Linux archives are built on Ubuntu 24.04. macOS archives remain unsigned, unnotarized standalone executables with a macOS 11 build target; automated builds/tests run on macOS 15.
+- Linux pane management/font zoom, OSC 52, audio and sustained media playback remain incomplete or unverified. Native Kitty animation remains Linux-only; Android is separate and Windows is unsupported.
+- Font and Kokuban configuration changes apply to new windows; only the Omarchy palette reloads live. Resource measurements are tied to their documented revisions and workloads.
+
+See the [v0.1…v0.2 comparison](https://github.com/guicybercode/kokuban.rs/compare/v0.1...v0.2), [text behavior](docs/TERMINAL_TEXT.md), [Omarchy guide](docs/OMARCHY.md) and [performance evidence](docs/LINUX_PERFORMANCE.md).
 
 ## v0.1 — 2026-09-06
 

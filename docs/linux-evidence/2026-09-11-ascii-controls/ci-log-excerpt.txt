@@ -1,0 +1,28 @@
+50: measure	Check out measurement harness and revision history	2026-09-11T16:08:03.4606386Z   CARGO_INCREMENTAL: 0
+51: measure	Check out measurement harness and revision history	2026-09-11T16:08:03.4607143Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+245: measure	Install Rust and native Wayland dependencies	2026-09-11T16:08:05.2984485Z   CARGO_INCREMENTAL: 0
+246: measure	Install Rust and native Wayland dependencies	2026-09-11T16:08:05.2984646Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+903: measure	Validate measurement harness	2026-09-11T16:09:38.5884987Z   CARGO_INCREMENTAL: 0
+904: measure	Validate measurement harness	2026-09-11T16:09:38.5885111Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+941: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:09:39.6504111Z   CARGO_INCREMENTAL: 0
+942: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:09:39.6504238Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+1258: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:10:29.4029664Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-before)
+1600: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:10:35.5239303Z     Finished `release` profile [optimized] target(s) in 55.76s
+1754: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:11:24.0937484Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-after)
+2096: measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T16:11:30.5223635Z     Finished `release` profile [optimized] target(s) in 54.82s
+2127: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:30.6409945Z   CARGO_INCREMENTAL: 0
+2128: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:30.6410074Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+2133: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:31.7007997Z pair 1/5: before (5d1712ec22ed26d701002a519dd974f2255b4d81)
+2140: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:37.7212165Z pair 1/5: after (5c1f436751a5ab714caf7d874940baff929d6469)
+2141: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:42.8276727Z pair 2/5: after (5c1f436751a5ab714caf7d874940baff929d6469)
+2142: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:48.0593776Z pair 2/5: before (5d1712ec22ed26d701002a519dd974f2255b4d81)
+2143: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:53.2780787Z pair 3/5: before (5d1712ec22ed26d701002a519dd974f2255b4d81)
+2144: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:11:58.4315356Z pair 3/5: after (5c1f436751a5ab714caf7d874940baff929d6469)
+2145: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:12:03.5425556Z pair 4/5: after (5c1f436751a5ab714caf7d874940baff929d6469)
+2146: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:12:08.5942695Z pair 4/5: before (5d1712ec22ed26d701002a519dd974f2255b4d81)
+2147: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:12:13.6400416Z pair 5/5: before (5d1712ec22ed26d701002a519dd974f2255b4d81)
+2148: measure	Measure five alternating pairs in one native Wayland session	2026-09-11T16:12:18.7167253Z pair 5/5: after (5c1f436751a5ab714caf7d874940baff929d6469)
+2187: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:12:24.1561086Z   CARGO_INCREMENTAL: 0
+2188: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:12:24.1561232Z   CARGO_PROFILE_RELEASE_DEBUG: 0
+2202: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:12:25.2754892Z SHA256 digest of uploaded artifact zip is 8f0b344efe8bdc7316eaf721516dfc3e89dca55fdedc9952d53f34f2758f8852
+2205: measure	Upload reports, configurations, logs and build provenance	2026-09-11T16:12:25.5519982Z Artifact linux-paired-revision-measurements has been successfully uploaded! Final size is 97403 bytes. Artifact ID is 10271688906

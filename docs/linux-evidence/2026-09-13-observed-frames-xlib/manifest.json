@@ -1,0 +1,34 @@
+{
+  "run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34747011215",
+  "source_revision": "55c48f4a9c21045f49a739cbcf45841096a7987a",
+  "harness_revision": "6f9bbbff723dea07aaaa072cd744a796c2bd7114",
+  "original_report_sha256": "caf547a6661a62bd905ec809c9a093a713e06d6d54b0df9fe563e42df00c0a84",
+  "files_sha256": {
+    "abi-compiler.txt": "43b39cf8503cbcf9225a29f68290e44f08e0520778d0b9fcfcf780956b9b77ac",
+    "all-system-packages.txt": "1211364ed7984724148ab711ee6f70142b730e8c581c296efa3cfe2f1cd5f2a6",
+    "cpu.txt": "d893a2e1fe38c883e9c6304826742490a3e71cb4324cac80c4809870147219b4",
+    "display.txt": "b95c8d7a5156d0a91769a59c12f984c5061528e50f8a9ef9c2698e8029b3da59",
+    "font-fallbacks.txt": "cda15b1493d10cf0c4c11db5f98b7caf86dfd2f815fb16f7baca5c92a3c7cc08",
+    "font-files-sha256.txt": "a5e7675b2008b2469aa3291f8dd1cb4d1d3a1fdc6f6e74572c8d1536f058f2af",
+    "harness-revision.txt": "06ee3bcec9e389085ad30aa3459a71a91a1a3c130ca497cef1ddbb99393fb4bd",
+    "harness-sha256.txt": "29a01c2d47e9b18613851b521428ce388bd6357cef7705903557e3fbf3536d7b",
+    "image-reference.txt": "c403078b8708b254fdc047bfaf2df093f0153e4b75b365c369aa802e24bc87d0",
+    "independent-frame-latency-audit.json": "a9741594120dc119c0adea94fcb9372f8b8db3d72604c180c5da321e43b5f397",
+    "kokuban-binary-sha256.txt": "e17f04a2aea8590aa5bafc147ebcaf2237e594511f0c69a04a8858f631e432fc",
+    "renderer.txt": "d25a21d82da79cfe6bd07c6507ca5124e0399f00cef336542aa1b2db299416c6",
+    "report.json": "caf547a6661a62bd905ec809c9a093a713e06d6d54b0df9fe563e42df00c0a84",
+    "rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "selected-snapshots.tar.gz": "f1751a826835cbbed54df4fc8c8d797df953c2f48ae8db302c38c625a18b60a5",
+    "source-revision.txt": "3d60ee7862c5b2a086dbe20f3235c957016049359b10d857a7f807f6c538b290",
+    "source-tree.txt": "d743beb5af66a6ffbc8c218af027614aa4d6bc1d42acad5943c417f555f1579e",
+    "xlib-abi-headers-sha256.txt": "dcb86789e326820d71e1b0ed4b60a133a7f909e28584d7de16070d2c4db8c86c",
+    "xlib-abi-tests.txt": "1c11d0763e7b07a21ec92ced70c7cefe2058e1e7bf65d9397298ed5de55777ec"
+  },
+  "notes": [
+    "report.json is byte-for-byte identical to the official artifact.",
+    "Audit describes checks over the complete downloaded artifact; this durable package retains the report, selected provenance, native ABI test log and all 36 selected XWD snapshots.",
+    "Executable, library and font bytes were not retained by the original workflow.",
+    "Snapshots are losslessly packed with normalized archive metadata.",
+    "Intermediate captures were not retained as bitmap files by the original workflow."
+  ]
+}

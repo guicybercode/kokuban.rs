@@ -1,0 +1,18 @@
+{
+  "ascii": {
+    "bytes": 4194288,
+    "sha256": "e78a87a92436e115f1aecffacaa0f511a3f5c5c3c95a805a83eb845e439b8bcf"
+  },
+  "ansi": {
+    "bytes": 4194299,
+    "sha256": "b417797e8d95e0cf5ee09153d69a4e0892822444532d7d7a25842c1f0e736650"
+  },
+  "unicode": {
+    "bytes": 4194300,
+    "sha256": "b905e8833a9f7052cad9b234bc2d3d944b4ba453ab2b0df687ca8c4f2e24df4c"
+  },
+  "short_lines": {
+    "bytes": 4194303,
+    "sha256": "d1e5fcaacd58e339b112c6b5853d46a028dbba43a2c275d90510157be5693c03"
+  }
+}

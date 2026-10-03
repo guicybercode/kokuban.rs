@@ -1,20 +1,24 @@
 pub mod buffer;
 pub mod cell;
 pub mod marks;
+mod reflow;
+mod boundary_pages;
+mod history;
 
-use buffer::Buffer;
+use buffer::{Buffer, RowMetadata};
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
+use history::HistoryRow;
 use marks::MarkIndex;
-use std::collections::VecDeque;
-use std::time::{Duration, Instant};
-use unicode_width::UnicodeWidthChar;
+use reflow::{Cursor as ReflowCursor, RetainedRow};
+use std::{collections::VecDeque, sync::Arc};
+use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::parser::kitty_graphics::KittyCommand;
 use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES};
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
-const SYNCHRONIZED_OUTPUT_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
@@ -31,15 +35,61 @@ pub(crate) enum TerminalEvent {
     },
 }
 
-static DEFAULT_CELL: Cell = Cell {
+const DEFAULT_CELL: Cell = Cell {
     c: ' ',
-    tail: None,
+    grapheme: None,
     fg: Color::Default,
     bg: Color::Default,
     flags: CellFlags::empty(),
     underline_style: UnderlineStyle::None,
     underline_color: Color::Default,
 };
+
+/// Test the boundary after an existing single grapheme without copying it.
+fn scalar_extends_grapheme(previous: &str, c: char) -> bool {
+    let last = previous.chars().next_back().expect("cell text is nonempty");
+    if let Some(extends) = boundary_pages::scalar_extends(last, c) {
+        return extends;
+    }
+    let chunk_start = previous.len() - last.len_utf8();
+    let mut bytes = [0; 8];
+    last.encode_utf8(&mut bytes);
+    c.encode_utf8(&mut bytes[last.len_utf8()..]);
+    let chunk = std::str::from_utf8(&bytes[..last.len_utf8() + c.len_utf8()])
+        .expect("both scalars were encoded as UTF-8");
+    let mut cursor = GraphemeCursor::new(previous.len(), previous.len() + c.len_utf8(), true);
+    loop {
+        match cursor.is_boundary(chunk, chunk_start) {
+            Ok(boundary) => return !boundary,
+            Err(GraphemeIncomplete::PreContext(end)) => {
+                // RI pairs, emoji ZWJ sequences and Indic conjuncts can need
+                // more than the adjacent scalars. The existing cell owns all
+                // preceding context, so lending its prefix needs no allocation.
+                cursor.provide_context(&previous[..end], 0);
+            }
+            Err(_) => unreachable!("the chunk contains both sides of the boundary"),
+        }
+    }
+}
+
+/// Avoid a temporary heap allocation for short clusters; retain every byte
+/// through the String fallback when a cluster outgrows the stack buffer.
+fn append_grapheme(previous: &str, c: char) -> Arc<str> {
+    let len = previous.len() + c.len_utf8();
+    if len <= 64 {
+        let mut bytes = [0; 64];
+        bytes[..previous.len()].copy_from_slice(previous.as_bytes());
+        c.encode_utf8(&mut bytes[previous.len()..len]);
+        let text = std::str::from_utf8(&bytes[..len])
+            .expect("a UTF-8 string followed by an encoded scalar is valid");
+        Arc::from(text)
+    } else {
+        let mut text = String::with_capacity(len);
+        text.push_str(previous);
+        text.push(c);
+        text.into()
+    }
+}
 
 // Mouse tracking modes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +146,15 @@ pub fn dec_special_map(c: char) -> char {
 }
 
 #[derive(Debug)]
+struct SavedPrimaryHistory {
+    cells: VecDeque<HistoryRow>,
+    metadata: VecDeque<RowMetadata>,
+    tail: Vec<RetainedRow>,
+    total_lines: usize,
+    cell_budget: usize,
+}
+
+#[derive(Debug)]
 pub struct Grid {
     pub buffer: Buffer,
     pub cursor_row: usize,
@@ -104,20 +163,27 @@ pub struct Grid {
     pub saved_cursor_col: usize,
     wrap_pending: bool,
     saved_wrap_pending: bool,
+    saved_cursor_retained_row: Option<usize>,
     pub scroll_top: usize,
     pub scroll_bottom: usize,
     pub fg: Color,
     pub bg: Color,
     pub flags: CellFlags,
-    pub dirty: Vec<bool>,
     // Scrollback
-    scrollback: VecDeque<Vec<Cell>>,
+    scrollback: VecDeque<HistoryRow>,
+    scrollback_metadata: VecDeque<RowMetadata>,
+    resize_tail: Vec<RetainedRow>,
+    saved_primary_history: Option<SavedPrimaryHistory>,
+    scrollback_hard_lines: usize,
+    scrollback_cells: usize,
+    scrollback_cell_budget: usize,
     scrollback_max: usize,
     pub scroll_offset: usize,
     // Alternate screen
     alt_buffer: Option<Buffer>,
     alt_cursor: (usize, usize),
     alt_wrap_pending: bool,
+    saved_primary_saved_cursor: Option<ReflowCursor>,
     pub using_alt_screen: bool,
     // Mode flags
     pub cursor_visible: bool,
@@ -130,7 +196,6 @@ pub struct Grid {
     pub focus_events: bool,
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
-    synchronized_output_deadline: Option<Instant>,
     pub charset: CharSet,
     // Underline state (current SGR)
     pub underline_style: UnderlineStyle,
@@ -175,18 +240,25 @@ impl Grid {
             saved_cursor_col: 0,
             wrap_pending: false,
             saved_wrap_pending: false,
+            saved_cursor_retained_row: None,
             scroll_top: 0,
             scroll_bottom: rows.saturating_sub(1),
             fg: Color::Default,
             bg: Color::Default,
             flags: CellFlags::empty(),
-            dirty: vec![true; rows],
             scrollback: VecDeque::new(),
+            scrollback_metadata: VecDeque::new(),
+            resize_tail: Vec::new(),
+            saved_primary_history: None,
+            scrollback_hard_lines: 0,
+            scrollback_cells: 0,
+            scrollback_cell_budget: scrollback_max.saturating_mul(cols),
             scrollback_max,
             scroll_offset: 0,
             alt_buffer: None,
             alt_cursor: (0, 0),
             alt_wrap_pending: false,
+            saved_primary_saved_cursor: None,
             using_alt_screen: false,
             cursor_visible: true,
             application_cursor_keys: false,
@@ -198,7 +270,6 @@ impl Grid {
             focus_events: false,
             cursor_style: CursorStyle::default(),
             insert_mode: false,
-            synchronized_output_deadline: None,
             charset: CharSet::Ascii,
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
@@ -234,43 +305,43 @@ impl Grid {
         self.cursor_col = self.cursor_col.min(self.cols() - 1);
     }
     pub fn scrollback_len(&self) -> usize { self.scrollback.len() }
+    pub(crate) fn retained_row_wrapped(&self, row: usize) -> bool {
+        self.retained_row_metadata(row).wrapped
+    }
+
+    pub(crate) fn retained_row_len(&self, row: usize) -> usize {
+        self.retained_row_metadata(row).len
+    }
+
+    pub(crate) fn retained_rows(&self) -> usize {
+        self.scrollback.len() + self.rows() + self.resize_tail.len()
+    }
+
+    pub(crate) fn retained_cell_data(&self, row: usize, col: usize) -> &Cell {
+        if row < self.scrollback.len() {
+            self.scrollback_cell_data(row, col)
+        } else if row - self.scrollback.len() < self.rows() {
+            self.buffer.cell(row - self.scrollback.len(), col)
+        } else {
+            self.resize_tail.get(row - self.scrollback.len() - self.rows())
+                .and_then(|row| row.cells.get(col)).unwrap_or(&DEFAULT_CELL)
+        }
+    }
+
+    fn retained_row_metadata(&self, row: usize) -> RowMetadata {
+        if row < self.scrollback.len() {
+            self.scrollback_metadata.get(row).copied().unwrap_or_default()
+        } else if row - self.scrollback.len() < self.rows() {
+            self.buffer.row_metadata(row - self.scrollback.len())
+        } else {
+            self.resize_tail.get(row - self.scrollback.len() - self.rows())
+                .map(|row| row.metadata).unwrap_or_default()
+        }
+    }
+
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
     pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
     pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
-
-    pub(crate) fn synchronized_output_active(&self) -> bool {
-        self.synchronized_output_deadline.is_some_and(|deadline| Instant::now() < deadline)
-    }
-
-    pub(crate) fn synchronized_output_deadline(&self) -> Option<Instant> {
-        self.synchronized_output_deadline
-    }
-
-    pub(crate) fn set_synchronized_output(&mut self, enabled: bool) {
-        self.set_synchronized_output_at(enabled, Instant::now());
-    }
-
-    pub(crate) fn set_synchronized_output_at(&mut self, enabled: bool, now: Instant) {
-        if enabled {
-            // Repeated BSU is idempotent. A broken producer cannot postpone
-            // recovery forever by sending BSU without ESU.
-            if self.synchronized_output_deadline.is_none_or(|deadline| now >= deadline) {
-                self.synchronized_output_deadline = Some(now + SYNCHRONIZED_OUTPUT_TIMEOUT);
-            }
-        } else if self.synchronized_output_deadline.take().is_some() {
-            self.mark_all_dirty();
-        }
-    }
-
-    pub(crate) fn expire_synchronized_output(&mut self, now: Instant) -> bool {
-        if self.synchronized_output_deadline.is_some_and(|deadline| now >= deadline) {
-            self.synchronized_output_deadline = None;
-            self.mark_all_dirty();
-            true
-        } else {
-            false
-        }
-    }
 
     /// Iterate every placement reference for cache retention, including a hidden primary screen.
     pub(crate) fn all_image_placements(&self) -> impl Iterator<Item = &ImagePlacement> {
@@ -308,12 +379,6 @@ impl Grid {
         let alternate_scroll = self.alternate_scroll;
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
         reset.alternate_scroll = alternate_scroll;
-        // Renderer metrics and configured colors describe the terminal, not
-        // application state. Keep query responses accurate after `reset`.
-        reset.cell_pixel_width = self.cell_pixel_width;
-        reset.cell_pixel_height = self.cell_pixel_height;
-        reset.default_fg_hex = std::mem::take(&mut self.default_fg_hex);
-        reset.default_bg_hex = std::mem::take(&mut self.default_bg_hex);
         reset.selection_revision = self.selection_revision.wrapping_add(1);
         reset.screen_revision = self.screen_revision.wrapping_add(1);
         // RIS clears the title, but consumers still need a monotonic change signal.
@@ -321,30 +386,6 @@ impl Grid {
             .title_revision
             .wrapping_add(u64::from(!self.title.is_empty()));
         *self = reset;
-    }
-
-    /// DECSTR resets the modes used by subsequent output without erasing the
-    /// screen/history or moving the current cursor (xterm soft-reset behavior).
-    pub(crate) fn soft_reset(&mut self) {
-        self.set_synchronized_output(false);
-        self.cancel_pending_wrap();
-        self.saved_cursor_row = 0;
-        self.saved_cursor_col = 0;
-        self.saved_wrap_pending = false;
-        self.scroll_top = 0;
-        self.scroll_bottom = self.rows() - 1;
-        self.fg = Color::Default;
-        self.bg = Color::Default;
-        self.flags = CellFlags::empty();
-        self.underline_style = UnderlineStyle::None;
-        self.underline_color = Color::Default;
-        self.cursor_visible = true;
-        self.cursor_style = CursorStyle::default();
-        self.application_cursor_keys = false;
-        self.auto_wrap = true;
-        self.insert_mode = false;
-        self.charset = CharSet::Ascii;
-        self.mark_all_dirty();
     }
 
     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
@@ -358,7 +399,7 @@ impl Grid {
             .unwrap_or(&DEFAULT_CELL)
     }
 
-    fn project_scrollback_cell<'a>(&self, row_data: &'a [Cell], col: usize) -> &'a Cell {
+    fn project_scrollback_cell<'a>(&self, row_data: &'a HistoryRow, col: usize) -> &'a Cell {
         if col >= self.cols() {
             return &DEFAULT_CELL;
         }
@@ -366,6 +407,7 @@ impl Grid {
             return &DEFAULT_CELL;
         };
         let valid_wide_leader = !cell.flags.contains(CellFlags::WIDE)
+            || self.cols() == 1
             || (col + 1 < self.cols()
                 && row_data
                     .get(col + 1)
@@ -385,7 +427,7 @@ impl Grid {
     pub fn template_cell(&self) -> Cell {
         Cell {
             c: ' ',
-            tail: None,
+    grapheme: None,
             fg: self.fg,
             bg: self.bg,
             flags: CellFlags::empty(),
@@ -460,6 +502,160 @@ impl Grid {
         true
     }
 
+    /// Write a run of printable ASCII, updating cursor and damage once per row.
+    pub(crate) fn put_ascii(&mut self, mut text: &[u8]) {
+        debug_assert!(text.iter().all(|byte| matches!(byte, b' '..=b'~')));
+        if self.charset != CharSet::Ascii || self.insert_mode {
+            for &byte in text {
+                self.put_char(char::from(byte));
+            }
+            return;
+        }
+
+        if let Some((&first, rest)) = text.split_first() {
+            if self.extend_grapheme(char::from(first)) { text = rest; }
+        }
+        let cols = self.cols();
+        let template = Cell {
+            c: ' ',
+    grapheme: None,
+            fg: self.fg,
+            bg: self.bg,
+            flags: self.flags & !(CellFlags::WIDE | CellFlags::WIDE_CONT),
+            underline_style: self.underline_style,
+            underline_color: self.underline_color,
+        };
+        while !text.is_empty() {
+            // Let the regular writer consume delayed wrap, including a wrap
+            // preserved across resize and overwrites with DECAWM disabled.
+            if self.is_wrap_pending() || self.cursor_col >= cols {
+                self.put_char(char::from(text[0]));
+                text = &text[1..];
+                continue;
+            }
+
+            let row = self.cursor_row;
+            let col = self.cursor_col;
+            let count = text.len().min(cols - col);
+            // Interior cells are all replaced. Only the run's boundaries can
+            // leave half of an existing wide character outside the write.
+            self.clear_wide_overlap(row, col, 1);
+            if count > 1 {
+                self.clear_wide_overlap(row, col + count - 1, 1);
+            }
+            let cells = self.buffer.row_range_mut(row, col..col + count);
+            for (cell, &byte) in cells.iter_mut().zip(&text[..count]) {
+                *cell = Cell { c: char::from(byte), ..template.clone() };
+            }
+            self.buffer.mark_written(row, col + count);
+            self.cursor_col += count;
+            self.wrap_pending = self.cursor_col >= cols;
+            text = &text[count..];
+        }
+    }
+
+    /// Write independent UTF-8 scalars in bounded spans of mixed cell widths.
+    pub(crate) fn put_utf8(&mut self, mut text: &str) {
+        if self.charset != CharSet::Ascii || self.insert_mode || self.cols() == 1 {
+            for c in text.chars() {
+                self.put_char(c);
+            }
+            return;
+        }
+
+        let cols = self.cols();
+        let mut staged = [('\0', 0u8); 64];
+        let leader = Cell {
+            c: '\0',
+            grapheme: None,
+            fg: self.fg,
+            bg: self.bg,
+            flags: self.flags & !(CellFlags::WIDE | CellFlags::WIDE_CONT),
+            underline_style: self.underline_style,
+            underline_color: self.underline_color,
+        };
+        let continuation = Cell {
+            c: '\0',
+            grapheme: None,
+            fg: self.fg,
+            bg: self.bg,
+            flags: CellFlags::WIDE_CONT,
+            underline_style: UnderlineStyle::None,
+            underline_color: Color::Default,
+        };
+        while let Some(first) = text.chars().next() {
+            let first_bytes = first.len_utf8();
+            if self.is_wrap_pending()
+                || self.cursor_col >= cols
+                || self.cursor_row >= self.rows()
+                || !boundary_pages::is_other(first)
+            {
+                self.put_char(first);
+                text = &text[first_bytes..];
+                continue;
+            }
+            let width = match first.width() {
+                Some(width @ (1 | 2)) if width <= cols - self.cursor_col => width,
+                _ => {
+                    self.put_char(first);
+                    text = &text[first_bytes..];
+                    continue;
+                }
+            };
+            // Prepend can join the first scalar. Every staged interior scalar
+            // is GC_Any, so none can introduce that context for its successor.
+            if self.extend_grapheme(first) {
+                text = &text[first_bytes..];
+                continue;
+            }
+
+            let row = self.cursor_row;
+            let col = self.cursor_col;
+            let mut end = col + width;
+            let mut count = 1;
+            let mut bytes = first_bytes;
+            staged[0] = (first, width as u8);
+            let mut remaining = text[first_bytes..].chars();
+            while count < staged.len() && end < cols {
+                let Some(c) = remaining.next() else { break };
+                if !boundary_pages::is_other(c) {
+                    break;
+                }
+                let width = match c.width() {
+                    Some(width @ (1 | 2)) if width <= cols - end => width,
+                    _ => break,
+                };
+                staged[count] = (c, width as u8);
+                count += 1;
+                bytes += c.len_utf8();
+                end += width;
+            }
+            // Every interior cell is replaced. Only the span's two boundaries
+            // can leave half of a preexisting wide character outside the write.
+            self.clear_wide_overlap(row, col, 1);
+            if end - col > 1 {
+                self.clear_wide_overlap(row, end - 1, 1);
+            }
+            let cells = self.buffer.row_range_mut(row, col..end);
+            let mut offset = 0;
+            for &(c, width) in &staged[..count] {
+                let mut cell = Cell { c, ..leader.clone() };
+                if width == 2 {
+                    cell.flags.insert(CellFlags::WIDE);
+                }
+                cells[offset] = cell;
+                if width == 2 {
+                    cells[offset + 1] = continuation.clone();
+                }
+                offset += usize::from(width);
+            }
+            self.buffer.mark_written(row, end);
+            self.cursor_col = end;
+            self.wrap_pending = end >= cols;
+            text = &text[bytes..];
+        }
+    }
+
     /// Place a character at the cursor, handling wide chars and DEC charset.
     pub fn put_char(&mut self, c: char) {
         let c = if self.charset == CharSet::DecSpecial {
@@ -468,27 +664,12 @@ impl Grid {
             c
         };
 
-        let char_width = c.width().unwrap_or(1);
-        let cols = self.cols();
-
-        // Combining scalars belong to the preceding printed cell and must not
-        // consume delayed wrap or replace a wide glyph's continuation. At the
-        // left margin, attach to the current cell without moving the cursor.
-        if char_width == 0 {
-            let mut col = if self.is_wrap_pending() {
-                self.cursor_col.min(cols - 1)
-            } else {
-                self.cursor_col.saturating_sub(1).min(cols - 1)
-            };
-            if col > 0
-                && self.buffer.cell(self.cursor_row, col).flags.contains(CellFlags::WIDE_CONT)
-            {
-                col -= 1;
-            }
-            self.buffer.cell_mut(self.cursor_row, col).push_combining(c);
-            self.dirty[self.cursor_row] = true;
+        if self.extend_grapheme(c) {
             return;
         }
+        let scalar_width = c.width();
+        let char_width = scalar_width.unwrap_or(1).max(1).min(self.cols());
+        let cols = self.cols();
 
         // Under stable dimensions `cursor_col == cols` is the delayed-wrap
         // sentinel. `wrap_pending` keeps the LCF independent from the physical
@@ -496,20 +677,10 @@ impl Grid {
         if self.is_wrap_pending() || self.cursor_col >= cols {
             self.wrap_pending = false;
             if self.auto_wrap {
-                self.carriage_return();
-                self.newline();
+                self.soft_wrap();
             } else {
                 self.cursor_col = self.cursor_col.min(cols - 1);
             }
-        }
-
-        // A double-width character cannot be represented without a
-        // continuation cell. Real terminal windows are normally wider than
-        // one column, but Grid permits a one-column size for robustness. Do
-        // this after consuming delayed wrap because the character is still a
-        // printable input even when its glyph cannot be represented.
-        if char_width == 2 && cols < 2 {
-            return;
         }
 
         // Wide char at last column: wrap first
@@ -522,8 +693,7 @@ impl Grid {
 
             // The glyph is written on the next line; existing content at the
             // right margin remains intact.
-            self.carriage_return();
-            self.newline();
+            self.soft_wrap();
         }
 
         let row = self.cursor_row;
@@ -545,20 +715,22 @@ impl Grid {
         }
 
         let cell = self.buffer.cell_mut(row, col);
-        cell.set_char(c);
+        cell.c = c;
+        cell.grapheme = None;
         cell.fg = self.fg;
         cell.bg = self.bg;
         cell.flags = self.flags;
         cell.underline_style = self.underline_style;
         cell.underline_color = self.underline_color;
 
-        if char_width == 2 {
+        if scalar_width == Some(2) {
             cell.flags.insert(CellFlags::WIDE);
             cell.flags.remove(CellFlags::WIDE_CONT);
             // Set continuation cell
             if col + 1 < self.cols() {
                 let cont = self.buffer.cell_mut(row, col + 1);
-                cont.set_char('\0');
+                cont.c = '\0';
+                cont.grapheme = None;
                 cont.fg = self.fg;
                 cont.bg = self.bg;
                 cont.flags = CellFlags::WIDE_CONT;
@@ -573,9 +745,86 @@ impl Grid {
         if self.insert_mode {
             self.repair_wide_row(row);
         }
-        self.dirty[row] = true;
+        self.buffer.mark_written(row, col + char_width.max(1));
         self.cursor_col += char_width;
         self.wrap_pending = self.cursor_col >= cols;
+    }
+
+    /// Append a scalar only when UAX #29 keeps it in the preceding cluster.
+    /// This runs before delayed wrap, so an accent received in another PTY read
+    /// still belongs to the glyph at the right margin.
+    fn extend_grapheme(&mut self, c: char) -> bool {
+        if self.cursor_col == 0 { return false; }
+        let row = self.cursor_row;
+        let mut col = if self.is_wrap_pending() {
+            self.cursor_col.min(self.cols() - 1)
+        } else { self.cursor_col - 1 };
+        if self.buffer.cell(row, col).flags.contains(CellFlags::WIDE_CONT) && col > 0 {
+            col -= 1;
+        }
+        let previous = self.buffer.cell(row, col);
+        if previous.grapheme.is_none() && previous.c.is_ascii() && c.is_ascii() { return false; }
+        let previous_len = self.buffer.row_metadata(row).len;
+        if col >= previous_len { return false; }
+        let mut scalar_bytes = [0; 4];
+        let previous_text = previous.grapheme.as_deref()
+            .unwrap_or_else(|| previous.c.encode_utf8(&mut scalar_bytes));
+        if !scalar_extends_grapheme(previous_text, c) { return false; }
+        let text = append_grapheme(previous_text, c);
+        let old_width = if previous.flags.contains(CellFlags::WIDE)
+            && col + 1 < self.cols() { 2 } else { 1 };
+        let natural_width = text.width().clamp(1, 2);
+        let new_width = natural_width.min(self.cols());
+        let mut cell = previous.clone();
+        cell.grapheme = Some(text);
+        cell.flags.remove(CellFlags::WIDE | CellFlags::WIDE_CONT);
+        if natural_width == 2 { cell.flags.insert(CellFlags::WIDE); }
+        if new_width > old_width && col + new_width > self.cols() && self.auto_wrap {
+            *self.buffer.cell_mut(row, col) = self.template_cell();
+            let mut metadata = self.buffer.row_metadata(row);
+            metadata.len = metadata.len.min(col);
+            self.buffer.set_row_metadata(row, metadata);
+            self.soft_wrap();
+            self.write_cluster_cell(cell, new_width);
+            return true;
+        }
+        let new_width = new_width.min(self.cols() - col);
+        if natural_width == 2 && new_width == 1 && self.cols() > 1 {
+            cell.flags.remove(CellFlags::WIDE);
+        }
+        self.clear_wide_overlap(row, col, new_width);
+        *self.buffer.cell_mut(row, col) = cell;
+        if new_width == 2 && col + 1 < self.cols() {
+            let mut continuation = self.template_cell();
+            continuation.c = '\0';
+            continuation.flags = CellFlags::WIDE_CONT;
+            *self.buffer.cell_mut(row, col + 1) = continuation;
+        }
+        if new_width < old_width && previous_len == col + old_width {
+            let mut metadata = self.buffer.row_metadata(row);
+            metadata.len = col + new_width;
+            self.buffer.set_row_metadata(row, metadata);
+        }
+        self.buffer.mark_written(row, col + new_width);
+        self.cursor_col = (col + new_width).min(self.cols());
+        self.wrap_pending = self.cursor_col == self.cols();
+        true
+    }
+
+    fn write_cluster_cell(&mut self, cell: Cell, width: usize) {
+        let row = self.cursor_row;
+        let col = self.cursor_col;
+        self.clear_wide_overlap(row, col, width);
+        *self.buffer.cell_mut(row, col) = cell;
+        if width == 2 {
+            let mut continuation = self.template_cell();
+            continuation.c = '\0';
+            continuation.flags = CellFlags::WIDE_CONT;
+            *self.buffer.cell_mut(row, col + 1) = continuation;
+        }
+        self.buffer.mark_written(row, col + width);
+        self.cursor_col += width;
+        self.wrap_pending = self.cursor_col >= self.cols();
     }
 
     pub fn set_auto_wrap(&mut self, enabled: bool) {
@@ -589,7 +838,8 @@ impl Grid {
             let cell = self.buffer.cell(row, col);
             if cell.flags.contains(CellFlags::WIDE_CONT) && col > 0 {
                 let prev = self.buffer.cell_mut(row, col - 1);
-                prev.set_char(' ');
+                prev.c = ' ';
+                prev.grapheme = None;
                 prev.flags.remove(CellFlags::WIDE);
             }
         }
@@ -599,7 +849,8 @@ impl Grid {
             let cell = self.buffer.cell(row, c);
             if cell.flags.contains(CellFlags::WIDE) && c + 1 < self.cols() {
                 let cont = self.buffer.cell_mut(row, c + 1);
-                cont.set_char(' ');
+                cont.c = ' ';
+                cont.grapheme = None;
                 cont.flags.remove(CellFlags::WIDE_CONT);
             }
         }
@@ -613,6 +864,7 @@ impl Grid {
         for col in 0..cells.len() {
             let flags = cells[col].flags;
             let orphaned_leader = flags.contains(CellFlags::WIDE)
+                && cells.len() > 1
                 && (col + 1 == cells.len()
                     || !cells[col + 1].flags.contains(CellFlags::WIDE_CONT));
             let orphaned_continuation = flags.contains(CellFlags::WIDE_CONT)
@@ -623,18 +875,23 @@ impl Grid {
         }
     }
 
-    fn repair_wide_buffer(buffer: &mut Buffer, template: Cell) {
-        for row in 0..buffer.rows() {
-            Self::repair_wide_buffer_row(buffer, row, template.clone());
-        }
-    }
-
     fn repair_wide_row(&mut self, row: usize) {
         let template = self.template_cell();
-        Self::repair_wide_buffer_row(&mut self.buffer, row, template);
+        Self::repair_wide_buffer_row(&mut self.buffer, row, template.clone());
+    }
+
+    fn soft_wrap(&mut self) {
+        self.buffer.set_wrapped(self.cursor_row, true);
+        self.carriage_return();
+        self.advance_line();
     }
 
     pub fn newline(&mut self) {
+        self.buffer.set_wrapped(self.cursor_row, false);
+        self.advance_line();
+    }
+
+    fn advance_line(&mut self) {
         self.cancel_pending_wrap();
         if self.cursor_row == self.scroll_bottom {
             self.scroll_up(1);
@@ -678,10 +935,24 @@ impl Grid {
             && self.scroll_bottom == self.rows() - 1;
         if save_scrollback {
             for i in 0..count {
-                let row_data = self.buffer.extract_row(i);
+                let row_data = self.buffer.extract_history_row(i);
+                let metadata = self.buffer.row_metadata(i);
+                self.scrollback_cells += row_data.len();
+                self.scrollback_hard_lines += usize::from(!metadata.wrapped);
                 self.scrollback.push_back(row_data);
-                if self.scrollback.len() > self.scrollback_max {
-                    self.scrollback.pop_front();
+                self.scrollback_metadata.push_back(metadata);
+                // Logical lines prevent reflow from consuming the line budget;
+                // the cell budget also bounds an endless soft-wrapped stream.
+                while self.scrollback_hard_lines > self.scrollback_max
+                    || self.scrollback_cells > self.scrollback_cell_budget
+                {
+                    if let Some(evicted) = self.scrollback.pop_front() {
+                        self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(1));
+                        self.scrollback_cells -= evicted.len();
+                        if self.scrollback_metadata.pop_front().is_some_and(|row| !row.wrapped) {
+                            self.scrollback_hard_lines -= 1;
+                        }
+                    } else { break; }
                 }
             }
             self.total_lines_pushed += count;
@@ -691,8 +962,13 @@ impl Grid {
         self.scroll_image_placements(count, true, save_scrollback);
         let template = self.template_cell();
         self.buffer.scroll_up(self.scroll_top, self.scroll_bottom, count, template);
-        for row in self.scroll_top..=self.scroll_bottom {
-            self.dirty[row] = true;
+        if self.scroll_top == 0 && self.scroll_bottom == self.rows() - 1 && !self.resize_tail.is_empty() {
+            let reveal = count.min(self.resize_tail.len());
+            let first_row = self.rows() - count;
+            for (offset, retained) in self.resize_tail.drain(..reveal).enumerate() {
+                self.buffer.row_mut(first_row + offset).clone_from_slice(&retained.cells);
+                self.buffer.set_row_metadata(first_row + offset, retained.metadata);
+            }
         }
     }
 
@@ -704,9 +980,6 @@ impl Grid {
         self.scroll_image_placements(count, false, false);
         let template = self.template_cell();
         self.buffer.scroll_down(self.scroll_top, self.scroll_bottom, count, template);
-        for row in self.scroll_top..=self.scroll_bottom {
-            self.dirty[row] = true;
-        }
     }
 
     fn scroll_image_placements(&mut self, count: usize, up: bool, save_scrollback: bool) {
@@ -768,19 +1041,14 @@ impl Grid {
     pub fn scroll_viewport_up(&mut self, lines: usize) {
         let max = self.scrollback.len();
         self.scroll_offset = (self.scroll_offset + lines).min(max);
-        self.mark_all_dirty();
     }
 
     pub fn scroll_viewport_down(&mut self, lines: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
-        self.mark_all_dirty();
     }
 
     pub fn scroll_to_bottom(&mut self) {
-        if self.scroll_offset != 0 {
-            self.scroll_offset = 0;
-            self.mark_all_dirty();
-        }
+        self.scroll_offset = 0;
     }
 
     pub fn enter_alt_screen(&mut self) {
@@ -795,17 +1063,34 @@ impl Grid {
             self.screen_cursor_col().unwrap_or(self.cols() - 1),
         );
         self.alt_wrap_pending = self.is_wrap_pending();
+        self.saved_primary_saved_cursor = Some(ReflowCursor {
+            row: self.saved_cursor_row, col: self.saved_cursor_col, pending: self.saved_wrap_pending, retained_row: self.saved_cursor_retained_row,
+        });
+        self.saved_cursor_row = 0;
+        self.saved_cursor_col = 0;
+        self.saved_cursor_retained_row = None;
+        self.saved_wrap_pending = false;
         let cols = self.cols();
         let rows = self.rows();
         let primary = std::mem::replace(&mut self.buffer, Buffer::new(cols, rows));
         self.alt_buffer = Some(primary);
+        self.saved_primary_history = Some(SavedPrimaryHistory {
+            cells: std::mem::take(&mut self.scrollback),
+            metadata: std::mem::take(&mut self.scrollback_metadata),
+            tail: std::mem::take(&mut self.resize_tail),
+            total_lines: self.total_lines_pushed,
+            cell_budget: self.scrollback_cell_budget,
+        });
+        self.scrollback_hard_lines = 0;
+        self.scrollback_cells = 0;
+        self.scrollback_cell_budget = self.scrollback_max.saturating_mul(cols);
+        self.total_lines_pushed = 0;
         self.saved_primary_image_placements = Some(std::mem::take(&mut self.image_placements));
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.wrap_pending = false;
         self.scroll_top = 0;
         self.scroll_bottom = rows.saturating_sub(1);
-        self.mark_all_dirty();
     }
 
     pub fn leave_alt_screen(&mut self) {
@@ -814,6 +1099,20 @@ impl Grid {
         self.screen_revision = self.screen_revision.wrapping_add(1);
         if let Some(primary) = self.alt_buffer.take() {
             self.buffer = primary;
+        }
+        if let Some(history) = self.saved_primary_history.take() {
+            self.scrollback = history.cells;
+            self.scrollback_metadata = history.metadata;
+            self.resize_tail = history.tail;
+            self.total_lines_pushed = history.total_lines;
+            self.scrollback_cell_budget = history.cell_budget;
+            self.recount_history();
+        }
+        if let Some(cursor) = self.saved_primary_saved_cursor.take() {
+            self.saved_cursor_row = cursor.row;
+            self.saved_cursor_col = cursor.col;
+            self.saved_wrap_pending = cursor.pending;
+            self.saved_cursor_retained_row = cursor.retained_row;
         }
         self.using_alt_screen = false;
         self.cursor_row = self.alt_cursor.0.min(self.rows().saturating_sub(1));
@@ -825,7 +1124,6 @@ impl Grid {
             .saved_primary_image_placements
             .take()
             .unwrap_or_default();
-        self.mark_all_dirty();
     }
 
     pub fn erase_in_line(&mut self, mode: u16) {
@@ -856,6 +1154,8 @@ impl Grid {
             return;
         }
         let count = count.min(cols - col);
+        let metadata = self.buffer.row_metadata(row);
+        self.buffer.set_row_metadata(row, RowMetadata { len: metadata.len.saturating_sub(count).max(col.min(metadata.len)), ..metadata });
         self.clear_wide_overlap(row, col, count);
         for destination in col..cols {
             let source = destination.saturating_add(count);
@@ -867,7 +1167,6 @@ impl Grid {
             *self.buffer.cell_mut(row, destination) = cell;
         }
         self.repair_wide_row(row);
-        self.dirty[row] = true;
     }
 
     pub(crate) fn insert_blank_chars(&mut self, count: usize) {
@@ -879,6 +1178,8 @@ impl Grid {
             return;
         }
         let count = count.min(cols - col);
+        let metadata = self.buffer.row_metadata(row);
+        self.buffer.set_row_metadata(row, RowMetadata { len: (metadata.len.max(col) + count).min(cols), ..metadata });
         self.clear_wide_overlap(row, col, 0);
         for destination in (col..cols).rev() {
             let cell = if destination >= col + count {
@@ -889,7 +1190,6 @@ impl Grid {
             *self.buffer.cell_mut(row, destination) = cell;
         }
         self.repair_wide_row(row);
-        self.dirty[row] = true;
     }
 
     fn erase_cell_range(&mut self, row: usize, start: usize, end: usize) {
@@ -898,24 +1198,27 @@ impl Grid {
         if start >= end {
             return;
         }
+        let metadata = self.buffer.row_metadata(row);
+        if end >= metadata.len {
+            self.buffer.set_row_metadata(row, RowMetadata { len: metadata.len.min(start), wrapped: false });
+        }
         self.clear_wide_overlap(row, start, end - start);
         let template = self.template_cell();
         for col in start..end {
             *self.buffer.cell_mut(row, col) = template.clone();
         }
         self.repair_wide_row(row);
-        self.dirty[row] = true;
     }
 
     pub fn erase_in_display(&mut self, mode: u16) {
         let template = self.template_cell();
         match mode {
             0 => {
+                self.resize_tail.clear();
                 self.cancel_pending_wrap();
                 self.erase_in_line(0);
                 for row in self.cursor_row + 1..self.rows() {
                     self.buffer.clear_row(row, template.clone());
-                    self.dirty[row] = true;
                 }
             }
             1 => {
@@ -923,15 +1226,14 @@ impl Grid {
                 self.erase_in_line(1);
                 for row in 0..self.cursor_row {
                     self.buffer.clear_row(row, template.clone());
-                    self.dirty[row] = true;
                 }
             }
             2 => {
+                self.resize_tail.clear();
                 self.cancel_pending_wrap();
                 self.selection_revision = self.selection_revision.wrapping_add(1);
                 for row in 0..self.rows() {
                     self.buffer.clear_row(row, template.clone());
-                    self.dirty[row] = true;
                 }
                 let cell_width = f32::from(self.cell_pixel_width);
                 let cell_height = f32::from(self.cell_pixel_height);
@@ -944,9 +1246,12 @@ impl Grid {
                 if self.using_alt_screen {
                     return;
                 }
-                let viewport_changed = self.scroll_offset != 0;
                 self.selection_revision = self.selection_revision.wrapping_add(1);
+                self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(self.scrollback.len()));
                 self.scrollback.clear();
+                self.scrollback_metadata.clear();
+                self.scrollback_hard_lines = 0;
+                self.scrollback_cells = 0;
                 let cell_width = f32::from(self.cell_pixel_width);
                 let cell_height = f32::from(self.cell_pixel_height);
                 self.image_placements.retain(|placement| {
@@ -956,9 +1261,6 @@ impl Grid {
                 self.scroll_offset = 0;
                 self.marks.erase_saved_lines(self.total_lines_pushed);
                 self.total_lines_pushed = 0;
-                if viewport_changed {
-                    self.mark_all_dirty();
-                }
             }
             _ => {}
         }
@@ -1029,85 +1331,256 @@ impl Grid {
     }
 
     pub fn save_cursor(&mut self) {
+        self.saved_cursor_retained_row = None;
         self.saved_cursor_row = self.cursor_row;
         self.saved_cursor_col = self.screen_cursor_col().unwrap_or(self.cols() - 1);
         self.saved_wrap_pending = self.is_wrap_pending();
     }
 
     pub fn restore_cursor(&mut self) {
+        if let Some(row) = self.saved_cursor_retained_row.take() {
+            self.reveal_saved_cursor(row);
+        }
         self.cursor_row = self.saved_cursor_row.min(self.rows().saturating_sub(1));
         self.cursor_col = self.saved_cursor_col.min(self.cols() - 1);
         self.wrap_pending = self.saved_wrap_pending;
     }
 
-    pub fn resize(&mut self, cols: usize, rows: usize) {
-        assert!(
-            cols > 0 && rows > 0,
-            "terminal grid dimensions must be non-zero"
-        );
-        if (cols, rows) != (self.cols(), self.rows()) {
-            self.selection_revision = self.selection_revision.wrapping_add(1);
+    /// Bring an offscreen saved text position back into the editable screen.
+    /// The displaced viewport remains retained, just as it does during resize.
+    fn reveal_saved_cursor(&mut self, retained_row: usize) {
+        let old_history = self.scrollback.len();
+        let rows = self.rows();
+        let cols = self.cols();
+        let mut retained: Vec<_> = self.scrollback.drain(..).zip(self.scrollback_metadata.drain(..))
+            .map(|(cells, metadata)| RetainedRow { cells: cells.into_cells(), metadata }).collect();
+        retained.extend((0..rows).map(|row| RetainedRow {
+            cells: self.buffer.extract_row(row), metadata: self.buffer.row_metadata(row),
+        }));
+        retained.append(&mut self.resize_tail);
+        let retained_row = retained_row.min(retained.len() - 1);
+        let start = retained_row.min(retained.len().saturating_sub(rows));
+        for row in retained.drain(..start) {
+            self.scrollback.push_back(HistoryRow::from_cells(row.cells));
+            self.scrollback_metadata.push_back(row.metadata);
         }
-        let old_max_col = self.cols() - 1;
-        let cursor_col = self
-            .screen_cursor_col()
-            .unwrap_or(old_max_col)
-            .min(cols - 1);
-        let wrap_pending = self.is_wrap_pending();
-        let saved_cursor_col = self.saved_cursor_col.min(old_max_col).min(cols - 1);
-        let alt_cursor_col = self.alt_cursor.1.min(old_max_col).min(cols - 1);
-        self.buffer.resize(cols, rows);
-        let template = self.template_cell();
-        Self::repair_wide_buffer(&mut self.buffer, template.clone());
-        if let Some(ref mut alt) = self.alt_buffer {
-            alt.resize(cols, rows);
-            Self::repair_wide_buffer(alt, template);
+        if retained.len() > rows { self.resize_tail = retained.split_off(rows); }
+        retained.resize_with(rows, || RetainedRow::blank(cols));
+        self.buffer = Buffer::from_retained_rows(cols, &retained);
+        self.saved_cursor_row = retained_row - start;
+        self.total_lines_pushed = self.total_lines_pushed.saturating_sub(old_history) + start;
+        self.recount_history();
+        self.scrollback_cell_budget = self.scrollback_cell_budget.max(self.scrollback_cells);
+        self.scroll_offset = 0;
+        self.selection_revision = self.selection_revision.wrapping_add(1);
+        for placement in &mut self.image_placements {
+            let PlacementMode::Inline { row, .. } = &mut placement.mode;
+            *row += old_history as i64 - start as i64;
         }
-        let max_row = rows - 1;
-        self.scroll_top = 0;
-        self.scroll_bottom = max_row;
-        self.cursor_row = self.cursor_row.min(max_row);
-        self.cursor_col = cursor_col;
-        self.wrap_pending = wrap_pending;
-        self.saved_cursor_row = self.saved_cursor_row.min(max_row);
-        self.saved_cursor_col = saved_cursor_col;
-        self.alt_cursor.0 = self.alt_cursor.0.min(max_row);
-        self.alt_cursor.1 = alt_cursor_col;
-        self.dirty = vec![true; rows];
     }
 
-    pub fn mark_all_dirty(&mut self) { for d in &mut self.dirty { *d = true; } }
-    pub fn clear_dirty(&mut self) { for d in &mut self.dirty { *d = false; } }
-    pub fn is_any_dirty(&self) -> bool { self.dirty.iter().any(|&d| d) }
+    pub fn resize(&mut self, cols: usize, rows: usize) {
+        assert!(cols > 0 && rows > 0, "terminal grid dimensions must be non-zero");
+        if (cols, rows) == (self.cols(), self.rows()) { return; }
+        self.selection_revision = self.selection_revision.wrapping_add(1);
+        let old_cols = self.cols();
+        let mut cursors = [
+            ReflowCursor { row: self.cursor_row, col: self.cursor_col.min(old_cols - 1), pending: self.is_wrap_pending(), retained_row: None },
+            ReflowCursor { row: self.saved_cursor_row.min(self.rows() - 1), col: self.saved_cursor_col.min(old_cols - 1), pending: self.saved_wrap_pending, retained_row: self.saved_cursor_retained_row },
+        ];
+        let old_history = self.scrollback.len();
+        Self::resize_screen(&mut self.buffer, &mut self.scrollback,
+            &mut self.scrollback_metadata, &mut self.resize_tail, &mut cursors, cols, rows);
+        self.total_lines_pushed = self.total_lines_pushed.saturating_sub(old_history) + self.scrollback.len();
+        self.recount_history();
+        // Resizing may move preexisting screen content into history, even when
+        // history is disabled. Keep that snapshot; new output remains bounded.
+        self.scrollback_cell_budget = self.scrollback_cell_budget.max(self.scrollback_cells);
+        self.cursor_row = cursors[0].row;
+        self.cursor_col = cursors[0].col;
+        self.wrap_pending = cursors[0].pending;
+        self.saved_cursor_row = cursors[1].row;
+        self.saved_cursor_col = cursors[1].col;
+        self.saved_wrap_pending = cursors[1].pending;
+        self.saved_cursor_retained_row = cursors[1].retained_row;
+        if let (Some(primary), Some(history)) =
+            (self.alt_buffer.as_mut(), self.saved_primary_history.as_mut())
+        {
+            let mut cursor = [
+                ReflowCursor { row: self.alt_cursor.0, col: self.alt_cursor.1, pending: self.alt_wrap_pending, retained_row: None },
+                self.saved_primary_saved_cursor.unwrap_or(ReflowCursor { row: 0, col: 0, pending: false, retained_row: None }),
+            ];
+            let old_history = history.cells.len();
+            Self::resize_screen(primary, &mut history.cells, &mut history.metadata, &mut history.tail, &mut cursor, cols, rows);
+            history.total_lines = history.total_lines.saturating_sub(old_history) + history.cells.len();
+            history.cell_budget = history.cell_budget.max(history.cells.iter().map(HistoryRow::len).sum());
+            self.alt_cursor = (cursor[0].row, cursor[0].col);
+            self.alt_wrap_pending = cursor[0].pending;
+            self.saved_primary_saved_cursor = Some(cursor[1]);
+        }
+        self.scroll_offset = self.scroll_offset.min(self.scrollback.len());
+        self.scroll_top = 0;
+        self.scroll_bottom = rows - 1;
+    }
+
+    fn recount_history(&mut self) {
+        self.scrollback_hard_lines = self.scrollback_metadata.iter().filter(|row| !row.wrapped).count();
+        self.scrollback_cells = self.scrollback.iter().map(HistoryRow::len).sum();
+    }
+
+    fn resize_screen(
+        buffer: &mut Buffer,
+        history: &mut VecDeque<HistoryRow>,
+        history_metadata: &mut VecDeque<RowMetadata>,
+        tail: &mut Vec<RetainedRow>,
+        cursors: &mut [ReflowCursor],
+        cols: usize,
+        rows: usize,
+    ) {
+        let old_history = history.len();
+        let mut source: Vec<_> = history.drain(..).zip(history_metadata.drain(..))
+            .map(|(cells, metadata)| RetainedRow { cells: cells.into_cells(), metadata }).collect();
+        source.extend((0..buffer.rows()).map(|row| RetainedRow {
+            cells: buffer.extract_row(row), metadata: buffer.row_metadata(row),
+        }));
+        source.append(tail);
+        for cursor in cursors.iter_mut() { cursor.row = cursor.retained_row.take().unwrap_or(cursor.row + old_history); }
+        let last_cursor_row = cursors.iter().map(|cursor| cursor.row).max().unwrap_or(0);
+        while source.len() > last_cursor_row + 1 && source.last().is_some_and(|row| row.metadata.len == 0) {
+            source.pop();
+        }
+        let result = reflow::reflow(&source, cols, cursors);
+        let mut reflowed = result.rows;
+        // If content exists below a cursor near the top, retain that content
+        // after the viewport rather than moving the cursor into history.
+        let screen_start = reflowed.len().saturating_sub(rows).min(result.cursors[0].row);
+        for (cursor, mapped) in cursors.iter_mut().zip(result.cursors) {
+            *cursor = ReflowCursor {
+                row: mapped.row.saturating_sub(screen_start).min(rows - 1),
+                retained_row: (!(screen_start..screen_start + rows).contains(&mapped.row)).then_some(mapped.row),
+                ..mapped
+            };
+        }
+        for row in reflowed.drain(..screen_start) {
+            history.push_back(HistoryRow::from_cells(row.cells));
+            history_metadata.push_back(row.metadata);
+        }
+        if reflowed.len() > rows { *tail = reflowed.split_off(rows); }
+        reflowed.resize_with(rows, || RetainedRow::blank(cols));
+        *buffer = Buffer::from_retained_rows(cols, &reflowed);
+    }
 }
+
+#[cfg(test)]
+mod utf8_spans_tests;
+
+#[cfg(test)]
+mod history_tests;
 
 #[cfg(test)]
 mod tests {
     use super::{
         cell::{CellFlags, Color, UnderlineStyle},
         marks::PromptMarkKind,
-        Grid, TerminalEvent,
+        append_grapheme, scalar_extends_grapheme, Grid, TerminalEvent,
     };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
+    use std::sync::Arc;
+    use unicode_segmentation::UnicodeSegmentation;
+
+    #[test]
+    fn endless_soft_wrapping_respects_the_history_cell_budget() {
+        for max in [0, 1, 3] {
+            let mut grid = Grid::new(4, 2, max);
+            grid.put_ascii(&vec![b'x'; 4096]);
+            assert!(grid.scrollback_cells <= max * 4);
+            assert!(grid.scrollback_len() <= max);
+            assert_eq!(grid.scrollback_hard_lines, 0);
+        }
+    }
+
+    #[test]
+    fn soft_wrap_metadata_follows_scrollback_and_explicit_newlines() {
+        let mut grid = Grid::new(4, 2, 10);
+        grid.put_ascii(b"abc defghi");
+        assert_eq!(grid.scrollback_len(), 1);
+        assert!(grid.retained_row_wrapped(0));
+        assert!(grid.retained_row_wrapped(1));
+        assert_eq!(grid.retained_row_len(0), 4);
+        assert_eq!(grid.retained_row_len(2), 2);
+        grid.newline();
+        assert!(!grid.retained_row_wrapped(2));
+        grid.erase_in_display(2);
+        assert_eq!(grid.retained_row_len(grid.scrollback_len()), 0);
+    }
+
+    #[test]
+    fn row_lengths_distinguish_printed_spaces_from_wide_wrap_padding() {
+        let mut grid = Grid::new(4, 2, 10);
+        grid.put_ascii(b"ab ");
+        grid.put_char('日');
+        assert!(grid.retained_row_wrapped(0));
+        assert_eq!(grid.retained_row_len(0), 3);
+        assert_eq!(grid.retained_row_len(1), 2);
+        grid.carriage_return();
+        grid.erase_in_line(0);
+        assert_eq!(grid.retained_row_len(1), 0);
+    }
+
     use crate::parser::{ansi::Utf8Parser, sixel::SixelImage};
 
     #[test]
-    fn synchronized_output_has_a_bounded_idempotent_deadline() {
-        let now = std::time::Instant::now();
-        let mut grid = Grid::new(8, 4, 10);
-        grid.set_synchronized_output_at(true, now);
-        let deadline = now + super::SYNCHRONIZED_OUTPUT_TIMEOUT;
-        grid.set_synchronized_output_at(true, now + std::time::Duration::from_millis(50));
-        assert_eq!(grid.synchronized_output_deadline(), Some(deadline));
-        assert!(!grid.expire_synchronized_output(deadline - std::time::Duration::from_nanos(1)));
-        grid.clear_dirty();
-        assert!(grid.expire_synchronized_output(deadline));
-        assert!(grid.is_any_dirty());
-        assert!(!grid.expire_synchronized_output(deadline));
-        grid.set_synchronized_output_at(true, deadline);
-        assert_eq!(grid.synchronized_output_deadline(), Some(deadline + super::SYNCHRONIZED_OUTPUT_TIMEOUT));
-        grid.set_synchronized_output(false);
-        assert_eq!(grid.synchronized_output_deadline(), None);
+    fn ascii_batches_preserve_delayed_wrap_across_resize_and_wide_overwrites() {
+        for auto_wrap in [false, true] {
+            for new_cols in [2, 4, 8] {
+                for col in 0..=4 {
+                    let setup = || {
+                        let mut grid = Grid::new(4, 3, 8);
+                        for c in "日本日本日本".chars() {
+                            grid.put_char(c);
+                        }
+                        grid.cursor_col = col;
+                        grid.set_auto_wrap(auto_wrap);
+                        grid.resize(new_cols, 3);
+                        grid
+                    };
+                    let mut batched = setup();
+                    let mut scalar = setup();
+                    let text = b"ABCDEFGHIJKLMN";
+                    batched.put_ascii(text);
+                    for &byte in text {
+                        scalar.put_char(char::from(byte));
+                    }
+                    assert_eq!(format!("{batched:?}"), format!("{scalar:?}"),
+                        "auto_wrap={auto_wrap}, new_cols={new_cols}, col={col}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ascii_batches_repair_wide_pairs_at_both_ends_of_each_run() {
+        for col in 0..8 {
+            for count in 0..=16 {
+                let setup = || {
+                    let mut grid = Grid::new(8, 3, 8);
+                    for c in "日本語日本語日本語日本語".chars() {
+                        grid.put_char(c);
+                    }
+                    grid.set_cursor_pos(0, col);
+                    grid
+                };
+                let mut batched = setup();
+                let mut scalar = setup();
+                let text = &b"abcdefghijklmnop"[..count];
+                batched.put_ascii(text);
+                for &byte in text {
+                    scalar.put_char(char::from(byte));
+                }
+                assert_eq!(format!("{batched:?}"), format!("{scalar:?}"),
+                    "col={col}, count={count}");
+            }
+        }
     }
 
     #[test]
@@ -1393,7 +1866,6 @@ mod tests {
         assert_eq!(grid.total_lines_pushed, 1);
         grid.scroll_viewport_up(1);
         assert_eq!(grid.visible_cell(0, 0).c, 'o');
-        grid.clear_dirty();
         let cursor = (grid.cursor_row, grid.cursor_col);
         let attributes = (
             grid.fg,
@@ -1423,26 +1895,23 @@ mod tests {
             ),
             attributes
         );
-        assert!(grid.dirty.iter().all(|dirty| *dirty));
         assert_eq!(grid.marks.visible_prompt_rows(0, 0, grid.rows()), [0, 1]);
         assert_eq!(grid.marks.prev_prompt(2), Some(1));
         assert_eq!(grid.marks.next_prompt(0), Some(1));
     }
 
     #[test]
-    fn erase_saved_lines_at_bottom_does_not_dirty_unchanged_screen() {
+    fn erase_saved_lines_at_bottom_preserves_screen_contents() {
         let mut grid = Grid::new(3, 2, 10);
         grid.put_char('a');
         grid.scroll_up(1);
         grid.put_char('b');
-        grid.clear_dirty();
         let screen = [row_text(&grid, 0), row_text(&grid, 1)];
 
         grid.erase_in_display(3);
 
         assert_eq!(grid.scrollback_len(), 0);
         assert_eq!([row_text(&grid, 0), row_text(&grid, 1)], screen);
-        assert!(!grid.is_any_dirty());
     }
 
     #[test]
@@ -1471,7 +1940,7 @@ mod tests {
     }
 
     #[test]
-    fn resize_clamps_active_and_saved_cursors() {
+    fn resize_preserves_cursor_rows_and_clamps_unused_columns() {
         let mut grid = Grid::new(12, 8, 100);
         grid.set_cursor_pos(7, 11);
         grid.save_cursor();
@@ -1481,13 +1950,13 @@ mod tests {
 
         grid.resize(20, 10);
         grid.restore_cursor();
-        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 3));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (7, 3));
         grid.put_char('x');
-        assert_eq!(grid.buffer.cell(2, 3).c, 'x');
+        assert_eq!(grid.buffer.cell(7, 3).c, 'x');
     }
 
     #[test]
-    fn resize_clamps_primary_cursor_saved_by_alt_screen() {
+    fn resize_preserves_primary_logical_cursor_under_alt_screen() {
         let mut grid = Grid::new(12, 8, 100);
         grid.set_cursor_pos(7, 11);
         grid.enter_alt_screen();
@@ -1496,9 +1965,9 @@ mod tests {
         grid.resize(20, 10);
         grid.leave_alt_screen();
 
-        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 3));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (7, 3));
         grid.put_char('x');
-        assert_eq!(grid.buffer.cell(2, 3).c, 'x');
+        assert_eq!(grid.buffer.cell(7, 3).c, 'x');
     }
 
     #[test]
@@ -1908,227 +2377,365 @@ mod tests {
     }
 
     #[test]
-    fn combining_scalars_preserve_a_wide_leader_at_the_cursor() {
-        for column in [0, 1, 2] {
-            let mut grid = Grid::new(4, 1, 0);
-            let mut parser = crate::parser::ansi::Utf8Parser::new();
-            parser.feed("日".as_bytes(), &mut grid);
-            grid.set_cursor_pos(0, column);
-            parser.feed("\u{301}".as_bytes(), &mut grid);
-
-            assert_eq!(
-                grid.buffer.cell(0, 0).chars().collect::<String>(),
-                "日\u{301}"
-            );
-            assert_wide_row_valid(&grid, 0);
-            assert!(grid.buffer.cell(0, 0).flags.contains(CellFlags::WIDE));
-            assert!(grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE_CONT));
-            assert_eq!(grid.cursor_col, column);
-        }
-    }
-
-    #[test]
-    fn parsed_combining_text_survives_the_next_character_and_utf8_chunks() {
-        let mut grid = Grid::new(4, 2, 2);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        for byte in "e\u{301}X".as_bytes() {
-            parser.feed(&[*byte], &mut grid);
-        }
-        let accented = grid.buffer.cell(0, 0);
-        assert_eq!(accented.chars().collect::<String>(), "e\u{301}");
-        assert_eq!(accented.normalized_chars().collect::<String>(), "é");
-        assert_eq!(grid.buffer.cell(0, 1).c, 'X');
-        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
-        assert!(grid.buffer.cell(0, 1).tail.is_none());
-    }
-
-    #[test]
-    fn excessive_combining_input_is_bounded_and_normal_output_recovers() {
-        let mut grid = Grid::new(1, 1, 0);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        parser.feed(b"x", &mut grid);
-        let cursor = (grid.cursor_row, grid.cursor_col);
-        for _ in 0..10_000 {
-            parser.feed("\u{301}".as_bytes(), &mut grid);
-        }
-        assert_eq!(
-            grid.buffer.cell(0, 0).text_len(),
-            1 + super::cell::MAX_COMBINING_BYTES
-        );
-        assert_eq!((grid.cursor_row, grid.cursor_col), cursor);
-        assert!(grid.is_wrap_pending());
-        parser.feed("e\u{301}".as_bytes(), &mut grid);
-        assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(), "e\u{301}");
-        parser.feed(b"\x1b[2J", &mut grid);
-        assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(), " ");
-    }
-
-    #[test]
-    fn combining_at_the_margin_preserves_delayed_wrap_and_wide_cells() {
-        for (width, text, leader) in [(2, "ae", 1), (3, "a日", 1)] {
-            let mut grid = Grid::new(width, 2, 2);
-            let mut parser = crate::parser::ansi::Utf8Parser::new();
-            parser.feed(text.as_bytes(), &mut grid);
-            parser.feed("\u{301}".as_bytes(), &mut grid);
-            assert!(grid.is_wrap_pending());
-            assert_eq!(grid.cursor_row, 0);
-            assert_eq!(
-                grid.buffer
-                    .cell(0, leader)
-                    .tail
-                    .as_deref()
-                    .map(String::as_str),
-                Some("\u{301}")
-            );
-            assert_wide_row_valid(&grid, 0);
-            parser.feed(b"X", &mut grid);
-            assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
-            assert_eq!(grid.buffer.cell(1, 0).c, 'X');
-            assert_eq!(
-                grid.buffer
-                    .cell(0, leader)
-                    .tail
-                    .as_deref()
-                    .map(String::as_str),
-                Some("\u{301}")
-            );
-        }
-    }
-
-    #[test]
-    fn combining_after_a_resize_stays_at_the_pending_wrap_cell() {
-        let mut grid = Grid::new(2, 2, 2);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        parser.feed(b"ae", &mut grid);
-        grid.resize(4, 2);
-        parser.feed("\u{301}".as_bytes(), &mut grid);
-        assert_eq!(
-            grid.buffer.cell(0, 1).chars().collect::<String>(),
-            "e\u{301}"
-        );
-        assert_eq!(grid.buffer.cell(0, 2).c, ' ');
-        assert!(grid.is_wrap_pending());
-        parser.feed(b"X", &mut grid);
-        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
-    }
-
-    #[test]
-    fn combining_tail_follows_resize_insert_delete_and_scrollback() {
-        let mut grid = Grid::new(4, 2, 2);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        parser.feed("e\u{301}X".as_bytes(), &mut grid);
-        grid.resize(6, 3);
-        assert_eq!(
-            grid.buffer.cell(0, 0).chars().collect::<String>(),
-            "e\u{301}"
-        );
-        parser.feed(b"\x1b[1G\x1b[@", &mut grid);
-        assert_eq!(
-            grid.buffer.cell(0, 1).chars().collect::<String>(),
-            "e\u{301}"
-        );
-        parser.feed(b"\x1b[P", &mut grid);
-        assert_eq!(
-            grid.buffer.cell(0, 0).chars().collect::<String>(),
-            "e\u{301}"
-        );
-        parser.feed(b"\x1b[4hZ\x1b[4l", &mut grid);
-        assert_eq!(
-            grid.buffer.cell(0, 1).chars().collect::<String>(),
-            "e\u{301}"
-        );
-        parser.feed(b"\x1b[S", &mut grid);
-        assert_eq!(
-            grid.scrollback_cell_data(0, 1).chars().collect::<String>(),
-            "e\u{301}"
-        );
-        grid.scroll_viewport_up(1);
-        assert_eq!(
-            grid.visible_cell(0, 1).chars().collect::<String>(),
-            "e\u{301}"
-        );
-    }
-
-    #[test]
-    fn replacing_or_erasing_cells_clears_combining_tails() {
-        for replacement in [b"X".as_slice(), b"\x1b[X", b"\x1b[2K", b"\x1b[2J"] {
-            let mut grid = Grid::new(4, 2, 2);
-            let mut parser = crate::parser::ansi::Utf8Parser::new();
-            parser.feed("e\u{301}日\u{302}".as_bytes(), &mut grid);
-            parser.feed(b"\x1b[1G", &mut grid);
-            parser.feed(replacement, &mut grid);
-            assert!(grid.buffer.cell(0, 0).tail.is_none());
-            parser.feed(b"\x1b[3GX", &mut grid);
-            assert!(
-                grid.buffer.cell(0, 1).tail.is_none(),
-                "wide leader cleared through continuation"
-            );
-            assert_wide_row_valid(&grid, 0);
-        }
-    }
-
-    #[test]
-    fn cloned_cells_keep_their_original_combining_text_after_live_updates() {
+    fn combining_marks_extend_wide_glyphs_without_overwriting_them() {
         let mut grid = Grid::new(4, 1, 0);
-        let mut parser = crate::parser::ansi::Utf8Parser::new();
-        parser.feed("e\u{301}".as_bytes(), &mut grid);
-        let snapshot = grid.buffer.extract_row(0);
-        assert!(std::sync::Arc::ptr_eq(
-            snapshot[0].tail.as_ref().unwrap(),
-            grid.buffer.cell(0, 0).tail.as_ref().unwrap()
-        ));
-        parser.feed("\u{302}".as_bytes(), &mut grid);
-        assert_eq!(snapshot[0].chars().collect::<String>(), "e\u{301}");
-        assert_eq!(
-            grid.buffer.cell(0, 0).chars().collect::<String>(),
-            "e\u{301}\u{302}"
-        );
-        assert!(!std::sync::Arc::ptr_eq(
-            snapshot[0].tail.as_ref().unwrap(),
-            grid.buffer.cell(0, 0).tail.as_ref().unwrap()
-        ));
+        grid.put_char('日');
+        grid.put_char('\u{301}');
+        assert_eq!(grid.buffer.cell(0, 0).text(), "日\u{301}");
+        assert_eq!(grid.cursor_col, 2);
+        assert_wide_row_valid(&grid, 0);
     }
 
     #[test]
-    fn one_column_grid_ignores_unrepresentable_wide_char() {
+    fn one_column_grid_retains_wide_characters() {
         for auto_wrap in [true, false] {
             let mut grid = Grid::new(1, 2, 0);
             grid.set_auto_wrap(auto_wrap);
-
             grid.put_char('日');
-
-            assert_eq!(grid.buffer.cell(0, 0).c, ' ');
-            assert!(!grid
-                .buffer
-                .cell(0, 0)
-                .flags
-                .intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
-            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 0));
+            assert_eq!(grid.buffer.cell(0, 0).text(), "日");
+            assert_eq!(grid.buffer.cell(0, 0).display_width(), 2);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 1));
         }
+    }
+
+    #[test]
+    fn one_column_emoji_presentation_keeps_natural_width() {
+        for auto_wrap in [true, false] {
+            let mut grid = Grid::new(1, 2, 4);
+            grid.set_auto_wrap(auto_wrap);
+            grid.put_char('❤');
+            grid.put_char('\u{fe0f}');
+            let cell = grid.buffer.cell(0, 0);
+            assert_eq!(cell.text(), "❤\u{fe0f}");
+            assert_eq!(cell.display_width(), 2);
+            assert!(cell.flags.contains(CellFlags::WIDE));
+            assert!(!cell.flags.contains(CellFlags::WIDE_CONT));
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 1));
+            assert!(grid.is_wrap_pending());
+            assert_eq!(grid.retained_row_len(0), 1);
+            assert_eq!(grid.scrollback_len(), 0);
+        }
+    }
+
+    #[test]
+    fn presentation_width_recovers_after_reflow_from_one_column() {
+        for (text, natural_width) in [("❤\u{fe0f}", 2), ("♈\u{fe0e}", 1), ("👩🏽‍💻", 2)] {
+            let mut grid = Grid::new(1, 3, 4);
+            for c in text.chars() { grid.put_char(c); }
+            for cols in [4, 1, 3] {
+                grid.resize(cols, 3);
+                let occupied = natural_width.min(cols);
+                let cell = grid.buffer.cell(0, 0);
+                assert_eq!(cell.text(), text, "cols={cols}");
+                assert_eq!(cell.display_width(), natural_width, "cols={cols}");
+                assert_eq!(cell.flags.contains(CellFlags::WIDE), natural_width == 2);
+                if occupied == 2 {
+                    assert!(grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE_CONT));
+                } else if cols > 1 {
+                    assert_eq!(grid.buffer.cell(0, 1).text(), " ");
+                }
+                assert_eq!((grid.cursor_row, grid.cursor_col), (0, occupied.min(cols - 1)));
+                assert_eq!(grid.is_wrap_pending(), occupied == cols);
+                assert_eq!(grid.retained_row_len(0), occupied);
+                if cols > 1 { assert_wide_row_valid(&grid, 0); }
+            }
+        }
+    }
+
+    #[test]
+    fn text_presentation_shrinks_wide_cells_without_erasing_following_text() {
+        for (cols, following_text) in [(2, false), (4, true)] {
+            let mut grid = Grid::new(cols, 2, 4);
+            if following_text {
+                grid.set_cursor_pos(0, 3);
+                grid.put_char('Z');
+                grid.set_cursor_pos(0, 0);
+            }
+            grid.put_char('♈');
+            assert_eq!(grid.is_wrap_pending(), cols == 2);
+            grid.put_char('\u{fe0e}');
+            let cell = grid.buffer.cell(0, 0);
+            assert_eq!(cell.text(), "♈\u{fe0e}");
+            assert_eq!(cell.display_width(), 1);
+            assert!(!cell.flags.intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
+            assert_eq!(grid.buffer.cell(0, 1).text(), " ");
+            assert!(!grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE_CONT));
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 1));
+            assert!(!grid.is_wrap_pending());
+            assert_eq!(grid.retained_row_len(0), if following_text { 4 } else { 1 });
+            if following_text { assert_eq!(grid.buffer.cell(0, 3).c, 'Z'); }
+            assert_wide_row_valid(&grid, 0);
+            grid.put_char('X');
+            assert_eq!(grid.buffer.cell(0, 0).text(), "♈\u{fe0e}");
+            assert_eq!(grid.buffer.cell(0, 1).c, 'X');
+        }
+    }
+
+    #[test]
+    fn emoji_presentation_at_nowrap_margin_clips_only_occupied_width() {
+        let mut grid = Grid::new(2, 2, 4);
+        grid.set_auto_wrap(false);
+        grid.put_char('a');
+        grid.put_char('❤');
+        grid.put_char('\u{fe0f}');
+        let cell = grid.buffer.cell(0, 1);
+        assert_eq!(cell.text(), "❤\u{fe0f}");
+        assert_eq!(cell.display_width(), 2);
+        assert!(!cell.flags.intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
+        assert_eq!(grid.buffer.cell(0, 0).c, 'a');
+        assert_eq!(grid.buffer.cell(1, 0).text(), " ");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
+        assert!(grid.is_wrap_pending());
+        assert_eq!(grid.retained_row_len(0), 2);
+        assert_eq!(grid.scrollback_len(), 0);
+
+        grid.resize(4, 2);
+        assert_eq!(grid.buffer.cell(0, 1).text(), "❤\u{fe0f}");
+        assert!(grid.buffer.cell(0, 1).flags.contains(CellFlags::WIDE));
+        assert!(grid.buffer.cell(0, 2).flags.contains(CellFlags::WIDE_CONT));
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 3));
+        assert!(!grid.is_wrap_pending());
+        assert_eq!(grid.retained_row_len(0), 3);
+        assert_wide_row_valid(&grid, 0);
     }
 
     #[test]
     fn one_column_wide_char_consumes_pending_margin() {
         let mut wrapping = Grid::new(1, 2, 0);
         wrapping.put_char('x');
-        assert_eq!(wrapping.cursor_col, wrapping.cols());
-
         wrapping.put_char('日');
-
-        assert_eq!((wrapping.cursor_row, wrapping.cursor_col), (1, 0));
+        assert_eq!((wrapping.cursor_row, wrapping.cursor_col), (1, 1));
         assert_eq!(wrapping.buffer.cell(0, 0).c, 'x');
-        assert_eq!(wrapping.buffer.cell(1, 0).c, ' ');
+        assert_eq!(wrapping.buffer.cell(1, 0).text(), "日");
 
         let mut overwriting = Grid::new(1, 2, 0);
         overwriting.set_auto_wrap(false);
         overwriting.put_char('x');
-        assert_eq!(overwriting.cursor_col, overwriting.cols());
-
         overwriting.put_char('日');
+        assert_eq!((overwriting.cursor_row, overwriting.cursor_col), (0, 1));
+        assert_eq!(overwriting.buffer.cell(0, 0).text(), "日");
+    }
 
-        assert_eq!((overwriting.cursor_row, overwriting.cursor_col), (0, 0));
-        assert_eq!(overwriting.buffer.cell(0, 0).c, 'x');
-        assert_eq!(overwriting.buffer.cell(1, 0).c, ' ');
+    #[test]
+    fn extended_graphemes_are_single_cells_across_scalar_writes() {
+        for (text, width) in [
+            ("e\u{301}", 1), ("👩🏽‍💻", 2), ("🇧🇷", 2), ("1️⃣", 2),
+            ("\u{600}日", 2), ("\u{1100}\u{1161}", 2),
+        ] {
+            let mut grid = Grid::new(8, 2, 10);
+            for scalar in text.chars() { grid.put_char(scalar); }
+            assert_eq!(grid.buffer.cell(0, 0).text(), text);
+            assert_eq!(grid.cursor_col, width);
+            grid.put_char('X');
+            assert_eq!(grid.buffer.cell(0, width).c, 'X');
+        }
+    }
+
+    #[test]
+    fn scalar_boundaries_use_cluster_context_and_written_content() {
+        let mut grid = Grid::new(8, 2, 10);
+        for scalar in "\u{600}\u{301}日".chars() { grid.put_char(scalar); }
+        assert_eq!(grid.buffer.cell(0, 0).text(), "\u{600}\u{301}");
+        assert_eq!(grid.buffer.cell(0, 1).text(), "日");
+        assert!(grid.buffer.cell(0, 2).flags.contains(CellFlags::WIDE_CONT));
+        assert_eq!(grid.cursor_col, 3);
+
+        let mut grid = Grid::new(8, 2, 10);
+        grid.cursor_col = 2;
+        grid.put_char('\u{301}');
+        assert_eq!(grid.buffer.cell(0, 1).text(), " ");
+        assert_eq!(grid.buffer.cell(0, 2).text(), "\u{301}");
+        assert_eq!(grid.cursor_col, 3);
+        assert_eq!(grid.retained_row_len(0), 3);
+    }
+
+    #[test]
+    fn appended_graphemes_preserve_multibyte_scalars_at_stack_boundaries() {
+        for total_bytes in [63, 64, 65] {
+            for next in ['\u{308}', '\u{200d}', '🏽'] {
+                let prefix_bytes = total_bytes - next.len_utf8();
+                let mut previous = String::from(if prefix_bytes % 2 == 0 { "é" } else { "e" });
+                previous.push_str(&"\u{301}".repeat((prefix_bytes - previous.len()) / 2));
+                let expected = format!("{previous}{next}");
+                assert_eq!(expected.len(), total_bytes);
+                assert_eq!(expected.graphemes(true).count(), 1);
+                let actual = append_grapheme(&previous, next);
+                assert_eq!(actual.as_bytes(), expected.as_bytes(), "bytes={total_bytes}, next={next:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn appended_graphemes_retain_large_clusters_without_truncation() {
+        let previous = format!("e{}", "\u{301}".repeat(4096));
+        let expected = format!("{previous}\u{308}");
+        assert_eq!(expected.graphemes(true).count(), 1);
+        let actual = append_grapheme(&previous, '\u{308}');
+        assert_eq!(actual.len(), 8195);
+        assert_eq!(actual.as_bytes(), expected.as_bytes());
+    }
+
+    #[test]
+    fn fragmented_grapheme_growth_preserves_snapshots_style_and_pending_wrap() {
+        for chunk_size in [1, 2, 3, 7, 64] {
+            let mut grid = Grid::new(3, 2, 4);
+            let mut parser = crate::parser::ansi::Utf8Parser::new();
+            let prefix = format!("e{}", "\u{301}".repeat(31));
+            assert_eq!(prefix.len(), 63);
+            let input = format!("\x1b[1;3;4;38;2;12;34;56;48;5;7mab{prefix}");
+            for chunk in input.as_bytes().chunks(chunk_size) {
+                assert_eq!(parser.feed_until_terminal_event(chunk, &mut grid), chunk.len());
+            }
+            let snapshot = grid.buffer.cell(0, 2).clone();
+            let original = Arc::downgrade(snapshot.grapheme.as_ref().unwrap());
+            assert_eq!(snapshot.text(), prefix);
+            assert_eq!(snapshot.fg, Color::Rgb(12, 34, 56));
+            assert_eq!(snapshot.bg, Color::Indexed(7));
+            assert!(snapshot.flags.contains(CellFlags::BOLD | CellFlags::ITALIC | CellFlags::UNDERLINE));
+
+            // The first new mark crosses 63 -> 65 bytes. SGR changes affect
+            // subsequent cells, while appended marks retain the base's style.
+            let suffix = "\u{308}".repeat(256);
+            let input = format!("\x1b[0m{suffix}");
+            for chunk in input.as_bytes().chunks(chunk_size) {
+                assert_eq!(parser.feed_until_terminal_event(chunk, &mut grid), chunk.len());
+            }
+            let expected = format!("{prefix}{suffix}");
+            let cell = grid.buffer.cell(0, 2);
+            assert_eq!(cell.text().as_bytes(), expected.as_bytes());
+            assert_eq!(cell.display_width(), 1);
+            assert_eq!((cell.c, cell.fg, cell.bg, cell.flags, cell.underline_style, cell.underline_color),
+                (snapshot.c, snapshot.fg, snapshot.bg, snapshot.flags, snapshot.underline_style, snapshot.underline_color));
+            assert!(!Arc::ptr_eq(cell.grapheme.as_ref().unwrap(), snapshot.grapheme.as_ref().unwrap()));
+            let extended = Arc::downgrade(cell.grapheme.as_ref().unwrap());
+            assert_eq!(snapshot.text(), prefix);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (0, 3));
+            assert!(grid.is_wrap_pending());
+            assert_eq!(grid.scrollback_len(), 0);
+
+            assert_eq!(parser.feed_until_terminal_event(b"X", &mut grid), 1);
+            assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
+            assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+            assert_eq!(grid.buffer.cell(1, 0).fg, Color::Default);
+            assert_eq!(grid.buffer.cell(0, 2).text().as_bytes(), expected.as_bytes());
+            assert!(grid.retained_row_wrapped(0));
+            drop(grid);
+            assert!(extended.upgrade().is_none());
+            assert!(original.upgrade().is_some());
+            drop(snapshot);
+            assert!(original.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn grapheme_boundary_uses_complete_unicode_context() {
+        for (previous, next, extends) in [
+            ("e", '\u{301}', true),
+            ("e\u{301}", 'a', false),
+            ("❤", '\u{fe0f}', true),
+            ("1\u{fe0f}", '\u{20e3}', true),
+            ("👩🏽\u{200d}", '💻', true),
+            ("a\u{200d}", '💻', false),
+            ("👩\u{200d}\u{301}", '💻', false),
+            ("🇧", '🇷', true),
+            ("🇧🇷", '🇺', false),
+            ("क\u{94d}", 'ष', true),
+            ("क\u{94d}\u{200d}", 'ष', true),
+            ("क\u{93c}", 'ष', false),
+            ("\u{600}", 'a', true),
+            ("\u{600}", '\n', false),
+            ("\r", '\n', true),
+            ("\n", '\u{301}', false),
+            ("\u{1100}", '\u{1161}', true),
+            ("\u{1100}\u{1161}", '\u{11a8}', true),
+        ] {
+            assert_eq!(scalar_extends_grapheme(previous, next), extends,
+                "previous={previous:?}, next={next:?}");
+        }
+    }
+
+    #[test]
+    fn split_grapheme_boundaries_match_concatenation() {
+        let scalars = [
+            'a', ' ', '\r', '\n', '\0', '\u{301}', '\u{308}', '\u{600}',
+            '\u{903}', 'क', 'ष', '\u{93c}', '\u{94d}', '\u{200c}', '\u{200d}',
+            '\u{1100}', '\u{1161}', '\u{11a8}', '가', '각', '❤', '\u{fe0e}',
+            '\u{fe0f}', '\u{20e3}', '👩', '💻', '🏽', '🇧', '🇷', '\u{e0067}',
+        ];
+        let check = |previous: &str| {
+            assert_eq!(previous.graphemes(true).count(), 1);
+            for next in scalars {
+                let combined = format!("{previous}{next}");
+                assert_eq!(scalar_extends_grapheme(previous, next),
+                    combined.graphemes(true).count() == 1,
+                    "previous={previous:?}, next={next:?}");
+            }
+        };
+        for first in scalars {
+            check(&first.to_string());
+            for second in scalars {
+                let previous = format!("{first}{second}");
+                if previous.graphemes(true).count() == 1 {
+                    check(&previous);
+                }
+            }
+        }
+        for cluster in [
+            "e\u{301}\u{308}", "👩🏽\u{200d}💻", "👩\u{200d}👩\u{200d}👧\u{200d}👦",
+            "क\u{93c}\u{94d}\u{200d}ष\u{94d}क", "\u{600}\u{600}a\u{301}",
+            "\u{1100}\u{1161}\u{11a8}", "🏴\u{e0067}\u{e0062}\u{e007f}",
+        ] {
+            for (offset, scalar) in cluster.char_indices() {
+                check(&cluster[..offset + scalar.len_utf8()]);
+            }
+        }
+    }
+
+    #[test]
+    fn combining_at_delayed_wrap_does_not_start_a_new_row() {
+        let mut grid = Grid::new(2, 2, 10);
+        grid.put_ascii(b"ae");
+        grid.put_char('\u{301}');
+        assert_eq!(grid.buffer.cell(0, 1).text(), "e\u{301}");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 2));
+        grid.put_char('X');
+        assert_eq!(grid.buffer.cell(1, 0).c, 'X');
+        assert!(grid.retained_row_wrapped(0));
+    }
+
+    #[test]
+    fn emoji_presentation_growth_moves_the_complete_cluster_at_margin() {
+        let mut grid = Grid::new(2, 2, 10);
+        grid.put_char('a');
+        grid.put_char('❤');
+        grid.put_char('\u{fe0f}');
+        assert_eq!(grid.buffer.cell(1, 0).text(), "❤️");
+        assert_eq!(grid.retained_row_len(0), 1);
+        assert!(grid.retained_row_wrapped(0));
+        assert_wide_row_valid(&grid, 1);
+    }
+
+    #[test]
+    fn emoji_presentation_growth_at_scroll_bottom_preserves_history() {
+        let mut grid = Grid::new(2, 2, 4);
+        grid.put_ascii(b"zz");
+        grid.newline();
+        grid.carriage_return();
+        grid.put_char('a');
+        grid.put_char('❤');
+        grid.put_char('\u{fe0f}');
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(grid.scrollback_cell(0, 0), 'z');
+        assert_eq!(grid.scrollback_cell(0, 1), 'z');
+        assert_eq!(grid.retained_row_len(0), 2);
+        assert_eq!(grid.buffer.cell(0, 0).c, 'a');
+        assert_eq!(grid.retained_row_len(1), 1);
+        assert!(grid.retained_row_wrapped(1));
+        assert_eq!(grid.buffer.cell(1, 0).text(), "❤\u{fe0f}");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 2));
+        assert!(grid.is_wrap_pending());
+        assert_eq!(grid.retained_row_len(2), 2);
+        assert_wide_row_valid(&grid, 1);
     }
 
     #[test]
@@ -2193,34 +2800,31 @@ mod tests {
 
         grid.put_char('x');
 
-        assert_eq!((grid.cursor_row, grid.cursor_col), (0, grid.cols()));
-        assert_eq!(grid.buffer.cell(0, 2).c, 'x');
-        assert_eq!(grid.buffer.cell(1, 0).c, ' ');
+        assert_eq!((grid.cursor_row, grid.cursor_col), (1, 2));
+        assert_eq!(row_text(&grid, 0), "abc");
+        assert_eq!(row_text(&grid, 1), "dx ");
     }
 
     #[test]
-    fn resize_preserves_pending_wrap_at_the_projected_physical_column() {
-        for (columns, expected_physical_column) in [(5, 2), (3, 2), (2, 1)] {
+    fn resize_maps_pending_wrap_to_the_end_of_reflowed_content() {
+        for (columns, before, pending, after) in [
+            (5, (0, 3), false, (0, 4)),
+            (3, (0, 3), true, (1, 1)),
+            (2, (1, 1), false, (1, 2)),
+        ] {
             let mut grid = Grid::new(3, 2, 0);
-            for c in ['a', 'b', 'c'] {
-                grid.put_char(c);
-            }
-            assert_eq!(grid.cursor_col, grid.cols());
-
+            grid.put_ascii(b"abc");
             grid.resize(columns, 2);
-
-            assert_eq!(grid.cursor_col, expected_physical_column);
-            assert!(grid.is_wrap_pending());
+            assert_eq!((grid.cursor_row, grid.cursor_col), before);
+            assert_eq!(grid.is_wrap_pending(), pending);
             grid.put_char('X');
-
-            assert_eq!((grid.cursor_row, grid.cursor_col), (1, 1));
-            assert_eq!(grid.buffer.cell(1, 0).c, 'X');
-            assert_eq!(grid.scrollback_len(), 0);
+            assert_eq!((grid.cursor_row, grid.cursor_col), after);
+            assert_eq!(grid.buffer.cell(after.0, after.1 - 1).c, 'X');
         }
     }
 
     #[test]
-    fn disabled_auto_wrap_after_grow_writes_at_the_old_physical_column() {
+    fn disabled_auto_wrap_after_grow_appends_to_preserved_content() {
         let mut grid = Grid::new(3, 2, 0);
         for c in ['a', 'b', 'c'] {
             grid.put_char(c);
@@ -2231,13 +2835,13 @@ mod tests {
         grid.put_char('X');
 
         let first_row: String = (0..5).map(|col| grid.buffer.cell(0, col).c).collect();
-        assert_eq!(first_row, "abX  ");
-        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 3));
+        assert_eq!(first_row, "abcX ");
+        assert_eq!((grid.cursor_row, grid.cursor_col), (0, 4));
         assert!(!grid.is_wrap_pending());
     }
 
     #[test]
-    fn saved_and_alternate_cursors_keep_pending_wrap_across_resize() {
+    fn saved_and_alternate_cursors_follow_reflowed_content() {
         let mut saved = Grid::new(3, 2, 0);
         for c in ['a', 'b', 'c'] {
             saved.put_char(c);
@@ -2247,11 +2851,11 @@ mod tests {
         saved.set_cursor_pos(0, 0);
 
         saved.restore_cursor();
-        assert_eq!(saved.cursor_col, 2);
-        assert!(saved.is_wrap_pending());
+        assert_eq!(saved.cursor_col, 3);
+        assert!(!saved.is_wrap_pending());
         saved.put_char('X');
-        assert_eq!((saved.cursor_row, saved.cursor_col), (1, 1));
-        assert_eq!(saved.buffer.cell(1, 0).c, 'X');
+        assert_eq!((saved.cursor_row, saved.cursor_col), (0, 4));
+        assert_eq!(saved.buffer.cell(0, 3).c, 'X');
 
         let mut alternate = Grid::new(3, 2, 0);
         for c in ['a', 'b', 'c'] {
@@ -2261,15 +2865,15 @@ mod tests {
         alternate.resize(5, 2);
 
         alternate.leave_alt_screen();
-        assert_eq!(alternate.cursor_col, 2);
-        assert!(alternate.is_wrap_pending());
+        assert_eq!(alternate.cursor_col, 3);
+        assert!(!alternate.is_wrap_pending());
         alternate.put_char('X');
-        assert_eq!((alternate.cursor_row, alternate.cursor_col), (1, 1));
-        assert_eq!(alternate.buffer.cell(1, 0).c, 'X');
+        assert_eq!((alternate.cursor_row, alternate.cursor_col), (0, 4));
+        assert_eq!(alternate.buffer.cell(0, 3).c, 'X');
     }
 
     #[test]
-    fn resize_repairs_truncated_wide_chars_in_active_and_saved_buffers() {
+    fn resize_reflows_wide_chars_in_active_and_saved_buffers() {
         let mut active = Grid::new(4, 2, 0);
         active.set_cursor_pos(0, 2);
         active.put_char('日');
@@ -2278,6 +2882,8 @@ mod tests {
 
         assert_wide_row_valid(&active, 0);
         assert_eq!(active.buffer.cell(0, 2).c, ' ');
+        assert_eq!(active.buffer.cell(1, 0).text(), "日");
+        assert_wide_row_valid(&active, 1);
 
         let mut saved_primary = Grid::new(4, 2, 0);
         saved_primary.set_cursor_pos(0, 2);
@@ -2289,37 +2895,28 @@ mod tests {
 
         assert_wide_row_valid(&saved_primary, 0);
         assert_eq!(saved_primary.buffer.cell(0, 2).c, ' ');
+        assert_eq!(saved_primary.buffer.cell(1, 0).text(), "日");
+        assert_wide_row_valid(&saved_primary, 1);
     }
 
     #[test]
-    fn resize_projects_scrollback_wide_chars_without_losing_hidden_history() {
+    fn resize_reflows_every_scrollback_glyph_without_hidden_clipping() {
         let mut grid = Grid::new(4, 2, 10);
-        for c in ['a', 'b', 'c', 'd'] {
-            grid.put_char(c);
-        }
+        grid.put_ascii(b"abcd");
         grid.set_cursor_pos(1, 2);
         grid.put_char('日');
         grid.scroll_up(2);
-
-        grid.resize(3, 2);
-        grid.scroll_viewport_up(2);
-
-        assert_eq!(grid.visible_cell(0, 2).c, 'c');
-        let history_margin = grid.visible_cell(1, 2);
-        assert_eq!(history_margin.c, ' ');
-        assert!(!history_margin
-            .flags
-            .intersects(CellFlags::WIDE | CellFlags::WIDE_CONT));
-
-        grid.resize(4, 2);
-
-        assert_eq!(grid.visible_cell(0, 3).c, 'd');
-        assert_eq!(grid.visible_cell(1, 2).c, '日');
-        assert!(grid.visible_cell(1, 2).flags.contains(CellFlags::WIDE));
-        assert!(grid
-            .visible_cell(1, 3)
-            .flags
-            .contains(CellFlags::WIDE_CONT));
+        for cols in [3, 1, 4, 8] {
+            grid.resize(cols, 2);
+            let mut text = String::new();
+            for row in 0..grid.retained_rows() {
+                for col in 0..grid.retained_row_len(row) {
+                    let cell = grid.retained_cell_data(row, col);
+                    if !cell.flags.contains(CellFlags::WIDE_CONT) { text.push_str(&cell.text()); }
+                }
+            }
+            assert_eq!(text, "abcd  日", "cols={cols}");
+        }
     }
 
     #[test]

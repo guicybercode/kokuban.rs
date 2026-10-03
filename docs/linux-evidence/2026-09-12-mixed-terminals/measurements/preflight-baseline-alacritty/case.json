@@ -1,0 +1,8 @@
+{
+  "payloads": {
+    "geometry_probe": "/evidence/measurements/geometry-probe.bin"
+  },
+  "screen": "alternate",
+  "terminal_pid": 10563,
+  "settle_seconds": 1.0
+}

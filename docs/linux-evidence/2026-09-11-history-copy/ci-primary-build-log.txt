@@ -1,0 +1,4 @@
+measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T15:01:12.2550035Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-before)
+measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T15:01:21.7044847Z     Finished `release` profile [optimized] target(s) in 1m 26s
+measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T15:02:37.6298381Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-after)
+measure	Build both exact revisions sequentially with the same toolchain	2026-09-11T15:02:47.1373363Z     Finished `release` profile [optimized] target(s) in 1m 25s

@@ -1,0 +1,6 @@
+decoder only; 120x40; scrollback=10000; chunks=16384; MiB/sample=8; samples=1
+workload,median_MiB_s,min_MiB_s,max_MiB_s
+ascii,227.01,227.01,227.01
+short-lines,7.68,7.68,7.68
+ansi,159.12,159.12,159.12
+unicode,46.06,46.06,46.06

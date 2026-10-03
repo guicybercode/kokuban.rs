@@ -1,0 +1,283 @@
+{
+  "status": "PASS",
+  "scope": "One absolute release-build observation, no baseline or cache-attributed performance delta.",
+  "run": "34748583285",
+  "revision": "72dd68a1262d360d119fb9459ea12a47303bae5d",
+  "hardware": {
+    "kernel": "6.17.0-1022-azure",
+    "architecture": "x86_64",
+    "cpu_models": [
+      "AMD EPYC 7763 64-Core Processor"
+    ],
+    "logical_cpus": 4,
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "mem_total": "MemTotal:       16373452 kB"
+  },
+  "build_inputs_sha256": {
+    "Cargo.toml": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+    "Cargo.lock": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+  },
+  "reported_binary": {
+    "path": "/home/runner/work/kokuban.rs/kokuban.rs/target/release/kokuban",
+    "bytes": 10614800,
+    "sha256": "973afccb2061b80a591f2b364335d14900fb98a605a154d7973d7f89c032331f",
+    "dynamic_dependencies_ldd": "\tlinux-vdso.so.1 (0x00007f986ded4000)\n\tlibfontconfig.so.1 => /lib/x86_64-linux-gnu/libfontconfig.so.1 (0x00007f986de6f000)\n\tlibfreetype.so.6 => /lib/x86_64-linux-gnu/libfreetype.so.6 (0x00007f986d534000)\n\tlibgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f986de41000)\n\tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f986d44b000)\n\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f986d200000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f986ded6000)\n\tlibexpat.so.1 => /lib/x86_64-linux-gnu/libexpat.so.1 (0x00007f986de13000)\n\tlibz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007f986d42f000)\n\tlibbz2.so.1.0 => /lib/x86_64-linux-gnu/libbz2.so.1.0 (0x00007f986d41b000)\n\tlibpng16.so.16 => /lib/x86_64-linux-gnu/libpng16.so.16 (0x00007f986d1c8000)\n\tlibbrotlidec.so.1 => /lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007f986de05000)\n\tlibbrotlicommon.so.1 => /lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007f986d1a5000)\n",
+    "readelf_header_dynamic": "ELF Header:\n  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 \n  Class:                             ELF64\n  Data:                              2's complement, little endian\n  Version:                           1 (current)\n  OS/ABI:                            UNIX - System V\n  ABI Version:                       0\n  Type:                              DYN (Position-Independent Executable file)\n  Machine:                           Advanced Micro Devices X86-64\n  Version:                           0x1\n  Entry point address:               0x302190\n  Start of program headers:          64 (bytes into file)\n  Start of section headers:          10612560 (bytes into file)\n  Flags:                             0x0\n  Size of this header:               64 (bytes)\n  Size of program headers:           56 (bytes)\n  Number of program headers:         12\n  Size of section headers:           64 (bytes)\n  Number of section headers:         35\n  Section header string table index: 33\n\nDynamic section at offset 0x7f7bd0 contains 32 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libfontconfig.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libfreetype.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]\n 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE\n 0x0000000000000015 (DEBUG)              0x0\n 0x0000000000000007 (RELA)               0x2290\n 0x0000000000000008 (RELASZ)             385296 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000006ffffff9 (RELACOUNT)          15872\n 0x0000000000000017 (JMPREL)             0x603a0\n 0x0000000000000002 (PLTRELSZ)           48 (bytes)\n 0x0000000000000003 (PLTGOT)             0x7fec10\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000006 (SYMTAB)             0x340\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000005 (STRTAB)             0x17ec\n 0x000000000000000a (STRSZ)              2719 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x17d0\n 0x0000000000000019 (INIT_ARRAY)         0x7b89e0\n 0x000000000000001b (INIT_ARRAYSZ)       24 (bytes)\n 0x000000000000001a (FINI_ARRAY)         0x7b89d8\n 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)\n 0x000000000000000c (INIT)               0x7b792c\n 0x000000000000000d (FINI)               0x7b7948\n 0x000000006ffffff0 (VERSYM)             0x1498\n 0x000000006ffffffe (VERNEED)            0x160c\n 0x000000006fffffff (VERNEEDNUM)         4\n 0x0000000000000000 (NULL)               0x0\n"
+  },
+  "resource_identity": [
+    7085,
+    26508
+  ],
+  "phases_recomputed": {
+    "startup_settle": {
+      "wall_seconds": 1.0003860699999905,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 15068,
+      "rss_end_kib": 15068,
+      "rss_observed_max_kib": 15068,
+      "hwm_process_lifetime_kib": 24328,
+      "sample_count": 5
+    },
+    "idle": {
+      "wall_seconds": 5.00037801000002,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 15068,
+      "rss_end_kib": 15068,
+      "rss_observed_max_kib": 15068,
+      "hwm_process_lifetime_kib": 24328,
+      "sample_count": 21
+    },
+    "output": {
+      "wall_seconds": 0.1012378059999719,
+      "cpu_seconds": 0.1,
+      "cpu_percent_one_core": 98.77732830364553,
+      "rss_start_kib": 15068,
+      "rss_end_kib": 46704,
+      "rss_observed_max_kib": 46704,
+      "hwm_process_lifetime_kib": 46704,
+      "sample_count": 4
+    },
+    "output_settle": {
+      "wall_seconds": 1.0004254389999687,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 46704,
+      "rss_end_kib": 46704,
+      "rss_observed_max_kib": 46704,
+      "hwm_process_lifetime_kib": 46704,
+      "sample_count": 5
+    },
+    "post_output_idle": {
+      "wall_seconds": 5.000346467999975,
+      "cpu_seconds": 0.0,
+      "cpu_percent_one_core": 0.0,
+      "rss_start_kib": 46704,
+      "rss_end_kib": 46704,
+      "rss_observed_max_kib": 46704,
+      "hwm_process_lifetime_kib": 46704,
+      "sample_count": 21
+    }
+  },
+  "output_recomputed": {
+    "bytes": 2621440,
+    "lines": 32768,
+    "sha256": "f8ed82accb71d2871678550b5e115ec6ef3a9788c7554fcc797d5073fbf2956a",
+    "write_seconds": 0.07810250199997881,
+    "roundtrip_seconds": 0.0003879719999986264,
+    "write_and_terminal_roundtrip_seconds": 0.07849047399997744,
+    "bytes_per_second_including_terminal_roundtrip": 33398193.008756112,
+    "marker": "RESOURCE_OUTPUT_DONE_32768",
+    "reply_hex": "1b5b313b323752",
+    "winsize_rows_cols_pixels": [
+      24,
+      80,
+      720,
+      408
+    ]
+  },
+  "video": {
+    "identities": {
+      "kokuban": [
+        7143,
+        27803
+      ],
+      "mpv": [
+        7151,
+        27810
+      ]
+    },
+    "active_measurements_recomputed": [
+      {
+        "phase": "playing-before-pause",
+        "wall_seconds": 1.524816219999991,
+        "kokuban": {
+          "cpu_seconds": 0.13,
+          "cpu_percent_one_core": 8.525617598690074
+        },
+        "mpv": {
+          "cpu_seconds": 0.06999999999999999,
+          "cpu_percent_one_core": 4.590717168525424
+        }
+      },
+      {
+        "phase": "playing-after-resume",
+        "wall_seconds": 4.533314929000028,
+        "kokuban": {
+          "cpu_seconds": 0.39,
+          "cpu_percent_one_core": 8.602976102655797
+        },
+        "mpv": {
+          "cpu_seconds": 0.21,
+          "cpu_percent_one_core": 4.632371747583891
+        }
+      }
+    ],
+    "observations_recomputed": {
+      "distinct_visible_frame_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71
+      ],
+      "active_capture_count": 242,
+      "invalid_active_captures": 0,
+      "observed_active_transitions": 71,
+      "observed_frame_rate_lower_bound_hz": 11.719785896632423,
+      "rate_note": "Distinct observed transitions / measured active wall time; sampling lower bound, not source FPS.",
+      "capture_interval_seconds": {
+        "min": 0.02424418049997712,
+        "median": 0.025060960000018895,
+        "max": 0.02585156850000203
+      },
+      "process_peaks_kib": {
+        "kokuban": {
+          "rss_kib": 32260,
+          "hwm_kib": 32260
+        },
+        "mpv": {
+          "rss_kib": 62588,
+          "hwm_kib": 62588
+        }
+      }
+    },
+    "screenshots": [
+      {
+        "file": "frame-00.png",
+        "frame_id": 0,
+        "window_pixels": [
+          720,
+          408
+        ],
+        "full_video_region_rgb_exact": true,
+        "sha256": "83803ca75eb8613bc9a9a08baa0f3d163a67a4438e0c8df7f2bdc8b9eec331f9"
+      },
+      {
+        "file": "paused.png",
+        "frame_id": 18,
+        "window_pixels": [
+          720,
+          408
+        ],
+        "full_video_region_rgb_exact": true,
+        "sha256": "5008ae86d8c72514dc69af06d4efdcb2059bf2e211de2f77dddfeffda4fca316"
+      },
+      {
+        "file": "frame-71.png",
+        "frame_id": 71,
+        "window_pixels": [
+          720,
+          408
+        ],
+        "full_video_region_rgb_exact": true,
+        "sha256": "601396a5523b03f8544051d9c6e39fc55ea9526b58836d51ff4f857cb4b2d57b"
+      }
+    ],
+    "fixture_decoded_frames_exact": 72,
+    "fixture_sha256": "823d4dbf0a39d76963a8fa8f34a0551c57bc22a66fe5dd3e52f77821e1f55c69",
+    "decoded_rgb_sha256": "0cd670d367b87d25ac6e6316c6db445597e621fb503bf11d33e482545f65cc4a"
+  },
+  "limitations": [
+    "Kokuban binary is not retained; its size/SHA/ELF metadata are reported by CI, not independently rehashed here.",
+    "Video reuses the same release path in a subsequent workflow step but has no separate binary hash.",
+    "CPU uses 100 Hz process utime+stime, excluding children/display/observer; zero sampled ticks is not proof of zero work.",
+    "RSS is sampled; VmHWM covers process lifetime. Output sampling lasts 101 ms while PTY write plus DSR lasts 78.49 ms.",
+    "DSR proves parsing/terminal response, not presentation of every line; video captures add observer overhead.",
+    "Only three screenshots are retained; other 298 capture classifications are validated from report records.",
+    "GitHub ZIP digest is retained as API metadata; original ZIP bytes were not retained by gh download. Local file hashes are recorded."
+  ]
+}

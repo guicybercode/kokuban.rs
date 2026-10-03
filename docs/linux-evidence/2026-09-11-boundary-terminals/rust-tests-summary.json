@@ -1,0 +1,13 @@
+{
+  "source_revision": "8dafe9e5ba4106994cae27d702778a277f108199",
+  "command": "cargo test --release --locked --all-targets",
+  "full_log_sha256": "1925b7d4afea3bf67538df29f835f9c603055a0f3dc2bff43e31dbb23bbc932d",
+  "full_log_bytes": 87892,
+  "full_log_retained": false,
+  "result_lines": [
+    "test result: ok. 685 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.03s",
+    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+    "test result: ok. 224 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s"
+  ],
+  "warning_count": 22
+}

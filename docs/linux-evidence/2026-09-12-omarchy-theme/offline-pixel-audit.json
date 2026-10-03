@@ -1,0 +1,126 @@
+{
+  "run": 34719320120,
+  "revision": "4b05e0807e269fd83c38dbef5644e8d71ccee955",
+  "script_sha256": "5a321ec28556c700b20cf1d7dd2db8a43e86600d4b1106bff41a61d556a76089",
+  "artifact_sha256": "8899770c44e5f81c59275321b389bec08f1a5e81c733702b44230bd5b09e1bb8",
+  "profiles": {
+    "automatic": {
+      "geometry": [
+        360,
+        272
+      ],
+      "cell_pixels": [
+        9,
+        17
+      ],
+      "phases": [
+        {
+          "phase": "initial",
+          "palette": "first",
+          "selected": false,
+          "pixel_checks_passed": 37
+        },
+        {
+          "phase": "selected",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "reloaded",
+          "palette": "second",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "incomplete",
+          "palette": "second",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "invalid",
+          "palette": "second",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "recovered",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "input-survived",
+          "palette": "first",
+          "selected": false,
+          "pixel_checks_passed": 37
+        }
+      ],
+      "recovered_selection_pixels_identical_to_selected": true,
+      "input_survived_pixels_identical_to_initial": true,
+      "invalid_and_incomplete_pixels_identical_to_reloaded": true,
+      "terminal_log_bytes": 0
+    },
+    "overrides": {
+      "geometry": [
+        360,
+        272
+      ],
+      "cell_pixels": [
+        9,
+        17
+      ],
+      "phases": [
+        {
+          "phase": "initial",
+          "palette": "first",
+          "selected": false,
+          "pixel_checks_passed": 37
+        },
+        {
+          "phase": "selected",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "reloaded",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "incomplete",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "invalid",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "recovered",
+          "palette": "first",
+          "selected": true,
+          "pixel_checks_passed": 39
+        },
+        {
+          "phase": "input-survived",
+          "palette": "first",
+          "selected": false,
+          "pixel_checks_passed": 37
+        }
+      ],
+      "recovered_selection_pixels_identical_to_selected": true,
+      "input_survived_pixels_identical_to_initial": true,
+      "invalid_and_incomplete_pixels_identical_to_reloaded": true,
+      "terminal_log_bytes": 0
+    }
+  },
+  "pixel_checks_total": 538,
+  "runtime_only_assertions": "OSC10/11 numeric replies,DSR cursor9;2 and PTY PID/start-time are checked in pinned harness before passed result; per-probe ready.json and input.bin are not retained,so these assertions cannot be independently replayed from archive."
+}

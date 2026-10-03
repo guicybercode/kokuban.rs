@@ -1,0 +1,1055 @@
+{
+  "schema": 1,
+  "kind": "audited-paired-compact-history",
+  "before_revision": "24782c344714727be4f8981cd0d1d10f047aa9f4",
+  "after_revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+  "harness_revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+  "profile": "alternate",
+  "run_id": 34743855262,
+  "source_files_changed_between_revisions": [
+    "src/grid/buffer.rs",
+    "src/grid/history.rs",
+    "src/grid/history_tests.rs",
+    "src/grid/mod.rs",
+    "src/selection.rs"
+  ],
+  "run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34743855262",
+  "run_conclusion": "success",
+  "original_files": 87,
+  "raw_report_sha256": "5fb04fdded997b503ffea58b1073b57568a69bd9d2e0b259e64e3ad2714bfd36",
+  "raw_report_byte_identical": true,
+  "original_inventory": "artifact-inventory.json",
+  "harness": {
+    "scripts/compare-kokuban-revisions.py": {
+      "revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+      "git_blob": "648b217d8dad523ffc2120f95c27a2077db03a7d",
+      "sha256": "4cb8f4f73c10db5c57ac9ef8f9ea7e9c9750a18c74d490a9dfebd166f04cd8cd",
+      "bytes": 13551,
+      "snapshot": "harness/scripts/compare-kokuban-revisions.py"
+    },
+    "scripts/compare-terminal-performance.py": {
+      "revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+      "git_blob": "0dc48359b6daa89fe72e54ec2e5573ba5ac8cbee",
+      "sha256": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12",
+      "bytes": 28687,
+      "snapshot": "harness/scripts/compare-terminal-performance.py"
+    },
+    "scripts/linux-resource-smoke.py": {
+      "revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+      "git_blob": "075c5bcd8256c4da7655cd5e7f49d554eacf1dae",
+      "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+      "bytes": 17732,
+      "snapshot": "harness/scripts/linux-resource-smoke.py"
+    },
+    ".github/workflows/linux-paired-performance.yml": {
+      "revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+      "git_blob": "70f1515567cbc5d87cfc7440b6e93067dabeb74b",
+      "sha256": "b5ced1bbf576335a4f80efdc9d24ff797926146d8a8a1bde66c5830d28418ec4",
+      "bytes": 5858,
+      "snapshot": "harness/.github/workflows/linux-paired-performance.yml"
+    }
+  },
+  "builds": {
+    "before": {
+      "revision": "24782c344714727be4f8981cd0d1d10f047aa9f4",
+      "cargo_inputs": {
+        "Cargo.toml": {
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+          "bytes": 2084,
+          "snapshot": "artifact/before-build/Cargo.toml"
+        },
+        "Cargo.lock": {
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1",
+          "bytes": 69307,
+          "snapshot": "artifact/before-build/Cargo.lock"
+        }
+      },
+      "binary_sha256_observed_ci": "cc6b2f80fc273ce7b4f6c18564c606a5118577191a2fe613a6285bc2c53a492c",
+      "cargo_tree_sha256": "5eb7ec42c86ba62a8f75101959fc59129957a74461c3bb977a872e7c7cd0683f"
+    },
+    "after": {
+      "revision": "f0040ad66cbb49d76b387bbe0539c014bc801d28",
+      "cargo_inputs": {
+        "Cargo.toml": {
+          "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+          "bytes": 2084,
+          "snapshot": "artifact/after-build/Cargo.toml"
+        },
+        "Cargo.lock": {
+          "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1",
+          "bytes": 69307,
+          "snapshot": "artifact/after-build/Cargo.lock"
+        }
+      },
+      "binary_sha256_observed_ci": "59fd885962c1b8fa7b1d22dede79109e3a5918124fec80b8c512fccd2c3b6221",
+      "cargo_tree_sha256": "d3e1c5bcb33cdbbb3832b0dd3b1a6428bcc9a67bc28601f2ebbfd3181e6196b9"
+    }
+  },
+  "build_provenance": {
+    "source_directories_recorded_ci": {
+      "before": "/home/runner/work/_temp/kokuban-paired-source-before",
+      "after": "/home/runner/work/_temp/kokuban-paired-source-after"
+    },
+    "separate_targets_verified_in_workflow_and_ci_command": true,
+    "python_harness_tests_passed": 23,
+    "rust_correctness_tests_run_by_paired_workflow": false
+  },
+  "cargo_lock_equal": true,
+  "cargo_trees_equal_after_root_path_normalization": true,
+  "cpu": {
+    "command": [
+      "lscpu"
+    ],
+    "status": 0,
+    "output": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7763 64-Core Processor\nCPU family:                              25\nModel:                                   1\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                1\nBogoMIPS:                                4890.85\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves user_shstk clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload umip vaes vpclmulqdq rdpid fsrm\nVirtualization:                          AMD-V\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               64 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                1 MiB (2 instances)\nL3 cache:                                32 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Vulnerable: No microcode\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected"
+  },
+  "cpu_count": 4,
+  "harness_cpu_affinity": [
+    0
+  ],
+  "environment": {
+    "DISPLAY": null,
+    "WAYLAND_DISPLAY": "wayland-kokuban-paired",
+    "XDG_CURRENT_DESKTOP": null,
+    "XDG_SESSION_TYPE": null,
+    "LIBGL_ALWAYS_SOFTWARE": null,
+    "MESA_LOADER_DRIVER_OVERRIDE": null,
+    "GDK_SCALE": null,
+    "GDK_DPI_SCALE": null,
+    "WINIT_X11_SCALE_FACTOR": null
+  },
+  "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+  "font_match": {
+    "command": [
+      "fc-match",
+      "-f",
+      "%{family}\n%{file}\n",
+      "DejaVu Sans Mono"
+    ],
+    "status": 0,
+    "output": "DejaVu Sans Mono\n/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+  },
+  "font_pixels": 14.0,
+  "geometry": [
+    24,
+    80,
+    720,
+    408
+  ],
+  "history_limit_lines": 0,
+  "processes": 10,
+  "workloads": 40,
+  "rtt_observations": 300,
+  "regenerated_payloads": {
+    "ascii": {
+      "bytes": 33554380,
+      "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a"
+    },
+    "ansi": {
+      "bytes": 33554392,
+      "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e"
+    },
+    "unicode": {
+      "bytes": 33554400,
+      "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5"
+    },
+    "short_lines": {
+      "bytes": 33554430,
+      "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b"
+    }
+  },
+  "throughput": {
+    "ascii": {
+      "before_mib_per_second": {
+        "count": 5,
+        "median": 80.38909893725584,
+        "min": 80.10643219658066,
+        "max": 80.84226883414091,
+        "median_absolute_deviation": 0.22259708508937592,
+        "samples": [
+          80.3884965233125,
+          80.61169602234521,
+          80.10643219658066,
+          80.84226883414091,
+          80.38909893725584
+        ]
+      },
+      "after_mib_per_second": {
+        "count": 5,
+        "median": 80.37468568660772,
+        "min": 78.01472902553566,
+        "max": 81.18030215399722,
+        "median_absolute_deviation": 0.7344903228482167,
+        "samples": [
+          81.10917600945594,
+          80.37468568660772,
+          79.775083796835,
+          81.18030215399722,
+          78.01472902553566
+        ]
+      },
+      "ratio_of_medians_change_percent": -0.01792935962544595,
+      "paired_throughput_change_percent": {
+        "count": 5,
+        "median": -0.2940148234467088,
+        "min": -2.953596872100017,
+        "max": 0.8964957889645797,
+        "median_absolute_deviation": 0.7121541517105312,
+        "samples": [
+          0.8964957889645797,
+          -0.2940148234467088,
+          -0.41363519839771046,
+          0.4181393282638224,
+          -2.953596872100017
+        ]
+      },
+      "slower_after_pairs": 3,
+      "min_max_ranges_overlap": true
+    },
+    "ansi": {
+      "before_mib_per_second": {
+        "count": 5,
+        "median": 68.73722418469315,
+        "min": 67.76390906720724,
+        "max": 69.56825036454508,
+        "median_absolute_deviation": 0.4681270031191218,
+        "samples": [
+          67.76390906720724,
+          68.5434681431184,
+          68.73722418469315,
+          69.20535118781227,
+          69.56825036454508
+        ]
+      },
+      "after_mib_per_second": {
+        "count": 5,
+        "median": 67.41688260185357,
+        "min": 66.32353465229934,
+        "max": 68.12424637707683,
+        "median_absolute_deviation": 0.28742387179519824,
+        "samples": [
+          68.12424637707683,
+          66.32353465229934,
+          67.41688260185357,
+          67.70430647364877,
+          67.21879166795078
+        ]
+      },
+      "ratio_of_medians_change_percent": -1.9208538001067477,
+      "paired_throughput_change_percent": {
+        "count": 5,
+        "median": -2.168972035254768,
+        "min": -3.3771996338601062,
+        "max": 0.5317540189604619,
+        "median_absolute_deviation": 1.0697515819742986,
+        "samples": [
+          0.5317540189604619,
+          -3.2387236172290668,
+          -1.9208538001067477,
+          -2.168972035254768,
+          -3.3771996338601062
+        ]
+      },
+      "slower_after_pairs": 4,
+      "min_max_ranges_overlap": true
+    },
+    "unicode": {
+      "before_mib_per_second": {
+        "count": 5,
+        "median": 38.53742114988795,
+        "min": 38.25044374073948,
+        "max": 39.5640857055541,
+        "median_absolute_deviation": 0.28697740914847003,
+        "samples": [
+          38.53742114988795,
+          38.25044374073948,
+          38.520754712228744,
+          39.5640857055541,
+          38.92915240231184
+        ]
+      },
+      "after_mib_per_second": {
+        "count": 5,
+        "median": 39.1595817604144,
+        "min": 38.78364112895006,
+        "max": 39.59524881706878,
+        "median_absolute_deviation": 0.36248457506000875,
+        "samples": [
+          39.47007666583848,
+          39.1595817604144,
+          39.59524881706878,
+          38.79709718535439,
+          38.78364112895006
+        ]
+      },
+      "ratio_of_medians_change_percent": 1.6144323931448712,
+      "paired_throughput_change_percent": {
+        "count": 5,
+        "median": 2.376803850530562,
+        "min": -1.938597863496283,
+        "max": 2.789390064828945,
+        "median_absolute_deviation": 0.4125862142983827,
+        "samples": [
+          2.420129547130423,
+          2.376803850530562,
+          2.789390064828945,
+          -1.938597863496283,
+          -0.3737848485834028
+        ]
+      },
+      "slower_after_pairs": 2,
+      "min_max_ranges_overlap": true
+    },
+    "short_lines": {
+      "before_mib_per_second": {
+        "count": 5,
+        "median": 34.47308805288584,
+        "min": 34.052170139719266,
+        "max": 34.60958136233984,
+        "median_absolute_deviation": 0.09553820937950519,
+        "samples": [
+          34.46700146871084,
+          34.052170139719266,
+          34.60958136233984,
+          34.47308805288584,
+          34.56862626226535
+        ]
+      },
+      "after_mib_per_second": {
+        "count": 5,
+        "median": 33.90637296060239,
+        "min": 33.59392657365353,
+        "max": 34.143776526524434,
+        "median_absolute_deviation": 0.2285268252642325,
+        "samples": [
+          33.59392657365353,
+          33.67784613533816,
+          34.143776526524434,
+          33.9848573477844,
+          33.90637296060239
+        ]
+      },
+      "ratio_of_medians_change_percent": -1.6439348033284507,
+      "paired_throughput_change_percent": {
+        "count": 5,
+        "median": -1.4162662316542063,
+        "min": -2.53307470291515,
+        "max": -1.0992662225203897,
+        "median_absolute_deviation": 0.31700000913381654,
+        "samples": [
+          -2.53307470291515,
+          -1.0992662225203897,
+          -1.3458840514097292,
+          -1.4162662316542063,
+          -1.915764012832255
+        ]
+      },
+      "slower_after_pairs": 5,
+      "min_max_ranges_overlap": true
+    }
+  },
+  "statistics_by_side": {
+    "before": {
+      "ascii": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.39806330499999376,
+          "min": 0.3958319190000452,
+          "max": 0.39946792700001765,
+          "median_absolute_deviation": 0.0010991919999980837,
+          "samples": [
+            0.39806628799999544,
+            0.3969641129999957,
+            0.39946792700001765,
+            0.3958319190000452,
+            0.39806330499999376
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 80.38909893725584,
+          "min": 80.10643219658066,
+          "max": 80.84226883414091,
+          "median_absolute_deviation": 0.22259708508937592,
+          "samples": [
+            80.3884965233125,
+            80.61169602234521,
+            80.10643219658066,
+            80.84226883414091,
+            80.38909893725584
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.35,
+          "min": 0.35,
+          "max": 0.36,
+          "median_absolute_deviation": 0.0,
+          "samples": [
+            0.35,
+            0.36,
+            0.35,
+            0.36,
+            0.35
+          ]
+        }
+      },
+      "ansi": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.46554050199998187,
+          "min": 0.4599793969999837,
+          "max": 0.47222721199997864,
+          "median_absolute_deviation": 0.0031490639999844916,
+          "samples": [
+            0.47222721199997864,
+            0.4668564739999965,
+            0.46554050199998187,
+            0.4623914379999974,
+            0.4599793969999837
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 68.73722418469315,
+          "min": 67.76390906720724,
+          "max": 69.56825036454508,
+          "median_absolute_deviation": 0.4681270031191218,
+          "samples": [
+            67.76390906720724,
+            68.5434681431184,
+            68.73722418469315,
+            69.20535118781227,
+            69.56825036454508
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.42000000000000015,
+          "min": 0.42000000000000015,
+          "max": 0.42000000000000015,
+          "median_absolute_deviation": 0.0,
+          "samples": [
+            0.42000000000000015,
+            0.42000000000000015,
+            0.42000000000000015,
+            0.42000000000000015,
+            0.42000000000000015
+          ]
+        }
+      },
+      "unicode": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.8303609460000132,
+          "min": 0.8088135719999627,
+          "max": 0.8365908039999965,
+          "median_absolute_deviation": 0.006229857999983324,
+          "samples": [
+            0.8303609460000132,
+            0.8365908039999965,
+            0.8307202109999992,
+            0.8088135719999627,
+            0.8220052970000324
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 38.53742114988795,
+          "min": 38.25044374073948,
+          "max": 39.5640857055541,
+          "median_absolute_deviation": 0.28697740914847003,
+          "samples": [
+            38.53742114988795,
+            38.25044374073948,
+            38.520754712228744,
+            39.5640857055541,
+            38.92915240231184
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.77,
+          "min": 0.7599999999999998,
+          "max": 0.79,
+          "median_absolute_deviation": 0.010000000000000231,
+          "samples": [
+            0.79,
+            0.7800000000000002,
+            0.77,
+            0.7599999999999998,
+            0.77
+          ]
+        }
+      },
+      "short_lines": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.9282602719999886,
+          "min": 0.924599397999998,
+          "max": 0.9397344710000084,
+          "median_absolute_deviation": 0.00256545700000288,
+          "samples": [
+            0.928424194999991,
+            0.9397344710000084,
+            0.924599397999998,
+            0.9282602719999886,
+            0.9256948149999857
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 34.47308805288584,
+          "min": 34.052170139719266,
+          "max": 34.60958136233984,
+          "median_absolute_deviation": 0.09553820937950519,
+          "samples": [
+            34.46700146871084,
+            34.052170139719266,
+            34.60958136233984,
+            34.47308805288584,
+            34.56862626226535
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.8800000000000008,
+          "min": 0.8700000000000001,
+          "max": 0.9000000000000004,
+          "median_absolute_deviation": 0.009999999999999787,
+          "samples": [
+            0.8900000000000006,
+            0.9000000000000004,
+            0.8800000000000008,
+            0.8700000000000001,
+            0.8799999999999999
+          ]
+        }
+      }
+    },
+    "after": {
+      "ascii": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.39813468799999896,
+          "min": 0.39418368200000486,
+          "max": 0.41017831900001056,
+          "median_absolute_deviation": 0.0036053390000176933,
+          "samples": [
+            0.39452934899998127,
+            0.39813468799999896,
+            0.4011271300000203,
+            0.39418368200000486,
+            0.41017831900001056
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 80.37468568660772,
+          "min": 78.01472902553566,
+          "max": 81.18030215399722,
+          "median_absolute_deviation": 0.7344903228482167,
+          "samples": [
+            81.10917600945594,
+            80.37468568660772,
+            79.775083796835,
+            81.18030215399722,
+            78.01472902553566
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.36,
+          "min": 0.35,
+          "max": 0.37,
+          "median_absolute_deviation": 0.010000000000000009,
+          "samples": [
+            0.36,
+            0.36,
+            0.35,
+            0.35,
+            0.37
+          ]
+        }
+      },
+      "ansi": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.4746579879999899,
+          "min": 0.46972940700001686,
+          "max": 0.48248275700001386,
+          "median_absolute_deviation": 0.002015056999994158,
+          "samples": [
+            0.46972940700001686,
+            0.48248275700001386,
+            0.4746579879999899,
+            0.47264293099999577,
+            0.47605678499996884
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 67.41688260185357,
+          "min": 66.32353465229934,
+          "max": 68.12424637707683,
+          "median_absolute_deviation": 0.28742387179519824,
+          "samples": [
+            68.12424637707683,
+            66.32353465229934,
+            67.41688260185357,
+            67.70430647364877,
+            67.21879166795078
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.43000000000000016,
+          "min": 0.42000000000000015,
+          "max": 0.44000000000000017,
+          "median_absolute_deviation": 0.010000000000000009,
+          "samples": [
+            0.42000000000000015,
+            0.44000000000000017,
+            0.42000000000000015,
+            0.43000000000000016,
+            0.44000000000000017
+          ]
+        }
+      },
+      "unicode": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.817168315999993,
+          "min": 0.8081770019999794,
+          "max": 0.825089356000035,
+          "median_absolute_deviation": 0.007634872999972231,
+          "samples": [
+            0.810739988000023,
+            0.817168315999993,
+            0.8081770019999794,
+            0.8248031889999652,
+            0.825089356000035
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 39.1595817604144,
+          "min": 38.78364112895006,
+          "max": 39.59524881706878,
+          "median_absolute_deviation": 0.36248457506000875,
+          "samples": [
+            39.47007666583848,
+            39.1595817604144,
+            39.59524881706878,
+            38.79709718535439,
+            38.78364112895006
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.77,
+          "min": 0.7599999999999998,
+          "max": 0.7799999999999998,
+          "median_absolute_deviation": 0.009999999999999787,
+          "samples": [
+            0.77,
+            0.7599999999999998,
+            0.7600000000000002,
+            0.77,
+            0.7799999999999998
+          ]
+        }
+      },
+      "short_lines": {
+        "write_and_dsr_seconds": {
+          "count": 5,
+          "median": 0.9437753230000112,
+          "min": 0.9372132009999632,
+          "max": 0.9525530759999867,
+          "median_absolute_deviation": 0.006404150000008713,
+          "samples": [
+            0.9525530759999867,
+            0.9501794730000199,
+            0.9372132009999632,
+            0.9415957749999961,
+            0.9437753230000112
+          ]
+        },
+        "mib_per_second": {
+          "count": 5,
+          "median": 33.90637296060239,
+          "min": 33.59392657365353,
+          "max": 34.143776526524434,
+          "median_absolute_deviation": 0.2285268252642325,
+          "samples": [
+            33.59392657365353,
+            33.67784613533816,
+            34.143776526524434,
+            33.9848573477844,
+            33.90637296060239
+          ]
+        },
+        "terminal_cpu_seconds": {
+          "count": 5,
+          "median": 0.9000000000000004,
+          "min": 0.8900000000000006,
+          "max": 0.9199999999999999,
+          "median_absolute_deviation": 0.0,
+          "samples": [
+            0.9199999999999999,
+            0.9000000000000004,
+            0.8900000000000006,
+            0.9000000000000004,
+            0.9000000000000004
+          ]
+        }
+      }
+    }
+  },
+  "protocol_rtt_seconds": {
+    "before": {
+      "count": 150,
+      "median": 5.642049998755283e-05,
+      "min": 4.4182999999975436e-05,
+      "max": 0.00011754799999152965,
+      "median_absolute_deviation": 5.815999983838083e-06,
+      "samples": [
+        5.818799999701696e-05,
+        5.8168000009573007e-05,
+        5.34899999991012e-05,
+        5.9079999999767097e-05,
+        5.961200000115241e-05,
+        5.8730000006335104e-05,
+        6.000199999789402e-05,
+        5.199699998570395e-05,
+        5.702699999687866e-05,
+        5.9160000006386326e-05,
+        5.08150000086971e-05,
+        5.5994000007331124e-05,
+        5.4922000003898575e-05,
+        5.463200000122015e-05,
+        5.764799999496972e-05,
+        5.5352999993374397e-05,
+        5.5844000002025496e-05,
+        6.705499998815867e-05,
+        0.00011754799999152965,
+        6.359900001484675e-05,
+        6.141399998682573e-05,
+        5.124500000874832e-05,
+        5.9640999978682885e-05,
+        5.0463999997418796e-05,
+        5.544299997950475e-05,
+        5.006399999274436e-05,
+        5.540300000461684e-05,
+        5.02540000013596e-05,
+        5.966099999454855e-05,
+        5.0625000000081855e-05,
+        4.935199999067663e-05,
+        4.885100000251441e-05,
+        4.975300001319738e-05,
+        4.8460000016348204e-05,
+        4.850999999916894e-05,
+        4.4182999999975436e-05,
+        4.998299999670053e-05,
+        4.924200001710233e-05,
+        4.814900000837952e-05,
+        4.9211999993303834e-05,
+        4.886099998202553e-05,
+        4.844099998990714e-05,
+        4.802899999845067e-05,
+        5.002399998943474e-05,
+        4.879100001176084e-05,
+        4.832999999848653e-05,
+        4.801899999051784e-05,
+        4.959200001053432e-05,
+        4.7478999988470605e-05,
+        4.660700000158613e-05,
+        4.752899999971305e-05,
+        4.75090000122691e-05,
+        4.718799999636758e-05,
+        4.709799998181552e-05,
+        4.683800000293559e-05,
+        4.7018000003618e-05,
+        4.6476999983724454e-05,
+        4.691799998113311e-05,
+        4.661700000951896e-05,
+        4.7058000006927614e-05,
+        5.2197999991676625e-05,
+        5.855999998516381e-05,
+        6.069299999467148e-05,
+        5.1616999996895174e-05,
+        5.7247000000870685e-05,
+        5.94300000216208e-05,
+        5.107499998757703e-05,
+        5.731699999955708e-05,
+        5.13459999922361e-05,
+        5.821800002081545e-05,
+        5.101500002524517e-05,
+        5.68659999942156e-05,
+        5.100500001731234e-05,
+        5.72870000041803e-05,
+        5.1936999994950384e-05,
+        5.758699998636985e-05,
+        5.096399999615642e-05,
+        5.8669999987159827e-05,
+        5.138599999554572e-05,
+        5.669600000146602e-05,
+        5.1706999983025526e-05,
+        5.6255000004057365e-05,
+        4.9542999988716474e-05,
+        4.726800000298681e-05,
+        5.909999998721105e-05,
+        5.025299998351329e-05,
+        4.814899997995781e-05,
+        5.661500000542219e-05,
+        4.998299999670053e-05,
+        5.553300002247852e-05,
+        7.409799997049049e-05,
+        7.475000001022636e-05,
+        7.380800002465548e-05,
+        7.407800001146825e-05,
+        7.299600002852458e-05,
+        6.646400004228781e-05,
+        7.349699995984338e-05,
+        7.147300004817225e-05,
+        7.228500004430316e-05,
+        7.560099999182057e-05,
+        7.337699997833624e-05,
+        7.440799998903458e-05,
+        7.471899999700327e-05,
+        6.74149999895235e-05,
+        6.584199996950701e-05,
+        7.333700000344834e-05,
+        7.330699997964985e-05,
+        6.646399998544439e-05,
+        7.403799997973692e-05,
+        6.543200004216487e-05,
+        7.33960000047773e-05,
+        7.288599999810685e-05,
+        7.349699995984338e-05,
+        7.514000003538968e-05,
+        7.491999997455423e-05,
+        7.499899999174886e-05,
+        8.499800003392011e-05,
+        7.468900003004819e-05,
+        6.5623000011783e-05,
+        7.357699996646261e-05,
+        5.994199995029703e-05,
+        5.900999997265899e-05,
+        5.231699998375916e-05,
+        5.671500002790708e-05,
+        5.846900000960886e-05,
+        5.8738999996421626e-05,
+        5.9161000024232635e-05,
+        5.852900000036243e-05,
+        5.2036999989013566e-05,
+        5.7305999973777944e-05,
+        5.8888999944883835e-05,
+        5.058400000734764e-05,
+        5.635499996969884e-05,
+        5.089499995847291e-05,
+        5.671599996048826e-05,
+        5.8249000005616836e-05,
+        5.838900000298963e-05,
+        6.042200004685583e-05,
+        5.0705000035122794e-05,
+        5.648600000540682e-05,
+        5.873000003475681e-05,
+        5.8319000004303234e-05,
+        5.0293000015244615e-05,
+        5.578399998285022e-05,
+        4.9963000037678285e-05,
+        5.541300004097138e-05,
+        5.097499996509214e-05,
+        5.554400001983595e-05,
+        4.98329999913949e-05,
+        5.6606000043757376e-05
+      ]
+    },
+    "after": {
+      "count": 150,
+      "median": 5.840400001488888e-05,
+      "min": 3.892199998745127e-05,
+      "max": 0.0001502300000026935,
+      "median_absolute_deviation": 1.0950500026751797e-05,
+      "samples": [
+        5.271899999570451e-05,
+        5.7737999981100074e-05,
+        5.175600000484337e-05,
+        5.995099999722697e-05,
+        5.273800002214557e-05,
+        5.8158000001640175e-05,
+        5.6825999990905984e-05,
+        5.056399999148198e-05,
+        4.886100001044724e-05,
+        4.8870999989958364e-05,
+        4.116700000622586e-05,
+        4.843100001039602e-05,
+        4.906099999857361e-05,
+        3.892199998745127e-05,
+        4.795999998918887e-05,
+        4.7548999987157003e-05,
+        4.668699997978365e-05,
+        4.056499997773244e-05,
+        4.662700001745179e-05,
+        3.997400000343987e-05,
+        4.744899999309382e-05,
+        4.76889999845298e-05,
+        4.0093999984947004e-05,
+        3.9452999999411986e-05,
+        4.625599999030783e-05,
+        4.00549999994837e-05,
+        4.588600000943188e-05,
+        3.988500000673412e-05,
+        8.738299999322408e-05,
+        6.241600001999359e-05,
+        6.61529999774757e-05,
+        7.628200000908691e-05,
+        7.502899998712564e-05,
+        7.519000001821041e-05,
+        7.414800001015465e-05,
+        7.492000000297594e-05,
+        7.464899999831687e-05,
+        7.720399997879213e-05,
+        7.535000000302716e-05,
+        7.667299999525312e-05,
+        6.621400001449729e-05,
+        8.300400000393893e-05,
+        7.354699999950753e-05,
+        7.4237999996285e-05,
+        7.406799997511371e-05,
+        7.576100000505903e-05,
+        7.405799999560259e-05,
+        8.328499998810912e-05,
+        7.510000000365835e-05,
+        7.391799999822979e-05,
+        7.65930000170556e-05,
+        7.4237999996285e-05,
+        7.864599999152233e-05,
+        0.0001502300000026935,
+        8.46480000120664e-05,
+        6.758600000011938e-05,
+        7.57810000209247e-05,
+        7.581200000572608e-05,
+        7.521000000565436e-05,
+        7.57509999971262e-05,
+        4.8800999991271965e-05,
+        4.877000003489229e-05,
+        4.950199996756055e-05,
+        4.883100001507046e-05,
+        4.8471000013705634e-05,
+        5.0794999992831436e-05,
+        4.8902000003181456e-05,
+        4.818000002160261e-05,
+        4.876100001638406e-05,
+        4.9461999992672645e-05,
+        4.837000000179614e-05,
+        4.918199999792705e-05,
+        4.832999997006482e-05,
+        4.868100000976483e-05,
+        6.358899997849221e-05,
+        5.2347000007557654e-05,
+        4.861100001107843e-05,
+        4.874999996218321e-05,
+        4.927100002305451e-05,
+        4.89909999714655e-05,
+        4.891200001111429e-05,
+        4.7899000037432415e-05,
+        4.7217999963322654e-05,
+        4.710700000032375e-05,
+        4.7036999944793934e-05,
+        4.728799996200905e-05,
+        4.7457999983180343e-05,
+        4.7397999992426776e-05,
+        4.7317999985807546e-05,
+        4.718799999636758e-05,
+        5.9059999955479725e-05,
+        5.934099999649334e-05,
+        5.919000000176311e-05,
+        5.812799997784168e-05,
+        5.108499999550986e-05,
+        5.852900000036243e-05,
+        5.83789999950568e-05,
+        5.200699996521507e-05,
+        5.7907999973849655e-05,
+        5.8648999981869565e-05,
+        5.842900003472096e-05,
+        5.885899997792876e-05,
+        5.916999998589745e-05,
+        5.108599998493446e-05,
+        5.647500000804939e-05,
+        5.224700004191618e-05,
+        5.7006000020010106e-05,
+        5.871000001889115e-05,
+        5.820899997388551e-05,
+        5.088499995054008e-05,
+        5.744700001741876e-05,
+        5.132500001536755e-05,
+        5.6755000002794986e-05,
+        5.130599998892649e-05,
+        5.701599997109952e-05,
+        5.873000003475681e-05,
+        5.825900001354967e-05,
+        5.8147999993707344e-05,
+        5.91800000506737e-05,
+        5.0944999998137064e-05,
+        9.37540000336412e-05,
+        9.09099999830687e-05,
+        7.618200004344544e-05,
+        7.698300004221892e-05,
+        7.593100002623032e-05,
+        6.59030000065286e-05,
+        8.255399995960033e-05,
+        7.297600001265891e-05,
+        7.368699999688033e-05,
+        7.395800002996111e-05,
+        7.36069999902611e-05,
+        7.542000003013527e-05,
+        6.551199999194068e-05,
+        7.397799998898336e-05,
+        7.45180000194523e-05,
+        7.921700000679266e-05,
+        8.025900001484843e-05,
+        8.351600001788029e-05,
+        7.410799997842332e-05,
+        7.56809999984398e-05,
+        8.645099995874261e-05,
+        7.931800001870215e-05,
+        8.092099994883029e-05,
+        6.458100000372724e-05,
+        7.436899994672785e-05,
+        8.187299999917741e-05,
+        7.500999998910629e-05,
+        7.539099999576138e-05,
+        8.34859999940818e-05,
+        7.834500001990818e-05
+      ]
+    }
+  },
+  "archive": {
+    "archive_bytes_supplied": false,
+    "archive_digest_independently_verified": false
+  },
+  "ci_log": {
+    "bytes": 316171,
+    "sha256": "6a94eeb01a19ac36488e90705ed6fa89d2140790152ea50c7bb4374b60d0030a",
+    "retained_full": true
+  },
+  "diagnostics_file": "diagnostics.json",
+  "rendering_equivalence_verified": false,
+  "auditor_sha256": "eecca87c94ad0853ba089e662f660a7d979eccb8f9ee33db301219926d800f16",
+  "limitations": [
+    "Only PTY processing throughput and DSR RTT; no frame presentation or input-to-photon measurement.",
+    "DSR validates a final marker, not workload text, grapheme rendering or pixels.",
+    "No physical Omarchy/Hyprland/GPU/monitor validation or ranking against other terminals.",
+    "Five pairs describe this run; small changes and overlapping ranges do not establish noise or equivalence.",
+    "Compare source revisions within this run. Other profiles may use different CPU models and environments.",
+    "CI metadata and logs were supplied by the operator; no API refresh was performed by this auditor.",
+    "Binary hashes were recorded in CI; executable bytes were not independently rehashed or retained.",
+    "Per-child CPU affinity was inherited from the observed harness affinity, not read back separately.",
+    "Coarse process CPU counters are not instruction counts.",
+    "Paired CI builds revisions and tests the Python harness; source Rust correctness CI is separate.",
+    "The raw runner source_refs_verified_by_runner remains false; Git/workflow/build checks are external audit evidence.",
+    "Warnings and error diagnostics are preserved in original logs, including successful process runs."
+  ]
+}

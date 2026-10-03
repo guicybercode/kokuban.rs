@@ -1,0 +1,2383 @@
+{
+  "schema": 1,
+  "runs": {
+    "34747921774": {
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34747921774",
+      "package": "run-34747921774/text-artifacts.zip",
+      "included": {
+        "glyph-cache-macos-latest-revisions/after-build.log": {
+          "sha256": "5e559b05e7efb7cec23ab8ed837745bc9d7bea328abfda02976f9c321e6f9868",
+          "bytes": 3190
+        },
+        "glyph-cache-macos-latest-revisions/after-cargo-messages.jsonl": {
+          "sha256": "4a2bf9aa17a280106aaa84b98f92d21f4306836e158c7b52b0de16e6518f4c8f",
+          "bytes": 125986
+        },
+        "glyph-cache-macos-latest-revisions/after-cargo-tree.txt": {
+          "sha256": "fe34a9ebfed1ec823efbd12e50e9878d83e6669d1827a71ae30b63d93b2669b8",
+          "bytes": 7724
+        },
+        "glyph-cache-macos-latest-revisions/after-revision.txt": {
+          "sha256": "18b60b40001475c0d1dec48a89cd4d52ac8b770c6b12dcb1e22a67bb18c00e40",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-revisions/artifact-sha256.json": {
+          "sha256": "00c9d613b544ca5cce3cbb9d212683aa9b018fbccba0966d41e584e110e8bb01",
+          "bytes": 5051
+        },
+        "glyph-cache-macos-latest-revisions/before-build.log": {
+          "sha256": "e2f9585caac05e3421ef600f9108e362bcd51c51d97c774b693ecfc9af96bda8",
+          "bytes": 6418
+        },
+        "glyph-cache-macos-latest-revisions/before-cargo-messages.jsonl": {
+          "sha256": "f4a466407dfd6199819f3f00eb4971d80c8b4db15fdacb21e8e6102802e69016",
+          "bytes": 126228
+        },
+        "glyph-cache-macos-latest-revisions/before-cargo-tree.txt": {
+          "sha256": "a50959f418ad88989100358fab01e28df79e8718c66288d9707a964214d785e1",
+          "bytes": 7725
+        },
+        "glyph-cache-macos-latest-revisions/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-revisions/benchmark-cpu.txt": {
+          "sha256": "37d9c8c0ab23959a7ed6b11514609bc47f8ad98205ad64db7d7bba0f9513ec49",
+          "bytes": 81
+        },
+        "glyph-cache-macos-latest-revisions/cargo.txt": {
+          "sha256": "6fd0c3d52a2b783a25b4c73c4f298705ef11e7eb67048eb9ee1389fcdb314ccd",
+          "bytes": 336
+        },
+        "glyph-cache-macos-latest-revisions/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-macos-latest-revisions/comparison.txt": {
+          "sha256": "2ad7773be55cc9ea35319e805969140552eeb2e3df19ad20930b99609cbcd50e",
+          "bytes": 10
+        },
+        "glyph-cache-macos-latest-revisions/cpu.txt": {
+          "sha256": "5318232b8381b7b3a9b6a1cdcb1ef61c681b4a84318cb3e4ad53a16ca34427f9",
+          "bytes": 514
+        },
+        "glyph-cache-macos-latest-revisions/font-files.json": {
+          "sha256": "c35fa807b0c745668d607465ae0b333da3d0d428cbedb83307b1859351a54e8c",
+          "bytes": 47283
+        },
+        "glyph-cache-macos-latest-revisions/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-revisions/glyph-cache-performance.yml": {
+          "sha256": "a752ae94df653452c1dbc682ece80482ba7e8df208d5b38e99458fd77beef44a",
+          "bytes": 10468
+        },
+        "glyph-cache-macos-latest-revisions/harness-revision.txt": {
+          "sha256": "ae855f52dd4a7367c14fd11170a77acf72c32b97bf759d13ddde64b487d5ce92",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/injected-glyph_atlas.rs": {
+          "sha256": "1e9a298fd825ca3c99d5e774f2fa1a4d439664681f40fa6ec813994eeb0bd94d",
+          "bytes": 36866
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/original-glyph_atlas.rs": {
+          "sha256": "e778c1ba8a9b2cf4b21ed283f785d8a996aa6fd798e4039576581f8addfd5d10",
+          "bytes": 36830
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/original-source-manifest.json": {
+          "sha256": "29c7670076d48ea45cd87f03e81c07be2e11b8492080a57dfa6db5fd9bfe40b9",
+          "bytes": 206025
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/prepared-source-manifest.json": {
+          "sha256": "d2e311b1c4f48adae5bed34bbd6a177ad0aec968ac915021201261f678d4d777",
+          "bytes": 206134
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-macos-latest-revisions/injection/injection.json": {
+          "sha256": "c1f29a96baee787f37d1b1802d78e2589ce7a0cd02cb1a5b5546be0d3904f825",
+          "bytes": 430169
+        },
+        "glyph-cache-macos-latest-revisions/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-revisions/kernel.txt": {
+          "sha256": "fbabbaaa2145e2c52101498e6a74d9ea22bca6304445596252b79bb45b98dbbf",
+          "bytes": 194
+        },
+        "glyph-cache-macos-latest-revisions/measurements/01-after.log": {
+          "sha256": "9a5d9ebea0afc6db48b46edad7bf62a8bb00aa6dfefa04f297ca350dca7aaf66",
+          "bytes": 2221
+        },
+        "glyph-cache-macos-latest-revisions/measurements/01-before.log": {
+          "sha256": "4ebb94c1167d21b9a22268d8ee91134010ebcb314812beb8d19951c543d6b634",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-revisions/measurements/02-after.log": {
+          "sha256": "fda4c81d47a05e3fcc6d576d5a3f4ab5addfe1f7c322ef627c1fcd258f482b6b",
+          "bytes": 2221
+        },
+        "glyph-cache-macos-latest-revisions/measurements/02-before.log": {
+          "sha256": "45dfa4cd88a8eca03bc736ef1e22f3903e90107409f7942672b0fdd43419e39b",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-revisions/measurements/03-after.log": {
+          "sha256": "7940a86cfaa9f016b261a2cd65b1980ca62d861bffe93952a7084e7dc7dc262d",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/03-before.log": {
+          "sha256": "b85ad852933d07bc3ecb65ef85c9e57dc2d776fc551d5e460c588e9347a657f6",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-revisions/measurements/04-after.log": {
+          "sha256": "e2f96b8d9fb868b894144c5d5e652d673da168e30c5b1e306ce4b3dc9f10bcdc",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/04-before.log": {
+          "sha256": "495c534f5b14acb3aa9e1a404ae238353d4454b075ff2a10b3ef2b37a13c0fb7",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-revisions/measurements/05-after.log": {
+          "sha256": "e15d5419d276038b2f6ca8b6342cbafe33582600d3c7749cd8bacdf36ca953f7",
+          "bytes": 2221
+        },
+        "glyph-cache-macos-latest-revisions/measurements/05-before.log": {
+          "sha256": "53ad369f8f7611f857688598ffa195ff30ccc8609639100ed229c9ac47be4baf",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-revisions/measurements/06-after.log": {
+          "sha256": "6163fe68ac7f5c8346fd46358144fd0693b6733ad7e62ddb61d0bd7e919f25c7",
+          "bytes": 2222
+        },
+        "glyph-cache-macos-latest-revisions/measurements/06-before.log": {
+          "sha256": "00c56816cd80fe90ba9ef31c57a54474e72d683da686deef43b13150bbcfc53c",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-revisions/measurements/report.json": {
+          "sha256": "24e308caa3c0c68ef9c7576fae45af468f5c7e273218bb9199399cbedf055e1c",
+          "bytes": 458978
+        },
+        "glyph-cache-macos-latest-revisions/os-release.txt": {
+          "sha256": "cd5d6399b3785b04ceaae75045a9ca9f80f0bbc3526eff9d0c36b170ed1ec348",
+          "bytes": 65
+        },
+        "glyph-cache-macos-latest-revisions/rustc.txt": {
+          "sha256": "a323109dfabfd30645bdf92aa834b93f71294c582ab67b977485d7f355ceba9a",
+          "bytes": 192
+        },
+        "glyph-cache-macos-latest-revisions/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-macos-latest-revisions/xcode.txt": {
+          "sha256": "18730ed2ae28a2c9cf0c2d5db549033a4f07089331391a7133b7b32187454fa9",
+          "bytes": 32
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-build.log": {
+          "sha256": "b9e5bbbbc4535da0a53e15a6a783dd8e2d34bc2c416536b8b7591423f5180a9f",
+          "bytes": 5067
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-cargo-messages.jsonl": {
+          "sha256": "33773946018d9f235a94285962fbc355d36cda626c89fd918feb7e89a3680c31",
+          "bytes": 188626
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-cargo-tree.txt": {
+          "sha256": "993675bdf11656a9b32845ad91cd4691eca431aa4d11e5a3cd3d855f0bcc6014",
+          "bytes": 13318
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-revision.txt": {
+          "sha256": "18b60b40001475c0d1dec48a89cd4d52ac8b770c6b12dcb1e22a67bb18c00e40",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/artifact-sha256.json": {
+          "sha256": "51a547c0fc90927e836467bbad42fdc2b49d1a71ae06da26f8b10bf143442e1a",
+          "bytes": 5151
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-build.log": {
+          "sha256": "fc6be34f55030d64958d94923632b00a11e96f1dd51db929a024f60a02b1c195",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-cargo-messages.jsonl": {
+          "sha256": "c6c2fb3d271d9d5fd9a217c3375256060bd8d1431b59d1d9d696f265dee5fe26",
+          "bytes": 189052
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/cargo.txt": {
+          "sha256": "5175dcfcf7de4a7dd35769fc85a32629dd0a41d6c84af324eddabc3aa724f1ec",
+          "bytes": 337
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/comparison.txt": {
+          "sha256": "2ad7773be55cc9ea35319e805969140552eeb2e3df19ad20930b99609cbcd50e",
+          "bytes": 10
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/cpu.txt": {
+          "sha256": "e5f7302f9882c8b4eca9892fce7bab78f37c49da0f8babcb23d2c2db5ed004bc",
+          "bytes": 2355
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/font-files.json": {
+          "sha256": "9292538df791b08f4363d9d3a8839626e09c27eed17b1e41e102496d597d8185",
+          "bytes": 5734
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/font-packages.txt": {
+          "sha256": "0940d102e0f1afd99e4e9eda67c371327b9e8ed476e6cff6fea59568609a8858",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/glyph-cache-performance.yml": {
+          "sha256": "a752ae94df653452c1dbc682ece80482ba7e8df208d5b38e99458fd77beef44a",
+          "bytes": 10468
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/harness-revision.txt": {
+          "sha256": "ae855f52dd4a7367c14fd11170a77acf72c32b97bf759d13ddde64b487d5ce92",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/injected-glyph_atlas.rs": {
+          "sha256": "1e9a298fd825ca3c99d5e774f2fa1a4d439664681f40fa6ec813994eeb0bd94d",
+          "bytes": 36866
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/original-glyph_atlas.rs": {
+          "sha256": "e778c1ba8a9b2cf4b21ed283f785d8a996aa6fd798e4039576581f8addfd5d10",
+          "bytes": 36830
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/original-source-manifest.json": {
+          "sha256": "29c7670076d48ea45cd87f03e81c07be2e11b8492080a57dfa6db5fd9bfe40b9",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/prepared-source-manifest.json": {
+          "sha256": "d2e311b1c4f48adae5bed34bbd6a177ad0aec968ac915021201261f678d4d777",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/injection.json": {
+          "sha256": "e5d27224bb2765d8f85bcfdb866080f71df5a509a504751ad45377d23ed5e0f1",
+          "bytes": 430167
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/kernel.txt": {
+          "sha256": "0e3d140b861bd566017fe37491f6b851f1d4fc73a44ec039982fcb9604f73d15",
+          "bytes": 116
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/01-after.log": {
+          "sha256": "652e6be6b3ada8693148e045ff7fdf346cd31e224a811db1e7d1d5bf2e6a34fa",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/01-before.log": {
+          "sha256": "9e59d9bdc8e692eedaf2f4ff3cba7a2bb9b2be07e48c59c5d9e02ee68c8e61ae",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/02-after.log": {
+          "sha256": "0d983b61f397a6dc928dd4cad8b9a235c1b6b8480036999352cd2454ab6863f7",
+          "bytes": 2272
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/02-before.log": {
+          "sha256": "dadaddf44cdbede59af7b161825143129aac97883f0e9fb7be7a1d4baae3405f",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/03-after.log": {
+          "sha256": "864953d31eba74e3e8ade0af51b22d81dae4bf91edef780e156c68d670b67992",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/03-before.log": {
+          "sha256": "7e02dcea757db5809ab5e160754d7b2bed70c0ae704aefc83b7de2e40d7d8d6c",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/04-after.log": {
+          "sha256": "fbe73a1b873280001d22b47ec82515f504b037e8b6d03615e49a81e91ec132c8",
+          "bytes": 2272
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/04-before.log": {
+          "sha256": "2036454d38118362273734be0d2c70ddcb60b6835a11e0d6578e75e7d5acee18",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/05-after.log": {
+          "sha256": "57b6d2ffd19f3d61c1e25631c1dc513343a0cf22cf1a493d425871e27ce54062",
+          "bytes": 2272
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/05-before.log": {
+          "sha256": "75a2f4d4d19c38b39f40f76ae19244a08bea86d4f0e05c97a8dbb51619613d94",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/06-after.log": {
+          "sha256": "50e9b4ccfdc914a46fb0ec5114ec408ad8834f0ae2546b06ab4e580e14d34add",
+          "bytes": 2272
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/06-before.log": {
+          "sha256": "eb6729eb3a2cd5e94f31f2a4d74deec2fdb5cd7ddfb7564d973f484d0d8213ef",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/report.json": {
+          "sha256": "787ea73e91c88baff2e5c23138de1101ebb17718dd78b63a52c453433be120ba",
+          "bytes": 459199
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/rustc.txt": {
+          "sha256": "05ab2838f795d30dee11b3a4078deded9525e5158abc7ec591be1f8a5bc8f2ce",
+          "bytes": 197
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-build.log": {
+          "sha256": "c97bc49986a6d006cfb2ca914277021c7be42164433665dbc7c10008b50ab76d",
+          "bytes": 5067
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-cargo-messages.jsonl": {
+          "sha256": "79bd1a3cd46fc052d4b7d10ea88920a68b27fa5cb68db520ee6ad3c32023966f",
+          "bytes": 188643
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-cargo-tree.txt": {
+          "sha256": "993675bdf11656a9b32845ad91cd4691eca431aa4d11e5a3cd3d855f0bcc6014",
+          "bytes": 13318
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-revision.txt": {
+          "sha256": "18b60b40001475c0d1dec48a89cd4d52ac8b770c6b12dcb1e22a67bb18c00e40",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-revisions/artifact-sha256.json": {
+          "sha256": "94e098ff9440836a129a14d73de3f4fb272c13147e305ede55811d9de966f646",
+          "bytes": 5151
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-build.log": {
+          "sha256": "25eb714819e6926db68c47382deff11a8e7ec1ec0ad502bfc88f802bec06e99a",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-cargo-messages.jsonl": {
+          "sha256": "c1be39dbb549a90d70fd2968f536d61149c11cd72752c1ce33fca03c08b6a3bc",
+          "bytes": 189069
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-revisions/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-revisions/cargo.txt": {
+          "sha256": "c1ac5dce1e71ff4be609a2587491f18c7d4585b0e57c34f0686f2f614a2b89bb",
+          "bytes": 336
+        },
+        "glyph-cache-ubuntu-24.04-revisions/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-revisions/comparison.txt": {
+          "sha256": "2ad7773be55cc9ea35319e805969140552eeb2e3df19ad20930b99609cbcd50e",
+          "bytes": 10
+        },
+        "glyph-cache-ubuntu-24.04-revisions/cpu.txt": {
+          "sha256": "4476e601951bb5e5dc85ca4b9d2e3bc795bb83c0d4e62b8d9f2bdec6659b0e7a",
+          "bytes": 3189
+        },
+        "glyph-cache-ubuntu-24.04-revisions/font-files.json": {
+          "sha256": "740e7f973de8141ed3ba2cdc3efe4ab1100c8bf10bbb7883f2f37e4deb864bc2",
+          "bytes": 7379
+        },
+        "glyph-cache-ubuntu-24.04-revisions/font-packages.txt": {
+          "sha256": "7e2dbe47a4533f222a7f8d49f39196047cdf8ab949acf028478e27a2d662902d",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-revisions/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-revisions/glyph-cache-performance.yml": {
+          "sha256": "a752ae94df653452c1dbc682ece80482ba7e8df208d5b38e99458fd77beef44a",
+          "bytes": 10468
+        },
+        "glyph-cache-ubuntu-24.04-revisions/harness-revision.txt": {
+          "sha256": "ae855f52dd4a7367c14fd11170a77acf72c32b97bf759d13ddde64b487d5ce92",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/injected-glyph_atlas.rs": {
+          "sha256": "1e9a298fd825ca3c99d5e774f2fa1a4d439664681f40fa6ec813994eeb0bd94d",
+          "bytes": 36866
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/original-glyph_atlas.rs": {
+          "sha256": "e778c1ba8a9b2cf4b21ed283f785d8a996aa6fd798e4039576581f8addfd5d10",
+          "bytes": 36830
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/original-source-manifest.json": {
+          "sha256": "29c7670076d48ea45cd87f03e81c07be2e11b8492080a57dfa6db5fd9bfe40b9",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/prepared-source-manifest.json": {
+          "sha256": "d2e311b1c4f48adae5bed34bbd6a177ad0aec968ac915021201261f678d4d777",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/injection.json": {
+          "sha256": "e5d27224bb2765d8f85bcfdb866080f71df5a509a504751ad45377d23ed5e0f1",
+          "bytes": 430167
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-revisions/kernel.txt": {
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d",
+          "bytes": 113
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/01-after.log": {
+          "sha256": "d47e0690b6f1f0451ca462e790aa5161dde33b3b3e8c390fedf10cb4657eca07",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/01-before.log": {
+          "sha256": "8cbca90d7dce626981ae720f725f17b26a0107e44b202137ef5c859b8f208c0c",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/02-after.log": {
+          "sha256": "8961d13024d1703c6d3e3e475b658d5f6b3a6a2ddc6eb5641a3f60f6148c95ea",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/02-before.log": {
+          "sha256": "11b4d50b973b354a62f0470ce64b0d6859090fefa30584015ba0648cf6d18f36",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/03-after.log": {
+          "sha256": "544c5cbd5052fcf811449480caf1fac3baa01cfe5ef20c1cc954a6d18121bc95",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/03-before.log": {
+          "sha256": "ce6e25b0a573702e7e2b0b088b38feecd0fc2aecedead882d4c9415260152597",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/04-after.log": {
+          "sha256": "c5c3a4299a6730d07f69070ca22e7cf42c2e853bb8ab19e9f7b031656dc2c1bb",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/04-before.log": {
+          "sha256": "b5b423df5f75fcf4b0f3223d2b8834816a778dae9d3b3009046d974e2002f34b",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/05-after.log": {
+          "sha256": "bbc0f97d1b7c6662f87021d93bd6905015b32899ff1538c20f71d6a22e27333b",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/05-before.log": {
+          "sha256": "3e934021d024e331495ac8bdc0783679fcb0132b2904be30263bcd4955a2f5f9",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/06-after.log": {
+          "sha256": "6679007f7db1b277990b018f78d3419347965e405e08c5e2e0dfeba37ddc199c",
+          "bytes": 2271
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/06-before.log": {
+          "sha256": "e6d4f1ecc1b209130f4d6a2e5b50b6ba6b14baad4e6205cd8c890d3c1d4568c8",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/report.json": {
+          "sha256": "bd3a75e5e644a1ae4f62763de72446af52497866d712b6a67ad1a61b6fea96e4",
+          "bytes": 459160
+        },
+        "glyph-cache-ubuntu-24.04-revisions/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-revisions/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-revisions/rustc.txt": {
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+          "bytes": 196
+        },
+        "glyph-cache-ubuntu-24.04-revisions/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        }
+      },
+      "omitted": {
+        "glyph-cache-macos-latest-revisions/after-benchmark": {
+          "sha256": "dc53d35a207f3c1a7231dd97888c8ebb5466ed0464b6735bc57240977205df24",
+          "bytes": 5293296
+        },
+        "glyph-cache-macos-latest-revisions/after-original-source.tar.gz": {
+          "sha256": "49d8ba037ab5404d4bc70cafce5fcd9c50ee87edd80a89a95a214e96c3475da8",
+          "bytes": 4788617
+        },
+        "glyph-cache-macos-latest-revisions/after-prepared-source.tar.gz": {
+          "sha256": "e404b2a99a6a84d5c0b670989a2e76f1a7346ab9ab5bd819b8a373bbf5f54071",
+          "bytes": 4795269
+        },
+        "glyph-cache-macos-latest-revisions/before-benchmark": {
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147",
+          "bytes": 5269936
+        },
+        "glyph-cache-macos-latest-revisions/before-original-source.tar.gz": {
+          "sha256": "e9c2b9fe1c6c7106cfb7180ce318e1bcbc55eb9ba0f6374c35c005492f80e704",
+          "bytes": 4787026
+        },
+        "glyph-cache-macos-latest-revisions/before-prepared-source.tar.gz": {
+          "sha256": "ed8421f014c209f486ae43828814a7aa97c47c30daf7924035774be71a99947c",
+          "bytes": 4793913
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-benchmark": {
+          "sha256": "29edda4d86e63b8f22bc46f8648d7a0d45ef8e403ff65451f58debc0ad93b43c",
+          "bytes": 7057784
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-original-source.tar.gz": {
+          "sha256": "59aabb179c6271bbc3abbb18f527dad37d797d7b241f1b32673bc30573b50b1f",
+          "bytes": 4786327
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-prepared-source.tar.gz": {
+          "sha256": "4c0e9977ae5a4f9018c39a818ee8265681c8c13f1dae390f5fa56f1c5b7f1b04",
+          "bytes": 4791746
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-benchmark": {
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc",
+          "bytes": 6991472
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-prepared-source.tar.gz": {
+          "sha256": "0948c74358bf1ec2f318124ddc3a47eb463751d7b8552fac7ce484a8cba01a59",
+          "bytes": 4789614
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-benchmark": {
+          "sha256": "728eb32ff17049e7f7dee403544f6cdec02e20cf02cda14193c654c6441cb7d5",
+          "bytes": 7441048
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-original-source.tar.gz": {
+          "sha256": "59aabb179c6271bbc3abbb18f527dad37d797d7b241f1b32673bc30573b50b1f",
+          "bytes": 4786327
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-prepared-source.tar.gz": {
+          "sha256": "1b2f071f2d7fcb61f43e5dd909d4d18bea1f3ccd7fffc7e398df9e66a002b573",
+          "bytes": 4802579
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-benchmark": {
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44",
+          "bytes": 7393784
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-prepared-source.tar.gz": {
+          "sha256": "088502ca3386e08cd26cf3d09fdb99d9bf1620c99af8d65fd02cc1f6d703d96a",
+          "bytes": 4800847
+        }
+      }
+    },
+    "34747922686": {
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34747922686",
+      "package": "run-34747922686/text-artifacts.zip",
+      "included": {
+        "glyph-cache-macos-latest-same-binary/artifact-sha256.json": {
+          "sha256": "5347add511ca8e70d1002509976b53d5b0085db32b12f470d058a40e00378889",
+          "bytes": 3919
+        },
+        "glyph-cache-macos-latest-same-binary/before-build.log": {
+          "sha256": "6c32afed83e4d42f11f0200fb5a6a2de93987cf58762daaf61129379a5fa85cc",
+          "bytes": 6418
+        },
+        "glyph-cache-macos-latest-same-binary/before-cargo-messages.jsonl": {
+          "sha256": "2599fef9fb0d8c07ceb3cadcb024f855c06fb8637708f227f488ed8ad1eacc7c",
+          "bytes": 126228
+        },
+        "glyph-cache-macos-latest-same-binary/before-cargo-tree.txt": {
+          "sha256": "a50959f418ad88989100358fab01e28df79e8718c66288d9707a964214d785e1",
+          "bytes": 7725
+        },
+        "glyph-cache-macos-latest-same-binary/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-same-binary/benchmark-cpu.txt": {
+          "sha256": "37d9c8c0ab23959a7ed6b11514609bc47f8ad98205ad64db7d7bba0f9513ec49",
+          "bytes": 81
+        },
+        "glyph-cache-macos-latest-same-binary/cargo.txt": {
+          "sha256": "6fd0c3d52a2b783a25b4c73c4f298705ef11e7eb67048eb9ee1389fcdb314ccd",
+          "bytes": 336
+        },
+        "glyph-cache-macos-latest-same-binary/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-macos-latest-same-binary/comparison.txt": {
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac",
+          "bytes": 12
+        },
+        "glyph-cache-macos-latest-same-binary/cpu.txt": {
+          "sha256": "426d8509cd31268af1166f4217249f68cb0da0b451eb13520d7ce4f5ec5a8935",
+          "bytes": 514
+        },
+        "glyph-cache-macos-latest-same-binary/font-files.json": {
+          "sha256": "c35fa807b0c745668d607465ae0b333da3d0d428cbedb83307b1859351a54e8c",
+          "bytes": 47283
+        },
+        "glyph-cache-macos-latest-same-binary/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-same-binary/glyph-cache-performance.yml": {
+          "sha256": "a752ae94df653452c1dbc682ece80482ba7e8df208d5b38e99458fd77beef44a",
+          "bytes": 10468
+        },
+        "glyph-cache-macos-latest-same-binary/harness-revision.txt": {
+          "sha256": "ae855f52dd4a7367c14fd11170a77acf72c32b97bf759d13ddde64b487d5ce92",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-macos-latest-same-binary/injection/injection.json": {
+          "sha256": "005fad6486a7c8c6c534123cabf7eb78f33580bd1a567c2f38ef9e29fbf40b27",
+          "bytes": 215216
+        },
+        "glyph-cache-macos-latest-same-binary/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-same-binary/kernel.txt": {
+          "sha256": "ea63571ba8a2c11c62d4204ba2a9ef29eb681e4394e06eab65c33662292068fe",
+          "bytes": 195
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/01-after.log": {
+          "sha256": "340fa981daf08989c4d73254803f7ba749f0ac0da6aa8445628559077c7705a2",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/01-before.log": {
+          "sha256": "6605495994b8e22c13acafd3ba36d04fda6e1db45df1d66a5ff287e895c69c23",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/02-after.log": {
+          "sha256": "e7796210e8330c27ea4739fa7c88c6b0920d3c7e4b6d15719c0be67b9b738816",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/02-before.log": {
+          "sha256": "ca3312cd07902951aeafd10d2eaa8bcd6e18c612d5572b0bad48be9888fa2adc",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/03-after.log": {
+          "sha256": "f94a9ee37fd7db9bf828663d18422d7d2ba3986cf2d7011d2694e03af7e475ac",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/03-before.log": {
+          "sha256": "e95697fbb551c8d4327df6e878014962725da5553145856354193ddf221ba9d1",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/04-after.log": {
+          "sha256": "c0caffdde645ef1233338322a4f0ec1f78f72d903f86349cfb9495316c4278a5",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/04-before.log": {
+          "sha256": "c98872707368a35fb3e24b37c273f5c9f62003f3d87a8f5f317bc891eda2284f",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/05-after.log": {
+          "sha256": "84bd06e67d5469340c44930c502019e6e50a5692c84f28b5e4f1fb415e6f94c4",
+          "bytes": 2199
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/05-before.log": {
+          "sha256": "2a5cad451bb529ff9913d803aae7d6a7c978ed005edff545d22850088a00f69e",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/06-after.log": {
+          "sha256": "f544839930ebef65a75c39d3e01db6fe639fd1d2ca36e93c153310c70aad5e7b",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/06-before.log": {
+          "sha256": "e1475893171b220524c1bcdaca11f1ff116ce78dcd110cac4dfa0a2474d6c91e",
+          "bytes": 2200
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/report.json": {
+          "sha256": "37076e659d9a93e9617b81c4f03945d4f82727cce8469f5f59b0bceb846f0933",
+          "bytes": 243598
+        },
+        "glyph-cache-macos-latest-same-binary/os-release.txt": {
+          "sha256": "cd5d6399b3785b04ceaae75045a9ca9f80f0bbc3526eff9d0c36b170ed1ec348",
+          "bytes": 65
+        },
+        "glyph-cache-macos-latest-same-binary/rustc.txt": {
+          "sha256": "a323109dfabfd30645bdf92aa834b93f71294c582ab67b977485d7f355ceba9a",
+          "bytes": 192
+        },
+        "glyph-cache-macos-latest-same-binary/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-macos-latest-same-binary/xcode.txt": {
+          "sha256": "18730ed2ae28a2c9cf0c2d5db549033a4f07089331391a7133b7b32187454fa9",
+          "bytes": 32
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/artifact-sha256.json": {
+          "sha256": "68a7445a8b58892aa4b5bc3ed1324b16533becb2b1894b1b865e8433432e185f",
+          "bytes": 4019
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-build.log": {
+          "sha256": "12b0cb815baa56d75f3a559527ad43cda74235bc5449227e097fe6ac6fc46c74",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-cargo-messages.jsonl": {
+          "sha256": "80b88a361db1dbadfdcfd445403f67912f41d2ba00feb3ef0bf244ab2066c0fa",
+          "bytes": 189052
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/cargo.txt": {
+          "sha256": "5175dcfcf7de4a7dd35769fc85a32629dd0a41d6c84af324eddabc3aa724f1ec",
+          "bytes": 337
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/comparison.txt": {
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac",
+          "bytes": 12
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/cpu.txt": {
+          "sha256": "e5f7302f9882c8b4eca9892fce7bab78f37c49da0f8babcb23d2c2db5ed004bc",
+          "bytes": 2355
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/font-files.json": {
+          "sha256": "9292538df791b08f4363d9d3a8839626e09c27eed17b1e41e102496d597d8185",
+          "bytes": 5734
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/font-packages.txt": {
+          "sha256": "0940d102e0f1afd99e4e9eda67c371327b9e8ed476e6cff6fea59568609a8858",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/glyph-cache-performance.yml": {
+          "sha256": "a752ae94df653452c1dbc682ece80482ba7e8df208d5b38e99458fd77beef44a",
+          "bytes": 10468
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/harness-revision.txt": {
+          "sha256": "ae855f52dd4a7367c14fd11170a77acf72c32b97bf759d13ddde64b487d5ce92",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/injection.json": {
+          "sha256": "c4bf315dd6ce9c95d35a4dbe2f60b4bd9ff2b1ea0c2c9494695d713b82357fb7",
+          "bytes": 215215
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/kernel.txt": {
+          "sha256": "0e3d140b861bd566017fe37491f6b851f1d4fc73a44ec039982fcb9604f73d15",
+          "bytes": 116
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/01-after.log": {
+          "sha256": "1689ce6a33d3dfda18e6cdf0bc3696a560af65a2014a644d5d8b7ec872a5418f",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/01-before.log": {
+          "sha256": "9bce9fdd55a689aae44b0a1b42a4163f298f562d99be70a750db15ccf0f11cea",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/02-after.log": {
+          "sha256": "02046c86b73b81a7bab11ede1a99919758b1e9a698caadf90920637157a07158",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/02-before.log": {
+          "sha256": "c4a0f62912ee5f3efe496a32ee0680dae8c3f3926ebbec51002087d26c143049",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/03-after.log": {
+          "sha256": "5c19bb8cd0dacb3ce04298b5f7bb86e6595ab48a0e5e1f7833992983cc88d592",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/03-before.log": {
+          "sha256": "982e4a01aede887f1897fc7caffd3b37831cad7c3bf9d9aa738f0cf1e80643f2",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/04-after.log": {
+          "sha256": "f1358a4c0a69289e932f544d88e1a2da7db64def8d0bfcdbc048a5ab671b5313",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/04-before.log": {
+          "sha256": "f0a6348b8238d98b10327404214d1e299c44a42eddf5a59fe67d3bb058e2a0c7",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/05-after.log": {
+          "sha256": "23788bc94c749d0b1040fbf84d1bd9d95c9af04c388894c5715173cf7e7af9d3",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/05-before.log": {
+          "sha256": "02ecd820d989a4ab22aebc6e825f32d8f18edc8bbea62126c8ee2febee300b66",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/06-after.log": {
+          "sha256": "3b5f2c86fffbe7f19afb481f4386e1c87702d7ebba07ec776b3daa54eeaeb094",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/06-before.log": {
+          "sha256": "f7a4b891517e660417c92421636a159c7cddb81b0b166396393f4ef4d2ad191c",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/report.json": {
+          "sha256": "9692f91aeaae8a41d2ac33024481dddca0d695596b01cc8b9b7309153e97a8c1",
+          "bytes": 243797
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/rustc.txt": {
+          "sha256": "05ab2838f795d30dee11b3a4078deded9525e5158abc7ec591be1f8a5bc8f2ce",
+          "bytes": 197
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/artifact-sha256.json": {
+          "sha256": "d8f09579a693ed1529e63697d3fa7ea3dd8ed46fbffee3368c5c7c85b016fc06",
+          "bytes": 4019
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-build.log": {
+          "sha256": "7598c40e7566bd1119a61d3e43d407d7f26cf1ad0551178f38473b53ea377147",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-cargo-messages.jsonl": {
+          "sha256": "169230e3a84bbc1be9ec6a1d6b0b120a3c4da7760f5b02a8a952bb08950d7bdd",
+          "bytes": 189069
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/cargo.txt": {
+          "sha256": "c1ac5dce1e71ff4be609a2587491f18c7d4585b0e57c34f0686f2f614a2b89bb",
+          "bytes": 336
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/comparison.txt": {
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac",
+          "bytes": 12
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/cpu.txt": {
+          "sha256": "7630af067e8703adb64f6501b9ec80e82044e70f37a3df588a41eedc86b6ca24",
+          "bytes": 3189
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/font-files.json": {
+          "sha256": "740e7f973de8141ed3ba2cdc3efe4ab1100c8bf10bbb7883f2f37e4deb864bc2",
+          "bytes": 7379
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/font-packages.txt": {
+          "sha256": "7e2dbe47a4533f222a7f8d49f39196047cdf8ab949acf028478e27a2d662902d",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/glyph-cache-performance.yml": {
+          "sha256": "a752ae94df653452c1dbc682ece80482ba7e8df208d5b38e99458fd77beef44a",
+          "bytes": 10468
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/harness-revision.txt": {
+          "sha256": "ae855f52dd4a7367c14fd11170a77acf72c32b97bf759d13ddde64b487d5ce92",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/injection.json": {
+          "sha256": "c4bf315dd6ce9c95d35a4dbe2f60b4bd9ff2b1ea0c2c9494695d713b82357fb7",
+          "bytes": 215215
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/kernel.txt": {
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d",
+          "bytes": 113
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/01-after.log": {
+          "sha256": "7e89177df72ca8b84143a748fb245cc08e31b097de5eafe606bdcb69ef741afd",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/01-before.log": {
+          "sha256": "ad0fe8fc6a0f3f444b977b7761cb3d8a6f29f64d2fd55af7cdfba03918d623c5",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/02-after.log": {
+          "sha256": "aa97baee75e85a3c25b95897e3d801760f3fd8a2c6596f69fc3418566746f204",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/02-before.log": {
+          "sha256": "f43e12365f43e2539d61355ef132796057a17e245e4dc035a7443459490a7239",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/03-after.log": {
+          "sha256": "12934030dcba8b0543ded106ae91964a43c89ff165a03db1c6580571238c8c2c",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/03-before.log": {
+          "sha256": "bac21d049f39b0abc203c8e181e960ba3ce52df794d30a728e75c551c9bf3866",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/04-after.log": {
+          "sha256": "b918ae5b449d6d1ccfff0e31469e79a225d1baf2b73b82b673590cfed6b4457b",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/04-before.log": {
+          "sha256": "d608ab77a42a1bca89791062d962ef99f9b53a287d6c19b0fb10748be8421412",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/05-after.log": {
+          "sha256": "fe4734c15473d9fb5525f1968159d0cbfa4e1e8de616b6e1fdc9673ad81b00af",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/05-before.log": {
+          "sha256": "0452b055c09f5e5fdcbb38ed6d410d04afa6ab33f9322ecb500d6d5aa6f50d49",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/06-after.log": {
+          "sha256": "b5923111730826dc0f56ff9628f4b1d6ba1b722db38f2a5353d2c2f9c94be685",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/06-before.log": {
+          "sha256": "51f9f3a3e99fd0b78c674a617cdf078f822458ca1d37007fe19bdc569c237faa",
+          "bytes": 2250
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/report.json": {
+          "sha256": "39835956730d7e8968b174340f302e3a77694ef582116caab3cbbab697eba808",
+          "bytes": 243760
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/rustc.txt": {
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+          "bytes": 196
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        }
+      },
+      "omitted": {
+        "glyph-cache-macos-latest-same-binary/before-benchmark": {
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147",
+          "bytes": 5269936
+        },
+        "glyph-cache-macos-latest-same-binary/before-original-source.tar.gz": {
+          "sha256": "e9c2b9fe1c6c7106cfb7180ce318e1bcbc55eb9ba0f6374c35c005492f80e704",
+          "bytes": 4787026
+        },
+        "glyph-cache-macos-latest-same-binary/before-prepared-source.tar.gz": {
+          "sha256": "08ec81ca55013b72814092034bcccb6bde090d84d8e25caeaca47cf7ebfd2f8e",
+          "bytes": 4793913
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-benchmark": {
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc",
+          "bytes": 6991472
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-prepared-source.tar.gz": {
+          "sha256": "192ab437d3c4ed65072e529efa70b010a16f2d5de502af3834d02366c25fd56e",
+          "bytes": 4789609
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-benchmark": {
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44",
+          "bytes": 7393784
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-prepared-source.tar.gz": {
+          "sha256": "43f2da431f1422d46ae7f2ccbdc9e5810f41e1a31b4859990a670d67828eb4b4",
+          "bytes": 4800845
+        }
+      }
+    },
+    "34748283639": {
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34748283639",
+      "package": "run-34748283639/text-artifacts.zip",
+      "included": {
+        "glyph-cache-macos-latest-revisions/after-build.log": {
+          "sha256": "a51449a1e60c2c014e679069a02b6dadb9a4f97643ec79fa6e69bbe72185da1b",
+          "bytes": 3190
+        },
+        "glyph-cache-macos-latest-revisions/after-cargo-messages.jsonl": {
+          "sha256": "1ca8c6d6d05382b7bf12a531a2e680e823b5dab8ef1548e5ea178edfc906f185",
+          "bytes": 125986
+        },
+        "glyph-cache-macos-latest-revisions/after-cargo-tree.txt": {
+          "sha256": "fe34a9ebfed1ec823efbd12e50e9878d83e6669d1827a71ae30b63d93b2669b8",
+          "bytes": 7724
+        },
+        "glyph-cache-macos-latest-revisions/after-revision.txt": {
+          "sha256": "18b60b40001475c0d1dec48a89cd4d52ac8b770c6b12dcb1e22a67bb18c00e40",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-revisions/artifact-sha256.json": {
+          "sha256": "8b3ba24dd90495dc27e4384b93d70e7c51995218052f1d6ce8f16f24985d5c5f",
+          "bytes": 5051
+        },
+        "glyph-cache-macos-latest-revisions/before-build.log": {
+          "sha256": "a78e9e9b741a4ca080eba90d38bc2b6be650d8903bf91c969c26858c256fd7fd",
+          "bytes": 6418
+        },
+        "glyph-cache-macos-latest-revisions/before-cargo-messages.jsonl": {
+          "sha256": "23425e37d374937d53641642029b3ebaa256beddd7cc9fbc54d9399f961efa63",
+          "bytes": 126228
+        },
+        "glyph-cache-macos-latest-revisions/before-cargo-tree.txt": {
+          "sha256": "a50959f418ad88989100358fab01e28df79e8718c66288d9707a964214d785e1",
+          "bytes": 7725
+        },
+        "glyph-cache-macos-latest-revisions/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-revisions/benchmark-cpu.txt": {
+          "sha256": "37d9c8c0ab23959a7ed6b11514609bc47f8ad98205ad64db7d7bba0f9513ec49",
+          "bytes": 81
+        },
+        "glyph-cache-macos-latest-revisions/cargo.txt": {
+          "sha256": "6fd0c3d52a2b783a25b4c73c4f298705ef11e7eb67048eb9ee1389fcdb314ccd",
+          "bytes": 336
+        },
+        "glyph-cache-macos-latest-revisions/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-macos-latest-revisions/comparison.txt": {
+          "sha256": "2ad7773be55cc9ea35319e805969140552eeb2e3df19ad20930b99609cbcd50e",
+          "bytes": 10
+        },
+        "glyph-cache-macos-latest-revisions/cpu.txt": {
+          "sha256": "a8c43f74e8bfac45e8ceb4dddc63e63922f009c6dbc32a8577f148e0e130ca5d",
+          "bytes": 514
+        },
+        "glyph-cache-macos-latest-revisions/font-files.json": {
+          "sha256": "c35fa807b0c745668d607465ae0b333da3d0d428cbedb83307b1859351a54e8c",
+          "bytes": 47283
+        },
+        "glyph-cache-macos-latest-revisions/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-revisions/glyph-cache-performance.yml": {
+          "sha256": "a0b10a764ce8d489166177669b46ab8c6a9d20c96be4697d38db9cb672f270cd",
+          "bytes": 11321
+        },
+        "glyph-cache-macos-latest-revisions/harness-revision.txt": {
+          "sha256": "e84c248514ffeca9efaddd8d089a43a61bd3f70fcc6e91c965060d0dc510f6a6",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/injected-glyph_atlas.rs": {
+          "sha256": "1e9a298fd825ca3c99d5e774f2fa1a4d439664681f40fa6ec813994eeb0bd94d",
+          "bytes": 36866
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/original-glyph_atlas.rs": {
+          "sha256": "e778c1ba8a9b2cf4b21ed283f785d8a996aa6fd798e4039576581f8addfd5d10",
+          "bytes": 36830
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/original-source-manifest.json": {
+          "sha256": "29c7670076d48ea45cd87f03e81c07be2e11b8492080a57dfa6db5fd9bfe40b9",
+          "bytes": 206025
+        },
+        "glyph-cache-macos-latest-revisions/injection/after/prepared-source-manifest.json": {
+          "sha256": "d2e311b1c4f48adae5bed34bbd6a177ad0aec968ac915021201261f678d4d777",
+          "bytes": 206134
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-macos-latest-revisions/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-macos-latest-revisions/injection/injection.json": {
+          "sha256": "c1f29a96baee787f37d1b1802d78e2589ce7a0cd02cb1a5b5546be0d3904f825",
+          "bytes": 430169
+        },
+        "glyph-cache-macos-latest-revisions/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-revisions/kernel.txt": {
+          "sha256": "e90ef314bd1bd3a8005e8530219980aa211422775d654892bb6296bc9d17d9a0",
+          "bytes": 194
+        },
+        "glyph-cache-macos-latest-revisions/measurements/01-after.log": {
+          "sha256": "d7e7f8d9b50d55d36afc348f3191a4b0bfbcf33fd032e2a09d3fa3881d3ef7cd",
+          "bytes": 2242
+        },
+        "glyph-cache-macos-latest-revisions/measurements/01-before.log": {
+          "sha256": "dbb29a5ced94ec89302e0015d18a3375b1b48e0f68fadfc6d2c5c0d85a8c8953",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/02-after.log": {
+          "sha256": "1a5de848a973e6920d4829a97fdd6ea3ea2495f574c615192e385ceea0faf953",
+          "bytes": 2242
+        },
+        "glyph-cache-macos-latest-revisions/measurements/02-before.log": {
+          "sha256": "f14462fc2f6f88c26cb0aab321724afa9b4d5df2c0237d34e01ad376967bb6dd",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/03-after.log": {
+          "sha256": "9dd8b168130c054d9b54e8284fcbeb857a35781cc6a0f94a5c108e2086b2b534",
+          "bytes": 2242
+        },
+        "glyph-cache-macos-latest-revisions/measurements/03-before.log": {
+          "sha256": "28c1b0aa4d63c301e1c00708f40470fead50edda99f83e7b398658ea0f70ffc4",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/04-after.log": {
+          "sha256": "869e09f2a67b3a6d812a7f4df7d632b005fa7e2116fc312ac8f71cf42e2ae584",
+          "bytes": 2243
+        },
+        "glyph-cache-macos-latest-revisions/measurements/04-before.log": {
+          "sha256": "e8ecee43c7c9ece0e73c411cf725d43e56c9018de829f5cd6103beec3c5a5f39",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/05-after.log": {
+          "sha256": "b46f556a1667a279cfc02542b892345f583723cf32a35243f4298dc843762475",
+          "bytes": 2242
+        },
+        "glyph-cache-macos-latest-revisions/measurements/05-before.log": {
+          "sha256": "3631c5209791afe4fe2e065901e08bc63a7cf2da7a707c3966c6d9fd286c7545",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/06-after.log": {
+          "sha256": "57657f5b9ca0def984ab6cb4e92995dd929ea905edf5cb4abc0987b16fbfc811",
+          "bytes": 2243
+        },
+        "glyph-cache-macos-latest-revisions/measurements/06-before.log": {
+          "sha256": "d950e1ed298d6160f423eca9d62ebfd739d862c1a51b8d2f2db3e50919bf4e42",
+          "bytes": 2220
+        },
+        "glyph-cache-macos-latest-revisions/measurements/report.json": {
+          "sha256": "e92f1b3160012a2099774b48b4011f16bcd9e9281ff36956a5fcca3c5bd17a78",
+          "bytes": 459196
+        },
+        "glyph-cache-macos-latest-revisions/os-release.txt": {
+          "sha256": "cd5d6399b3785b04ceaae75045a9ca9f80f0bbc3526eff9d0c36b170ed1ec348",
+          "bytes": 65
+        },
+        "glyph-cache-macos-latest-revisions/rustc.txt": {
+          "sha256": "a323109dfabfd30645bdf92aa834b93f71294c582ab67b977485d7f355ceba9a",
+          "bytes": 192
+        },
+        "glyph-cache-macos-latest-revisions/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-macos-latest-revisions/xcode.txt": {
+          "sha256": "18730ed2ae28a2c9cf0c2d5db549033a4f07089331391a7133b7b32187454fa9",
+          "bytes": 32
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-build.log": {
+          "sha256": "27b69a1d44efd1794d15a58be8996990ff56034898f393f5df9faad3c1dababc",
+          "bytes": 5067
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-cargo-messages.jsonl": {
+          "sha256": "9c6bc81ae634cdfcaf46ee5d741961a24f17c3e6b211760c7bdec2d758e53692",
+          "bytes": 188626
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-cargo-tree.txt": {
+          "sha256": "993675bdf11656a9b32845ad91cd4691eca431aa4d11e5a3cd3d855f0bcc6014",
+          "bytes": 13318
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-revision.txt": {
+          "sha256": "18b60b40001475c0d1dec48a89cd4d52ac8b770c6b12dcb1e22a67bb18c00e40",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/artifact-sha256.json": {
+          "sha256": "a6ddc6d8b15924b41845eb798ccf3922bb621226a6d49e380c9d35786c31ae75",
+          "bytes": 5151
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-build.log": {
+          "sha256": "3241b2212dad936dbd297dea86f4fa5668b10bedb5bde25261b72b6e241a843b",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-cargo-messages.jsonl": {
+          "sha256": "02601c0e1e15d889c1a1f5b31bad96451f4379eda4d12aaa945b9b2cb54af2b5",
+          "bytes": 189052
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/cargo.txt": {
+          "sha256": "5175dcfcf7de4a7dd35769fc85a32629dd0a41d6c84af324eddabc3aa724f1ec",
+          "bytes": 337
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/comparison.txt": {
+          "sha256": "2ad7773be55cc9ea35319e805969140552eeb2e3df19ad20930b99609cbcd50e",
+          "bytes": 10
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/cpu.txt": {
+          "sha256": "e5f7302f9882c8b4eca9892fce7bab78f37c49da0f8babcb23d2c2db5ed004bc",
+          "bytes": 2355
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/font-files.json": {
+          "sha256": "9292538df791b08f4363d9d3a8839626e09c27eed17b1e41e102496d597d8185",
+          "bytes": 5734
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/font-packages.txt": {
+          "sha256": "0940d102e0f1afd99e4e9eda67c371327b9e8ed476e6cff6fea59568609a8858",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/glyph-cache-performance.yml": {
+          "sha256": "a0b10a764ce8d489166177669b46ab8c6a9d20c96be4697d38db9cb672f270cd",
+          "bytes": 11321
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/harness-revision.txt": {
+          "sha256": "e84c248514ffeca9efaddd8d089a43a61bd3f70fcc6e91c965060d0dc510f6a6",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/injected-glyph_atlas.rs": {
+          "sha256": "1e9a298fd825ca3c99d5e774f2fa1a4d439664681f40fa6ec813994eeb0bd94d",
+          "bytes": 36866
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/original-glyph_atlas.rs": {
+          "sha256": "e778c1ba8a9b2cf4b21ed283f785d8a996aa6fd798e4039576581f8addfd5d10",
+          "bytes": 36830
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/original-source-manifest.json": {
+          "sha256": "29c7670076d48ea45cd87f03e81c07be2e11b8492080a57dfa6db5fd9bfe40b9",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/after/prepared-source-manifest.json": {
+          "sha256": "d2e311b1c4f48adae5bed34bbd6a177ad0aec968ac915021201261f678d4d777",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/injection.json": {
+          "sha256": "e5d27224bb2765d8f85bcfdb866080f71df5a509a504751ad45377d23ed5e0f1",
+          "bytes": 430167
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/kernel.txt": {
+          "sha256": "0e3d140b861bd566017fe37491f6b851f1d4fc73a44ec039982fcb9604f73d15",
+          "bytes": 116
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/01-after.log": {
+          "sha256": "dcb2eabc189241bf903462fbfcfb9bfe8bd157825e82a08b1f2e05530c240e70",
+          "bytes": 2291
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/01-before.log": {
+          "sha256": "a87b5b19420d7a8732d91c39ab131b7c3074bae90c2c7fed6871f4fe8a9c084c",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/02-after.log": {
+          "sha256": "18c8c67f7dadcbe66fa4291b601d32957cf0cbf6aa7307dbca96541f6a2aeea8",
+          "bytes": 2291
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/02-before.log": {
+          "sha256": "40bf0d55b6663b4119d70a1288dd2e537c0a81d98ce260dee45b927648c8431c",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/03-after.log": {
+          "sha256": "f0c0e877ffa8e286c24ebd0d6372891980f9bd4e68785d9d1f2d048ea46e25db",
+          "bytes": 2292
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/03-before.log": {
+          "sha256": "24bdc2ad02dca26bc4a3b370a7116a1c0f6327748bbbca9ca1469cffe7cbacdb",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/04-after.log": {
+          "sha256": "a4cb3e006dcb114d275200bc55ef679021669c40bd9ad5e819d215bd44184cbe",
+          "bytes": 2292
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/04-before.log": {
+          "sha256": "afcf61f21b10a5fa2b29c1ef9fe643e83ed10388389531b1a2536563464c887d",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/05-after.log": {
+          "sha256": "340401c41d6bd837d3da8622f23c4ea0cd15a62b4f99e15e4f51660302adf643",
+          "bytes": 2292
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/05-before.log": {
+          "sha256": "9b2dca742ad3c26704f11c25904708ab97decfdf3b256152fc3c80daf8989e11",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/06-after.log": {
+          "sha256": "c3fb1948a43f6738e5033cbb6df38157f7d8bc798b601b8417992e2f9fb9dc35",
+          "bytes": 2292
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/06-before.log": {
+          "sha256": "e8f865ef6413ec13377c2303e51b51a77bca41a02528290189bc5f445e291c51",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/measurements/report.json": {
+          "sha256": "06a2cee732d2107761aef12c327983144922283cf410e5298f85f88e37265851",
+          "bytes": 459315
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/rustc.txt": {
+          "sha256": "05ab2838f795d30dee11b3a4078deded9525e5158abc7ec591be1f8a5bc8f2ce",
+          "bytes": 197
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-build.log": {
+          "sha256": "d3d1b128be2127935040e296c06f53943dfa5bd834751e7a3f7933e398ffe14a",
+          "bytes": 5067
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-cargo-messages.jsonl": {
+          "sha256": "6b930c417c9d3ac0937c966c28d55d3b3582b28907f1c06a33928ffb3fbdec80",
+          "bytes": 188643
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-cargo-tree.txt": {
+          "sha256": "993675bdf11656a9b32845ad91cd4691eca431aa4d11e5a3cd3d855f0bcc6014",
+          "bytes": 13318
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-revision.txt": {
+          "sha256": "18b60b40001475c0d1dec48a89cd4d52ac8b770c6b12dcb1e22a67bb18c00e40",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-revisions/artifact-sha256.json": {
+          "sha256": "6ffedbea7443d8ee263a455b0dfb49ae7c49736ee7c7e90bc66d85c9c39bf98a",
+          "bytes": 5151
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-build.log": {
+          "sha256": "e839f58b033a638d6f8b82688b99b16224805a56c9a02edcaffd88d36ae02f0a",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-cargo-messages.jsonl": {
+          "sha256": "daa1bc907441033480aba41b56a531195befbba8c0a9e5ef6a9543c0cd532428",
+          "bytes": 189069
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-revisions/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-revisions/cargo.txt": {
+          "sha256": "c1ac5dce1e71ff4be609a2587491f18c7d4585b0e57c34f0686f2f614a2b89bb",
+          "bytes": 336
+        },
+        "glyph-cache-ubuntu-24.04-revisions/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-revisions/comparison.txt": {
+          "sha256": "2ad7773be55cc9ea35319e805969140552eeb2e3df19ad20930b99609cbcd50e",
+          "bytes": 10
+        },
+        "glyph-cache-ubuntu-24.04-revisions/cpu.txt": {
+          "sha256": "5571d003c71735c150fd21cab52641c4219c1cf61a98d2a8bb89c71fdeacfd3b",
+          "bytes": 3465
+        },
+        "glyph-cache-ubuntu-24.04-revisions/font-files.json": {
+          "sha256": "740e7f973de8141ed3ba2cdc3efe4ab1100c8bf10bbb7883f2f37e4deb864bc2",
+          "bytes": 7379
+        },
+        "glyph-cache-ubuntu-24.04-revisions/font-packages.txt": {
+          "sha256": "7e2dbe47a4533f222a7f8d49f39196047cdf8ab949acf028478e27a2d662902d",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-revisions/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-revisions/glyph-cache-performance.yml": {
+          "sha256": "a0b10a764ce8d489166177669b46ab8c6a9d20c96be4697d38db9cb672f270cd",
+          "bytes": 11321
+        },
+        "glyph-cache-ubuntu-24.04-revisions/harness-revision.txt": {
+          "sha256": "e84c248514ffeca9efaddd8d089a43a61bd3f70fcc6e91c965060d0dc510f6a6",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/injected-glyph_atlas.rs": {
+          "sha256": "1e9a298fd825ca3c99d5e774f2fa1a4d439664681f40fa6ec813994eeb0bd94d",
+          "bytes": 36866
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/original-glyph_atlas.rs": {
+          "sha256": "e778c1ba8a9b2cf4b21ed283f785d8a996aa6fd798e4039576581f8addfd5d10",
+          "bytes": 36830
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/original-source-manifest.json": {
+          "sha256": "29c7670076d48ea45cd87f03e81c07be2e11b8492080a57dfa6db5fd9bfe40b9",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/after/prepared-source-manifest.json": {
+          "sha256": "d2e311b1c4f48adae5bed34bbd6a177ad0aec968ac915021201261f678d4d777",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/injection.json": {
+          "sha256": "e5d27224bb2765d8f85bcfdb866080f71df5a509a504751ad45377d23ed5e0f1",
+          "bytes": 430167
+        },
+        "glyph-cache-ubuntu-24.04-revisions/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-revisions/kernel.txt": {
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d",
+          "bytes": 113
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/01-after.log": {
+          "sha256": "7edd39beda78f5bec0bab00cedf432fd3c9ced5e9f3d43bdb9b539f490f7445a",
+          "bytes": 2290
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/01-before.log": {
+          "sha256": "331b056e9329aadfcc18291db22d9b5dc14328798ff0bf3074ddb4bd817ad1b0",
+          "bytes": 2265
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/02-after.log": {
+          "sha256": "aea35e35cad922a3c503064ace509f59b7af0b3d1de4380902e3d1bc22ed7a83",
+          "bytes": 2290
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/02-before.log": {
+          "sha256": "5b5c63d7a0b4b41e790597b9e81393c661dadb18c7d870dab4d7ce1758236436",
+          "bytes": 2265
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/03-after.log": {
+          "sha256": "29b62566faa8bee36867b063c96b78cc3d66572d2da774b8ff67f3c12b28be3b",
+          "bytes": 2290
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/03-before.log": {
+          "sha256": "8ef921e3cb0e2b950eb9a53b1c0e3e940b7517b475194243c7612769390493f8",
+          "bytes": 2265
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/04-after.log": {
+          "sha256": "c47fbf4025b729e0091c74c2590d303c7aeda7f796bd665c59873bd3d55983d5",
+          "bytes": 2290
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/04-before.log": {
+          "sha256": "3f2b9271e30016940a3af243e5c1d4fbeedfa4d6dc5b51eac8b4ed3e7d65a1b8",
+          "bytes": 2265
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/05-after.log": {
+          "sha256": "ea98695dabafa9697b5ad4f1f765c84916efbb36b37e7925e967558c159f06d5",
+          "bytes": 2290
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/05-before.log": {
+          "sha256": "1ef0f61905cbb7c1ec1d0fec998122980e74eece4c0b78358d156f883b95972d",
+          "bytes": 2265
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/06-after.log": {
+          "sha256": "5ae5cb2c95635177719c9d35607af01949fbe2ae68cf3aa5b332edd9c0b4fdc1",
+          "bytes": 2290
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/06-before.log": {
+          "sha256": "3327e51cec488eb6120c9ee9179a0e3fb5b44080109a3721f900c6c1762ffd51",
+          "bytes": 2265
+        },
+        "glyph-cache-ubuntu-24.04-revisions/measurements/report.json": {
+          "sha256": "8282c2e62f26a9bbe0d318efb951c7de482ab820ca5b714ea1a6c8db71af71d6",
+          "bytes": 459328
+        },
+        "glyph-cache-ubuntu-24.04-revisions/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-revisions/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-revisions/rustc.txt": {
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+          "bytes": 196
+        },
+        "glyph-cache-ubuntu-24.04-revisions/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        }
+      },
+      "omitted": {
+        "glyph-cache-macos-latest-revisions/after-benchmark": {
+          "sha256": "dc53d35a207f3c1a7231dd97888c8ebb5466ed0464b6735bc57240977205df24",
+          "bytes": 5293296
+        },
+        "glyph-cache-macos-latest-revisions/after-original-source.tar.gz": {
+          "sha256": "49d8ba037ab5404d4bc70cafce5fcd9c50ee87edd80a89a95a214e96c3475da8",
+          "bytes": 4788617
+        },
+        "glyph-cache-macos-latest-revisions/after-prepared-source.tar.gz": {
+          "sha256": "98123ffde214acd715b4f9e875a083d88887052555f54d649922bbfdfeb13e8d",
+          "bytes": 4795269
+        },
+        "glyph-cache-macos-latest-revisions/before-benchmark": {
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147",
+          "bytes": 5269936
+        },
+        "glyph-cache-macos-latest-revisions/before-original-source.tar.gz": {
+          "sha256": "e9c2b9fe1c6c7106cfb7180ce318e1bcbc55eb9ba0f6374c35c005492f80e704",
+          "bytes": 4787026
+        },
+        "glyph-cache-macos-latest-revisions/before-prepared-source.tar.gz": {
+          "sha256": "fa0eaab7ed56eaee6cc734dad39c2816e5b90e88e2fd41b65a3ed3f9a5866e66",
+          "bytes": 4793927
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-benchmark": {
+          "sha256": "29edda4d86e63b8f22bc46f8648d7a0d45ef8e403ff65451f58debc0ad93b43c",
+          "bytes": 7057784
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-original-source.tar.gz": {
+          "sha256": "59aabb179c6271bbc3abbb18f527dad37d797d7b241f1b32673bc30573b50b1f",
+          "bytes": 4786327
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/after-prepared-source.tar.gz": {
+          "sha256": "c0ad87057b2ced055202e6d88cc43f1306e12a5f55dfa93778b20f6818b3442d",
+          "bytes": 4791741
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-benchmark": {
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc",
+          "bytes": 6991472
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-arm-revisions/before-prepared-source.tar.gz": {
+          "sha256": "cbdf6e56665854d94b32f1e7a482daf1b385a223a1574fc83895698595822c14",
+          "bytes": 4789611
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-benchmark": {
+          "sha256": "728eb32ff17049e7f7dee403544f6cdec02e20cf02cda14193c654c6441cb7d5",
+          "bytes": 7441048
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-original-source.tar.gz": {
+          "sha256": "59aabb179c6271bbc3abbb18f527dad37d797d7b241f1b32673bc30573b50b1f",
+          "bytes": 4786327
+        },
+        "glyph-cache-ubuntu-24.04-revisions/after-prepared-source.tar.gz": {
+          "sha256": "a305ae33c93c62c3b075a75f27cd7dcba59271dedec9b743eafff61fb6b560c6",
+          "bytes": 4802592
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-benchmark": {
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44",
+          "bytes": 7393784
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-revisions/before-prepared-source.tar.gz": {
+          "sha256": "f8b593db0d03da36815970b2b325d6aee0cf286c323b31337cf7b6c20532e0ce",
+          "bytes": 4800843
+        }
+      }
+    },
+    "34748285006": {
+      "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34748285006",
+      "package": "run-34748285006/text-artifacts.zip",
+      "included": {
+        "glyph-cache-macos-latest-same-binary/artifact-sha256.json": {
+          "sha256": "63b1405d4e0304bf384118561914d63766b3bfce8f41c2e1b608ed8dbdecb6b8",
+          "bytes": 3919
+        },
+        "glyph-cache-macos-latest-same-binary/before-build.log": {
+          "sha256": "00da7cf75d8345646fd62a552456d3d7df4b9baf24a262e9550218b325865ea4",
+          "bytes": 6418
+        },
+        "glyph-cache-macos-latest-same-binary/before-cargo-messages.jsonl": {
+          "sha256": "6c5c9f195ee0a1df6bb0dc7a2e9b199dd1527db1971ed69de6bcadba96f16dff",
+          "bytes": 126228
+        },
+        "glyph-cache-macos-latest-same-binary/before-cargo-tree.txt": {
+          "sha256": "a50959f418ad88989100358fab01e28df79e8718c66288d9707a964214d785e1",
+          "bytes": 7725
+        },
+        "glyph-cache-macos-latest-same-binary/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-same-binary/benchmark-cpu.txt": {
+          "sha256": "37d9c8c0ab23959a7ed6b11514609bc47f8ad98205ad64db7d7bba0f9513ec49",
+          "bytes": 81
+        },
+        "glyph-cache-macos-latest-same-binary/cargo.txt": {
+          "sha256": "6fd0c3d52a2b783a25b4c73c4f298705ef11e7eb67048eb9ee1389fcdb314ccd",
+          "bytes": 336
+        },
+        "glyph-cache-macos-latest-same-binary/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-macos-latest-same-binary/comparison.txt": {
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac",
+          "bytes": 12
+        },
+        "glyph-cache-macos-latest-same-binary/cpu.txt": {
+          "sha256": "44f141f21f2014a4851969e317b323ea12176cd204d8704dcfbc6f9198f2d8c1",
+          "bytes": 514
+        },
+        "glyph-cache-macos-latest-same-binary/font-files.json": {
+          "sha256": "c35fa807b0c745668d607465ae0b333da3d0d428cbedb83307b1859351a54e8c",
+          "bytes": 47283
+        },
+        "glyph-cache-macos-latest-same-binary/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-same-binary/glyph-cache-performance.yml": {
+          "sha256": "a0b10a764ce8d489166177669b46ab8c6a9d20c96be4697d38db9cb672f270cd",
+          "bytes": 11321
+        },
+        "glyph-cache-macos-latest-same-binary/harness-revision.txt": {
+          "sha256": "e84c248514ffeca9efaddd8d089a43a61bd3f70fcc6e91c965060d0dc510f6a6",
+          "bytes": 41
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-macos-latest-same-binary/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-macos-latest-same-binary/injection/injection.json": {
+          "sha256": "005fad6486a7c8c6c534123cabf7eb78f33580bd1a567c2f38ef9e29fbf40b27",
+          "bytes": 215216
+        },
+        "glyph-cache-macos-latest-same-binary/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-macos-latest-same-binary/kernel.txt": {
+          "sha256": "ff534a7158abdbd521f0f06479829b41bc1ff4527bca8a41dced60032683bf83",
+          "bytes": 194
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/01-after.log": {
+          "sha256": "e541c95c580b1040db0b2c46ba1dd0585b4a89067f40b7edbfd9adf0efbe0e76",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/01-before.log": {
+          "sha256": "faf5938350fb9ca377b7819028087c084f073cfebc0b1c26d858a263112d2621",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/02-after.log": {
+          "sha256": "e76c442b0663f965181b0407152acc074c731593ee2021e69c41f99c59edf01e",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/02-before.log": {
+          "sha256": "610872c72676a61049eec273f741d325f26db3b2417ca7e9bc330c27044d35d3",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/03-after.log": {
+          "sha256": "4f0b1bd20614d0666f8ed7915b0beb865ea3f3bab7453ffa9dc4a2561a2105b6",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/03-before.log": {
+          "sha256": "130118b720e767665ebab358c387cdd6a2603825aaf451d7837a86ae2202af0d",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/04-after.log": {
+          "sha256": "2e3c14287a5c02716cad5b3b122eaf4886891fe567a6683ffc3b0b2ea5c4f9ca",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/04-before.log": {
+          "sha256": "73d89269f8ac4ae5c01085a15d6ae45fe68f57547cf28fb338c029874b529f75",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/05-after.log": {
+          "sha256": "c67048cc214bd12999798330671cb4d920f128306dd7818f66c790ddef621601",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/05-before.log": {
+          "sha256": "a32f6f04d59eef8cf0116e45a73a322c7115ef5e60090d3c727c99b66d6b01e3",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/06-after.log": {
+          "sha256": "93d391da7578b2f2524971b6b0b425dd518ba153038bc8d14634d77fbd7d4e29",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/06-before.log": {
+          "sha256": "7619e3e29a997d81b30245f0438e14c82d889944cade3580940fce1af264ff16",
+          "bytes": 2219
+        },
+        "glyph-cache-macos-latest-same-binary/measurements/report.json": {
+          "sha256": "b697c5215a61e390663bfa61be51c2bbb8a5788a45de848d5a13d17676eb18b8",
+          "bytes": 243838
+        },
+        "glyph-cache-macos-latest-same-binary/os-release.txt": {
+          "sha256": "cd5d6399b3785b04ceaae75045a9ca9f80f0bbc3526eff9d0c36b170ed1ec348",
+          "bytes": 65
+        },
+        "glyph-cache-macos-latest-same-binary/rustc.txt": {
+          "sha256": "a323109dfabfd30645bdf92aa834b93f71294c582ab67b977485d7f355ceba9a",
+          "bytes": 192
+        },
+        "glyph-cache-macos-latest-same-binary/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-macos-latest-same-binary/xcode.txt": {
+          "sha256": "18730ed2ae28a2c9cf0c2d5db549033a4f07089331391a7133b7b32187454fa9",
+          "bytes": 32
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/artifact-sha256.json": {
+          "sha256": "abf850d16ba8eb41754b5d7a2f60b87ee1b0675d2d17e1fce9ab078e88274d78",
+          "bytes": 4019
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-build.log": {
+          "sha256": "7e43a6b1835cfd489c5ea4fbc6c48060275ce259f669227532687540b1ad258a",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-cargo-messages.jsonl": {
+          "sha256": "621d4d09d312fb609438840a4e1951fdf5c9306b426ec0fbb50ab101b308c0ba",
+          "bytes": 189052
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/cargo.txt": {
+          "sha256": "5175dcfcf7de4a7dd35769fc85a32629dd0a41d6c84af324eddabc3aa724f1ec",
+          "bytes": 337
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/comparison.txt": {
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac",
+          "bytes": 12
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/cpu.txt": {
+          "sha256": "e5f7302f9882c8b4eca9892fce7bab78f37c49da0f8babcb23d2c2db5ed004bc",
+          "bytes": 2355
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/font-files.json": {
+          "sha256": "9292538df791b08f4363d9d3a8839626e09c27eed17b1e41e102496d597d8185",
+          "bytes": 5734
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/font-packages.txt": {
+          "sha256": "0940d102e0f1afd99e4e9eda67c371327b9e8ed476e6cff6fea59568609a8858",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/glyph-cache-performance.yml": {
+          "sha256": "a0b10a764ce8d489166177669b46ab8c6a9d20c96be4697d38db9cb672f270cd",
+          "bytes": 11321
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/harness-revision.txt": {
+          "sha256": "e84c248514ffeca9efaddd8d089a43a61bd3f70fcc6e91c965060d0dc510f6a6",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/injection.json": {
+          "sha256": "c4bf315dd6ce9c95d35a4dbe2f60b4bd9ff2b1ea0c2c9494695d713b82357fb7",
+          "bytes": 215215
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/kernel.txt": {
+          "sha256": "0e3d140b861bd566017fe37491f6b851f1d4fc73a44ec039982fcb9604f73d15",
+          "bytes": 116
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/01-after.log": {
+          "sha256": "c5e65cc92e6293055e8eea11967328e55ffc5083f64bab7eec169ef9757f55e8",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/01-before.log": {
+          "sha256": "05a34dd2f298efb6df8e6a5e542480369e9cdea313211d204f6785c2bafb7822",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/02-after.log": {
+          "sha256": "b6afab370e6b62003e85d8fdec19ab1a2ebcd16636855847f45ca93f8c0dbeb6",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/02-before.log": {
+          "sha256": "38951833d5718e60d4084a2b549437423a72074165e546e56f6e026b41ccaa2b",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/03-after.log": {
+          "sha256": "b938bfb19389515871b411eb20b75709bcccec1ccb5995f2c2fecc7dfec67f50",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/03-before.log": {
+          "sha256": "e22f9a369f5dbb257ca5ca48b15bbc2b73927857d624c3ea9206523a76c17570",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/04-after.log": {
+          "sha256": "bd0b2d1bcf6b75f9689e47d39354e2660c7dc203efb9a54e29a46a205d8b74c9",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/04-before.log": {
+          "sha256": "f6a0ccb87e0671228f6e5d36b14ae025cbf55db5758dd2d7fed08083dcf5dd7c",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/05-after.log": {
+          "sha256": "7b83335597db13710efd6736953822b2179167faa2b0ca1ccafe327b652629c8",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/05-before.log": {
+          "sha256": "4c842103fee0f4df6c587d08dab989617eb4b4610d8d65901a86686727d70d08",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/06-after.log": {
+          "sha256": "d16e12cf2503989b0d05a79930ed5e4e134a9fb59c87baec85b2e6a976cf2052",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/06-before.log": {
+          "sha256": "f2c56d7eb7bc027336bd4ec651e43fd3dee464fe8094de0449db5b1a715828a3",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/measurements/report.json": {
+          "sha256": "579b261ad4dd47904f0e9bea43707732688e20c6b3079d5fe69d2cd775ee259c",
+          "bytes": 243943
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/rustc.txt": {
+          "sha256": "05ab2838f795d30dee11b3a4078deded9525e5158abc7ec591be1f8a5bc8f2ce",
+          "bytes": 197
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/artifact-sha256.json": {
+          "sha256": "5bd3c3e4e581b5e698e59f27d5f2613570aeec22ca4b259760059d280cb8c5dc",
+          "bytes": 4019
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-build.log": {
+          "sha256": "065b8669902d21f59a95f79fb8f207069208d9ccc24ccf93d41f1c1bd0c05028",
+          "bytes": 10127
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-cargo-messages.jsonl": {
+          "sha256": "afa379d1ea83a91a06bddb3287c4ce6f59958a63d94c93a6da49de4382fa57c2",
+          "bytes": 189069
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-cargo-tree.txt": {
+          "sha256": "74e195de6070fce4400b817fa015da91b3f13fbfb32419bce43b361315b6b585",
+          "bytes": 13319
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-revision.txt": {
+          "sha256": "99949afa9affe188dff55eb9c3734882dfd469ce24d86cd15adfe1ddc4baaf2b",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/benchmark-cpu.txt": {
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/cargo.txt": {
+          "sha256": "c1ac5dce1e71ff4be609a2587491f18c7d4585b0e57c34f0686f2f614a2b89bb",
+          "bytes": 336
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/compare-glyph-cache-revisions.py": {
+          "sha256": "f04a3c39a7112cf0861e421aab014ec9e55639cfa7fd0b4eea7a444af7a041ba",
+          "bytes": 19075
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/comparison.txt": {
+          "sha256": "de0efff32d2afc3006490946659b8ae3cfa8cb94b0c55fe55c4e2c65f598fbac",
+          "bytes": 12
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/cpu.txt": {
+          "sha256": "d893a2e1fe38c883e9c6304826742490a3e71cb4324cac80c4809870147219b4",
+          "bytes": 3189
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/font-files.json": {
+          "sha256": "740e7f973de8141ed3ba2cdc3efe4ab1100c8bf10bbb7883f2f37e4deb864bc2",
+          "bytes": 7379
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/font-packages.txt": {
+          "sha256": "7e2dbe47a4533f222a7f8d49f39196047cdf8ab949acf028478e27a2d662902d",
+          "bytes": 217
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/glyph-cache-benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/glyph-cache-performance.yml": {
+          "sha256": "a0b10a764ce8d489166177669b46ab8c6a9d20c96be4697d38db9cb672f270cd",
+          "bytes": 11321
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/harness-revision.txt": {
+          "sha256": "e84c248514ffeca9efaddd8d089a43a61bd3f70fcc6e91c965060d0dc510f6a6",
+          "bytes": 41
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/injected-glyph_atlas.rs": {
+          "sha256": "369d2436a947c7206779daf5b91c6f13743ca4d967f9142d71eb8935e4262fb9",
+          "bytes": 29559
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/original-glyph_atlas.rs": {
+          "sha256": "f9cd6afccf74c78275fe3b0322cbefec77afc4c85e1fb14daf3339a5b71fd73e",
+          "bytes": 29523
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/original-source-manifest.json": {
+          "sha256": "cde6d70d8ae750044b4d463987b3afc4bfe4637054001163e0cf499bc74a55ea",
+          "bytes": 206025
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/before/prepared-source-manifest.json": {
+          "sha256": "e29e1e864e6c097d265d211209c2dc11d3e0836a2b465653b4bff51139f97fa2",
+          "bytes": 206134
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/injection.json": {
+          "sha256": "c4bf315dd6ce9c95d35a4dbe2f60b4bd9ff2b1ea0c2c9494695d713b82357fb7",
+          "bytes": 215215
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/injection/lookup_benchmark.rs": {
+          "sha256": "1aef5bccb4dc8592d9d4675315578fa0ef97db3ce488a3445569622ef065491c",
+          "bytes": 8484
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/kernel.txt": {
+          "sha256": "304b2da1acb50873067f72c7ff2aa0940963426a8b023c07c072675b28aab35d",
+          "bytes": 113
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/01-after.log": {
+          "sha256": "0217b14962215d0978abe4ceb8f153d67bf82f58d62ef4b11170eed4e6adb2a6",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/01-before.log": {
+          "sha256": "6dddae4b2f8f40505e3063d235adecac60bc48e0797a18914ab25313f1cea4c0",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/02-after.log": {
+          "sha256": "90c4290aa3e9e0e6f70f7b1af0a23ca2ad1670c28f61d6d8b189dc64bb8c0c44",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/02-before.log": {
+          "sha256": "16c452d12ceb50b76b2723601059b9a208906f355571a12c6358227fc6868950",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/03-after.log": {
+          "sha256": "b03f615ffbe62831759d001c08bbace36d2d738cacc1f459bfc7bdb4426a7d8b",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/03-before.log": {
+          "sha256": "934724f2efdc1625fe450d57131e3237e3ed330950bdaf2f587c87dcfb132767",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/04-after.log": {
+          "sha256": "fc13330a9fcfadd9c87585a101fd99df8e5225674cd0262cb9b0da53604d8155",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/04-before.log": {
+          "sha256": "071c48d03f57318a91cf860293b8f93f90d204154072866813f32cb3fc5e082b",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/05-after.log": {
+          "sha256": "32ddb0039b91692e918ce96bfbe5d2e8442884160284a87bb4bbaa16501730fa",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/05-before.log": {
+          "sha256": "4ec41543e17bd21629e9d982d3253e44ef55cc35e69e87b3edcc49fe651b5669",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/06-after.log": {
+          "sha256": "62d8ee3c49e1e3c6957c73ae2b07a9ee3cabd707c5fb3c8451ace1b443ee8eb5",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/06-before.log": {
+          "sha256": "127413c3b16e1bc1ae6491932e3f205866dacd26493d88bf6488ea2b00dca49b",
+          "bytes": 2270
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/measurements/report.json": {
+          "sha256": "29f4a2d3aef55700615ca63a3a250c007bef46d259103f933afad4fc05f066c5",
+          "bytes": 243950
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/monospace-font.txt": {
+          "sha256": "4eeca752c4b48815d56cb65159502ff90cfd4a368a0174e9986c5459bd1153d1",
+          "bytes": 4321
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/os-release.txt": {
+          "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+          "bytes": 400
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/rustc.txt": {
+          "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+          "bytes": 196
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/test_compare_glyph_cache_revisions.py": {
+          "sha256": "d4a9c3d823c97dd49f952c3938a3335765c9fa48e4a0360484d3acc9a3317fdc",
+          "bytes": 12183
+        }
+      },
+      "omitted": {
+        "glyph-cache-macos-latest-same-binary/before-benchmark": {
+          "sha256": "2cbd95cfefba6ee9ce03f6d60fcb312c9eec42546c03e31789e1c20591095147",
+          "bytes": 5269936
+        },
+        "glyph-cache-macos-latest-same-binary/before-original-source.tar.gz": {
+          "sha256": "e9c2b9fe1c6c7106cfb7180ce318e1bcbc55eb9ba0f6374c35c005492f80e704",
+          "bytes": 4787026
+        },
+        "glyph-cache-macos-latest-same-binary/before-prepared-source.tar.gz": {
+          "sha256": "d21210b79be870a228f0020b9da86f94ced44a95cf83d6c6a9f8a29d8e188329",
+          "bytes": 4793914
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-benchmark": {
+          "sha256": "b5a4caa1a80110df680c7ffc6279e2fd9989cc929015c8908ca2d31f922322fc",
+          "bytes": 6991472
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-arm-same-binary/before-prepared-source.tar.gz": {
+          "sha256": "fe948954168f7be0c6085d6c2d193c5cc66912aa7f12af7602ee605c1c8b61b8",
+          "bytes": 4789610
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-benchmark": {
+          "sha256": "2f4c05fa0ac3e25c50973be566dc69156b622d0181928927f61d3fff3f3c5c44",
+          "bytes": 7393784
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-original-source.tar.gz": {
+          "sha256": "b32434e524dd513cf12dc4c461bde07b57b404bfb6e9788429f8bf591cb4221a",
+          "bytes": 4783141
+        },
+        "glyph-cache-ubuntu-24.04-same-binary/before-prepared-source.tar.gz": {
+          "sha256": "0debecab29b10162fee0332e5cbce000f6426f054cd736d708a134e85ca1dddf",
+          "bytes": 4800853
+        }
+      }
+    }
+  },
+  "files": {
+    "README.md": {
+      "sha256": "8298e088f6fb1eb1b8627c3f9f56632eee281f077e6243f0f4776ec9c7488109",
+      "bytes": 4315
+    },
+    "full-artifact-audit.py": {
+      "sha256": "3dad64623f97c45ba543dd4ca91e85dfa95ce333906db519da1834e9ba9c1e7e",
+      "bytes": 10971
+    },
+    "run-34747921774/audit.json": {
+      "sha256": "f536d022986d2c8b29cd723886c394af85e91a05576e0227ac7fb4e7a0712bab",
+      "bytes": 19911
+    },
+    "run-34747921774/github-artifacts.json": {
+      "sha256": "6a1866f3ba225a6d9c0910a2b031198f968df570b9122cd2e0ce61ee9f2f18f5",
+      "bytes": 2231
+    },
+    "run-34747921774/github-run.json": {
+      "sha256": "32dc4551d6aa342ac5816cbc25612bb1d1f2eb43489591689d40fcd155f69380",
+      "bytes": 7186
+    },
+    "run-34747921774/text-artifacts.zip": {
+      "sha256": "7a6be4657f74dc299c9a851b5fd1517f5f2bbe2a64277c3c6afd35750a5ec03b",
+      "bytes": 1513323
+    },
+    "run-34747922686/audit.json": {
+      "sha256": "beade082c469001deb482ca20eb413dc22b2ca3e62a9e1d65fde59d3b0250bfb",
+      "bytes": 19505
+    },
+    "run-34747922686/github-artifacts.json": {
+      "sha256": "c506b6660e5c5d8d6f614d45122fff385e3d7a0f1ff240f4af0776b8f225bdc9",
+      "bytes": 2237
+    },
+    "run-34747922686/github-run.json": {
+      "sha256": "81d6bb671acf8f2f48fda1a76184e0e633ff8b1fb60f1a962f9cb6fc154598ca",
+      "bytes": 7186
+    },
+    "run-34747922686/text-artifacts.zip": {
+      "sha256": "5edd6e3ebcc86fbee961d74ff3022434168ed09efc12b69542e3099d3093a374",
+      "bytes": 825414
+    },
+    "run-34748283639/audit.json": {
+      "sha256": "2dd01c92ab9704fa489e46323ecf4bb3cdaf338e84a14c22b96ffefb1970d284",
+      "bytes": 25363
+    },
+    "run-34748283639/github-artifacts.json": {
+      "sha256": "b7c002f6022a8ab359398f40b44ae053e45029afbbe09d03462651fe554c3f0d",
+      "bytes": 2231
+    },
+    "run-34748283639/github-run.json": {
+      "sha256": "22861b0186de7e7929d0ac95b747bd52d4aa798e415519ed397e437049aa34d8",
+      "bytes": 7699
+    },
+    "run-34748283639/text-artifacts.zip": {
+      "sha256": "9ed29466b7a69039fbb3b41b6bb5f2b5b32a0fb4eb0bec724a23744de9a223b8",
+      "bytes": 1514532
+    },
+    "run-34748285006/audit.json": {
+      "sha256": "ed9e150b7be732f4799df644933da7a46aaa6c82bb066e3f36ab976cad8cacb7",
+      "bytes": 25028
+    },
+    "run-34748285006/github-artifacts.json": {
+      "sha256": "972dc59fbf94a8c0597d3d2bc27a956dd9642d21fc2f090d314374d4b96c11fa",
+      "bytes": 2237
+    },
+    "run-34748285006/github-run.json": {
+      "sha256": "051bb1bb6638649324dbb6f0f09b1e3bc14c13e796a0d7c7d31d987a976ec4bc",
+      "bytes": 7699
+    },
+    "run-34748285006/text-artifacts.zip": {
+      "sha256": "583638d80ab43fa43b3979506ae132703ab3e5c61f45afa99e116dbfe0c3a6b8",
+      "bytes": 826401
+    },
+    "summary.json": {
+      "sha256": "8cd739d23eb7161348f1349edc56792a45f497c56faa34d837ec75ed6d7bbbca",
+      "bytes": 86764
+    },
+    "verify.py": {
+      "sha256": "e97dbde938b75bc7725f3940610b959747b0f61ad38c83a79b0118486d448c4a",
+      "bytes": 6081
+    }
+  }
+}

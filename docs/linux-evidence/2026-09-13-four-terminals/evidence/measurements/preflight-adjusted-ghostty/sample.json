@@ -1,0 +1,87 @@
+{
+  "command": [
+    "/usr/bin/ghostty",
+    "--config-default-files=false",
+    "--config-file=/evidence/measurements/preflight-adjusted-ghostty/ghostty.config",
+    "-e",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/preflight-adjusted-ghostty"
+  ],
+  "config": {
+    "filename": "ghostty.config",
+    "text": "font-family = DejaVu Sans Mono\nfont-size = 10.5\nscrollback-limit = 0\nwindow-width = 80\nwindow-height = 24\nwindow-padding-x = 0\nwindow-padding-y = 0\nwindow-decoration = none\nshell-integration = none\ngtk-single-instance = false\nadjust-cell-width = 1\nadjust-cell-height = 1\n",
+    "sha256": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "history_limit": 0,
+    "history_unit": "bytes"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      0.00011884399998507433,
+      0.0028382950000036544,
+      0.00011280300000748866,
+      0.00011382499999967877,
+      0.0013655759999835482,
+      0.00012257200000931334,
+      0.00014516400000275098,
+      0.00011210099998493206,
+      0.001058728000003839,
+      0.00013716899999849375,
+      8.96779999948194e-05,
+      0.0001134850000141796,
+      0.0001627869999936138,
+      0.00012285099998621263,
+      0.00011123999999540501,
+      0.00012068799998132818,
+      0.00011494599999650745,
+      0.00011171100001661216,
+      0.00011374400000363494,
+      0.00011174099998356724,
+      0.00011645899999734866,
+      0.00011533800000051997,
+      0.00011472599999251543,
+      0.00011044799998671806,
+      0.00011265300000218303,
+      0.00011529700000778575,
+      0.00011707099997693149,
+      0.0001133439999989605,
+      0.00011488600000575389,
+      0.00011193099999218248
+    ],
+    "workloads": {
+      "geometry_probe": {
+        "bytes": 988,
+        "sha256": "ed637ccccbb4924c56695f28599fd15ab5e523a02d3da0a25938cfe286d48967",
+        "write_seconds": 1.0860000003276582e-05,
+        "drain_rtt_seconds": 0.00012921399999754613,
+        "write_and_dsr_seconds": 0.0001400740000008227,
+        "mib_per_second": 6.726660369546389,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.0,
+        "terminal_rss_before_kib": 254748,
+        "terminal_rss_after_kib": 254764
+      }
+    },
+    "term": "xterm-ghostty"
+  },
+  "status": "passed"
+}

@@ -1,0 +1,25 @@
+running 1 test
+single-row sample=0 incremental=false ms=0.3482
+single-row sample=0 incremental=true ms=0.1101
+single-row sample=1 incremental=true ms=0.1067
+single-row sample=1 incremental=false ms=0.3549
+single-row sample=2 incremental=false ms=0.3453
+single-row sample=2 incremental=true ms=0.1097
+single-row sample=3 incremental=true ms=0.0954
+single-row sample=3 incremental=false ms=0.3527
+single-row sample=4 incremental=false ms=0.3437
+single-row sample=4 incremental=true ms=0.1037
+full-screen sample=0 incremental=false ms=0.3454
+full-screen sample=0 incremental=true ms=0.3546
+full-screen sample=1 incremental=true ms=0.3671
+full-screen sample=1 incremental=false ms=0.3480
+full-screen sample=2 incremental=false ms=0.3461
+full-screen sample=2 incremental=true ms=0.3475
+full-screen sample=3 incremental=true ms=0.3520
+full-screen sample=3 incremental=false ms=0.3497
+full-screen sample=4 incremental=false ms=0.3473
+full-screen sample=4 incremental=true ms=0.3492
+test linux_window::damage_tests::benchmark_frame_repaint ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 605 filtered out; finished in 1.77s
+

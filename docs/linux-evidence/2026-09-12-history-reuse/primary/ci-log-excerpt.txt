@@ -1,0 +1,37 @@
+52: measure	Check out measurement harness and revision history	2026-09-12T21:04:08.9525919Z   BEFORE_REF: 4d382d8f6d515a4b54dcd82c1c4df3e035ba7590
+53: measure	Check out measurement harness and revision history	2026-09-12T21:04:08.9526665Z   AFTER_REF: 794d03dd5a2679f95b3c3c588e2616bee2a04b52
+54: measure	Check out measurement harness and revision history	2026-09-12T21:04:08.9527488Z   SCREEN: primary
+247: measure	Install Rust and native Wayland dependencies	2026-09-12T21:04:10.0582069Z   BEFORE_REF: 4d382d8f6d515a4b54dcd82c1c4df3e035ba7590
+248: measure	Install Rust and native Wayland dependencies	2026-09-12T21:04:10.0583595Z   AFTER_REF: 794d03dd5a2679f95b3c3c588e2616bee2a04b52
+249: measure	Install Rust and native Wayland dependencies	2026-09-12T21:04:10.0584892Z   SCREEN: primary
+905: measure	Validate measurement harness	2026-09-12T21:04:34.8069923Z   BEFORE_REF: 4d382d8f6d515a4b54dcd82c1c4df3e035ba7590
+906: measure	Validate measurement harness	2026-09-12T21:04:34.8070273Z   AFTER_REF: 794d03dd5a2679f95b3c3c588e2616bee2a04b52
+907: measure	Validate measurement harness	2026-09-12T21:04:34.8070579Z   SCREEN: primary
+927: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3482325Z [36;1m  source_directory="$RUNNER_TEMP/kokuban-paired-source-$label"[0m
+929: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3483187Z [36;1m  git archive "$revision" | tar -x -C "$source_directory"[0m
+933: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3485208Z [36;1m    --target-dir "$RUNNER_TEMP/kokuban-paired-build-$label"[0m
+937: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3488491Z [36;1m  sha256sum "$RUNNER_TEMP/kokuban-paired-binaries/$label" > "$evidence_directory/$label-build/binary-sha256.txt"[0m
+943: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3526228Z   BEFORE_REF: 4d382d8f6d515a4b54dcd82c1c4df3e035ba7590
+944: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3526589Z   AFTER_REF: 794d03dd5a2679f95b3c3c588e2616bee2a04b52
+945: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:04:35.3526901Z   SCREEN: primary
+1258: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:05:53.2112617Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-before)
+1600: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:06:02.7171802Z     Finished `release` profile [optimized] target(s) in 1m 27s
+1754: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:07:17.7166045Z    Compiling kokuban v0.1.0 (/home/runner/work/_temp/kokuban-paired-source-after)
+2096: measure	Build both exact revisions sequentially with the same toolchain	2026-09-12T21:07:26.8111174Z     Finished `release` profile [optimized] target(s) in 1m 23s
+2129: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:07:26.9735254Z   BEFORE_REF: 4d382d8f6d515a4b54dcd82c1c4df3e035ba7590
+2130: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:07:26.9735597Z   AFTER_REF: 794d03dd5a2679f95b3c3c588e2616bee2a04b52
+2131: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:07:26.9735892Z   SCREEN: primary
+2133: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:07:27.4052844Z pair 1/5: before (4d382d8f6d515a4b54dcd82c1c4df3e035ba7590)
+2140: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:07:42.2198741Z pair 1/5: after (794d03dd5a2679f95b3c3c588e2616bee2a04b52)
+2141: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:07:57.9771319Z pair 2/5: after (794d03dd5a2679f95b3c3c588e2616bee2a04b52)
+2142: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:08:13.5778525Z pair 2/5: before (4d382d8f6d515a4b54dcd82c1c4df3e035ba7590)
+2143: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:08:28.7329685Z pair 3/5: before (4d382d8f6d515a4b54dcd82c1c4df3e035ba7590)
+2144: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:08:43.8890015Z pair 3/5: after (794d03dd5a2679f95b3c3c588e2616bee2a04b52)
+2145: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:08:59.5651307Z pair 4/5: after (794d03dd5a2679f95b3c3c588e2616bee2a04b52)
+2146: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:09:15.2904407Z pair 4/5: before (4d382d8f6d515a4b54dcd82c1c4df3e035ba7590)
+2147: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:09:30.3689873Z pair 5/5: before (4d382d8f6d515a4b54dcd82c1c4df3e035ba7590)
+2148: measure	Measure five alternating pairs in one native Wayland session	2026-09-12T21:09:45.6938744Z pair 5/5: after (794d03dd5a2679f95b3c3c588e2616bee2a04b52)
+2189: measure	Upload reports, configurations, logs and build provenance	2026-09-12T21:10:01.4101573Z   BEFORE_REF: 4d382d8f6d515a4b54dcd82c1c4df3e035ba7590
+2190: measure	Upload reports, configurations, logs and build provenance	2026-09-12T21:10:01.4101916Z   AFTER_REF: 794d03dd5a2679f95b3c3c588e2616bee2a04b52
+2191: measure	Upload reports, configurations, logs and build provenance	2026-09-12T21:10:01.4102208Z   SCREEN: primary
+2206: measure	Upload reports, configurations, logs and build provenance	2026-09-12T21:10:02.2776684Z Artifact download URL: https://github.com/guicybercode/kokuban.rs/actions/runs/34718883607/artifacts/10306037677

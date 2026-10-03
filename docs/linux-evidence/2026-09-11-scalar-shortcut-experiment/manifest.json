@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "decision": "Candidate not integrated: mixed exploratory results; baseline also predates clipboard fix, so changes are not isolated. Regression tests retained in 469b2ac.",
+  "before_revision": "8dafe9e5ba4106994cae27d702778a277f108199",
+  "candidate_base_revision": "f7ef90fe832c7657bc020e294b1cde83dbdda465",
+  "candidate_patch": "candidate.patch",
+  "candidate_source_files_verified_against_git_and_patch": 70,
+  "candidate_source_sha256": {
+    "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+    "Cargo.toml": "982be1a836c8de41603b0a36cd49f0038fb68badb2b3b6d6b9799d2b2c33da2b",
+    "README.md": "c7e8c34349601a84f89a254676254cda89346cb6555e2510cd21829ff6b2bb26",
+    "examples/terminal-throughput.rs": "e3fcb19fd0725a122c677ca6f9d7bae0c521433339428f65f7d25f495235c168",
+    "examples/graphics.rs": "31a067416b8674cd878db00a6ede6034852066af1f16cf635167800269011626",
+    "src/content_preservation_tests.rs": "441d08acf7c05b1c098237baec5017ed46570e3b6bdd85f85cafff3d7a2fa3bf",
+    "src/layout.rs": "02804ba274a9a96afeb3bc1cbaa180bb6218cb110b53d98082eb5f497a6669e4",
+    "src/terminal_reader.rs": "e09e648e1f9bbac610d9d87ca4ec966572505e68ff4e6c9849df7bde6ebc7633",
+    "src/main.rs": "cecd58dfd900ebd6945730ad4c4c825d93f1da98c5ddb3af354ce0c933a1f4e1",
+    "src/terminal_decoder.rs": "61d1a11b80be6cd6bae5c7debedcfa0041297ff4a3b475abae1c99ce129e51b8",
+    "src/graphics.rs": "06ece9da10146800d12c694f4e36aefeba3c3208d982f971e90d81ae36efe531",
+    "src/config.rs": "42fb7d259847025040e0231e7b202dd2610d98e3a6bdc86d6d7230695a4957fa",
+    "src/linux_clipboard.rs": "1f68f7f189b7216e9170d3501ad7919b2abb7d8ff0cb141b4d6ffd942f43386e",
+    "src/glyph_atlas.rs": "91fc190f368a8c54b1c3085eca82bd0aec660ba8eb7d2b99bbeb5585284e0442",
+    "src/app_icon.rs": "f7a03d8e07b3052e467b741ca9e94877fdb10db14d523f0518b70cfa338fa5d2",
+    "src/linux_window.rs": "5a36b9363225551324ff5da1e5a78dbb04e40c9dcc3e743d4efa5de1793060de",
+    "src/render_scene.rs": "5a1ed7f6ff8c5c95cf4f5f7899835af87b5611162bf8a4f0a8a67c6c93b2b8df",
+    "src/software_graphics.rs": "cca3fba62f4cc7b2f7e188dacdc3cc9861bd26a82f4901a036199bb7953530ca",
+    "src/window_title.rs": "cc74c1a3d9114e7336d1fbd87235eff33585e7308d028a2f64f3e9f7267e349c",
+    "src/selection.rs": "55dc0131c1dc93602dee7760e463d3683b5d57dc927f7a620af13572b5bfb2de",
+    "src/launch_options.rs": "eb6369d2488164dfe1e8bb6825f1a4aa45622d8d69caf3a352407e0337bd2fa9",
+    "src/software_raster.rs": "79245c1cf60bcbac84d7e6c060be41160361520624b52d1584b4ece19a7e328e",
+    "src/terminal_colors.rs": "799e8fb62e54dd88b48cf1bb04d21e7d40dfdff0fc94fb9a755c5e85c4e0efb2",
+    "src/terminal_writer.rs": "569fec1e659337c14c457fbe7a9297ae8b3d1f6782e91c55be3e1dddab238bfc",
+    "src/input/mod.rs": "4d80941e8e2bb963f6ee5e445981462081d7466548610a93227d145ab16321d0",
+    "src/input/linux.rs": "5083f27a33c3dfae5a80481927f6a1aa42091af7ec1f2562dd336ec5e07f21ea",
+    "src/input/keyboard.rs": "54f2a66d503083a256f0108e153e08b48dbbd71408dc53bb9f444fa6d18619f2",
+    "src/input/paste.rs": "95cc345af844c389429eb67c31bfd55da45b1a14fa3320b4a6c6ebb1f9957091",
+    "src/input/macos.rs": "f7a2c76f01cb46c6fb9722c58b5536b9c1c97feac96b1e0248498c087be18a36",
+    "src/input/mouse.rs": "88f2143b42c9ad4dbae24c71fcdba7b1eb0b8190a26333e3ece949bc61dc0449",
+    "src/input/keybind.rs": "008974cd6219db8fe3c08b1b03b48ad6d332d20ff91141b39c5ce71a6b99b934",
+    "src/renderer/mod.rs": "4061a51cbbfb5c97e4a73791d8fee2e00eba6ab7d11d90e5d7ef5039b23a05c5",
+    "src/renderer/brush.rs": "1f96ca940f535c14d352223130ceb74ecfdaf599fac7ec6e9d76f6d2d94140df",
+    "src/renderer/image_decode.rs": "c3ccf133c69b7511a8ea278d4e6a76930b99dd3afeb1b371e86fdde89492d6a5",
+    "src/renderer/image_animation.rs": "a3553b450046057716884461887da9b8b7cb387ab234a299cb87b8cd6093a229",
+    "src/renderer/software_image_store.rs": "5e1daafbeba3271251434b91e98036cb391d6b76b101f51c853e9091cebf4a50",
+    "src/renderer/braille.rs": "c64de16a7b4b8fc761bbb30c9fde3bdc709a024cdcae5770e027b7627f29fbc5",
+    "src/renderer/kitty_handler.rs": "93e4ea87cdbe79f9a1150793b39c024dfd39d7142acaac059eff989a9f196361",
+    "src/renderer/image_store.rs": "d6cc5474f4b6e36f1cd046d541a30ba79f3803146e927609899fcb2aa3606c61",
+    "src/renderer/metal.rs": "c294e9585abc0001828a428c631d5d84c8908141d1e2452a0d43fb15d2b11083",
+    "src/renderer/shaders.rs": "6f945f51b0278f34a3573ecf278f3e38ea74ec8b35bc7d51a6f54e3ee45b6995",
+    "src/renderer/box_drawing.rs": "c28c467ee27fbfcdbaf2d0c17254173a33d56f6a8f36affb8dd6fe1294997156",
+    "src/glyph_atlas/text_raster.rs": "065736b881783ce1e7cfa35f7b12e66baf84f142701029bc0b7060eb2c2d5c16",
+    "src/layout/tree.rs": "268d1626baa9508fc0b3089635aab912d727971ff0531db987a7b135dc2180f3",
+    "src/parser/kitty_graphics.rs": "99e74dfdb3e97c725e16edc0f8a49329173362568c605863ccdbb9887ce664d0",
+    "src/parser/mod.rs": "4a1fc1e4d45fe09da464de5d45c818d4dc0167d2f90cad9b9582939fd585759e",
+    "src/parser/sixel.rs": "1cb32fec638b463a659f6a794224def4637ab68f8fd57705670de350ee848164",
+    "src/parser/ansi.rs": "601251c1e24887d9f49e9e8631ff511409fb3d248ee94ffda34131a6c5f5922e",
+    "src/grid/mod.rs": "c6528f635dfedaf14bb619b59d15bb3fcb7a4beb677d8af9b2a03ac2cb38d3e7",
+    "src/grid/marks.rs": "602e19d34da2c022e69ee3640ce7eb7f646423c73ff3ab7591b4ac97b49e7eea",
+    "src/grid/buffer.rs": "8ed8e02f379c8a00b54aefd4f35713a65d7d07fd24016be66508bf59c97426e3",
+    "src/grid/boundary_pages_manifest.json": "def061cd9a4852ba84f6f9709bdf0064b4c1d686483a0ff72a3c0ddda57374a7",
+    "src/grid/boundary_pages_reference.rs": "93f0737ecfb05b2e43ba97c1799b855ef1d8874ae28bf1497802e7fd0c9d5b6a",
+    "src/grid/boundary_pages.rs": "86eb8b605124a8befcac483cc0170de7a5be5328d314172688ff328d08c4ee86",
+    "src/grid/boundary_pages_data.rs": "fda9c0f5e45821a92d21e713b3dc3446d27e21fc530b07997e3f4f9967894375",
+    "src/grid/cell.rs": "a5766e51b0036faaf70bbefba47172f249c697a5d0171970798774e1fca212a3",
+    "src/grid/boundary_pages_tests.rs": "f058d0b12a9c208ef20063261f5f0b6deece6bf1d7c6f335a1ec1682cc615783",
+    "src/grid/boundary_pages_corpus.rs": "9eb7029b1b94fa90c021a6722acef10d02f8d921be6dce4136e5a990f37ddac5",
+    "src/grid/reflow.rs": "a9e7cafe186a057b04fdaddfc88ffd04555d6c5b135603dda1c7f7760ea220fe",
+    "src/app/mod.rs": "c444a6f1d5580ff3bdfad03f6d67615054ff7b4a58491999e5f9524e7a0cc8df",
+    "src/app/confirm.rs": "dc3339e2e5b563e04944004e06bf49b9da4ee4ab52cdcc3385b9c55a30297e23",
+    "src/app/window.rs": "6c1141834c45e8dbc383b96328fcc34b39dc13c18e6407614169e64ba21a8968",
+    "src/pty/mod.rs": "ab41b8ea2eff05b1b57fb8dbe4424d79e20ed92aebb09067d181f1d22442d9c5",
+    "src/pty/unix.rs": "857ab210325240e298d0c474f27129dd6cd6587b011a1c0c08bacdac7aa1369a",
+    "src/pane/mod.rs": "70c7ab0c17335820a022d6bb2a4913d439ca67d30df04ceb0d41f74679be443b",
+    "src/pane/pane.rs": "8ddcbdad0876c8ae1157702a3df3a4b5e13ee6668a0f90d61d05edf830ffe5d8",
+    "assets/io.github.guicybercode.kokuban.desktop": "cbd196b9c2e5fad5327a358438bdf3dd6e3519f5e4aada3b54ef10861c21a1b1",
+    "assets/README.md": "3c60e770fcc826a6054e24a0f5c198239f6e42ae99d2b8220d4c6fb49000756d",
+    "assets/kokuban-icon.png": "dce501e80f6bed47863fab9c4419da4eba41b77e331b6be4d671dad1f09c5df9",
+    "shaders/terminal.metal": "afb97b9cceb2de0b3a2bad3da899d4d0ae65f9b1d8998657cd8435aa9e36a430"
+  },
+  "build": "Rust 1.94.1 release locked; separate source directories, shared dependency target, root rebuilt for each; binary SHA256 observed in reports. Executables not archived.",
+  "environment": "Docker Linux arm64 VM on macOS, Debian 12, Weston 10.0.1 headless Pixman, DejaVu Sans Mono 14; affinity [0]; other host workloads not isolated.",
+  "summaries": {
+    "alternate": {
+      "ascii": {
+        "before_median_MiB_s": 148.01368453816312,
+        "after_median_MiB_s": 153.3078292715391,
+        "median_paired_throughput_change_percent": 2.419148316840225,
+        "slower_pairs": 1
+      },
+      "ansi": {
+        "before_median_MiB_s": 125.52786138269191,
+        "after_median_MiB_s": 122.9368878917182,
+        "median_paired_throughput_change_percent": -2.746904143044604,
+        "slower_pairs": 4
+      },
+      "unicode": {
+        "before_median_MiB_s": 70.87116503233318,
+        "after_median_MiB_s": 72.35690310401692,
+        "median_paired_throughput_change_percent": 2.978437069594131,
+        "slower_pairs": 0
+      },
+      "short_lines": {
+        "before_median_MiB_s": 68.05921202100359,
+        "after_median_MiB_s": 67.46289320926412,
+        "median_paired_throughput_change_percent": -0.783754424687999,
+        "slower_pairs": 3
+      }
+    },
+    "primary": {
+      "ascii": {
+        "before_median_MiB_s": 116.39047428334352,
+        "after_median_MiB_s": 117.06222086174229,
+        "median_paired_throughput_change_percent": 0.6991418968233631,
+        "slower_pairs": 2
+      },
+      "ansi": {
+        "before_median_MiB_s": 101.69190830091118,
+        "after_median_MiB_s": 101.66560339476378,
+        "median_paired_throughput_change_percent": 0.9744583451375854,
+        "slower_pairs": 2
+      },
+      "unicode": {
+        "before_median_MiB_s": 60.020369174220555,
+        "after_median_MiB_s": 63.33531714731758,
+        "median_paired_throughput_change_percent": 5.163741038210912,
+        "slower_pairs": 0
+      },
+      "short_lines": {
+        "before_median_MiB_s": 20.137249074488988,
+        "after_median_MiB_s": 19.74533083658077,
+        "median_paired_throughput_change_percent": -1.8503255406869368,
+        "slower_pairs": 5
+      }
+    }
+  },
+  "evidence_sha256": {
+    "weston.log": "538d45b0aa20e662c5fcb57c6d86389fe2b591ece69de86e53ebad40f70c6a19",
+    "candidate.patch": "9ff7388d937495acef3e591022c468267db1fe6e511bcb945b7f751ecff385c4",
+    "README.md": "0617d8b373091a34f7fef5e695478806784f5431a927c91876c0c9d75b120757",
+    "measure.sh": "7c86fa1fe02258da4f516b7f8fd91fe9abb30477eaab2c161e34feb7c8bbb0f3",
+    "primary-report.json": "135ffa28584a4d67b6e501e9fe7437be86ee1dbb1b29e4e8e7b8b7034be0dacb",
+    "alternate-report.json": "a7e2a637ba76d197f48fc7fef29f772f5ce3084e9ec385146a292adf3a656228"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "crate": {
+    "name": "unicode-segmentation",
+    "version": "1.13.3",
+    "sha256": "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8",
+    "locked_checksum_verified": true
+  },
+  "unicode_version": [
+    17,
+    0,
+    0
+  ],
+  "source_files": {
+    "src/tables.rs": {
+      "sha256": "089c221918a60e8672ed8eda73d27f195dcc404f91b9e71b57c0b5e348e7aeef",
+      "bytes": 293206
+    },
+    "src/grapheme.rs": {
+      "sha256": "730d50fb3d2858840e61ed3805a67336fd0b02c0e6bb9192306511ae6adfdbb3",
+      "bytes": 38454
+    },
+    "tests/testdata/mod.rs": {
+      "sha256": "52b9609d96660413c21f51e8f9d15667213f628c05b7c228e54585865bd4c373",
+      "bytes": 213398
+    },
+    "LICENSE-MIT": {
+      "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0",
+      "bytes": 1071
+    },
+    "COPYRIGHT": {
+      "sha256": "23860c2a7b5d96b21569afedf033469bab9fe14a1b24a35068b8641c578ce24d",
+      "bytes": 321
+    }
+  },
+  "generator_sha256": "3e7d10e56669be891bd353960dd21111b2f2f1c9fc41ad01a7cee9ff2bd9e1ad",
+  "source_range_count": 1618,
+  "page_size_codepoints": 64,
+  "production_table_bytes": 4352,
+  "pages_by_class": {
+    "0": 487,
+    "1": 16915,
+    "2": 6
+  },
+  "exhaustive_audit": {
+    "valid_scalars_checked": 1112064,
+    "other": 1080607,
+    "attach": 384,
+    "fallback": 31073,
+    "prepend_scalars": 27,
+    "control_cr_lf_scalars": 3895
+  },
+  "corpus_case_counts": {
+    "TEST_SAME": 702,
+    "TEST_DIFF": 64
+  },
+  "oracle": "Independent bisect lookup of all original ranges, not the dense classification used by generation",
+  "surrogates": "Excluded from scalar audit; char cannot contain them. Conservative page generation includes their original category.",
+  "coverage_interpretation": "Domain counts include unassigned code points; they are not workload or language coverage percentages.",
+  "license_option": "MIT; original attribution and complete license retained",
+  "generator_path": "scripts/generate-grapheme-tables.py",
+  "outputs": {
+    "src/grid/boundary_pages_data.rs": {
+      "sha256": "fda9c0f5e45821a92d21e713b3dc3446d27e21fc530b07997e3f4f9967894375",
+      "bytes": 13344
+    },
+    "src/grid/boundary_pages_reference.rs": {
+      "sha256": "93f0737ecfb05b2e43ba97c1799b855ef1d8874ae28bf1497802e7fd0c9d5b6a",
+      "bytes": 67796
+    },
+    "src/grid/boundary_pages_corpus.rs": {
+      "sha256": "9eb7029b1b94fa90c021a6722acef10d02f8d921be6dce4136e5a990f37ddac5",
+      "bytes": 48047
+    },
+    "THIRD_PARTY_LICENSES/unicode-segmentation/LICENSE-MIT": {
+      "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0",
+      "bytes": 1071
+    },
+    "THIRD_PARTY_LICENSES/unicode-segmentation/COPYRIGHT": {
+      "sha256": "23860c2a7b5d96b21569afedf033469bab9fe14a1b24a35068b8641c578ce24d",
+      "bytes": 321
+    }
+  }
+}

@@ -1,0 +1,371 @@
+{
+  "date": "2026-09-11",
+  "purpose": "Four-terminal processing comparison with measured matching cell geometry; a single CI environment, not an overall terminal ranking.",
+  "run": {
+    "id": 34615352199,
+    "status": "success",
+    "url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34615352199",
+    "artifact_name": "linux-four-terminal-comparison",
+    "artifact_id": 10269489657,
+    "artifact_zip_sha256_reported_by_upload_action": "23b7c04a5d5ebc6e8a286e8d7de3d3d75164dea83cd885e3ba9d7b58c69b5e00",
+    "artifact_zip_bytes_reported_by_upload_action": 1977096,
+    "report": "ci-report.json",
+    "report_copied_byte_for_byte": true,
+    "harness_revision": "41847292a0a2541313d3b28d17aae6d0f6e02565",
+    "kokuban_source_revision": "48afe697858fa6e725cafbaf406d9ed261f08d62",
+    "workflow_snapshot": "linux-terminal-comparison.yml",
+    "workflow_url": "https://github.com/guicybercode/kokuban.rs/blob/41847292a0a2541313d3b28d17aae6d0f6e02565/.github/workflows/linux-terminal-comparison.yml",
+    "original_ci_log_sha256": "d13d58ba1722df7071365e1985ebcaff86cc24fe5c9d771e421ebf66cc611855",
+    "original_ci_log_bytes": 549358,
+    "ci_log_excerpt": "ci-log-excerpt.txt",
+    "ci_log_excerpt_format": "Selected original CI log lines with trailing whitespace removed; the raw report and individual terminal logs are unchanged."
+  },
+  "provenance_checks": {
+    "source_build": "Pinned workflow builds an exact git archive of the resolved Kokuban source with cargo build --release --locked in an isolated container target directory.",
+    "cargo_inputs_verified_byte_for_byte_against_source_revision": {
+      "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+      "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48"
+    },
+    "harness_snapshots": "harness/ files and workflow copied from the exact harness git objects; comparator SHA-256 matches ci-report.json.",
+    "executable_hashes": "All executable SHA-256 values below were recorded by the CI runner. Executable bytes were not retained in the downloaded artifact, so this evidence packaging did not independently rehash binaries.",
+    "artifact_zip_hash": "The artifact ZIP digest is the original upload-action observation, not an independent local ZIP rehash."
+  },
+  "environment": {
+    "host_runner": "GitHub hosted ubuntu-24.04 x86_64",
+    "platform_observation": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.43",
+    "cpu_model": "AMD EPYC 7763 64-Core Processor",
+    "visible_logical_cpus": 4,
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "container": {
+      "image_reference": "ubuntu@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d",
+      "image_id": "sha256:e2e49769ecc7948a72b28e9748f2dc881a13f5cea02fc0faa99a7a5607e457f6",
+      "architecture": "amd64",
+      "packages": "all-system-packages.txt"
+    },
+    "backend": "native Wayland; DISPLAY unset",
+    "compositor": "Weston 14.0.2, headless, pixman, 1280x900; renderer observed in weston.log",
+    "requested_graphics_environment": {
+      "LIBGL_ALWAYS_SOFTWARE": "1",
+      "GALLIUM_DRIVER": "llvmpipe"
+    },
+    "effective_gl_renderer_observed_per_terminal": false,
+    "rust": "1.94.1; release, locked dependencies; rustc.txt and cargo-tree.txt retained",
+    "font": {
+      "family": "DejaVu Sans Mono",
+      "kokuban_pixels": 14.0,
+      "competitor_points": 10.5,
+      "matched_file": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "matched_file_sha256": "a54dca07c76d6289e717e75e0a58c0128f6d7269ef3faf76417c9d7d3bba37ab",
+      "fallback_observations": "font-fallbacks.txt",
+      "font_file_hashes": "font-files-sha256.txt",
+      "actual_font_selection_verified_per_terminal": false
+    }
+  },
+  "measurement": {
+    "screen": "alternate",
+    "history_configured": 0,
+    "requested_bytes_per_workload": 33554432,
+    "actual_payloads": {
+      "ascii": {
+        "bytes": 33554380,
+        "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a"
+      },
+      "ansi": {
+        "bytes": 33554392,
+        "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e"
+      },
+      "unicode": {
+        "bytes": 33554400,
+        "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5"
+      },
+      "short_lines": {
+        "bytes": 33554430,
+        "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b"
+      }
+    },
+    "samples_per_terminal": 5,
+    "timed_processes": 20,
+    "timed_workload_observations": 80,
+    "protocol_rtt_observations": 600,
+    "preflight_processes": 8,
+    "preflight_rtt_observations": 240,
+    "preflights_included_in_statistics": false,
+    "order": "Rotate terminal start order for each sample; actual execution_order retained in ci-report.json.",
+    "effective_geometry_rows_columns_pixels": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "cell_pixels": [
+      9,
+      17
+    ],
+    "calibration_status": "passed",
+    "cell_spacing_adjustments_pixels": {
+      "kokuban": [
+        0,
+        0
+      ],
+      "ghostty": [
+        1,
+        1
+      ],
+      "alacritty": [
+        1,
+        0
+      ],
+      "kitty": [
+        1,
+        0
+      ]
+    },
+    "geometry_and_history_checks_passed": true,
+    "rendering_equivalence_verified": false,
+    "statistics": "Medians below are copied from the five-sample report summaries; individual values, min/max and median absolute deviation remain in ci-report.json."
+  },
+  "terminals": {
+    "kokuban": {
+      "version_observation": "kokuban 0.1.0",
+      "package_version": null,
+      "executable_path_in_container": "/build/target/release/kokuban",
+      "executable_sha256_recorded_in_ci": "37ed3f91a2f7f14372ebb68981664dbaf596cfe13c3b4c7ceab61061096e19fc",
+      "independently_rehashed_during_packaging": false,
+      "median_results": {
+        "ascii": {
+          "write_and_dsr_seconds": 0.493429529000025,
+          "mib_per_second": 64.85211874892458,
+          "terminal_cpu_seconds": 0.5
+        },
+        "ansi": {
+          "write_and_dsr_seconds": 0.5867470949999642,
+          "mib_per_second": 54.53791271523772,
+          "terminal_cpu_seconds": 0.5899999999999999
+        },
+        "unicode": {
+          "write_and_dsr_seconds": 1.5582565390000127,
+          "mib_per_second": 20.53575177227067,
+          "terminal_cpu_seconds": 1.5700000000000003
+        },
+        "short_lines": {
+          "write_and_dsr_seconds": 1.4255297440000163,
+          "mib_per_second": 22.44779404101371,
+          "terminal_cpu_seconds": 1.4300000000000006
+        }
+      },
+      "pooled_protocol_rtt_median_seconds": 6.900450000557612e-05
+    },
+    "ghostty": {
+      "version_observation": "Ghostty 1.3.0-dev+0000000\n\nVersion\n  - version: 1.3.0-dev+0000000\n  - channel: tip\nBuild Config\n  - Zig version   : 0.15.2\n  - build mode    : .ReleaseFast\n  - app runtime   : .gtk\n  - font engine   : .fontconfig_freetype\n  - renderer      : renderer.generic.Renderer(renderer.OpenGL)\n  - libxev        : epoll\n  - kernel version: 6.17.0-1022-azure\n  - desktop env   : other\n  - GTK version   :\n    build         : 4.22.4\n    runtime       : 4.22.4\n  - libadwaita    : enabled\n    build         : 1.9.1\n    runtime       : 1.9.1\n  - libX11        : enabled\n  - libwayland    : enabled",
+      "package_version": "1.3.0~us1-0ubuntu1.1",
+      "executable_path_in_container": "/usr/bin/ghostty",
+      "executable_sha256_recorded_in_ci": "6165fbec7c1380681f53cdb95be887d563b07f66b80910573bf6af1aca39aff8",
+      "independently_rehashed_during_packaging": false,
+      "median_results": {
+        "ascii": {
+          "write_and_dsr_seconds": 1.1831395970000358,
+          "mib_per_second": 27.046639711894098,
+          "terminal_cpu_seconds": 2.61
+        },
+        "ansi": {
+          "write_and_dsr_seconds": 1.448202747000039,
+          "mib_per_second": 22.09632727138204,
+          "terminal_cpu_seconds": 2.7799999999999994
+        },
+        "unicode": {
+          "write_and_dsr_seconds": 1.232572129999994,
+          "mib_per_second": 25.961944703732694,
+          "terminal_cpu_seconds": 2.58
+        },
+        "short_lines": {
+          "write_and_dsr_seconds": 1.3408372960000179,
+          "mib_per_second": 23.865683172830643,
+          "terminal_cpu_seconds": 2.5
+        }
+      },
+      "pooled_protocol_rtt_median_seconds": 0.00010708900001077382
+    },
+    "alacritty": {
+      "version_observation": "alacritty 0.16.1",
+      "package_version": "0.16.1-2ubuntu1",
+      "executable_path_in_container": "/usr/bin/alacritty",
+      "executable_sha256_recorded_in_ci": "6f6946a4d9bb9538a0bcbff0311621695905c1a2b6e33d78594f3384206e4f30",
+      "independently_rehashed_during_packaging": false,
+      "median_results": {
+        "ascii": {
+          "write_and_dsr_seconds": 0.6290974459999461,
+          "mib_per_second": 50.8664446381146,
+          "terminal_cpu_seconds": 0.8999999999999999
+        },
+        "ansi": {
+          "write_and_dsr_seconds": 0.5929421410000373,
+          "mib_per_second": 53.968101843895305,
+          "terminal_cpu_seconds": 0.6600000000000001
+        },
+        "unicode": {
+          "write_and_dsr_seconds": 0.6108609269999761,
+          "mib_per_second": 52.385032448512014,
+          "terminal_cpu_seconds": 0.7300000000000004
+        },
+        "short_lines": {
+          "write_and_dsr_seconds": 0.6554058190000092,
+          "mib_per_second": 48.82470854695131,
+          "terminal_cpu_seconds": 0.6799999999999997
+        }
+      },
+      "pooled_protocol_rtt_median_seconds": 9.233700001232137e-05
+    },
+    "kitty": {
+      "version_observation": "kitty 0.45.0 created by Kovid Goyal",
+      "package_version": "0.45.0-1build1",
+      "executable_path_in_container": "/usr/bin/kitty",
+      "executable_sha256_recorded_in_ci": "bf186458809f1c5bb858c77846c9a1d65ca9f2e0be42640498985391f900b69b",
+      "independently_rehashed_during_packaging": false,
+      "median_results": {
+        "ascii": {
+          "write_and_dsr_seconds": 0.4066624289999936,
+          "mib_per_second": 78.68922262532409,
+          "terminal_cpu_seconds": 0.6900000000000002
+        },
+        "ansi": {
+          "write_and_dsr_seconds": 1.92534764800007,
+          "mib_per_second": 16.620355231049775,
+          "terminal_cpu_seconds": 2.2600000000000007
+        },
+        "unicode": {
+          "write_and_dsr_seconds": 0.5346890179999946,
+          "mib_per_second": 59.847815094684066,
+          "terminal_cpu_seconds": 0.9099999999999993
+        },
+        "short_lines": {
+          "write_and_dsr_seconds": 1.0929524580000134,
+          "mib_per_second": 29.278490439746992,
+          "terminal_cpu_seconds": 1.370000000000001
+        }
+      },
+      "pooled_protocol_rtt_median_seconds": 0.0032003644999747394
+    }
+  },
+  "validation": {
+    "native_launch": {
+      "status": "passed",
+      "file": "native-launch.txt",
+      "scope": "Headless CLI plus direct PTY argv/cwd/PWD/TTY/TERM and DSR; compositor window properties were not read back."
+    },
+    "rust": {
+      "status": "passed",
+      "summary": "rust-tests-summary.json",
+      "main_passed": 664,
+      "examples_passed": 203,
+      "ignored": 1
+    },
+    "terminal_logs": {
+      "directory": "terminal-logs/",
+      "process_count": 28,
+      "notes": [
+        "Ghostty logs include default DPI fallback, unavailable accessibility bus, deprecated Adwaita styles and unimplemented cell_size action.",
+        "Kitty logs include unavailable systemd scope, desktop portal and notification service.",
+        "Kokuban logs include XDG Settings Portal timeout.",
+        "weston.log retains client disconnect messages and a layer-finalization message during compositor shutdown."
+      ]
+    }
+  },
+  "limits": [
+    "DSR acknowledges protocol processing, not completed frame presentation or input-to-photon latency.",
+    "Matching cell geometry and installed fonts do not prove equal Unicode shaping, glyph fallback, visual output or rendering work.",
+    "Software graphics environment variables are configured; effective GL_RENDERER strings were not captured separately for each terminal.",
+    "This headless container lacks desktop services noted in the logs and is not an actual Omarchy/Hyprland desktop or a physical GPU benchmark.",
+    "Only alternate-screen history-zero processing was compared; primary-screen scrollback and other workloads are outside this report.",
+    "Ghostty identifies as 1.3.0-dev+0000000, channel tip, packaged as 1.3.0~us1-0ubuntu1.1; this is not described as stable or latest Ghostty.",
+    "Results describe these binaries on this one shared-host CI environment; no uniform superiority or overall terminal ranking is inferred."
+  ],
+  "failed_previous_upload": "failed-upload.json",
+  "retention": "Original raw report, per-process terminal logs/configurations, environmental observations, Cargo inputs/tree, pinned harness/workflow, and concise log/test summaries retained. Shader caches, payload binaries, duplicate per-process result JSON and full CI/test logs are omitted; source-log SHA-256 values are recorded.",
+  "evidence_sha256": {
+    "Cargo.lock": "e84b5d76d78a53a3ee552f97fe8e5a404f6a69ab2bd64f2c50b2f06fa34e2a48",
+    "Cargo.toml": "885f5da0ae3d3b8cc73ac9c9c1a895e8db3a6b160a6707f50ea6e14c411da3e4",
+    "all-system-packages.txt": "1ce84f3070cec314f60761550d062c9ac975344eafdaa21873f3c3212fd3e410",
+    "cargo-tree.txt": "76d75208d9546a4b845b9f4ddaa0f6f329d76198563560ad1b22affc1567b0fc",
+    "ci-log-excerpt.txt": "7c37d68b313d71747faa605905c32637748b0f138bbe3cd430ef1b147011b77c",
+    "ci-report.json": "0d6ba93d55e4f252e69c282b4235e12801eb0b79ec8350d188599076dfe441f9",
+    "configurations/01-alacritty/alacritty.toml": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "configurations/01-ghostty/ghostty.config": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "configurations/01-kitty/kitty.conf": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "configurations/01-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "configurations/02-alacritty/alacritty.toml": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "configurations/02-ghostty/ghostty.config": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "configurations/02-kitty/kitty.conf": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "configurations/02-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "configurations/03-alacritty/alacritty.toml": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "configurations/03-ghostty/ghostty.config": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "configurations/03-kitty/kitty.conf": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "configurations/03-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "configurations/04-alacritty/alacritty.toml": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "configurations/04-ghostty/ghostty.config": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "configurations/04-kitty/kitty.conf": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "configurations/04-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "configurations/05-alacritty/alacritty.toml": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "configurations/05-ghostty/ghostty.config": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "configurations/05-kitty/kitty.conf": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "configurations/05-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "configurations/preflight-adjusted-alacritty/alacritty.toml": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "configurations/preflight-adjusted-ghostty/ghostty.config": "9bc4d1ffa837f7ab0922e74bee43295049dd85d0d066065fdda2833dc4b1959e",
+    "configurations/preflight-adjusted-kitty/kitty.conf": "5b837d8eee12a45122634a8c9d263f5281024ae351dd6d48588a76fbcb2c2213",
+    "configurations/preflight-adjusted-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "configurations/preflight-baseline-alacritty/alacritty.toml": "227313d95967510c66e5f2c0d818fafdbc6d276c4a46ff768d6917aee6e2d696",
+    "configurations/preflight-baseline-ghostty/ghostty.config": "0725dd7328a848b83d2323aa6b2f4aa0d9629f3df2055135253af26badcd5dc1",
+    "configurations/preflight-baseline-kitty/kitty.conf": "f5c456d35f7a2d039937491456a7cbec8d7899c2f45745b0c9623c6e89623629",
+    "configurations/preflight-baseline-kokuban/kokuban.toml": "461e8b105c5a2152fed7d088b5336e396855569a58dbb28aa5837bf94fb09646",
+    "container-image.json": "b42e3c8520497e9b1bd187c2a64d36b88fc7363479eeb7f1715383716130f568",
+    "cpu.txt": "4476e601951bb5e5dc85ca4b9d2e3bc795bb83c0d4e62b8d9f2bdec6659b0e7a",
+    "failed-upload.json": "bba0a88e637baa1941b6f21013434be0569efab0704281a222469aea827bedc2",
+    "font-fallbacks.txt": "cda15b1493d10cf0c4c11db5f98b7caf86dfd2f815fb16f7baca5c92a3c7cc08",
+    "font-files-sha256.txt": "a5e7675b2008b2469aa3291f8dd1cb4d1d3a1fdc6f6e74572c8d1536f058f2af",
+    "harness/compare-terminal-performance.py": "c4f19b3591dc0689bbcdcb7cd4c7e25a6a52dcd2ec090cba310bb72dda95dd12",
+    "harness/linux-launch-smoke.py": "e8333a019d16f58b449fd9645d5cd26bee0eef6882d38dd25073618f8321e1a4",
+    "harness/linux-resource-smoke.py": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+    "harness-revision.txt": "db8b714198e4bc12426145d79657dc5dab28c1bd0eccbc445df0d277fb45434e",
+    "image-reference.txt": "c403078b8708b254fdc047bfaf2df093f0153e4b75b365c369aa802e24bc87d0",
+    "kokuban-binary-sha256.txt": "af993eef0acbf03aa27ac797efc06484abe4d4bf641f4f7f8fd05ebded8b40d7",
+    "linux-terminal-comparison.yml": "fb831130298d2ca04c37f0411691b8081b9dbcf36ca1e3458e9553d0d8bee73a",
+    "native-launch.txt": "f7be13f9ff218c3f86550b32f6fdcc94d6ad2a600a50038481b5f16f2b6399c6",
+    "rust-tests-summary.json": "6566e8e86227e9cc044492aa3d5ff49f66fa2fd59aa4eacce66bbf40f90b390e",
+    "rustc.txt": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+    "source-revision.txt": "1e351db93215376b0a731a74b49a2c26afa4dc6bd6a5abc4a65783217a76d2ab",
+    "system-packages.txt": "967f306a6f8112d71b5a3afc4a048c8dfa5637aa95f5ee1cd96243549fd31c01",
+    "terminal-logs/01-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/01-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/01-kitty.log": "d26c8212f4c07c266bfe67c723f42b8df16003c0713d660ac12092dba9d4cf29",
+    "terminal-logs/01-kokuban.log": "6aedbb7905d04aa59f4131e77d1309ead393cf4b66b31682a8e7301787739699",
+    "terminal-logs/02-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/02-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/02-kitty.log": "793d793248607f4adb103d1fba589981db0d03875103f8a2c26d94944e53d044",
+    "terminal-logs/02-kokuban.log": "63b0bce83b8874a98607d1bbcdd09779351866dd011b11745b2b6c9091c16280",
+    "terminal-logs/03-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/03-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/03-kitty.log": "74fe3560a42f4059394a418fe7fe5f31bf16f17f8b7ae8607a1da04517aee86c",
+    "terminal-logs/03-kokuban.log": "c62ab40eb74d27780487bb0863b8cd87555c6a6e195abf8238a0b888c6484afa",
+    "terminal-logs/04-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/04-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/04-kitty.log": "b4f2b93cce87392a9cf2795c7b10dc89cb6ed5beaf748c88aac9d5d9bd7b5064",
+    "terminal-logs/04-kokuban.log": "a6d0fe381e9212c69e0c94f11e230eb3d592e552070f9d01f91b16910b56fa5c",
+    "terminal-logs/05-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/05-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/05-kitty.log": "70ddb8446fc7815be12f67321f314dfbea77d45c104b3c5def42de8b835db5db",
+    "terminal-logs/05-kokuban.log": "9ccb49de7dbe73e94a69fb9f0b9631383ee4f15418800cd5438238b7f036636f",
+    "terminal-logs/preflight-adjusted-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/preflight-adjusted-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/preflight-adjusted-kitty.log": "f6a93244a9e873f883ea7f611ac15b8aef2621446b63b8ba60c184ce47404022",
+    "terminal-logs/preflight-adjusted-kokuban.log": "1e8f77654a1f9065579b3d150bb0d7a3707a8ae0172fc261908b27fd0ba664f3",
+    "terminal-logs/preflight-baseline-alacritty.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "terminal-logs/preflight-baseline-ghostty.log": "28f826b248e6fd4c279b78cac3be018f061797844efd12ce438da0aa9f151b7b",
+    "terminal-logs/preflight-baseline-kitty.log": "bd2b8968560975f0f2fa1bbb56464f66585ca6b98199e133ac6f894a021e509c",
+    "terminal-logs/preflight-baseline-kokuban.log": "bfcc4b8cd3a3664173a97fa3e08b834b18a73ad7ad875c590c836b5009b6847a",
+    "weston.log": "2655fde6c345fbfa7d9feb639fc2b402a77162211adbf57b0affd4e69f6f2d2f"
+  }
+}

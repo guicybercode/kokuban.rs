@@ -1,6 +1,6 @@
 # Contributing to Kokuban
 
-Bug reports, focused fixes, tests, documentation and platform feedback are welcome. Read the [README](README.md) for setup and the [roadmap](docs/ROADMAP.md) for current capabilities. Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
+Bug reports, focused fixes, tests, documentation and platform feedback are welcome. Read the [README](README.md) for setup and the [roadmap](docs/ROADMAP.md) for current capabilities. Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue. All community participation follows our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Set up a development checkout
 
@@ -17,6 +17,16 @@ rustup run 1.94.1 cargo build --locked
 
 Fork the repository first if you do not have push access. Use your fork as the push destination. Run the application from a graphical desktop session; a headless SSH shell without a display cannot open a window.
 
+The application and its Cargo build are Rust-only. Python 3 is a development
+dependency for the smoke tests, benchmarks, Unicode-table regeneration and release
+packaging in `scripts/`; it is not needed to build or run Kokuban. Historical
+measurement harnesses live in `docs/`. These development files are excluded from
+GitHub's application language statistics through `.gitattributes`.
+Binary release archives and Cargo source packages omit the development scripts
+and raw benchmark snapshots. Binary archive documentation links to the tagged
+repository for those files; third-party license notices and required source
+archives remain included.
+
 ## Make a focused change
 
 - Keep changes small and preserve unrelated work. Avoid whole-file formatting of legacy code when only a few lines change.
@@ -25,7 +35,7 @@ Fork the repository first if you do not have push access. Use your fork as the p
 - Keep configuration, README examples and platform claims consistent with the actual implementation. Distinguish compilation from runtime validation.
 - Do not commit credentials, private signing keys, SDKs, `target/`, personal logs or unreviewed generated output. Preserve third-party notices.
 
-Android development currently lives on `codex/android-native`. Coordinate shared API changes using the [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md); an experimental branch is not part of the desktop v0.1 release.
+Android development currently lives on `codex/android-native`. Coordinate shared API changes using the [Android integration handoff](docs/ANDROID_SHARED_INTEGRATION.md); an experimental branch is not part of the desktop v0.4 release.
 
 ## Validate your change
 
@@ -48,4 +58,6 @@ Use descriptive commits. Preserve actual contributor attribution and do not add 
 
 ## Licensing
 
-By submitting code or documentation intended for inclusion in this repository, you agree to license your contribution under the project's [MIT license](LICENSE). Only submit work you have the right to contribute. Dependencies and third-party assets keep their own licenses and required notices; the project's MIT license does not relicense them.
+By submitting original code or documentation intended for inclusion in this repository, you agree to license your contribution under [BSD-4-Clause](LICENSE), the project license starting with v0.2. Read its redistribution, advertising acknowledgment and endorsement conditions before contributing. Only submit work you have the right to contribute.
+
+Third-party code, content and assets keep their own licenses and required notices. In particular, the derived Unicode tables retain their MIT notices and the Contributor Covenant code of conduct retains CC-BY-4.0; the project license does not relicense them. The published v0.1 release remains under MIT. See [third-party licensing](docs/THIRD_PARTY.md).

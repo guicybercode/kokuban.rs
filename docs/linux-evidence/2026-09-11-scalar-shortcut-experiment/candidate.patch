@@ -1,0 +1,56 @@
+diff --git a/src/grid/mod.rs b/src/grid/mod.rs
+index 2ced272..63a13e4 100644
+--- a/src/grid/mod.rs
++++ b/src/grid/mod.rs
+@@ -664,6 +664,14 @@ impl Grid {
+         }
+         let previous = self.buffer.cell(row, col);
+         if previous.grapheme.is_none() && previous.c.is_ascii() && c.is_ascii() { return false; }
++        // Most scalar cells end before the next scalar. Decide that directly
++        // when the verified categories need no context, before encoding the
++        // previous cell as UTF-8 or inspecting the row's retained length.
++        if previous.grapheme.is_none()
++            && boundary_pages::scalar_extends(previous.c, c) == Some(false)
++        {
++            return false;
++        }
+         let previous_len = self.buffer.row_metadata(row).len;
+         if col >= previous_len { return false; }
+         let mut scalar_bytes = [0; 4];
+@@ -2450,7 +2458,10 @@ mod tests {
+ 
+     #[test]
+     fn extended_graphemes_are_single_cells_across_scalar_writes() {
+-        for (text, width) in [("e\u{301}", 1), ("👩🏽‍💻", 2), ("🇧🇷", 2), ("1️⃣", 2)] {
++        for (text, width) in [
++            ("e\u{301}", 1), ("👩🏽‍💻", 2), ("🇧🇷", 2), ("1️⃣", 2),
++            ("\u{600}日", 2), ("\u{1100}\u{1161}", 2),
++        ] {
+             let mut grid = Grid::new(8, 2, 10);
+             for scalar in text.chars() { grid.put_char(scalar); }
+             assert_eq!(grid.buffer.cell(0, 0).text(), text);
+@@ -2460,6 +2471,24 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn scalar_boundaries_use_cluster_context_and_written_content() {
++        let mut grid = Grid::new(8, 2, 10);
++        for scalar in "\u{600}\u{301}日".chars() { grid.put_char(scalar); }
++        assert_eq!(grid.buffer.cell(0, 0).text(), "\u{600}\u{301}");
++        assert_eq!(grid.buffer.cell(0, 1).text(), "日");
++        assert!(grid.buffer.cell(0, 2).flags.contains(CellFlags::WIDE_CONT));
++        assert_eq!(grid.cursor_col, 3);
++
++        let mut grid = Grid::new(8, 2, 10);
++        grid.cursor_col = 2;
++        grid.put_char('\u{301}');
++        assert_eq!(grid.buffer.cell(0, 1).text(), " ");
++        assert_eq!(grid.buffer.cell(0, 2).text(), "\u{301}");
++        assert_eq!(grid.cursor_col, 3);
++        assert_eq!(grid.retained_row_len(0), 3);
++    }
++
+     #[test]
+     fn appended_graphemes_preserve_multibyte_scalars_at_stack_boundaries() {
+         for total_bytes in [63, 64, 65] {

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 /home/runner/work/kokuban.rs/kokuban.rs/scripts/linux-video-smoke.py --child-dir /tmp/kokuban-video-r5axiot4

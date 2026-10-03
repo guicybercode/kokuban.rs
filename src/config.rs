@@ -14,6 +14,8 @@ pub struct Config {
     pub prompt_marks: PromptMarksConfig,
     pub images: ImagesConfig,
     pub confirm: ConfirmConfig,
+    pub omarchy: OmarchyConfig,
+    pub update: UpdateConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,17 +38,94 @@ pub struct WindowConfig {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(default)]
+#[serde(from = "SelectionSettings")]
 pub struct SelectionConfig {
     pub foreground: String,
     pub background: String,
+    pub(crate) explicit_foreground: bool,
+    pub(crate) explicit_background: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(from = "ColorSettings")]
+pub struct ColorConfig {
+    pub foreground: String,
+    pub background: String,
+    pub cursor: Option<String>,
+    pub ansi: Option<[String; 16]>,
+    pub(crate) explicit_foreground: bool,
+    pub(crate) explicit_background: bool,
+}
+
+// Retain whether a color was explicitly configured, including values equal to
+// the defaults. An Omarchy theme fills omitted settings only.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct ColorSettings {
+    foreground: Option<String>,
+    background: Option<String>,
+    cursor: Option<String>,
+    ansi: Option<[String; 16]>,
+}
+
+impl From<ColorSettings> for ColorConfig {
+    fn from(settings: ColorSettings) -> Self {
+        let defaults = Self::default();
+        Self {
+            explicit_foreground: settings.foreground.is_some(),
+            explicit_background: settings.background.is_some(),
+            foreground: settings.foreground.unwrap_or(defaults.foreground),
+            background: settings.background.unwrap_or(defaults.background),
+            cursor: settings.cursor,
+            ansi: settings.ansi,
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct SelectionSettings {
+    foreground: Option<String>,
+    background: Option<String>,
+}
+
+impl From<SelectionSettings> for SelectionConfig {
+    fn from(settings: SelectionSettings) -> Self {
+        let defaults = Self::default();
+        Self {
+            explicit_foreground: settings.foreground.is_some(),
+            explicit_background: settings.background.is_some(),
+            foreground: settings.foreground.unwrap_or(defaults.foreground),
+            background: settings.background.unwrap_or(defaults.background),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct ColorConfig {
-    pub foreground: String,
-    pub background: String,
+pub struct OmarchyConfig {
+    pub enabled: bool,
+}
+
+impl Default for OmarchyConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct UpdateConfig {
+    /// Ask GitHub for a newer release in the background after launch.
+    pub check_on_startup: bool,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            check_on_startup: true,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -189,6 +268,8 @@ impl Default for Config {
             prompt_marks: PromptMarksConfig::default(),
             images: ImagesConfig::default(),
             confirm: ConfirmConfig::default(),
+            omarchy: OmarchyConfig::default(),
+            update: UpdateConfig::default(),
         }
     }
 }
@@ -196,7 +277,7 @@ impl Default for Config {
 impl Default for FontConfig {
     fn default() -> Self {
         Self {
-            family: "Menlo".to_string(),
+            family: if cfg!(target_os = "linux") { "monospace" } else { "Menlo" }.to_string(),
             size: 14.0,
             zoom_step: 1.0,
             min_size: 6.0,
@@ -221,6 +302,8 @@ impl Default for SelectionConfig {
         Self {
             foreground: "#000000".to_string(),
             background: "#b4d5fe".to_string(),
+            explicit_foreground: false,
+            explicit_background: false,
         }
     }
 }
@@ -230,6 +313,10 @@ impl Default for ColorConfig {
         Self {
             foreground: "#c0c0c0".to_string(),
             background: "#1a1a2e".to_string(),
+            cursor: None,
+            ansi: None,
+            explicit_foreground: false,
+            explicit_background: false,
         }
     }
 }
@@ -309,29 +396,57 @@ impl Default for ResizeConfig {
 
 impl Config {
     pub fn load() -> Self {
-        let path = PathBuf::from("kokuban.toml");
-        if path.exists() {
-            match std::fs::read_to_string(&path) {
-                Ok(contents) => match toml::from_str(&contents) {
-                    Ok(config) => {
-                        log::info!("Loaded config from kokuban.toml");
-                        return config;
-                    }
-                    Err(e) => log::warn!("Failed to parse kokuban.toml: {e}"),
-                },
-                Err(e) => log::warn!("Failed to read kokuban.toml: {e}"),
+        Self::load_paths(config_paths(
+            std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
+            std::env::var_os("HOME").map(PathBuf::from),
+        ))
+    }
+
+    fn load_paths(paths: impl IntoIterator<Item = PathBuf>) -> Self {
+        for path in paths {
+            let contents = match std::fs::read_to_string(&path) {
+                Ok(contents) => contents,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    log::warn!("Failed to read {}: {error}", path.display());
+                    return Self::default();
+                }
+            };
+            match toml::from_str(&contents) {
+                Ok(config) => {
+                    log::info!("Loaded config from {}", path.display());
+                    return config;
+                }
+                Err(error) => {
+                    log::warn!("Failed to parse {}: {error}", path.display());
+                    return Self::default();
+                }
             }
-        } else {
-            log::info!("No kokuban.toml found, using defaults");
         }
+        log::info!("No kokuban.toml found, using defaults");
         Self::default()
     }
+}
+
+fn config_paths(xdg_config_home: Option<PathBuf>, home: Option<PathBuf>) -> Vec<PathBuf> {
+    // Keep project-local configuration first for existing development setups.
+    let mut paths = vec![PathBuf::from("kokuban.toml")];
+    let directory = xdg_config_home
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            home.filter(|path| path.is_absolute())
+                .map(|path| path.join(".config"))
+        });
+    if let Some(directory) = directory {
+        paths.push(directory.join("kokuban/kokuban.toml"));
+    }
+    paths
 }
 
 impl ColorConfig {
     pub fn parse_hex(hex: &str) -> (u8, u8, u8) {
         let hex = hex.trim_start_matches('#');
-        if hex.len() == 6 {
+        if hex.len() == 6 && hex.is_ascii() {
             let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(192);
             let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(192);
             let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(192);
@@ -344,7 +459,103 @@ impl ColorConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::ImagesConfig;
+    use super::{config_paths, ColorConfig, Config, ImagesConfig};
+    use std::path::PathBuf;
+
+    #[test]
+    fn parses_hex_colors_with_existing_prefix_and_case_support() {
+        for (input, expected) in [
+            ("000000", (0, 0, 0)),
+            ("#ffffff", (255, 255, 255)),
+            ("#12aBcD", (0x12, 0xab, 0xcd)),
+            ("##123456", (0x12, 0x34, 0x56)),
+        ] {
+            assert_eq!(ColorConfig::parse_hex(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn invalid_hex_colors_keep_existing_ascii_fallbacks() {
+        for input in ["", "#", "123", "#12345", "#1234567", "#12345678"] {
+            assert_eq!(ColorConfig::parse_hex(input), (192, 192, 192), "{input:?}");
+        }
+        for (input, expected) in [
+            ("#gg1234", (192, 0x12, 0x34)),
+            ("#12gg34", (0x12, 192, 0x34)),
+            ("#1234gg", (0x12, 0x34, 192)),
+        ] {
+            assert_eq!(ColorConfig::parse_hex(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn unicode_hex_colors_fall_back_without_panicking() {
+        // Each value has six bytes, including characters crossing the old RGB slice boundaries.
+        for input in [
+            "日本", "aé123", "abcé1", "ab日f", "💥ff", "ab💥", "é1234", "1234é",
+        ] {
+            for prefix in ["", "#", "##"] {
+                let color = format!("{prefix}{input}");
+                assert_eq!(ColorConfig::parse_hex(&color), (192, 192, 192), "{color:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn user_configuration_paths_follow_xdg_and_preserve_local_priority() {
+        assert_eq!(
+            config_paths(Some("/custom/config".into()), Some("/home/test".into())),
+            [
+                PathBuf::from("kokuban.toml"),
+                "/custom/config/kokuban/kokuban.toml".into()
+            ]
+        );
+        for invalid_xdg in [None, Some(PathBuf::new()), Some("relative".into())] {
+            assert_eq!(
+                config_paths(invalid_xdg, Some("/home/test".into())),
+                [
+                    PathBuf::from("kokuban.toml"),
+                    "/home/test/.config/kokuban/kokuban.toml".into()
+                ]
+            );
+        }
+        assert_eq!(config_paths(None, None), [PathBuf::from("kokuban.toml")]);
+    }
+
+    #[test]
+    fn loads_first_existing_configuration_without_merging_or_hiding_parse_errors() {
+        let directory = std::env::temp_dir().join(format!(
+            "kokuban-config-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let local = directory.join("local.toml");
+        let user = directory.join("user.toml");
+        std::fs::write(&user, "[window]\ncolumns = 93\n").unwrap();
+        assert_eq!(
+            Config::load_paths([local.clone(), user.clone()])
+                .window
+                .columns,
+            93
+        );
+        std::fs::write(&local, "[window]\ncolumns = 71\n").unwrap();
+        assert_eq!(
+            Config::load_paths([local.clone(), user.clone()])
+                .window
+                .columns,
+            71
+        );
+        std::fs::write(&local, "invalid toml [").unwrap();
+        assert_eq!(
+            Config::load_paths([local, user]).window.columns,
+            Config::default().window.columns
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn graphics_protocols_honor_master_and_specific_switches() {

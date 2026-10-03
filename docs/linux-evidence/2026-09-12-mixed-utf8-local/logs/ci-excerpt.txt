@@ -1,0 +1,73 @@
+101: macOS	Check out repository	2026-09-12T21:07:11.5879410Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +74eaad83dbf813cb15bd883b45d52adf0dc729bd:refs/remotes/origin/perf/mixed-utf8-spans
+103: macOS	Check out repository	2026-09-12T21:07:12.4995710Z  * [new ref]         74eaad83dbf813cb15bd883b45d52adf0dc729bd -> origin/perf/mixed-utf8-spans
+107: macOS	Check out repository	2026-09-12T21:07:12.5157250Z 74eaad83dbf813cb15bd883b45d52adf0dc729bd
+119: macOS	Check out repository	2026-09-12T21:07:12.7547140Z 74eaad83dbf813cb15bd883b45d52adf0dc729bd
+140: macOS	Check all targets	﻿2026-09-12T21:07:23.4669450Z ##[group]Run cargo check --locked --all-targets
+672: macOS	Check all targets	2026-09-12T21:08:31.5667400Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 07s
+673: macOS	Verify generated Unicode grapheme tables	﻿2026-09-12T21:08:31.6940120Z ##[group]Run python3 -B scripts/generate-grapheme-tables.py --check
+674: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:31.6940970Z [36;1mpython3 -B scripts/generate-grapheme-tables.py --check[0m
+675: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:31.7564460Z shell: /bin/bash -e {0}
+676: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:31.7564700Z ##[endgroup]
+677: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:35.9746160Z {
+678: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:35.9804480Z   "check_only": true,
+679: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:35.9905920Z   "passed": true,
+680: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:35.9988030Z   "coverage": {
+681: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0016980Z     "valid_scalars_checked": 1112064,
+682: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0024030Z     "other": 1080607,
+683: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0048090Z     "attach": 384,
+684: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0051670Z     "fallback": 31073,
+685: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0074250Z     "prepend_scalars": 27,
+686: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0099110Z     "control_cr_lf_scalars": 3895
+687: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0119830Z   },
+688: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0121620Z   "corpus_case_counts": {
+689: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0126270Z     "TEST_SAME": 702,
+690: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0143060Z     "TEST_DIFF": 64
+691: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0143610Z   },
+692: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0144000Z   "production_table_bytes": 4352
+693: macOS	Verify generated Unicode grapheme tables	2026-09-12T21:08:36.0144670Z }
+694: macOS	Test all targets	﻿2026-09-12T21:08:36.0192870Z ##[group]Run cargo test --locked --all-targets
+844: macOS	Test all targets	2026-09-12T21:09:52.8566940Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 16s
+1453: macOS	Test all targets	2026-09-12T21:09:57.1361580Z test result: ok. 604 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.20s
+1459: macOS	Test all targets	2026-09-12T21:09:57.2583340Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+1706: macOS	Test all targets	2026-09-12T21:09:58.7452170Z test result: ok. 241 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+1708: macOS	Test benchmark reports and process cleanup	﻿2026-09-12T21:09:58.8027520Z ##[group]Run python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
+1714: macOS	Test benchmark reports and process cleanup	2026-09-12T21:10:00.1715640Z Ran 23 tests in 0.611s
+1717: macOS	Run Clippy	﻿2026-09-12T21:10:00.1994840Z ##[group]Run cargo clippy --locked --all-targets
+2366: macOS	Run Clippy	2026-09-12T21:10:08.7301150Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.19s
+2507: Linux graphical shell	Check out repository	2026-09-12T21:07:04.3679835Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +74eaad83dbf813cb15bd883b45d52adf0dc729bd:refs/remotes/origin/perf/mixed-utf8-spans
+2509: Linux graphical shell	Check out repository	2026-09-12T21:07:05.9956926Z  * [new ref]         74eaad83dbf813cb15bd883b45d52adf0dc729bd -> origin/perf/mixed-utf8-spans
+2513: Linux graphical shell	Check out repository	2026-09-12T21:07:05.9965323Z 74eaad83dbf813cb15bd883b45d52adf0dc729bd
+2525: Linux graphical shell	Check out repository	2026-09-12T21:07:06.0563057Z 74eaad83dbf813cb15bd883b45d52adf0dc729bd
+3463: Linux graphical shell	Check all targets	﻿2026-09-12T21:07:44.3468577Z ##[group]Run cargo check --locked --all-targets
+4148: Linux graphical shell	Check all targets	2026-09-12T21:08:04.2578064Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 19.80s
+4149: Linux graphical shell	Verify generated Unicode grapheme tables	﻿2026-09-12T21:08:04.3051078Z ##[group]Run python3 -B scripts/generate-grapheme-tables.py --check
+4150: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:04.3051400Z [36;1mpython3 -B scripts/generate-grapheme-tables.py --check[0m
+4151: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:04.3081990Z shell: /usr/bin/bash -e {0}
+4152: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:04.3082150Z ##[endgroup]
+4153: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3054734Z {
+4154: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3055071Z   "check_only": true,
+4155: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3055290Z   "passed": true,
+4156: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3055500Z   "coverage": {
+4157: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3055687Z     "valid_scalars_checked": 1112064,
+4158: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3055919Z     "other": 1080607,
+4159: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3056088Z     "attach": 384,
+4160: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3056258Z     "fallback": 31073,
+4161: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3056443Z     "prepend_scalars": 27,
+4162: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3056649Z     "control_cr_lf_scalars": 3895
+4163: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3056848Z   },
+4164: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3057002Z   "corpus_case_counts": {
+4165: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3057190Z     "TEST_SAME": 702,
+4166: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3057368Z     "TEST_DIFF": 64
+4167: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3057535Z   },
+4168: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3057757Z   "production_table_bytes": 4352
+4169: Linux graphical shell	Verify generated Unicode grapheme tables	2026-09-12T21:08:06.3057966Z }
+4170: Linux graphical shell	Test all targets	﻿2026-09-12T21:08:06.3146306Z ##[group]Run cargo test --locked --all-targets
+4463: Linux graphical shell	Test all targets	2026-09-12T21:08:33.3102945Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 26.98s
+5172: Linux graphical shell	Test all targets	2026-09-12T21:08:36.0801113Z test result: ok. 703 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.76s
+5178: Linux graphical shell	Test all targets	2026-09-12T21:08:36.0852217Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+5425: Linux graphical shell	Test all targets	2026-09-12T21:08:37.1310621Z test result: ok. 241 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+5427: Linux graphical shell	Test benchmark reports and process cleanup	﻿2026-09-12T21:08:37.1406716Z ##[group]Run python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
+5433: Linux graphical shell	Test benchmark reports and process cleanup	2026-09-12T21:08:37.5036533Z Ran 23 tests in 0.205s
+5436: Linux graphical shell	Run Clippy	﻿2026-09-12T21:08:37.5178782Z ##[group]Run cargo clippy --locked --all-targets
+6051: Linux graphical shell	Run Clippy	2026-09-12T21:08:41.7308489Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.18s
+6445: Linux graphical shell	Verify clean Linux display failure	2026-09-12T21:08:45.2833779Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.42s

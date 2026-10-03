@@ -1,0 +1,159 @@
+{
+  "command": [
+    "/usr/bin/alacritty",
+    "--config-file",
+    "/evidence/measurements/02-alacritty/alacritty.toml",
+    "-e",
+    "/usr/bin/python3",
+    "/harness/compare-terminal-performance.py",
+    "--child-dir",
+    "/evidence/measurements/02-alacritty"
+  ],
+  "config": {
+    "filename": "alacritty.toml",
+    "text": "[font]\nsize = 10.5\n[font.normal]\nfamily = \"DejaVu Sans Mono\"\n[window]\ndecorations = \"None\"\n[window.padding]\nx = 0\ny = 0\n[window.dimensions]\ncolumns = 80\nlines = 24\n[scrolling]\nhistory = 0\n[font.offset]\nx = 1\ny = 0\n",
+    "sha256": "ca5bc65267c21868acbe0f46740af3f706446f90305360552ed6ac2c10cbd83b",
+    "history_limit": 0,
+    "history_unit": "lines"
+  },
+  "measurements": {
+    "initial_geometry": [
+      24,
+      80,
+      720,
+      408
+    ],
+    "protocol_rtt_seconds": [
+      8.998999999221269e-05,
+      9.069100002534469e-05,
+      9.173300003340046e-05,
+      9.15420000069389e-05,
+      0.00010102999999617168,
+      9.320599997408863e-05,
+      9.292500004676185e-05,
+      9.19329999646834e-05,
+      8.917799999608178e-05,
+      9.492899999941073e-05,
+      9.058099999492697e-05,
+      8.939800000007381e-05,
+      9.106200002406695e-05,
+      8.983999998690706e-05,
+      8.966899997631117e-05,
+      0.00010921599999846876,
+      0.00010299400003077608,
+      8.984999999483989e-05,
+      9.078200002932135e-05,
+      8.898799995904483e-05,
+      9.009000001469758e-05,
+      8.87269999907403e-05,
+      8.980000001201915e-05,
+      8.951900002784896e-05,
+      9.24540000255547e-05,
+      9.691299999303737e-05,
+      9.829500004343572e-05,
+      8.825599996953315e-05,
+      8.734499999718537e-05,
+      8.945899998025197e-05
+    ],
+    "workloads": {
+      "ascii": {
+        "bytes": 33554380,
+        "sha256": "7dc046b608bf491d47730d3e0bb8eb866aedf909b1e0b580417b0fc3da4b932a",
+        "write_seconds": 0.6266195519999656,
+        "drain_rtt_seconds": 0.000381991000040216,
+        "write_and_dsr_seconds": 0.6270015430000058,
+        "mib_per_second": 51.03647792607626,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.8899999999999999,
+        "terminal_rss_before_kib": 138316,
+        "terminal_rss_after_kib": 138336
+      },
+      "ansi": {
+        "bytes": 33554392,
+        "sha256": "ae1bcee95ae856fbc7119fcfed907e8dd8b4daeac9409789c782d56d3a87684e",
+        "write_seconds": 0.5911144400000126,
+        "drain_rtt_seconds": 0.00040307099999381535,
+        "write_and_dsr_seconds": 0.5915175110000064,
+        "mib_per_second": 54.098080374541944,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.6599999999999997,
+        "terminal_rss_before_kib": 137408,
+        "terminal_rss_after_kib": 137408
+      },
+      "unicode": {
+        "bytes": 33554400,
+        "sha256": "79627ccc2452e7bae4648e821882a3d8dc0b374586736b5a6a1900193a31fcc5",
+        "write_seconds": 0.6186574569999834,
+        "drain_rtt_seconds": 0.00040419300000849034,
+        "write_and_dsr_seconds": 0.6190616499999919,
+        "mib_per_second": 51.69108679631874,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.7200000000000006,
+        "terminal_rss_before_kib": 139100,
+        "terminal_rss_after_kib": 139100
+      },
+      "short_lines": {
+        "bytes": 33554430,
+        "sha256": "e847e6709ead8adf61be836d72915c89c893db10e984d3cc1886f0ec1ca8f61b",
+        "write_seconds": 0.6364781830000084,
+        "drain_rtt_seconds": 0.00038636900001165486,
+        "write_and_dsr_seconds": 0.63686455200002,
+        "mib_per_second": 50.246159865795704,
+        "reply_hex": "1b5b313b3552",
+        "geometry_before": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "geometry_after": [
+          24,
+          80,
+          720,
+          408
+        ],
+        "terminal_cpu_seconds": 0.6600000000000001,
+        "terminal_rss_before_kib": 139100,
+        "terminal_rss_after_kib": 139100
+      }
+    },
+    "term": "alacritty"
+  },
+  "status": "passed"
+}

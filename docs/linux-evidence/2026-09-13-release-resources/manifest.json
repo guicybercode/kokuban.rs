@@ -1,0 +1,398 @@
+{
+  "schema": "kokuban-release-resource-evidence-v1",
+  "run": "34748583285",
+  "run_url": "https://github.com/guicybercode/kokuban.rs/actions/runs/34748583285",
+  "source_revision": "72dd68a1262d360d119fb9459ea12a47303bae5d",
+  "package_base_revision": "0d42b069fd634f10ecb7b86681005c1016fc4abe",
+  "scope": "One absolute release-build observation, no baseline or cache-attributed performance delta.",
+  "preservation": "Every file in the audited local snapshot is preserved losslessly; only github-run.log is XZ-compressed. No benchmark or heavy audit was rerun.",
+  "original_file_count": 40,
+  "original_total_bytes": 601895,
+  "omissions": [
+    {
+      "item": "Kokuban executable",
+      "reason": "Not retained by original workflow; reported CI metadata only.",
+      "reported_bytes": 10614800,
+      "reported_sha256": "973afccb2061b80a591f2b364335d14900fb98a605a154d7973d7f89c032331f"
+    },
+    {
+      "item": "Separate video executable hash",
+      "reason": "Video reused the same release path in a later step; no independent hash was recorded."
+    },
+    {
+      "item": "Full source/dependency/font binary contents",
+      "reason": "Absent from original artifact; source revision, Cargo inputs and workflow/smoke source remain."
+    },
+    {
+      "item": "Other 298 capture image bytes",
+      "reason": "Only three screenshots were retained; other classifications are report records."
+    },
+    {
+      "item": "Original GitHub ZIP bytes",
+      "reason": "gh download retained extracted files; API archive digest was not independently rehashed."
+    }
+  ],
+  "files": [
+    {
+      "path": "run-34748583285/audit-release-resources.py",
+      "source_path": "audit-release-resources.py",
+      "bytes": 12011,
+      "sha256": "820754b22cca6471bb4a0f9aa8c8985d251e8ac399a86759164641b047c04de5",
+      "encoding": "identity",
+      "stored_bytes": 12011,
+      "stored_sha256": "820754b22cca6471bb4a0f9aa8c8985d251e8ac399a86759164641b047c04de5"
+    },
+    {
+      "path": "run-34748583285/github-artifacts.json",
+      "source_path": "github-artifacts.json",
+      "bytes": 764,
+      "sha256": "b3f8d1db373a1322806bbe1a798fe0e983793675752c8cc4f9058e0597bee984",
+      "encoding": "identity",
+      "stored_bytes": 764,
+      "stored_sha256": "b3f8d1db373a1322806bbe1a798fe0e983793675752c8cc4f9058e0597bee984"
+    },
+    {
+      "path": "run-34748583285/github-run.json",
+      "source_path": "github-run.json",
+      "bytes": 2311,
+      "sha256": "4a2e6e4c26e439b8270a3c02d534320a8121e430bb981685250f36a0d1e169a1",
+      "encoding": "identity",
+      "stored_bytes": 2311,
+      "stored_sha256": "4a2e6e4c26e439b8270a3c02d534320a8121e430bb981685250f36a0d1e169a1"
+    },
+    {
+      "path": "run-34748583285/github-run.log.xz",
+      "source_path": "github-run.log",
+      "bytes": 230825,
+      "sha256": "7fd7ff56d6e62c10e9769dca22cbca21f608f95f0aac87918725664a63734fb9",
+      "encoding": "xz",
+      "stored_bytes": 24348,
+      "stored_sha256": "87f3b93fb05c64bef15ff808a3d3e7748b9643195f94770eedb2e4a87728bcb4"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/Cargo.lock",
+      "source_path": "linux-release-resource-measurements/Cargo.lock",
+      "bytes": 69307,
+      "sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1",
+      "encoding": "identity",
+      "stored_bytes": 69307,
+      "stored_sha256": "60feacb5f12be5cc0b27736a3153e345ff771da079ecab33ccc5f5c1665a85d1"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/Cargo.toml",
+      "source_path": "linux-release-resource-measurements/Cargo.toml",
+      "bytes": 2084,
+      "sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d",
+      "encoding": "identity",
+      "stored_bytes": 2084,
+      "stored_sha256": "7d216ba112c241f01c161adce10de84367e3fe1232ae9f2b6b5202146fd5459d"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/cargo-tree.txt",
+      "source_path": "linux-release-resource-measurements/cargo-tree.txt",
+      "bytes": 13307,
+      "sha256": "73a67a7d009d7225d743fd9aa874908d08bf4665dae23b0ce293a3be66e806f1",
+      "encoding": "identity",
+      "stored_bytes": 13307,
+      "stored_sha256": "73a67a7d009d7225d743fd9aa874908d08bf4665dae23b0ce293a3be66e806f1"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/child-exit.json",
+      "source_path": "linux-release-resource-measurements/resources/child-exit.json",
+      "bytes": 18,
+      "sha256": "370aaa466bf7fdf5df8dec2004f5e0b4d5d352b7060c00c4a1204cc89b4b641a",
+      "encoding": "identity",
+      "stored_bytes": 18,
+      "stored_sha256": "370aaa466bf7fdf5df8dec2004f5e0b4d5d352b7060c00c4a1204cc89b4b641a"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/child.json",
+      "source_path": "linux-release-resource-measurements/resources/child.json",
+      "bytes": 177,
+      "sha256": "425694994951d253e55a6ecee7a1fd476b568505cca7a72ec7eb6591e5e55d01",
+      "encoding": "identity",
+      "stored_bytes": 177,
+      "stored_sha256": "425694994951d253e55a6ecee7a1fd476b568505cca7a72ec7eb6591e5e55d01"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/kokuban.toml",
+      "source_path": "linux-release-resource-measurements/resources/kokuban.toml",
+      "bytes": 171,
+      "sha256": "6a270728b78bc32b41d0c703aa63775fabb5e7d62e7304abd2435df326680f7b",
+      "encoding": "identity",
+      "stored_bytes": 171,
+      "stored_sha256": "6a270728b78bc32b41d0c703aa63775fabb5e7d62e7304abd2435df326680f7b"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/output-done.json",
+      "source_path": "linux-release-resource-measurements/resources/output-done.json",
+      "bytes": 486,
+      "sha256": "7e88aa35eba0991bc0d9b8ce077d5bace1bfd87a92996415b4d82974e60089d4",
+      "encoding": "identity",
+      "stored_bytes": 486,
+      "stored_sha256": "7e88aa35eba0991bc0d9b8ce077d5bace1bfd87a92996415b4d82974e60089d4"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/output-start",
+      "source_path": "linux-release-resource-measurements/resources/output-start",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/ready.json",
+      "source_path": "linux-release-resource-measurements/resources/ready.json",
+      "bytes": 145,
+      "sha256": "20e3aca2fcc6d9d7026000d9d308286351ef3151b2c7be59054d5edab6b5c276",
+      "encoding": "identity",
+      "stored_bytes": 145,
+      "stored_sha256": "20e3aca2fcc6d9d7026000d9d308286351ef3151b2c7be59054d5edab6b5c276"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/report.json",
+      "source_path": "linux-release-resource-measurements/resources/report.json",
+      "bytes": 23334,
+      "sha256": "f3c511fd52178e3c7f7739f4e34e93fa2a369ef2d35b634c7615c741a71566f6",
+      "encoding": "identity",
+      "stored_bytes": 23334,
+      "stored_sha256": "f3c511fd52178e3c7f7739f4e34e93fa2a369ef2d35b634c7615c741a71566f6"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/shell",
+      "source_path": "linux-release-resource-measurements/resources/shell",
+      "bytes": 147,
+      "sha256": "06d5077f53ff36dbdf226e8cae77b3741448d32043b28f26a013814fe8b7f06a",
+      "encoding": "identity",
+      "stored_bytes": 147,
+      "stored_sha256": "06d5077f53ff36dbdf226e8cae77b3741448d32043b28f26a013814fe8b7f06a"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/stop",
+      "source_path": "linux-release-resource-measurements/resources/stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/terminal.log",
+      "source_path": "linux-release-resource-measurements/resources/terminal.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/resources/window-ready",
+      "source_path": "linux-release-resource-measurements/resources/window-ready",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/rustc.txt",
+      "source_path": "linux-release-resource-measurements/rustc.txt",
+      "bytes": 196,
+      "sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1",
+      "encoding": "identity",
+      "stored_bytes": 196,
+      "stored_sha256": "a834181975ab3494d51a1a01e4a9d4321fecd674a52e3db3cf93b3b84b6fc2c1"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/system-packages.txt",
+      "source_path": "linux-release-resource-measurements/system-packages.txt",
+      "bytes": 126,
+      "sha256": "65bf4b57e40fecd069f5f375594f1bd10461f23e32bbca94ca803d0630965674",
+      "encoding": "identity",
+      "stored_bytes": 126,
+      "stored_sha256": "65bf4b57e40fecd069f5f375594f1bd10461f23e32bbca94ca803d0630965674"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/child.json",
+      "source_path": "linux-release-resource-measurements/video/child.json",
+      "bytes": 105,
+      "sha256": "91c6787d892bc7e672cdb4004d1316e06b5d3ca44e465d2468f93b9a66e3b345",
+      "encoding": "identity",
+      "stored_bytes": 105,
+      "stored_sha256": "91c6787d892bc7e672cdb4004d1316e06b5d3ca44e465d2468f93b9a66e3b345"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/ffmpeg-command.json",
+      "source_path": "linux-release-resource-measurements/video/ffmpeg-command.json",
+      "bytes": 328,
+      "sha256": "2034da758b47e9cde386c8b2a60956cf9b60b6979bd417aafd1c3c819708f345",
+      "encoding": "identity",
+      "stored_bytes": 328,
+      "stored_sha256": "2034da758b47e9cde386c8b2a60956cf9b60b6979bd417aafd1c3c819708f345"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/ffmpeg.log",
+      "source_path": "linux-release-resource-measurements/video/ffmpeg.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/fixture.mkv",
+      "source_path": "linux-release-resource-measurements/video/fixture.mkv",
+      "bytes": 107540,
+      "sha256": "823d4dbf0a39d76963a8fa8f34a0551c57bc22a66fe5dd3e52f77821e1f55c69",
+      "encoding": "identity",
+      "stored_bytes": 107540,
+      "stored_sha256": "823d4dbf0a39d76963a8fa8f34a0551c57bc22a66fe5dd3e52f77821e1f55c69"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/frame-00.png",
+      "source_path": "linux-release-resource-measurements/video/frame-00.png",
+      "bytes": 2735,
+      "sha256": "83803ca75eb8613bc9a9a08baa0f3d163a67a4438e0c8df7f2bdc8b9eec331f9",
+      "encoding": "identity",
+      "stored_bytes": 2735,
+      "stored_sha256": "83803ca75eb8613bc9a9a08baa0f3d163a67a4438e0c8df7f2bdc8b9eec331f9"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/frame-71.png",
+      "source_path": "linux-release-resource-measurements/video/frame-71.png",
+      "bytes": 2716,
+      "sha256": "601396a5523b03f8544051d9c6e39fc55ea9526b58836d51ff4f857cb4b2d57b",
+      "encoding": "identity",
+      "stored_bytes": 2716,
+      "stored_sha256": "601396a5523b03f8544051d9c6e39fc55ea9526b58836d51ff4f857cb4b2d57b"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/kokuban.toml",
+      "source_path": "linux-release-resource-measurements/video/kokuban.toml",
+      "bytes": 146,
+      "sha256": "3bea7bd7d318b6a9def7a9972c202b9fee77804f7519cda3feba84c6da13e234",
+      "encoding": "identity",
+      "stored_bytes": 146,
+      "stored_sha256": "3bea7bd7d318b6a9def7a9972c202b9fee77804f7519cda3feba84c6da13e234"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/mpv-command.json",
+      "source_path": "linux-release-resource-measurements/video/mpv-command.json",
+      "bytes": 457,
+      "sha256": "aa4efb73bbad87d8682586d7bf32cddb0c59b2c9896c3aa871f953e13cf5dda6",
+      "encoding": "identity",
+      "stored_bytes": 457,
+      "stored_sha256": "aa4efb73bbad87d8682586d7bf32cddb0c59b2c9896c3aa871f953e13cf5dda6"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/mpv-exit.json",
+      "source_path": "linux-release-resource-measurements/video/mpv-exit.json",
+      "bytes": 18,
+      "sha256": "370aaa466bf7fdf5df8dec2004f5e0b4d5d352b7060c00c4a1204cc89b4b641a",
+      "encoding": "identity",
+      "stored_bytes": 18,
+      "stored_sha256": "370aaa466bf7fdf5df8dec2004f5e0b4d5d352b7060c00c4a1204cc89b4b641a"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/mpv.json",
+      "source_path": "linux-release-resource-measurements/video/mpv.json",
+      "bytes": 100,
+      "sha256": "7970058261729ff41097c827b50b93a5835f4ffb6710e6388da6069bce271d15",
+      "encoding": "identity",
+      "stored_bytes": 100,
+      "stored_sha256": "7970058261729ff41097c827b50b93a5835f4ffb6710e6388da6069bce271d15"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/mpv.log",
+      "source_path": "linux-release-resource-measurements/video/mpv.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/paused.png",
+      "source_path": "linux-release-resource-measurements/video/paused.png",
+      "bytes": 2765,
+      "sha256": "5008ae86d8c72514dc69af06d4efdcb2059bf2e211de2f77dddfeffda4fca316",
+      "encoding": "identity",
+      "stored_bytes": 2765,
+      "stored_sha256": "5008ae86d8c72514dc69af06d4efdcb2059bf2e211de2f77dddfeffda4fca316"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/report.json",
+      "source_path": "linux-release-resource-measurements/video/report.json",
+      "bytes": 65374,
+      "sha256": "929735fd24e5746f126164ce6167c6ccc7d135d56b0b2e3aa97a68f4e5ef9ead",
+      "encoding": "identity",
+      "stored_bytes": 65374,
+      "stored_sha256": "929735fd24e5746f126164ce6167c6ccc7d135d56b0b2e3aa97a68f4e5ef9ead"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/shell",
+      "source_path": "linux-release-resource-measurements/video/shell",
+      "bytes": 141,
+      "sha256": "6ef2b43c80fdcceb0a7f5be2760af076b699f7364319e909f939e703aba162de",
+      "encoding": "identity",
+      "stored_bytes": 141,
+      "stored_sha256": "6ef2b43c80fdcceb0a7f5be2760af076b699f7364319e909f939e703aba162de"
+    },
+    {
+      "path": "run-34748583285/linux-release-resource-measurements/video/terminal.log",
+      "source_path": "linux-release-resource-measurements/video/terminal.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "encoding": "identity",
+      "stored_bytes": 0,
+      "stored_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "run-34748583285/local-manifest.json",
+      "source_path": "local-manifest.json",
+      "bytes": 6266,
+      "sha256": "dc30822ef2ba7b6e04a64532735548df39c5ccb6afee9b85497147907c807f57",
+      "encoding": "identity",
+      "stored_bytes": 6266,
+      "stored_sha256": "dc30822ef2ba7b6e04a64532735548df39c5ccb6afee9b85497147907c807f57"
+    },
+    {
+      "path": "run-34748583285/release-resource-audit.json",
+      "source_path": "release-resource-audit.json",
+      "bytes": 11286,
+      "sha256": "2135be13ebfbe5f75d94a5cc69d7591f5c7771ea0b8289fd7ddbd63baf240cd6",
+      "encoding": "identity",
+      "stored_bytes": 11286,
+      "stored_sha256": "2135be13ebfbe5f75d94a5cc69d7591f5c7771ea0b8289fd7ddbd63baf240cd6"
+    },
+    {
+      "path": "run-34748583285/source-reference/linux-performance.yml",
+      "source_path": "source-reference/linux-performance.yml",
+      "bytes": 2967,
+      "sha256": "0a984b93542a2389040421c229567bac659247a23b76587e4175001a2037746f",
+      "encoding": "identity",
+      "stored_bytes": 2967,
+      "stored_sha256": "0a984b93542a2389040421c229567bac659247a23b76587e4175001a2037746f"
+    },
+    {
+      "path": "run-34748583285/source-reference/linux-resource-smoke.py",
+      "source_path": "source-reference/linux-resource-smoke.py",
+      "bytes": 17732,
+      "sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281",
+      "encoding": "identity",
+      "stored_bytes": 17732,
+      "stored_sha256": "7d011c93497f885e2ec3d1759d293c47968ee23bce6689f7ff2a115259060281"
+    },
+    {
+      "path": "run-34748583285/source-reference/linux-video-smoke.py",
+      "source_path": "source-reference/linux-video-smoke.py",
+      "bytes": 25810,
+      "sha256": "abecbea4abca7b5126abe54cfdea480ead44c2c208db1604e3c6c2cd187dabc6",
+      "encoding": "identity",
+      "stored_bytes": 25810,
+      "stored_sha256": "abecbea4abca7b5126abe54cfdea480ead44c2c208db1604e3c6c2cd187dabc6"
+    }
+  ],
+  "stored_original_files_bytes": 395418
+}

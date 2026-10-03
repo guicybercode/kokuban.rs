@@ -1,4 +1,4 @@
-use crate::config::{ColorConfig, Config};
+use crate::config::Config;
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
 use crate::grid::{CursorShape, Grid, MouseTracking};
@@ -13,13 +13,12 @@ use crate::input::mouse::{
 };
 use crate::input::paste::{encode_paste, MAX_PASTE_BYTES};
 use crate::linux_clipboard::{ClipboardEvent, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES};
-use crate::selection::{
-    point_from_viewport, sync_selection, GridPoint, SelectionContext, SelectionState,
-};
+use crate::omarchy_theme::{watch_current_theme, PaletteOverrides, ThemeWatcher};
+use crate::selection::{point_from_viewport, GridPoint, SelectionState};
 use crate::pty::Pty;
 use crate::parser::ansi::GraphicsSupport;
 use crate::software_graphics::{ImageSnapshot, SoftwareGraphics};
-use crate::software_raster::{draw_glyph_a8, draw_image_rgba, fill_rect};
+use crate::software_raster::{draw_glyph_a8, draw_glyph_rgba, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
@@ -106,6 +105,7 @@ fn application_icon() -> Option<Icon> {
 #[derive(Debug)]
 enum LinuxEvent {
     Clipboard(ClipboardEvent),
+    ThemeChanged,
     GridUpdated,
     WindowTitleChanged,
     ReaderExited(ReaderStatus),
@@ -117,6 +117,25 @@ enum ClipboardAction {
     Copy,
     Paste,
     SelectAll,
+}
+
+#[derive(Default)]
+struct SelectionContext {
+    revision: u64,
+    dropped_rows: usize,
+}
+
+fn sync_selection(selection: &mut SelectionState, context: &mut SelectionContext, grid: &Grid) {
+    let dropped_rows = grid
+        .total_lines_pushed
+        .saturating_sub(grid.scrollback_len());
+    if context.revision != grid.selection_revision() || dropped_rows < context.dropped_rows {
+        selection.clear();
+    } else {
+        selection.rebase_after_eviction(dropped_rows - context.dropped_rows);
+    }
+    context.revision = grid.selection_revision();
+    context.dropped_rows = dropped_rows;
 }
 
 fn selection_point_at_pointer(
@@ -152,8 +171,13 @@ fn clipboard_action(key: Key<&str>, modifiers: ModifiersState) -> Option<Clipboa
             }
         }
     }
-    if modifiers == ModifiersState::SHIFT && key == Key::Named(NamedKey::Insert) {
-        return Some(ClipboardAction::Paste);
+    if key == Key::Named(NamedKey::Insert) {
+        if modifiers == ModifiersState::CONTROL {
+            return Some(ClipboardAction::Copy);
+        }
+        if modifiers == ModifiersState::SHIFT {
+            return Some(ClipboardAction::Paste);
+        }
     }
     None
 }
@@ -172,6 +196,7 @@ enum WriterStatus {
 #[derive(Clone, Copy)]
 struct GlyphSource<'a> {
     pixels: &'a [u8],
+    rgba_pixels: Option<&'a [u8]>,
     size: (u32, u32),
     ascent: f32,
 }
@@ -544,7 +569,7 @@ enum SurfaceSizeError {
     ExceedsRenderBudget { width: u32, height: u32 },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CursorSnapshot {
     row: usize,
     column: usize,
@@ -625,7 +650,110 @@ impl GridSnapshot {
     }
 }
 
-pub(crate) fn launch(config: Config) -> Result<(), String> {
+// Softbuffer may rotate multiple buffers; snapshots describe their last pixels.
+// Older/unknown buffers safely use a full repaint instead of growing the cache.
+const MAX_PRESENTED_SCENES: usize = 4;
+
+struct PresentedScene {
+    snapshot: GridSnapshot,
+    frame_size: (u32, u32),
+    cell_dimensions: (u16, u16),
+    has_overlays: bool,
+}
+
+fn scene_for_buffer_age(
+    history: &std::collections::VecDeque<PresentedScene>,
+    age: u8,
+) -> Option<&PresentedScene> {
+    history.get(usize::from(age.checked_sub(1)?))
+}
+
+fn frame_damage(
+    previous: Option<&PresentedScene>,
+    snapshot: &GridSnapshot,
+    frame_size: (u32, u32),
+    cell_dimensions: (u16, u16),
+    has_overlays: bool,
+    atlas: &mut GlyphAtlas,
+) -> std::ops::Range<u32> {
+    let Some(previous) = previous.filter(|previous| {
+        !has_overlays
+            && !previous.has_overlays
+            && previous.frame_size == frame_size
+            && previous.cell_dimensions == cell_dimensions
+            && previous.snapshot.columns == snapshot.columns
+            && previous.snapshot.rows == snapshot.rows
+    }) else {
+        return 0..frame_size.1;
+    };
+    let old = &previous.snapshot;
+    let mut top = i64::from(frame_size.1);
+    let mut bottom = 0i64;
+    let cell_height = i64::from(cell_dimensions.1);
+    if old.cursor != snapshot.cursor {
+        for cursor in [old.cursor, snapshot.cursor].into_iter().flatten() {
+            let y = cursor.row as i64 * cell_height;
+            top = top.min(y);
+            bottom = bottom.max(y + cell_height);
+        }
+    }
+    let mut changed_rows = (0..snapshot.rows).filter(|&row| {
+        let start = row * snapshot.columns;
+        let end = start + snapshot.columns;
+        old.cells[start..end] != snapshot.cells[start..end]
+    });
+    if let Some(first) = changed_rows.next() {
+        let last = changed_rows.next_back().unwrap_or(first);
+        top = top.min(first as i64 * cell_height);
+        bottom = bottom.max((last + 1) as i64 * cell_height);
+        // Scrolling usually changes the full viewport. Avoid looking up every
+        // old/new glyph before a frame that already needs a complete repaint.
+        if top == 0 && bottom >= (snapshot.rows as i64 * cell_height).min(i64::from(frame_size.1)) {
+            return 0..frame_size.1;
+        }
+        // Include old and new changed ink, which may extend beyond a cell.
+        // Unchanged ink outside this band is already correct in the buffer.
+        for row in first..=last {
+            let start = row * snapshot.columns;
+            let end = start + snapshot.columns;
+            for (old_cell, new_cell) in old.cells[start..end]
+                .iter()
+                .zip(&snapshot.cells[start..end])
+            {
+                if old_cell == new_cell {
+                    continue;
+                }
+                for cell in [old_cell, new_cell] {
+                    if !cell_content_is_visible(cell.flags)
+                        || cell.flags.contains(CellFlags::WIDE_CONT)
+                        || (cell.grapheme.is_none() && (cell.c == ' ' || cell.c == '\0'))
+                    {
+                        continue;
+                    }
+                    let glyph = atlas.get_or_insert_cell(cell);
+                    let Some(baseline) = rounded_f64_i32(
+                        row as f64 * f64::from(cell_dimensions.1) + f64::from(atlas.ascent),
+                    ) else {
+                        continue;
+                    };
+                    let y = i64::from(baseline) + i64::from(glyph.bearing_y);
+                    top = top.min(y);
+                    bottom = bottom.max(y + i64::from(glyph.pixel_h));
+                }
+            }
+        }
+    }
+    if top >= bottom {
+        return 0..0;
+    }
+    let height = i64::from(frame_size.1);
+    top.clamp(0, height) as u32..bottom.clamp(0, height) as u32
+}
+
+pub(crate) fn launch(
+    config: Config,
+    options: crate::launch_options::LaunchOptions,
+) -> Result<(), String> {
     if config.window.opacity < 1.0 {
         eprintln!(
             "kokuban: warning: window.opacity={} is not supported by the Linux software renderer; using an opaque window",
@@ -651,8 +779,14 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     }
     let columns = terminal_dimensions.columns;
     let rows = terminal_dimensions.rows;
-    let background = ColorConfig::parse_hex(&config.colors.background);
-    let foreground = ColorConfig::parse_hex(&config.colors.foreground);
+    let theme_proxy = event_loop.create_proxy();
+    let (theme_watcher, initial_theme) = watch_current_theme(config.omarchy.enabled, move || {
+        theme_proxy.send_event(LinuxEvent::ThemeChanged).is_ok()
+    });
+    let palette_overrides = PaletteOverrides::from_config(&config);
+    let colors = palette_overrides.resolve(initial_theme);
+    let background = colors.default_background();
+    let foreground = colors.resolve_foreground(Color::Default, false);
     let initial_size = initial_window_dimensions(columns, rows);
     let exit_after_first_frame = std::env::var(EXIT_AFTER_FIRST_FRAME_ENV).as_deref() == Ok("1");
     let mut grid = Grid::new(
@@ -662,6 +796,9 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     );
     grid.default_fg_hex = terminal_color_query_value(foreground);
     grid.default_bg_hex = terminal_color_query_value(background);
+    if let Some(title) = &options.title {
+        grid.set_title(title);
+    }
     let grid = Arc::new(Mutex::new(grid));
     let graphics_support = GraphicsSupport {
         kitty: config.images.kitty_graphics_enabled(),
@@ -669,10 +806,19 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
     };
     let graphics = Arc::new(Mutex::new(SoftwareGraphics::new(&config.images)));
     let reader_graphics = graphics.clone();
-    let pty = Arc::new(
+    let pty = if options.command.is_empty() {
         Pty::spawn(columns, rows, graphics_support.kitty, graphics_support.sixel)
-            .map_err(|error| format!("could not start the Linux shell: {error}"))?,
-    );
+    } else {
+        Pty::spawn_command(
+            columns,
+            rows,
+            graphics_support.kitty,
+            graphics_support.sixel,
+            &options.command,
+        )
+    }
+    .map_err(|error| format!("could not start the Linux terminal process: {error}"))?;
+    let pty = Arc::new(pty);
     let redraw_pending = Arc::new(AtomicBool::new(false));
     let window_title_pending = Arc::new(AtomicBool::new(false));
     let event_proxy = event_loop.create_proxy();
@@ -685,6 +831,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         let _ = writer_proxy.send_event(LinuxEvent::WriterExited(classify_writer_exit(exit)));
     })
     .map_err(|error| format!("could not start the Linux terminal writer: {error}"))?;
+    let update_check_proxy = event_proxy.clone();
     let update_proxy = event_proxy.clone();
     let update_pending = redraw_pending.clone();
     let update_title_grid = grid.clone();
@@ -724,8 +871,8 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         }
     };
     let mut application = LinuxWindow::new(
-        background,
-        foreground,
+        colors,
+        palette_overrides,
         config.font.family,
         config.font.size,
         initial_size,
@@ -739,6 +886,16 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
         window_title_pending,
     );
     application.clipboard = clipboard;
+    application.theme_watcher = theme_watcher;
+    if crate::update::startup_check_enabled(config.update.check_on_startup) {
+        // Linux has no status bar; the notice goes into the window title.
+        crate::update::spawn_check(application.update_status.clone(), false, move || {
+            let _ = update_check_proxy.send_event(LinuxEvent::WindowTitleChanged);
+        });
+    }
+    application.app_id = options
+        .app_id
+        .unwrap_or_else(|| crate::app_icon::APP_ID.to_string());
 
     let run_result = event_loop
         .run_app(&mut application)
@@ -757,6 +914,7 @@ pub(crate) fn launch(config: Config) -> Result<(), String> {
 }
 
 struct LinuxWindow {
+    app_id: String,
     clipboard: Option<LinuxClipboard>,
     paste_request: u64,
     pending_pastes: HashMap<u64, (bool, u64)>,
@@ -771,8 +929,11 @@ struct LinuxWindow {
     atlas_scale_factor: Option<f64>,
     cell_dimensions: Option<(u16, u16)>,
     applied_pty_size: Option<TerminalSize>,
+    presented_scenes: std::collections::VecDeque<PresentedScene>,
     background: u32,
     colors: TerminalColors,
+    palette_overrides: PaletteOverrides,
+    theme_watcher: Option<ThemeWatcher>,
     font_family: String,
     font_size: f32,
     initial_size: LogicalSize<u32>,
@@ -786,6 +947,7 @@ struct LinuxWindow {
     writer: Option<TerminalWriter>,
     redraw_pending: Arc<AtomicBool>,
     window_title_pending: Arc<AtomicBool>,
+    update_status: crate::update::SharedUpdateStatus,
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
@@ -799,8 +961,8 @@ struct LinuxWindow {
 
 impl LinuxWindow {
     fn new(
-        background: (u8, u8, u8),
-        foreground: (u8, u8, u8),
+        colors: TerminalColors,
+        palette_overrides: PaletteOverrides,
         font_family: String,
         font_size: f32,
         initial_size: LogicalSize<u32>,
@@ -813,7 +975,9 @@ impl LinuxWindow {
         redraw_pending: Arc<AtomicBool>,
         window_title_pending: Arc<AtomicBool>,
     ) -> Self {
+        let background = colors.default_background();
         Self {
+            app_id: crate::app_icon::APP_ID.to_string(),
             clipboard: None,
             paste_request: 0,
             pending_pastes: HashMap::new(),
@@ -827,8 +991,11 @@ impl LinuxWindow {
             atlas_scale_factor: None,
             cell_dimensions: None,
             applied_pty_size: None,
+            presented_scenes: std::collections::VecDeque::new(),
             background: rgb_to_xrgb(background.0, background.1, background.2),
-            colors: TerminalColors::new(foreground, background),
+            colors,
+            palette_overrides,
+            theme_watcher: None,
             font_family,
             font_size,
             initial_size,
@@ -842,6 +1009,7 @@ impl LinuxWindow {
             writer: Some(writer),
             redraw_pending,
             window_title_pending,
+            update_status: Arc::new(Mutex::new(crate::update::UpdateStatus::Idle)),
             reader_status: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
@@ -854,20 +1022,27 @@ impl LinuxWindow {
         }
     }
 
+    fn title_with_update_notice(&self, title: &str) -> String {
+        crate::update::title_with_notice(title, &crate::update::read_status(&self.update_status))
+    }
+
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> Result<(), String> {
+        let initial_title =
+            snapshot_window_title(self.grid.as_ref()).map_err(|error| error.to_string())?;
+        let initial_title = self.title_with_update_notice(&initial_title);
         let attributes = Window::default_attributes()
-            .with_title(WINDOW_TITLE)
+            .with_title(normalized_window_title(&initial_title).into_owned())
             .with_window_icon(application_icon())
             .with_transparent(false)
             .with_inner_size(self.initial_size);
         let attributes = WindowAttributesExtWayland::with_name(
             attributes,
-            crate::app_icon::APP_ID,
+            self.app_id.clone(),
             "kokuban",
         );
         let attributes = WindowAttributesExtX11::with_name(
             attributes,
-            crate::app_icon::APP_ID,
+            self.app_id.clone(),
             "kokuban",
         );
         let window = Arc::new(
@@ -875,8 +1050,6 @@ impl LinuxWindow {
                 .create_window(attributes)
                 .map_err(|error| format!("could not create an opaque window: {error}"))?,
         );
-        let initial_title =
-            snapshot_window_title(self.grid.as_ref()).map_err(|error| error.to_string())?;
         sync_window_title_with(&mut self.applied_window_title, &initial_title, |title| {
             window.set_title(title)
         });
@@ -900,6 +1073,7 @@ impl LinuxWindow {
                 )
             })?;
 
+        self.presented_scenes.clear();
         self.surface = Some(surface);
         self.context = Some(context);
         self.window = Some(window.clone());
@@ -935,6 +1109,7 @@ impl LinuxWindow {
             },
         )?;
         if changed {
+            self.presented_scenes.clear();
             self.cell_dimensions = replacement_dimensions;
         }
         Ok(changed)
@@ -991,15 +1166,10 @@ impl LinuxWindow {
         let (snapshot, images) = {
             // Match reader lock order; text and image placements share one snapshot.
             let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
-            // Also guard local redraws (resize/selection/IME/image timers),
-            // which do not pass through the PTY update notification.
-            if grid.synchronized_output_active() {
-                return Ok(None);
-            }
             let graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
             sync_selection(&mut self.selection, &mut self.selection_context, &grid);
             let mut snapshot = snapshot_locked_grid(&grid);
-            apply_selection_to_snapshot(&mut snapshot, &self.selection, &grid, self.colors);
+            apply_selection_to_snapshot(&mut snapshot, &self.selection, &grid, &self.colors);
             (snapshot, graphics.snapshot(&grid, cell_dimensions))
         };
         let preedit_layout = self
@@ -1031,23 +1201,38 @@ impl LinuxWindow {
         let mut buffer = surface
             .buffer_mut()
             .map_err(|error| format!("could not acquire the software-rendering buffer: {error}"))?;
-        buffer.fill(self.background);
-        draw_grid_snapshot_with_images(
-            &mut buffer,
-            (width.get(), height.get()),
-            glyph_atlas,
-            self.colors,
-            cell_dimensions,
+        let frame_size = (width.get(), height.get());
+        let has_overlays = !images.is_empty() || preedit_layout.is_some();
+        let damage = frame_damage(
+            scene_for_buffer_age(&self.presented_scenes, buffer.age()),
             &snapshot,
-            preedit_layout.is_none(),
-            &images,
+            frame_size,
+            cell_dimensions,
+            has_overlays,
+            glyph_atlas,
         );
+        if !damage.is_empty() {
+            let start = damage.start as usize * width.get() as usize;
+            let end = damage.end as usize * width.get() as usize;
+            buffer[start..end].fill(self.background);
+            draw_grid_snapshot_in_band(
+                &mut buffer,
+                frame_size,
+                glyph_atlas,
+                &self.colors,
+                cell_dimensions,
+                &snapshot,
+                preedit_layout.is_none(),
+                &images,
+                damage,
+            );
+        }
         if let Some(layout) = preedit_layout.as_ref() {
             draw_ime_preedit(
                 &mut buffer,
                 (width.get(), height.get()),
                 glyph_atlas,
-                self.colors,
+                &self.colors,
                 cell_dimensions,
                 &snapshot,
                 layout,
@@ -1059,6 +1244,13 @@ impl LinuxWindow {
         buffer
             .present()
             .map_err(|error| format!("could not present a Linux frame: {error}"))?;
+        self.presented_scenes.push_front(PresentedScene {
+            snapshot,
+            frame_size,
+            cell_dimensions,
+            has_overlays,
+        });
+        self.presented_scenes.truncate(MAX_PRESENTED_SCENES);
         sync_ime_cursor_area_with(
             self.ime_active,
             &mut self.last_ime_cursor_area,
@@ -1119,7 +1311,7 @@ impl LinuxWindow {
                     col: 0,
                 });
                 self.selection.update(GridPoint {
-                    row: (grid.scrollback_len() + grid.rows() - 1) as i64,
+                    row: (grid.retained_rows() - 1) as i64,
                     col: grid.cols() - 1,
                 });
                 if let Some(window) = &self.window {
@@ -1213,7 +1405,6 @@ impl LinuxWindow {
                 match writer.enqueue_nonfatal(bytes) {
                     Ok(()) => {
                         grid.scroll_offset = 0;
-                        grid.mark_all_dirty();
                         self.selection.clear();
                         if let Some(window) = &self.window {
                             window.request_redraw();
@@ -1273,6 +1464,7 @@ impl LinuxWindow {
     }
 
     fn request_terminal_shutdown(&mut self) {
+        self.theme_watcher.take();
         self.ime_preedit = None;
         if let Some(reader) = self.reader.as_ref() {
             reader.request_shutdown();
@@ -1796,6 +1988,32 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: LinuxEvent) {
         match event {
+            LinuxEvent::ThemeChanged => {
+                let theme = self.theme_watcher.as_ref().and_then(ThemeWatcher::take_update);
+                if let Some(theme) = theme {
+                    let colors = self.palette_overrides.resolve(Some(theme));
+                    if colors != self.colors {
+                        let foreground = colors.resolve_foreground(Color::Default, false);
+                        let background = colors.default_background();
+                        let result = self.grid.lock().map(|mut grid| {
+                            // OSC queries and the next frame observe the same palette.
+                            grid.default_fg_hex = terminal_color_query_value(foreground);
+                            grid.default_bg_hex = terminal_color_query_value(background);
+                            self.colors = colors;
+                            self.background = rgb_to_xrgb(background.0, background.1, background.2);
+                        }).map_err(|_| GridAccessError::Poisoned);
+                        if let Err(error) = result {
+                            self.fail(event_loop, error.to_string());
+                            return;
+                        }
+                        // Palette changes affect unchanged cells and buffer-age history.
+                        self.presented_scenes.clear();
+                        if let Some(window) = self.window.as_ref() {
+                            window.request_redraw();
+                        }
+                    }
+                }
+            }
             LinuxEvent::Clipboard(event) => {
                 if terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     if let Err(error) = self.handle_clipboard_event(event) {
@@ -1814,7 +2032,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     return;
                 };
                 let title = match snapshot_window_title(self.grid.as_ref()) {
-                    Ok(title) => title,
+                    Ok(title) => self.title_with_update_notice(&title),
                     Err(error) => {
                         self.fail(event_loop, error.to_string());
                         return;
@@ -2831,13 +3049,13 @@ fn apply_selection_to_snapshot(
     snapshot: &mut GridSnapshot,
     selection: &SelectionState,
     grid: &Grid,
-    colors: TerminalColors,
+    colors: &TerminalColors,
 ) {
     if !selection.is_active() {
         return;
     }
-    let foreground = colors.default_background();
-    let background = colors.resolve_foreground(Color::Default, false);
+    let foreground = colors.selection_foreground();
+    let background = colors.selection_background();
     for row in 0..snapshot.rows {
         for column in 0..snapshot.columns {
             if selection.contains_cell(grid, row, column) {
@@ -3216,7 +3434,7 @@ fn cell_content_is_visible(flags: CellFlags) -> bool {
     !flags.contains(CellFlags::HIDDEN)
 }
 
-fn resolve_cell_colors(colors: TerminalColors, cell: &Cell) -> ResolvedCellColors {
+fn resolve_cell_colors(colors: &TerminalColors, cell: &Cell) -> ResolvedCellColors {
     let resolved = colors.resolve_cell_colors(cell.fg, cell.bg, cell.flags);
 
     ResolvedCellColors {
@@ -3234,7 +3452,7 @@ fn resolve_cell_colors(colors: TerminalColors, cell: &Cell) -> ResolvedCellColor
 }
 
 fn resolve_cell_underline_color(
-    colors: TerminalColors,
+    colors: &TerminalColors,
     cell: &Cell,
     resolved_foreground: u32,
 ) -> u32 {
@@ -3279,6 +3497,7 @@ fn underline_anchor_y(
     }
 }
 
+#[cfg(test)]
 fn draw_cell_underline(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -3288,6 +3507,21 @@ fn draw_cell_underline(
     ascent: f32,
     style: UnderlineStyle,
     color: u32,
+) {
+    draw_cell_underline_in_band(frame, frame_size, origin, width, cell_height,
+        ascent, style, color, 0);
+}
+
+fn draw_cell_underline_in_band(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    origin: (i32, i32),
+    width: u32,
+    cell_height: u32,
+    ascent: f32,
+    style: UnderlineStyle,
+    color: u32,
+    vertical_offset: i32,
 ) {
     let Some(anchor_y) = underline_anchor_y(origin.1, cell_height, ascent, style) else {
         return;
@@ -3307,6 +3541,7 @@ fn draw_cell_underline(
         let Some(x) = origin.0.checked_add(x_offset) else {
             return;
         };
+        let Some(y) = y.checked_sub(vertical_offset) else { return; };
         fill_rect(
             frame,
             frame_size,
@@ -3373,6 +3608,7 @@ fn draw_images(
     }
 }
 
+#[cfg(test)]
 fn draw_grid_snapshot_with_images(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -3383,17 +3619,58 @@ fn draw_grid_snapshot_with_images(
     draw_terminal_cursor: bool,
     images: &[ImageSnapshot],
 ) {
+    draw_grid_snapshot_in_band(frame, frame_size, atlas, &colors, cell_dimensions,
+        snapshot, draw_terminal_cursor, images, 0..frame_size.1);
+}
+
+fn draw_grid_snapshot_in_band(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    atlas: &mut GlyphAtlas,
+    colors: &TerminalColors,
+    cell_dimensions: (u16, u16),
+    snapshot: &GridSnapshot,
+    draw_terminal_cursor: bool,
+    images: &[ImageSnapshot],
+    band: std::ops::Range<u32>,
+) {
+    if band.is_empty() || band.end > frame_size.1 {
+        return;
+    }
+    let partial = band != (0..frame_size.1);
+    debug_assert!(images.is_empty() || band == (0..frame_size.1));
+    let start = u64::from(band.start) * u64::from(frame_size.0);
+    let end = u64::from(band.end) * u64::from(frame_size.0);
+    let (Ok(start), Ok(end), Ok(offset)) =
+        (usize::try_from(start), usize::try_from(end), i32::try_from(band.start))
+    else {
+        return;
+    };
+    let Some(frame) = frame.get_mut(start..end) else { return; };
+    let frame_size = (frame_size.0, band.end - band.start);
+    let band_origin = |row, column| {
+        let (x, y) = cell_origin(row, column, cell_dimensions)?;
+        Some((x, y.checked_sub(offset)?))
+    };
     let cell_size = (u32::from(cell_dimensions.0), u32::from(cell_dimensions.1));
+    let background_rows = if partial && cell_size.1 != 0 {
+        (band.start / cell_size.1) as usize..band.end.div_ceil(cell_size.1) as usize
+    } else {
+        0..snapshot.rows
+    };
+    let background_rows = background_rows.start.min(snapshot.rows)
+        ..background_rows.end.min(snapshot.rows);
 
     // Kitty's lowest layer is behind non-default cell backgrounds. Ordinary
     // negative z values are above backgrounds but below glyphs.
     draw_images(frame, frame_size, images, |z| z < i32::MIN / 2);
-    for row in 0..snapshot.rows {
+    for row in background_rows.clone() {
         for column in 0..snapshot.columns {
             let Some(cell) = snapshot.cell(row, column) else { continue; };
             if cell.flags.contains(CellFlags::WIDE_CONT) { continue; }
-            let Some(origin) = cell_origin(row, column, cell_dimensions) else { continue; };
-            if !images.is_empty() && cell.bg == Color::Default
+            let Some(origin) = band_origin(row, column) else { continue; };
+            // The caller initializes the whole frame or damaged band first.
+            if cell.bg == Color::Default
                 && !cell.flags.contains(CellFlags::REVERSE) {
                 continue;
             }
@@ -3407,6 +3684,16 @@ fn draw_grid_snapshot_with_images(
     draw_images(frame, frame_size, images, |z| (i32::MIN / 2..0).contains(&z));
 
     for row in 0..snapshot.rows {
+        // Ink can overhang any number of rows, so keep looking up its actual
+        // bounds. Full repaints do not need these extra intersection checks.
+        let baseline = if partial {
+            cell_origin(row, 0, cell_dimensions).and_then(|(_, y)| {
+                rounded_f64_i32(f64::from(y) + f64::from(atlas.ascent))
+            })
+        } else {
+            None
+        };
+        let underline_row = !partial || background_rows.contains(&row);
         for column in 0..snapshot.columns {
             let Some(cell) = snapshot.cell(row, column) else {
                 continue;
@@ -3417,42 +3704,56 @@ fn draw_grid_snapshot_with_images(
             let Some(origin) = cell_origin(row, column, cell_dimensions) else {
                 continue;
             };
-            let resolved = resolve_cell_colors(colors, cell);
-            let background_width = if cell.flags.contains(CellFlags::WIDE) {
-                cell_size.0.saturating_mul(2)
-            } else {
-                cell_size.0
-            };
-
             if !cell_content_is_visible(cell.flags) {
                 continue;
             }
 
-            for c in cell.normalized_chars().filter(|&c| c != ' ' && c != '\0') {
-                let glyph = atlas.get_or_insert(GlyphKey {
-                    c,
-                    bold: cell.flags.contains(CellFlags::BOLD),
-                    italic: cell.flags.contains(CellFlags::ITALIC),
-                });
+            let glyph = if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
+                let glyph = atlas.get_or_insert_cell(cell);
+                let intersects = !partial || baseline
+                    .and_then(|y| y.checked_add(glyph.bearing_y))
+                    .is_some_and(|top| {
+                        i64::from(top) < i64::from(band.end)
+                            && i64::from(top) + i64::from(glyph.pixel_h) > i64::from(band.start)
+                    });
+                intersects.then_some(glyph)
+            } else {
+                None
+            };
+            // Underlines stay inside the cell box even when the glyph's ink
+            // misses the band; they must not be skipped along with that glyph.
+            let underline = underline_row && cell.underline_style != UnderlineStyle::None;
+            if glyph.is_none() && !underline {
+                continue;
+            }
+            let resolved = resolve_cell_colors(colors, cell);
+            if let Some(glyph) = glyph {
                 let source = GlyphSource {
                     pixels: &atlas.pixels,
+                    rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
                     size: (atlas.width, atlas.height),
                     ascent: atlas.ascent,
                 };
-                draw_cell_glyph(
+                draw_cell_glyph_in_band(
                     frame,
                     frame_size,
                     source,
                     glyph,
                     origin,
                     resolved.foreground,
+                    offset,
                 );
             }
 
-            if cell.underline_style != UnderlineStyle::None {
+            if underline {
+                let background_width = if cell.flags.contains(CellFlags::WIDE) {
+                    cell_size.0.saturating_mul(2)
+                } else {
+                    cell_size.0
+                };
                 let underline_color =
                     resolve_cell_underline_color(colors, cell, resolved.foreground);
-                draw_cell_underline(
+                draw_cell_underline_in_band(
                     frame,
                     frame_size,
                     origin,
@@ -3461,6 +3762,7 @@ fn draw_grid_snapshot_with_images(
                     atlas.ascent,
                     cell.underline_style,
                     underline_color,
+                    offset,
                 );
             }
         }
@@ -3473,15 +3775,15 @@ fn draw_grid_snapshot_with_images(
     let Some(cursor) = snapshot.cursor else {
         return;
     };
-    let Some(origin) = cell_origin(cursor.row, cursor.column, cell_dimensions) else {
+    let Some(origin) = band_origin(cursor.row, cursor.column) else {
         return;
     };
     let Some((cursor_origin, cursor_size)) = cursor_rectangle(cursor.shape, origin, cell_size)
     else {
         return;
     };
-    let cursor_background = snapshot
-        .rendered_cell(cursor.row, cursor.column)
+    let cursor_cell = snapshot.rendered_cell(cursor.row, cursor.column);
+    let cursor_background = cursor_cell
         .map(|cell| resolve_cell_colors(colors, cell).background)
         .unwrap_or_else(|| {
             let background = colors.default_background();
@@ -3492,16 +3794,101 @@ fn draw_grid_snapshot_with_images(
         frame_size,
         cursor_origin,
         cursor_size,
-        contrasting_cursor_color(cursor_background),
-        CURSOR_ALPHA,
+        colors.cursor().map(|color| rgb_to_xrgb(color.0, color.1, color.2))
+            .unwrap_or_else(|| contrasting_cursor_color(cursor_background)),
+        if colors.cursor().is_some() { u8::MAX } else { CURSOR_ALPHA },
     );
+    let Some(cursor_color) = colors.cursor().filter(|_| cursor.shape == CursorShape::Block) else {
+        return;
+    };
+    let Some(cell) = cursor_cell.filter(|cell| {
+        cell_content_is_visible(cell.flags)
+            && !cell.flags.contains(CellFlags::WIDE_CONT)
+            && (cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0'))
+    }) else {
+        return;
+    };
+    // The cursor can sit on the second cell of a wide grapheme. Its ink still
+    // originates at the leader, while only the cursor's own rectangle changes.
+    let column = if snapshot.cell(cursor.row, cursor.column)
+        .is_some_and(|cell| cell.flags.contains(CellFlags::WIDE_CONT)) {
+        cursor.column.saturating_sub(1)
+    } else {
+        cursor.column
+    };
+    let Some(cell_origin) = cell_origin(cursor.row, column, cell_dimensions) else { return; };
+    let glyph = atlas.get_or_insert_cell(cell);
+    let Some(destination_x) = cell_origin.0.checked_add(glyph.bearing_x) else { return; };
+    let Some(baseline) = rounded_f64_i32(f64::from(cell_origin.1) + f64::from(atlas.ascent)) else {
+        return;
+    };
+    let Some(destination_y) = baseline.checked_add(glyph.bearing_y)
+        .and_then(|y| y.checked_sub(offset)) else { return; };
+    let cursor_color = rgb_to_xrgb(cursor_color.0, cursor_color.1, cursor_color.2);
+    let default_background = colors.default_background();
+    let mut foreground = cursor_background;
+    if foreground == cursor_color {
+        foreground = rgb_to_xrgb(default_background.0, default_background.1, default_background.2);
+    }
+    if foreground == cursor_color {
+        foreground = contrasting_cursor_color(cursor_color);
+    }
+    let source = GlyphSource {
+        pixels: &atlas.pixels,
+        rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
+        size: (atlas.width, atlas.height),
+        ascent: atlas.ascent,
+    };
+    draw_glyph_in_cursor(frame, frame_size, source, glyph, (destination_x, destination_y),
+        foreground, (cursor_origin, cursor_size));
+}
+
+/// Crop the cached glyph itself, retaining the destination stride and source
+/// bearings. Repainting the whole glyph could recolor a wide neighbor or draw
+/// outside a damaged band. No scratch bitmap or frame allocation is needed.
+fn draw_glyph_in_cursor(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    source: GlyphSource<'_>,
+    mut glyph: crate::glyph_atlas::GlyphEntry,
+    destination: (i32, i32),
+    foreground: u32,
+    cursor: ((i32, i32), (u32, u32)),
+) {
+    let (origin, size) = cursor;
+    let left = i64::from(destination.0).max(i64::from(origin.0));
+    let top = i64::from(destination.1).max(i64::from(origin.1));
+    let right = (i64::from(destination.0) + i64::from(glyph.pixel_w))
+        .min(i64::from(origin.0) + i64::from(size.0));
+    let bottom = (i64::from(destination.1) + i64::from(glyph.pixel_h))
+        .min(i64::from(origin.1) + i64::from(size.1));
+    if left >= right || top >= bottom { return; }
+    let (Ok(source_x), Ok(source_y), Ok(width), Ok(height)) = (
+        u32::try_from(left - i64::from(destination.0)),
+        u32::try_from(top - i64::from(destination.1)),
+        u32::try_from(right - left), u32::try_from(bottom - top),
+    ) else { return; };
+    let (Some(atlas_x), Some(atlas_y)) = (
+        glyph.atlas_x.checked_add(source_x), glyph.atlas_y.checked_add(source_y),
+    ) else { return; };
+    glyph.atlas_x = atlas_x;
+    glyph.atlas_y = atlas_y;
+    glyph.pixel_w = width;
+    glyph.pixel_h = height;
+    // left/top are maxima of i32 origins, so their conversions are exact.
+    let destination = (left as i32, top as i32);
+    if let Some(pixels) = source.rgba_pixels {
+        draw_glyph_rgba(frame, frame_size, pixels, source.size, glyph, destination);
+    } else {
+        draw_glyph_a8(frame, frame_size, source.pixels, source.size, glyph, destination, foreground);
+    }
 }
 
 fn draw_ime_preedit(
     frame: &mut [u32],
     frame_size: (u32, u32),
     atlas: &mut GlyphAtlas,
-    colors: TerminalColors,
+    colors: &TerminalColors,
     cell_dimensions: (u16, u16),
     snapshot: &GridSnapshot,
     layout: &ImePreeditLayout,
@@ -3555,6 +3942,7 @@ fn draw_ime_preedit(
         });
         let source = GlyphSource {
             pixels: &atlas.pixels,
+            rgba_pixels: atlas.is_color(atlas_glyph).then_some(&atlas.rgba_pixels),
             size: (atlas.width, atlas.height),
             ascent: atlas.ascent,
         };
@@ -3601,13 +3989,14 @@ fn draw_ime_preedit(
         frame_size,
         origin,
         (CURSOR_THICKNESS.min(cell_size.0), cell_size.1),
-        contrasting_cursor_color(background),
+        colors.cursor().map(|color| rgb_to_xrgb(color.0, color.1, color.2))
+            .unwrap_or_else(|| contrasting_cursor_color(background)),
         u8::MAX,
     );
 }
 
 fn ime_preedit_glyph_colors(
-    colors: TerminalColors,
+    colors: &TerminalColors,
     snapshot: &GridSnapshot,
     glyph: &ImePreeditGlyph,
 ) -> (u32, u32) {
@@ -3630,7 +4019,7 @@ fn ime_preedit_glyph_colors(
 }
 
 fn ime_preedit_background_at(
-    colors: TerminalColors,
+    colors: &TerminalColors,
     snapshot: &GridSnapshot,
     layout: &ImePreeditLayout,
     row: usize,
@@ -3708,6 +4097,18 @@ fn draw_cell_glyph(
     cell_origin: (i32, i32),
     foreground: u32,
 ) {
+    draw_cell_glyph_in_band(frame, frame_size, source, glyph, cell_origin, foreground, 0);
+}
+
+fn draw_cell_glyph_in_band(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    source: GlyphSource<'_>,
+    glyph: crate::glyph_atlas::GlyphEntry,
+    cell_origin: (i32, i32),
+    foreground: u32,
+    vertical_offset: i32,
+) {
     let Some(destination_x) = cell_origin.0.checked_add(glyph.bearing_x) else {
         return;
     };
@@ -3715,10 +4116,15 @@ fn draw_cell_glyph(
     else {
         return;
     };
-    let Some(destination_y) = baseline.checked_add(glyph.bearing_y) else {
+    let Some(destination_y) = baseline.checked_add(glyph.bearing_y)
+        .and_then(|y| y.checked_sub(vertical_offset)) else {
         return;
     };
 
+    if let Some(rgba_pixels) = source.rgba_pixels {
+        draw_glyph_rgba(frame, frame_size, rgba_pixels, source.size, glyph, (destination_x, destination_y));
+        return;
+    }
     draw_glyph_a8(
         frame,
         frame_size,
@@ -3745,6 +4151,223 @@ fn rounded_f64_i32(value: f64) -> Option<i32> {
         return None;
     }
     Some(rounded as i32)
+}
+
+#[cfg(test)]
+mod themed_cursor_tests {
+    use super::*;
+
+    const CURSOR: (u8, u8, u8) = (45, 210, 140);
+
+    fn atlas() -> GlyphAtlas {
+        GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0).unwrap()
+    }
+
+    fn colors() -> TerminalColors {
+        TerminalColors::new((220, 130, 85), (7, 25, 55)).with_cursor(CURSOR)
+    }
+
+    fn render(snapshot: &GridSnapshot, atlas: &mut GlyphAtlas, cursor: bool) -> Vec<u32> {
+        let dimensions = atlas_cell_dimensions(atlas).unwrap();
+        let size = (snapshot.columns as u32 * u32::from(dimensions.0),
+                    snapshot.rows as u32 * u32::from(dimensions.1));
+        let mut frame = vec![rgb_to_xrgb(7, 25, 55); (size.0 * size.1) as usize];
+        draw_grid_snapshot(&mut frame, size, atlas, colors(), dimensions, snapshot, cursor);
+        frame
+    }
+
+    #[test]
+    fn opaque_block_cursor_preserves_ascii_combining_and_wide_grapheme_ink() {
+        let mut atlas = atlas();
+        let (width, height) = atlas_cell_dimensions(&atlas).unwrap();
+        let (width, height) = (usize::from(width), usize::from(height));
+        let cursor_rgb = rgb_to_xrgb(CURSOR.0, CURSOR.1, CURSOR.2);
+        for text in ["M", "e\u{301}", "日", "👩🏽\u{200d}💻"] {
+            let mut grid = Grid::new(4, 2, 0);
+            grid.cursor_row = 1;
+            for character in text.chars() { grid.put_char(character); }
+            let mut snapshot = snapshot_locked_grid(&grid);
+            let columns = if snapshot.cell(1, 0).unwrap().flags.contains(CellFlags::WIDE) { 2 } else { 1 };
+            let baseline = render(&snapshot, &mut atlas, false);
+            let mut grapheme_ink_pixels = 0;
+            for column in 0..columns {
+                snapshot.cursor.as_mut().unwrap().column = column;
+                atlas.dirty = false;
+                let actual = render(&snapshot, &mut atlas, true);
+                assert!(!atlas.dirty, "cursor should reuse the cached {text} grapheme");
+
+                // Independent oracle: ordinary rendering with reversed cursor
+                // colors supplies the expected ink, without the cursor helper.
+                let mut reference = snapshot_locked_grid(&grid);
+                for cell in &mut reference.cells {
+                    cell.fg = Color::Rgb(7, 25, 55);
+                    cell.bg = Color::Rgb(CURSOR.0, CURSOR.1, CURSOR.2);
+                }
+                let ink = render(&reference, &mut atlas, false);
+                let mut expected = baseline.clone();
+                let mut ink_pixels = 0;
+                for y in height..height * 2 {
+                    for x in column * width..(column + 1) * width {
+                        let index = y * width * 4 + x;
+                        expected[index] = ink[index];
+                        ink_pixels += usize::from(ink[index] != cursor_rgb);
+                    }
+                }
+                grapheme_ink_pixels += ink_pixels;
+                assert_eq!(actual, expected, "cursor erased ink or repainted outside {text} cell {column}");
+
+                // A partial repaint clips against both the cursor and the
+                // damaged row band, preserving the untouched buffer pixels.
+                let frame_size = ((width * 4) as u32, (height * 2) as u32);
+                let band = (height + height / 3) as u32..(height * 2 - 2) as u32;
+                let start = band.start as usize * width * 4;
+                let end = band.end as usize * width * 4;
+                let mut partial = baseline.clone();
+                partial[start..end].fill(rgb_to_xrgb(7, 25, 55));
+                draw_grid_snapshot_in_band(&mut partial, frame_size, &mut atlas, &colors(),
+                    (width as u16, height as u16), &snapshot, true, &[], band);
+                assert_eq!(&partial[start..end], &actual[start..end], "damaged cursor band: {text}");
+                assert_eq!(&partial[..start], &baseline[..start]);
+                assert_eq!(&partial[end..], &baseline[end..]);
+            }
+            // A missing CJK font may draw a narrow replacement glyph inside a
+            // two-cell cluster. Both halves still require exact pixel equality.
+            assert!(grapheme_ink_pixels > 0, "fixture must contain ink for {text}");
+        }
+    }
+
+    #[test]
+    fn opaque_block_cursor_preserves_ink_in_both_halves_of_a_synthetic_wide_glyph() {
+        let mut atlas = atlas();
+        let (cell_width, cell_height) = atlas_cell_dimensions(&atlas).unwrap();
+        let (width, height) = (usize::from(cell_width), usize::from(cell_height));
+        let glyph = crate::glyph_atlas::GlyphEntry {
+            atlas_x: atlas.width.checked_sub(u32::from(cell_width) * 2).unwrap(),
+            atlas_y: atlas.height.checked_sub(u32::from(cell_height)).unwrap(),
+            pixel_w: u32::from(cell_width) * 2,
+            pixel_h: u32::from(cell_height),
+            bearing_x: 0,
+            bearing_y: -rounded_f64_i32(f64::from(atlas.ascent)).unwrap(),
+            color: false,
+        };
+        assert!(!atlas.is_color(glyph));
+        // Distinct stripes in each half expose a wrong source origin when the
+        // cursor is on WIDE_CONT, without requiring an installed CJK font.
+        let has_ink = |x: usize, y: usize| {
+            let stripe = if x < width { width / 3 } else { width * 2 / 3 };
+            x % width == stripe || y == height / 2
+        };
+        for y in 0..height {
+            for x in 0..width * 2 {
+                let index = (glyph.atlas_y as usize + y) * atlas.width as usize
+                    + glyph.atlas_x as usize + x;
+                atlas.pixels[index] = if has_ink(x, y) { 255 } else { 0 };
+            }
+        }
+        atlas.glyphs.insert(GlyphKey { c: '日', bold: false, italic: false }, glyph);
+        let mut grid = Grid::new(4, 2, 0);
+        grid.cursor_row = 1;
+        grid.put_char('日');
+        let mut snapshot = snapshot_locked_grid(&grid);
+        assert!(snapshot.cell(1, 1).unwrap().flags.contains(CellFlags::WIDE_CONT));
+        let baseline = render(&snapshot, &mut atlas, false);
+        for column in 0..2 {
+            snapshot.cursor.as_mut().unwrap().column = column;
+            let mut expected = baseline.clone();
+            let mut ink_pixels = 0;
+            for y in 0..height {
+                for x in column * width..(column + 1) * width {
+                    let ink = has_ink(x, y);
+                    ink_pixels += usize::from(ink);
+                    expected[(height + y) * width * 4 + x] = if ink {
+                        rgb_to_xrgb(7, 25, 55)
+                    } else {
+                        rgb_to_xrgb(CURSOR.0, CURSOR.1, CURSOR.2)
+                    };
+                }
+            }
+            assert!(ink_pixels > 0, "synthetic glyph must cover wide cell {column}");
+            atlas.dirty = false;
+            let actual = render(&snapshot, &mut atlas, true);
+            assert!(!atlas.dirty, "synthetic glyph must stay cached");
+            assert_eq!(actual, expected, "wide cell {column}: lost ink or modified neighboring pixels");
+            let size = ((width * 4) as u32, (height * 2) as u32);
+            let band = (height + height / 3) as u32..(height * 2 - 2) as u32;
+            let start = band.start as usize * width * 4;
+            let end = band.end as usize * width * 4;
+            let mut partial = baseline.clone();
+            partial[start..end].fill(rgb_to_xrgb(7, 25, 55));
+            draw_grid_snapshot_in_band(&mut partial, size, &mut atlas, &colors(),
+                (cell_width, cell_height), &snapshot, true, &[], band);
+            assert_eq!(&partial[start..end], &expected[start..end], "wide cell {column}: damaged band");
+            assert_eq!(&partial[..start], &baseline[..start]);
+            assert_eq!(&partial[end..], &baseline[end..]);
+        }
+    }
+
+    #[test]
+    fn opaque_cursor_uses_readable_text_when_cell_background_matches_cursor() {
+        let mut atlas = atlas();
+        let mut grid = Grid::new(1, 1, 0);
+        grid.bg = Color::Rgb(CURSOR.0, CURSOR.1, CURSOR.2);
+        grid.put_char('M');
+        grid.cursor_col = 0;
+        let snapshot = snapshot_locked_grid(&grid);
+        let actual = render(&snapshot, &mut atlas, true);
+        let mut reference = snapshot_locked_grid(&grid);
+        reference.cells[0].fg = Color::Rgb(7, 25, 55);
+        let expected = render(&reference, &mut atlas, false);
+        assert_eq!(actual, expected);
+        assert!(actual.iter().any(|&pixel| pixel != rgb_to_xrgb(CURSOR.0, CURSOR.1, CURSOR.2)));
+    }
+
+    #[test]
+    fn opaque_cursor_does_not_reveal_concealed_wide_or_combining_content() {
+        let mut atlas = atlas();
+        let (width, height) = atlas_cell_dimensions(&atlas).unwrap();
+        let (width, height) = (usize::from(width), usize::from(height));
+        let cursor_rgb = rgb_to_xrgb(CURSOR.0, CURSOR.1, CURSOR.2);
+        for text in ["M", "e\u{301}", "日"] {
+            let mut grid = Grid::new(3, 1, 0);
+            grid.flags = CellFlags::HIDDEN;
+            for character in text.chars() { grid.put_char(character); }
+            grid.cursor_col = usize::from(grid.buffer.cell(0, 0).flags.contains(CellFlags::WIDE));
+            let snapshot = snapshot_locked_grid(&grid);
+            atlas.dirty = false;
+            let actual = render(&snapshot, &mut atlas, true);
+            assert!(!atlas.dirty, "concealed {text} must never enter the glyph atlas");
+            let column = snapshot.cursor.unwrap().column;
+            for y in 0..height {
+                let start = y * width * 3 + column * width;
+                assert!(actual[start..start + width].iter().all(|&pixel| pixel == cursor_rgb));
+            }
+        }
+    }
+
+    #[test]
+    fn cropped_cursor_glyph_preserves_neighbor_pixels_and_rgba_source_coordinates() {
+        let pixels = [255; 12];
+        let mut rgba = [0; 48];
+        for (index, pixel) in rgba.chunks_exact_mut(4).enumerate() {
+            pixel.copy_from_slice(&[(index * 10) as u8, 20, 30, 255]);
+        }
+        let glyph = crate::glyph_atlas::GlyphEntry {
+            atlas_x: 0, atlas_y: 0, pixel_w: 4, pixel_h: 3, bearing_x: 0, bearing_y: 0,
+            color: false,
+        };
+        for colored in [false, true] {
+            let source = GlyphSource {
+                pixels: &pixels, rgba_pixels: colored.then_some(&rgba), size: (4, 3), ascent: 0.0,
+            };
+            let mut frame = [0xdead_beef; 15];
+            draw_glyph_in_cursor(&mut frame, (4, 3), source, glyph, (-1, 0), 0x112233,
+                ((1, 1), (2, 1)));
+            let mut expected = [0xdead_beef; 15];
+            expected[5] = if colored { rgb_to_xrgb(60, 20, 30) } else { 0x112233 };
+            expected[6] = if colored { rgb_to_xrgb(70, 20, 30) } else { 0x112233 };
+            assert_eq!(frame, expected, "colored={colored}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -3902,7 +4525,7 @@ mod tests {
             &mut frame,
             frame_size,
             atlas,
-            test_colors(),
+            &test_colors(),
             cell_dimensions,
             &snapshot,
             &layout,
@@ -4246,7 +4869,6 @@ mod tests {
                 grid.cursor_col = 80;
                 grid.scroll_top = 3;
                 grid.scroll_bottom = 20;
-                grid.dirty[0] = false;
                 grid.buffer.cell_mut(0, 0).c = 'x';
             }
             let mut applied = Some(initial);
@@ -4281,7 +4903,6 @@ mod tests {
             if target.cells == initial.cells {
                 assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
                 assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
-                assert!(!grid.dirty[0]);
                 assert_eq!(grid.buffer.cell(0, 0).c, 'x');
             }
         }
@@ -4328,7 +4949,6 @@ mod tests {
             grid.cursor_col = 80;
             grid.scroll_top = 3;
             grid.scroll_bottom = 20;
-            grid.dirty[0] = false;
             grid.buffer.cell_mut(0, 0).c = 'x';
         }
 
@@ -4342,7 +4962,6 @@ mod tests {
         assert_eq!((grid.cols(), grid.rows()), (80, 24));
         assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
         assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
-        assert!(!grid.dirty[0]);
         assert_eq!(grid.buffer.cell(0, 0).c, 'x');
     }
 
@@ -4355,7 +4974,6 @@ mod tests {
             grid.cursor_col = 80;
             grid.scroll_top = 3;
             grid.scroll_bottom = 20;
-            grid.dirty[0] = false;
             grid.buffer.cell_mut(0, 0).c = 'x';
         }
         let error = resize_terminal_with(
@@ -4378,7 +4996,6 @@ mod tests {
         assert_eq!((grid.cols(), grid.rows()), (80, 24));
         assert_eq!((grid.cursor_row, grid.cursor_col), (7, 80));
         assert_eq!((grid.scroll_top, grid.scroll_bottom), (3, 20));
-        assert!(!grid.dirty[0]);
         assert_eq!(grid.buffer.cell(0, 0).c, 'x');
     }
 
@@ -4831,7 +5448,7 @@ mod tests {
     }
 
     #[test]
-    fn ime_preedit_uses_pending_wrap_with_the_physical_cursor_after_resize() {
+    fn ime_preedit_uses_the_reflowed_cursor_after_growing() {
         let resized_snapshot = |auto_wrap| {
             let mut grid = Grid::new(3, 2, 0);
             for character in ['a', 'b', 'c'] {
@@ -4843,8 +5460,8 @@ mod tests {
         };
 
         let wrapping = resized_snapshot(true);
-        assert_eq!(wrapping.input_cursor, (0, 2));
-        assert!(wrapping.wrap_pending);
+        assert_eq!(wrapping.input_cursor, (0, 3));
+        assert!(!wrapping.wrap_pending);
         let wrapping_layout =
             layout_ime_preedit_for_snapshot(&accepted_preedit("X", None), &wrapping);
         assert_eq!(
@@ -4853,12 +5470,12 @@ mod tests {
                 .iter()
                 .map(|glyph| (glyph.character, glyph.row, glyph.column))
                 .collect::<Vec<_>>(),
-            [('X', 1, 0)]
+            [('X', 0, 3)]
         );
 
         let overwriting = resized_snapshot(false);
-        assert_eq!(overwriting.input_cursor, (0, 2));
-        assert!(overwriting.wrap_pending);
+        assert_eq!(overwriting.input_cursor, (0, 3));
+        assert!(!overwriting.wrap_pending);
         let overwriting_layout =
             layout_ime_preedit_for_snapshot(&accepted_preedit("X", None), &overwriting);
         assert_eq!(
@@ -4867,7 +5484,7 @@ mod tests {
                 .iter()
                 .map(|glyph| (glyph.character, glyph.row, glyph.column))
                 .collect::<Vec<_>>(),
-            [('X', 0, 2)]
+            [('X', 0, 3)]
         );
     }
 
@@ -4920,17 +5537,17 @@ mod tests {
 
         let colors = test_colors();
         let leader_colors = resolve_cell_colors(
-            colors,
+            &colors,
             snapshot
                 .cell(0, 2)
                 .expect("wide leader should be available in the snapshot"),
         );
         assert_eq!(
-            ime_preedit_glyph_colors(colors, &snapshot, glyph),
+            ime_preedit_glyph_colors(&colors, &snapshot, glyph),
             (leader_colors.foreground, leader_colors.background)
         );
         assert_eq!(
-            ime_preedit_background_at(colors, &snapshot, &ImePreeditLayout::default(), 0, 3,),
+            ime_preedit_background_at(&colors, &snapshot, &ImePreeditLayout::default(), 0, 3,),
             leader_colors.background
         );
     }
@@ -5000,7 +5617,7 @@ mod tests {
             &mut frame,
             frame_size,
             &mut atlas,
-            test_colors(),
+            &test_colors(),
             cell_dimensions,
             &snapshot,
             &layout,
@@ -7833,6 +8450,7 @@ mod tests {
             pixel_h: 1,
             bearing_x: -1,
             bearing_y: 2,
+            color: false,
         };
 
         draw_cell_glyph(
@@ -7840,6 +8458,7 @@ mod tests {
             (5, 5),
             super::GlyphSource {
                 pixels: &[255],
+                rgba_pixels: None,
                 size: (1, 1),
                 ascent: 1.4,
             },
@@ -7898,6 +8517,25 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_renderer_sends_the_full_grapheme_to_the_atlas() {
+        for text in ["e\u{301}", "👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
+            let mut atlas = test_atlas();
+            let mut grid = Grid::new(4, 1, 0);
+            grid.cursor_visible = false;
+            for character in text.chars() {
+                grid.put_char(character);
+            }
+            let (frame, _) = render_grid(grid, &mut atlas);
+            atlas.dirty = false;
+            let glyph = atlas.get_or_insert_text(text, false, false);
+            assert!(!atlas.dirty, "renderer only cached part of {text}");
+            assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0);
+            let background = rgb_to_xrgb(DEFAULT_BACKGROUND.0, DEFAULT_BACKGROUND.1, DEFAULT_BACKGROUND.2);
+            assert!(frame.iter().any(|&pixel| pixel != background), "blank rendered grapheme: {text}");
+        }
+    }
+
+    #[test]
     fn resolves_bold_indexed_foreground_before_reverse_and_fills_cell_backgrounds() {
         let colors = test_colors();
         let normal = Cell {
@@ -7912,14 +8550,14 @@ mod tests {
         };
 
         assert_eq!(
-            resolve_cell_colors(colors, &normal),
+            resolve_cell_colors(&colors, &normal),
             ResolvedCellColors {
                 foreground: rgb_to_xrgb(241, 76, 76),
                 background: rgb_to_xrgb(4, 5, 6),
             }
         );
         assert_eq!(
-            resolve_cell_colors(colors, &reversed),
+            resolve_cell_colors(&colors, &reversed),
             ResolvedCellColors {
                 foreground: rgb_to_xrgb(4, 5, 6),
                 background: rgb_to_xrgb(241, 76, 76),
@@ -7961,7 +8599,7 @@ mod tests {
         };
 
         assert_eq!(
-            resolve_cell_colors(test_colors(), &cell),
+            resolve_cell_colors(&test_colors(), &cell),
             ResolvedCellColors {
                 foreground: 0x007f_7f7f,
                 background: 0x00ff_ffff,
@@ -8114,10 +8752,10 @@ mod tests {
             underline_style: UnderlineStyle::Single,
             ..Cell::default()
         };
-        let resolved = resolve_cell_colors(test_colors(), &default_underline);
+        let resolved = resolve_cell_colors(&test_colors(), &default_underline);
         assert_eq!(
             resolve_cell_underline_color(
-                test_colors(),
+                &test_colors(),
                 &default_underline,
                 resolved.foreground,
             ),
@@ -8130,7 +8768,7 @@ mod tests {
         };
         assert_eq!(
             resolve_cell_underline_color(
-                test_colors(),
+                &test_colors(),
                 &explicit_underline,
                 resolved.foreground,
             ),
@@ -8200,28 +8838,6 @@ mod tests {
     }
 
     #[test]
-    fn decomposed_accents_render_like_precomposed_text_without_changing_copy() {
-        let mut atlas = test_atlas();
-        for (original, composed) in [("e\u{301}X", "éX"), ("a\u{303}X", "ãX"), ("c\u{327}X", "çX")] {
-            let make_grid = |text: &str| {
-                let mut grid = Grid::new(4, 1, 0);
-                grid.cursor_visible = false;
-                let mut parser = crate::parser::ansi::Utf8Parser::new();
-                parser.feed(text.as_bytes(), &mut grid);
-                grid
-            };
-            let grid = make_grid(original);
-            assert_eq!(grid.buffer.cell(0, 0).chars().collect::<String>(),
-                original.strip_suffix('X').unwrap());
-            let (decomposed_frame, _) = render_grid(grid, &mut atlas);
-            let (composed_frame, _) = render_grid(make_grid(composed), &mut atlas);
-            let (plain_frame, _) = render_grid(make_grid(&format!("{}X", original.chars().next().unwrap())), &mut atlas);
-            assert_eq!(decomposed_frame, composed_frame);
-            assert_ne!(decomposed_frame, plain_frame, "accent must change rendered pixels");
-        }
-    }
-
-    #[test]
     fn hidden_wide_snapshot_keeps_resolved_background_without_glyph_or_underline() {
         let character = '日';
         let key = crate::glyph_atlas::GlyphKey {
@@ -8256,7 +8872,7 @@ mod tests {
             .expect("continuation should resolve through its leader")
             .flags
             .contains(CellFlags::HIDDEN));
-        let expected_background = resolve_cell_colors(test_colors(), leader).background;
+        let expected_background = resolve_cell_colors(&test_colors(), leader).background;
 
         let mut atlas = test_atlas();
         assert!(!atlas.glyphs.contains_key(&key));
@@ -8804,7 +9420,7 @@ mod graphics_tests {
 mod selection_clipboard_tests {
     use super::{
         apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer,
-        snapshot_locked_grid, ClipboardAction,
+        snapshot_locked_grid, sync_selection, ClipboardAction, SelectionContext,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::Grid;
@@ -8903,10 +9519,6 @@ mod selection_clipboard_tests {
                 Some(expected)
             );
         }
-        assert_eq!(
-            clipboard_action(Key::Named(NamedKey::Insert), ModifiersState::SHIFT),
-            Some(ClipboardAction::Paste)
-        );
         for key in ["x", "cv", "ç", "", "\u{3}", "\u{16}"] {
             assert_eq!(
                 clipboard_action(Key::Character(key), clipboard_modifiers),
@@ -8939,16 +9551,36 @@ mod selection_clipboard_tests {
                 );
             }
         }
-        for modifiers in [
-            ModifiersState::empty(),
-            ModifiersState::CONTROL,
-            ModifiersState::ALT,
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
-            ModifiersState::ALT | ModifiersState::SHIFT,
-        ] {
+    }
+
+    #[test]
+    fn insert_clipboard_shortcuts_leave_all_other_modifier_combinations_for_apps() {
+        for combination in 0..16 {
+            let mut modifiers = ModifiersState::empty();
+            for (bit, modifier) in [
+                ModifiersState::CONTROL,
+                ModifiersState::SHIFT,
+                ModifiersState::ALT,
+                ModifiersState::SUPER,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if combination & (1 << bit) != 0 {
+                    modifiers |= modifier;
+                }
+            }
+            let expected = if modifiers == ModifiersState::CONTROL {
+                Some(ClipboardAction::Copy)
+            } else if modifiers == ModifiersState::SHIFT {
+                Some(ClipboardAction::Paste)
+            } else {
+                None
+            };
             assert_eq!(
                 clipboard_action(Key::Named(NamedKey::Insert), modifiers),
-                None
+                expected,
+                "Insert with {modifiers:?} must route only the documented clipboard shortcuts"
             );
         }
     }
@@ -8969,7 +9601,7 @@ mod selection_clipboard_tests {
         let colors = TerminalColors::new((200, 210, 220), (11, 22, 33));
         let selection = selected(GridPoint { row: 0, col: 2 }, GridPoint { row: 0, col: 2 });
         let mut snapshot = snapshot_locked_grid(&grid);
-        apply_selection_to_snapshot(&mut snapshot, &selection, &grid, colors);
+        apply_selection_to_snapshot(&mut snapshot, &selection, &grid, &colors);
 
         for column in 1..=2 {
             let cell = snapshot.cell(0, column).unwrap();
@@ -9018,7 +9650,7 @@ mod selection_clipboard_tests {
             &mut snapshot,
             &selection,
             &grid,
-            TerminalColors::new((200, 210, 220), (11, 22, 33)),
+            &TerminalColors::new((200, 210, 220), (11, 22, 33)),
         );
         assert_eq!(selection.get_text(&grid), "d\nli");
         for (row, column) in [(0, 2), (0, 3), (1, 0), (1, 1)] {
@@ -9029,6 +9661,797 @@ mod selection_clipboard_tests {
         }
         for (row, column) in [(0, 0), (0, 1), (1, 2), (1, 3)] {
             assert_eq!(snapshot.cell(row, column).unwrap().bg, Color::Default);
+        }
+    }
+
+    #[test]
+    fn selection_sync_rebases_evicted_history_once_and_clears_when_fully_lost() {
+        let mut grid = Grid::new(4, 2, 1);
+        write_row(&mut grid, 0, "old");
+        write_row(&mut grid, 1, "keep");
+        let mut selection = SelectionState::default();
+        let mut context = SelectionContext::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 1, col: 0 });
+        selection.update(GridPoint { row: 1, col: 3 });
+        for expected_row in [1, 0] {
+            grid.scroll_up(1);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert_eq!(selection.get_text(&grid), "keep");
+            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert_eq!(selection.normalized().unwrap().0.row, expected_row);
+        }
+        assert_eq!(context.dropped_rows, 1);
+        grid.scroll_up(1);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn selection_sync_invalidates_coordinates_on_grid_revision_changes() {
+        let changes: [fn(&mut Grid); 6] = [
+            |grid| grid.erase_in_display(2),
+            |grid| grid.erase_in_display(3),
+            |grid| grid.resize(5, 3),
+            |grid| grid.enter_alt_screen(),
+            |grid| grid.reset_terminal_state(),
+            |grid| {
+                grid.scroll_top = 1;
+                grid.scroll_up(1);
+            },
+        ];
+        for change in changes {
+            let mut grid = Grid::new(4, 3, 10);
+            let mut selection = SelectionState::default();
+            let mut context = SelectionContext::default();
+            sync_selection(&mut selection, &mut context, &grid);
+            selection.start(GridPoint { row: 0, col: 0 });
+            change(&mut grid);
+            sync_selection(&mut selection, &mut context, &grid);
+            assert!(!selection.is_active());
+            assert_eq!(context.revision, grid.selection_revision());
+        }
+        let mut grid = Grid::new(4, 3, 10);
+        grid.enter_alt_screen();
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        grid.leave_alt_screen();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+    }
+
+    #[test]
+    fn repaint_invalidates_selection_without_changing_the_paste_target_screen() {
+        let mut grid = Grid::new(4, 3, 10);
+        grid.enter_alt_screen();
+        grid.bracketed_paste = true;
+        let paste_screen = grid.screen_revision();
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        grid.erase_in_display(2);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert!(!selection.is_active());
+        assert_eq!(grid.screen_revision(), paste_screen);
+        assert!(grid.bracketed_paste);
+        grid.scroll_top = 1;
+        grid.scroll_up(1);
+        grid.resize(5, 3);
+        assert_eq!(grid.screen_revision(), paste_screen);
+        grid.leave_alt_screen();
+        assert_ne!(grid.screen_revision(), paste_screen);
+    }
+
+    #[test]
+    fn unchanged_geometry_and_viewport_scrolling_preserve_selection() {
+        let mut grid = Grid::new(4, 2, 10);
+        write_row(&mut grid, 0, "keep");
+        grid.scroll_up(1);
+        let mut context = SelectionContext::default();
+        let mut selection = SelectionState::default();
+        sync_selection(&mut selection, &mut context, &grid);
+        selection.start(GridPoint { row: 0, col: 0 });
+        selection.update(GridPoint { row: 0, col: 3 });
+        let revision = grid.selection_revision();
+        grid.resize(4, 2);
+        grid.scroll_viewport_up(1);
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "keep");
+        assert_eq!(grid.selection_revision(), revision);
+        grid.scroll_to_bottom();
+        sync_selection(&mut selection, &mut context, &grid);
+        assert_eq!(selection.get_text(&grid), "keep");
+    }
+}
+
+#[cfg(test)]
+mod damage_tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    fn atlas() -> GlyphAtlas {
+        GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0).unwrap()
+    }
+
+    fn colors() -> TerminalColors {
+        TerminalColors::new((224, 192, 160), (16, 32, 48))
+    }
+
+    fn paint(
+        frame: &mut [u32],
+        scene: &PresentedScene,
+        atlas: &mut GlyphAtlas,
+        damage: std::ops::Range<u32>,
+    ) {
+        let width = scene.frame_size.0 as usize;
+        frame[damage.start as usize * width..damage.end as usize * width].fill(0x0010_2030);
+        draw_grid_snapshot_in_band(
+            frame,
+            scene.frame_size,
+            atlas,
+            &colors(),
+            scene.cell_dimensions,
+            &scene.snapshot,
+            true,
+            &[],
+            damage,
+        );
+    }
+
+    fn assert_matches_full(frame: &[u32], scene: &PresentedScene, atlas: &mut GlyphAtlas) {
+        let mut expected = vec![0x0010_2030; frame.len()];
+        draw_grid_snapshot_with_images(
+            &mut expected,
+            scene.frame_size,
+            atlas,
+            colors(),
+            scene.cell_dimensions,
+            &scene.snapshot,
+            true,
+            &[],
+        );
+        let mismatch = frame
+            .iter()
+            .zip(expected)
+            .position(|(actual, expected)| *actual != expected);
+        assert_eq!(
+            mismatch, None,
+            "incremental pixels must match a full repaint"
+        );
+    }
+
+    #[test]
+    fn rotated_buffers_match_full_frames_through_text_scroll_styles_and_cursor_changes() {
+        for buffer_count in 1..=3 {
+            let mut atlas = atlas();
+            let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+            let frame_size = (
+                u32::from(cell_dimensions.0) * 20 + 3,
+                u32::from(cell_dimensions.1) * 8 + 5,
+            );
+            let mut grid = Grid::new(20, 8, 32);
+            let mut buffers =
+                vec![vec![0xdead_beef; (frame_size.0 * frame_size.1) as usize]; buffer_count];
+            let mut presented_at = vec![None; buffer_count];
+            let mut history = VecDeque::new();
+            for step in 0..60 {
+                grid.set_cursor_pos(step % 8, step % 16);
+                match step % 10 {
+                    0 | 1 => grid.put_char(char::from(b'A' + step as u8 % 26)),
+                    2 => grid.put_char('界'),
+                    3 => grid.erase_in_line(2),
+                    4 => grid.scroll_up(1),
+                    5 => {
+                        let cell = grid.buffer.cell_mut(step % 8, step % 16);
+                        cell.bg = Color::Rgb(96, 48, 24);
+                        cell.fg = Color::Rgb(32, 64, 255);
+                        cell.flags = CellFlags::REVERSE | CellFlags::FAINT;
+                        cell.underline_style = UnderlineStyle::Curly;
+                    }
+                    6 => grid.cursor_visible = !grid.cursor_visible,
+                    7 => grid.cursor_style.shape = CursorShape::Bar,
+                    8 => grid.scroll_viewport_up(2),
+                    _ => grid.scroll_to_bottom(),
+                }
+                let scene = PresentedScene {
+                    snapshot: snapshot_locked_grid(&grid),
+                    frame_size,
+                    cell_dimensions,
+                    has_overlays: false,
+                };
+                let slot = step % buffer_count;
+                let age = presented_at[slot].map_or(0, |last: usize| (step - last) as u8);
+                let damage = frame_damage(
+                    scene_for_buffer_age(&history, age),
+                    &scene.snapshot,
+                    frame_size,
+                    cell_dimensions,
+                    false,
+                    &mut atlas,
+                );
+                if age == 0 {
+                    assert_eq!(damage, 0..frame_size.1);
+                }
+                paint(&mut buffers[slot], &scene, &mut atlas, damage);
+                assert_matches_full(&buffers[slot], &scene, &mut atlas);
+                history.push_front(scene);
+                history.truncate(MAX_PRESENTED_SCENES);
+                presented_at[slot] = Some(step);
+            }
+        }
+    }
+
+    #[test]
+    fn small_edits_limit_damage_and_unchanged_scenes_need_no_rasterization() {
+        let mut atlas = atlas();
+        let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+        let frame_size = (
+            u32::from(cell_dimensions.0) * 20,
+            u32::from(cell_dimensions.1) * 8,
+        );
+        let mut grid = Grid::new(20, 8, 0);
+        grid.cursor_visible = false;
+        let previous = PresentedScene {
+            snapshot: snapshot_locked_grid(&grid),
+            frame_size,
+            cell_dimensions,
+            has_overlays: false,
+        };
+        assert_eq!(
+            frame_damage(
+                Some(&previous),
+                &previous.snapshot,
+                frame_size,
+                cell_dimensions,
+                false,
+                &mut atlas
+            ),
+            0..0
+        );
+        grid.set_cursor_pos(3, 5);
+        grid.put_char('x');
+        let current = snapshot_locked_grid(&grid);
+        let damage = frame_damage(
+            Some(&previous),
+            &current,
+            frame_size,
+            cell_dimensions,
+            false,
+            &mut atlas,
+        );
+        assert!(damage.end - damage.start < frame_size.1 / 2);
+        assert!(damage.start <= 3 * u32::from(cell_dimensions.1));
+        assert!(damage.end >= 4 * u32::from(cell_dimensions.1));
+    }
+
+    #[test]
+    fn changing_only_a_grapheme_repaints_old_and_new_ink_like_a_full_frame() {
+        for (before, after) in [
+            ("e\u{301}", "e\u{308}"),
+            (" \u{301}", " \u{308}"),
+            ("👩🏽\u{200d}💻", "👩🏻\u{200d}💻"),
+            ("🇧🇷", "🇧🇪"),
+        ] {
+            let mut atlas = atlas();
+            let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+            let cell_height = u32::from(cell_dimensions.1);
+            let frame_size = (u32::from(cell_dimensions.0) * 10, cell_height * 8);
+            // Move the baseline near the row's top so real accent/emoji ink
+            // overhangs its cell, exercising both damage bounds and band offsets.
+            atlas.ascent = 0.5;
+            let mut grid = Grid::new(10, 8, 0);
+            grid.cursor_visible = false;
+            grid.set_cursor_pos(4, 3);
+            for c in before.chars() {
+                grid.put_char(c);
+            }
+            let previous = PresentedScene {
+                snapshot: snapshot_locked_grid(&grid),
+                frame_size,
+                cell_dimensions,
+                has_overlays: false,
+            };
+            let mut frame = vec![0; (frame_size.0 * frame_size.1) as usize];
+            paint(&mut frame, &previous, &mut atlas, 0..frame_size.1);
+            let old_cell = previous.snapshot.cell(4, 3).unwrap();
+            let old_glyph = atlas.get_or_insert_cell(old_cell);
+
+            // c, flags, colors, cursor, and grid dimensions are unchanged.
+            grid.buffer.cell_mut(4, 3).grapheme = Some(std::sync::Arc::from(after));
+            let current = PresentedScene {
+                snapshot: snapshot_locked_grid(&grid),
+                frame_size,
+                cell_dimensions,
+                has_overlays: false,
+            };
+            let new_cell = current.snapshot.cell(4, 3).unwrap();
+            assert_eq!(old_cell.c, new_cell.c);
+            assert_eq!(old_cell.flags, new_cell.flags);
+            let new_glyph = atlas.get_or_insert_cell(new_cell);
+            let damage = frame_damage(
+                Some(&previous), &current.snapshot, frame_size,
+                cell_dimensions, false, &mut atlas,
+            );
+            assert!(!damage.is_empty(), "same-base grapheme change was ignored: {before} -> {after}");
+            assert!(damage.start > 0 && damage.end < frame_size.1, "expected a partial repaint");
+            let baseline = (f64::from(4 * cell_height) + f64::from(atlas.ascent)).round() as i64;
+            for glyph in [old_glyph, new_glyph] {
+                let ink_top = baseline + i64::from(glyph.bearing_y);
+                let ink_bottom = ink_top + i64::from(glyph.pixel_h);
+                assert!(i64::from(damage.start) <= ink_top, "clipped accent/emoji overhang: {before} -> {after}");
+                assert!(i64::from(damage.end) >= ink_bottom);
+            }
+            paint(&mut frame, &current, &mut atlas, damage);
+            assert_matches_full(&frame, &current, &mut atlas);
+        }
+    }
+
+    #[test]
+    fn unknown_age_dimensions_and_overlay_transitions_require_full_repaint() {
+        let mut atlas = atlas();
+        let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+        let frame_size = (200, 160);
+        let grid = Grid::new(10, 8, 0);
+        let current = snapshot_locked_grid(&grid);
+        let mut history = VecDeque::from([PresentedScene {
+            snapshot: snapshot_locked_grid(&grid),
+            frame_size,
+            cell_dimensions,
+            has_overlays: false,
+        }]);
+        for age in [0, 2, 255] {
+            assert_eq!(
+                frame_damage(
+                    scene_for_buffer_age(&history, age),
+                    &current,
+                    frame_size,
+                    cell_dimensions,
+                    false,
+                    &mut atlas
+                ),
+                0..frame_size.1
+            );
+        }
+        for (size, cells, overlay) in [
+            ((201, 160), cell_dimensions, false),
+            (
+                frame_size,
+                (cell_dimensions.0 + 1, cell_dimensions.1),
+                false,
+            ),
+            (frame_size, cell_dimensions, true),
+        ] {
+            assert_eq!(
+                frame_damage(history.front(), &current, size, cells, overlay, &mut atlas),
+                0..size.1
+            );
+        }
+        history.front_mut().unwrap().has_overlays = true;
+        assert_eq!(
+            frame_damage(
+                history.front(),
+                &current,
+                frame_size,
+                cell_dimensions,
+                false,
+                &mut atlas
+            ),
+            0..frame_size.1
+        );
+        history.front_mut().unwrap().has_overlays = false;
+        let resized = snapshot_locked_grid(&Grid::new(11, 8, 0));
+        assert_eq!(
+            frame_damage(
+                history.front(),
+                &resized,
+                frame_size,
+                cell_dimensions,
+                false,
+                &mut atlas
+            ),
+            0..frame_size.1
+        );
+    }
+
+    #[test]
+    fn glyph_overhang_is_removed_and_repainted_with_fractional_font_metrics() {
+        let mut atlas = atlas();
+        let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+        let cell_height = u32::from(cell_dimensions.1);
+        // Synthetic font ink spans several cells, with a half-pixel baseline.
+        atlas.ascent = cell_height as f32 + 0.5;
+        atlas.glyphs.insert(
+            GlyphKey {
+                c: '☃',
+                bold: false,
+                italic: false,
+            },
+            crate::glyph_atlas::GlyphEntry {
+                atlas_x: 0,
+                atlas_y: 0,
+                pixel_w: 3,
+                pixel_h: cell_height * 3,
+                bearing_x: -2,
+                bearing_y: -(cell_height as i32) * 2,
+                color: false,
+            },
+        );
+        for y in 0..cell_height * 3 {
+            atlas.pixels[y as usize * atlas.width as usize..y as usize * atlas.width as usize + 3]
+                .fill(192);
+        }
+        let frame_size = (u32::from(cell_dimensions.0) * 10, cell_height * 8);
+        let mut grid = Grid::new(10, 8, 0);
+        grid.cursor_visible = false;
+        grid.set_cursor_pos(4, 3);
+        grid.put_char('☃');
+        // Its unchanged neighbor also overlaps the band's edge and must be
+        // composited after clearing the changed glyph's old ink.
+        grid.set_cursor_pos(3, 6);
+        grid.put_char('☃');
+        let mut previous = PresentedScene {
+            snapshot: snapshot_locked_grid(&grid),
+            frame_size,
+            cell_dimensions,
+            has_overlays: false,
+        };
+        let mut frame = vec![0; (frame_size.0 * frame_size.1) as usize];
+        paint(&mut frame, &previous, &mut atlas, 0..frame_size.1);
+        let ink_x = usize::from(cell_dimensions.0) * 3 - 2;
+        let ink_y = (f64::from(cell_height * 4) + f64::from(atlas.ascent)).round() as usize
+            - cell_height as usize * 2;
+        assert_ne!(frame[ink_y * frame_size.0 as usize + ink_x], 0x0010_2030);
+        assert_eq!(
+            frame[(ink_y - 1) * frame_size.0 as usize + ink_x],
+            0x0010_2030
+        );
+        for character in [' ', '☃', 'x'] {
+            grid.set_cursor_pos(4, 3);
+            grid.put_char(character);
+            let current = PresentedScene {
+                snapshot: snapshot_locked_grid(&grid),
+                frame_size,
+                cell_dimensions,
+                has_overlays: false,
+            };
+            let damage = frame_damage(
+                Some(&previous),
+                &current.snapshot,
+                frame_size,
+                cell_dimensions,
+                false,
+                &mut atlas,
+            );
+            assert!(damage.start < 4 * cell_height);
+            assert!(damage.end > 5 * cell_height);
+            paint(&mut frame, &current, &mut atlas, damage);
+            assert_matches_full(&frame, &current, &mut atlas);
+            previous = current;
+        }
+    }
+
+    #[test]
+    fn one_pixel_bands_preserve_overhang_backgrounds_and_independent_underlines() {
+        for ascent in [-0.5, 0.5, 17.5] {
+            let mut atlas = atlas();
+            // Fixed cell geometry makes every cell/ink boundary independent of
+            // the installed font. Both signs of half-pixel baselines matter.
+            let cell_dimensions = (8, 12);
+            atlas.ascent = ascent;
+            let short = crate::glyph_atlas::GlyphEntry {
+                atlas_x: 0,
+                atlas_y: 0,
+                pixel_w: 5,
+                pixel_h: 1,
+                bearing_x: 1,
+                bearing_y: -rounded_i32(ascent).unwrap(),
+                color: false,
+            };
+            let tall = crate::glyph_atlas::GlyphEntry {
+                atlas_x: 8,
+                pixel_w: 16,
+                pixel_h: 36,
+                bearing_x: -1,
+                bearing_y: -18,
+                ..short
+            };
+            for (character, glyph) in [('A', short), ('日', tall)] {
+                assert!(!atlas.is_color(glyph));
+                for y in 0..glyph.pixel_h {
+                    let start = (glyph.atlas_y + y) as usize * atlas.width as usize
+                        + glyph.atlas_x as usize;
+                    atlas.pixels[start..start + glyph.pixel_w as usize].fill(192);
+                }
+                atlas.glyphs.insert(
+                    GlyphKey { c: character, bold: false, italic: false }, glyph,
+                );
+            }
+
+            let mut grid = Grid::new(10, 6, 0);
+            grid.cursor_visible = false;
+            for row in 0..6 {
+                for column in 0..10 {
+                    grid.buffer.cell_mut(row, column).bg =
+                        Color::Rgb(30 + row as u8 * 15, 40 + column as u8 * 10, 60);
+                }
+            }
+            // Unchanged wide neighbors extend into bands outside their rows.
+            for row in [2, 4, 5] {
+                grid.set_cursor_pos(row, 7);
+                grid.put_char('日');
+            }
+            for (column, style) in [
+                UnderlineStyle::Single,
+                UnderlineStyle::Double,
+                UnderlineStyle::Curly,
+                UnderlineStyle::Dotted,
+                UnderlineStyle::Dashed,
+            ].into_iter().enumerate() {
+                grid.set_cursor_pos(3, column);
+                grid.put_char('A');
+                let cell = grid.buffer.cell_mut(3, column);
+                cell.underline_style = style;
+                cell.underline_color = Color::Rgb(240, 10, 20);
+            }
+            let reversed = grid.buffer.cell_mut(1, 1);
+            reversed.flags.insert(CellFlags::REVERSE);
+            reversed.bg = Color::Default;
+            let hidden = grid.buffer.cell_mut(3, 5);
+            hidden.c = 'A';
+            hidden.flags.insert(CellFlags::HIDDEN);
+            hidden.underline_style = UnderlineStyle::Single;
+            let blank = grid.buffer.cell_mut(3, 6);
+            blank.underline_style = UnderlineStyle::Double;
+            blank.underline_color = Color::Rgb(240, 10, 20);
+
+            let scene = PresentedScene {
+                snapshot: snapshot_locked_grid(&grid),
+                frame_size: (80, 80), // Also exercise padding below the grid.
+                cell_dimensions,
+                has_overlays: false,
+            };
+            let mut expected = vec![0; 80 * 80];
+            paint(&mut expected, &scene, &mut atlas, 0..80);
+            assert!(expected.contains(&rgb_to_xrgb(240, 10, 20)), "underline fixture has no ink");
+            for y in 0..80 {
+                // Starting with a sentinel also verifies no writes escape the
+                // requested band. Narrow bands hit exact glyph top/bottom edges.
+                let mut actual = vec![0x00ab_cdef; expected.len()];
+                paint(&mut actual, &scene, &mut atlas, y..y + 1);
+                let start = y as usize * 80;
+                let end = start + 80;
+                assert_eq!(&actual[start..end], &expected[start..end], "ascent={ascent} y={y}");
+                assert!(actual[..start].iter().chain(&actual[end..]).all(|pixel| *pixel == 0x00ab_cdef));
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "CPU raster microbenchmark; run release on an idle Linux host with --nocapture"]
+    fn benchmark_frame_repaint() {
+        use std::hint::black_box;
+        use unicode_width::UnicodeWidthStr;
+
+        fn positive_setting(name: &str, default: usize) -> usize {
+            let value = std::env::var(name).map_or(default, |value| {
+                value
+                    .parse()
+                    .unwrap_or_else(|_| panic!("{name} must be a positive integer"))
+            });
+            assert!(value > 0, "{name} must be a positive integer");
+            value
+        }
+
+        fn checksum(frame: &[u32]) -> u64 {
+            frame
+                .iter()
+                .flat_map(|pixel| pixel.to_le_bytes())
+                .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+                    (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+                })
+        }
+
+        fn assert_frame(frame: &[u32], expected: &[u32]) {
+            assert_eq!(frame.len(), expected.len());
+            let mismatch = frame.iter().zip(expected).position(|(a, b)| a != b);
+            assert_eq!(
+                mismatch, None,
+                "incremental pixels must match a full repaint"
+            );
+        }
+
+        let content = std::env::var("KOKUBAN_FRAME_CONTENT").unwrap_or_else(|_| "all".into());
+        let change = std::env::var("KOKUBAN_FRAME_CHANGE").unwrap_or_else(|_| "all".into());
+        assert!(["all", "ascii", "ascii-after-emoji", "unicode"].contains(&content.as_str()));
+        assert!(["all", "single-row", "full-screen"].contains(&change.as_str()));
+        let samples = positive_setting("KOKUBAN_FRAME_SAMPLES", 5);
+        let steps = positive_setting("KOKUBAN_FRAME_STEPS", 300);
+        let warmup = positive_setting("KOKUBAN_FRAME_WARMUP", 30);
+        let output_dir = std::env::var_os("KOKUBAN_FRAME_OUTPUT_DIR").map(std::path::PathBuf::from);
+        if let Some(directory) = &output_dir {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+
+        for workload in ["ascii", "ascii-after-emoji", "unicode"] {
+            if content != "all" && content != workload {
+                continue;
+            }
+            // A fresh atlas keeps plain ASCII independent of earlier emoji cases.
+            let mut atlas = GlyphAtlas::new("DejaVu Sans Mono", 14.0, 1.0).unwrap();
+            assert!(atlas.glyphs.values().all(|glyph| !atlas.is_color(*glyph)));
+            if workload != "ascii" {
+                let emoji = atlas.get_or_insert_text("👩🏽\u{200d}💻", false, false);
+                assert!(
+                    atlas.is_color(emoji),
+                    "install Noto Color Emoji for {workload}"
+                );
+                assert!(emoji.pixel_w > 0 && emoji.pixel_h > 0);
+            }
+            let cell_dimensions = atlas_cell_dimensions(&atlas).unwrap();
+            let frame_size = (
+                u32::from(cell_dimensions.0) * 120,
+                u32::from(cell_dimensions.1) * 40,
+            );
+            let patterns = [
+                "Abéλ界e\u{301}👩🏽\u{200d}💻🇧🇷x",
+                "CdñΩ語o\u{308}👨🏻\u{200d}💻🇯🇵y",
+            ];
+            for pattern in patterns {
+                assert_eq!(pattern.width(), 12, "fixture must fill exactly 120 columns");
+            }
+            let write_row = |grid: &mut Grid, row, variant: usize| {
+                grid.set_cursor_pos(row, 0);
+                if workload == "unicode" {
+                    for character in patterns[variant].repeat(10).chars() {
+                        grid.put_char(character);
+                    }
+                } else {
+                    for column in 0..120 {
+                        grid.put_char(char::from(b'!' + variant as u8 + (column % 90) as u8));
+                    }
+                }
+            };
+
+            for mutation in ["single-row", "full-screen"] {
+                if change != "all" && change != mutation {
+                    continue;
+                }
+                let mut grid = Grid::new(120, 40, 0);
+                grid.cursor_visible = false;
+                for row in 0..40 {
+                    write_row(&mut grid, row, 0);
+                }
+                let scene = |grid: &Grid| PresentedScene {
+                    snapshot: snapshot_locked_grid(grid),
+                    frame_size,
+                    cell_dimensions,
+                    has_overlays: false,
+                };
+                let first = scene(&grid);
+                for row in 0..40 {
+                    if mutation == "full-screen" || row == 20 {
+                        write_row(&mut grid, row, 1);
+                    }
+                }
+                let scenes = [first, scene(&grid)];
+                let mut frame = vec![0; (frame_size.0 * frame_size.1) as usize];
+                // Build full reference frames and warm every glyph before any timing.
+                let expected = scenes.each_ref().map(|scene| {
+                    let mut pixels = vec![0; frame.len()];
+                    paint(&mut pixels, scene, &mut atlas, 0..frame_size.1);
+                    pixels
+                });
+                assert!(
+                    expected[0] != expected[1],
+                    "fixture must change visible pixels"
+                );
+                let mut color_cells = 0;
+                let mut mono_cells = 0;
+                for cell in &scenes[0].snapshot.cells {
+                    if cell.flags.contains(CellFlags::WIDE_CONT) {
+                        continue;
+                    }
+                    let glyph = atlas.get_or_insert_cell(cell);
+                    assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0);
+                    if atlas.is_color(glyph) {
+                        color_cells += 1;
+                    } else {
+                        mono_cells += 1;
+                    }
+                }
+                assert!(mono_cells > 0);
+                assert_eq!(color_cells > 0, workload == "unicode");
+                for (index, pixels) in expected.iter().enumerate() {
+                    if let Some(directory) = &output_dir {
+                        let bytes: Vec<u8> = pixels
+                            .iter()
+                            .flat_map(|pixel| pixel.to_le_bytes())
+                            .collect();
+                        let path =
+                            directory.join(format!("{workload}-{mutation}-{index}.xrgb8888le"));
+                        std::fs::write(path, bytes).unwrap();
+                    }
+                }
+                frame.copy_from_slice(&expected[1]);
+                let mut bands = Vec::new();
+                for step in 0..2 {
+                    let damage = frame_damage(
+                        Some(&scenes[1 - step]),
+                        &scenes[step].snapshot,
+                        frame_size,
+                        cell_dimensions,
+                        false,
+                        &mut atlas,
+                    );
+                    assert!(!damage.is_empty(), "visible edit must produce damage");
+                    if mutation == "single-row" {
+                        assert!(damage.end - damage.start < frame_size.1);
+                    } else {
+                        assert_eq!(damage, 0..frame_size.1);
+                    }
+                    bands.push((damage.start, damage.end));
+                    paint(&mut frame, &scenes[step], &mut atlas, damage);
+                    assert_frame(&frame, &expected[step]);
+                }
+                println!(
+                    "frame-repaint fixture content={workload} change={mutation} cols=120 rows=40 \
+                     width={} height={} cell_width={} cell_height={} warmup={warmup} \
+                     samples={samples} steps={steps} mono_cells={mono_cells} color_cells={color_cells} \
+                     bands={bands:?} frame0={:016x} frame1={:016x}",
+                    frame_size.0, frame_size.1, cell_dimensions.0, cell_dimensions.1,
+                    checksum(&expected[0]), checksum(&expected[1]),
+                );
+                for sample in 0..samples {
+                    for incremental in if sample % 2 == 0 {
+                        [false, true]
+                    } else {
+                        [true, false]
+                    } {
+                        // Snapshot creation, font rasterization, pixel checks and output
+                        // are excluded. This includes damage calculation and CPU paint;
+                        // it does not measure PTY, window presentation or input latency.
+                        for (measured, iterations) in [(false, warmup), (true, steps)] {
+                            paint(&mut frame, &scenes[1], &mut atlas, 0..frame_size.1);
+                            atlas.dirty = false;
+                            let start = Instant::now();
+                            for step in 0..iterations {
+                                let current = &scenes[step % 2];
+                                let previous = &scenes[(step + 1) % 2];
+                                let damage = if incremental {
+                                    frame_damage(
+                                        Some(previous),
+                                        &current.snapshot,
+                                        frame_size,
+                                        cell_dimensions,
+                                        false,
+                                        &mut atlas,
+                                    )
+                                } else {
+                                    0..frame_size.1
+                                };
+                                paint(black_box(&mut frame), current, &mut atlas, damage);
+                                black_box(&frame);
+                            }
+                            let elapsed = start.elapsed();
+                            assert!(!atlas.dirty, "glyph rasterization escaped prewarm");
+                            assert_frame(&frame, &expected[(iterations - 1) % 2]);
+                            if measured {
+                                println!(
+                                    "frame-repaint sample content={workload} change={mutation} \
+                                     sample={sample} incremental={incremental} frames={iterations} \
+                                     elapsed_ns={} ns_per_frame={:.3}",
+                                    elapsed.as_nanos(),
+                                    elapsed.as_nanos() as f64 / iterations as f64,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

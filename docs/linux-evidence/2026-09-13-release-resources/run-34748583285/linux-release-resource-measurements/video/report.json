@@ -1,0 +1,2618 @@
+{
+  "status": "passed",
+  "build_profile": "release",
+  "source": {
+    "frames": 72,
+    "fps": 12,
+    "width": 320,
+    "height": 180,
+    "codec": "FFV1 Matroska"
+  },
+  "transport": "released mpv Kitty direct escapes; shared memory and file transfers disabled",
+  "display": "Xvfb X11 software presentation",
+  "requested_capture_interval_seconds": 0.025,
+  "measurement_limits": "Debug/declared profile, tiny lossless fixture, no audio or SSH. Capture subprocesses add observer overhead. CPU is process CPU / wall time (100% = one core), not host utilization. RSS/HWM are separate for Kokuban and mpv.",
+  "visible_samples": [
+    {
+      "seconds": 0.13587531999996827,
+      "capture_seconds": 0.0064328320000299755,
+      "frame_id": 0,
+      "phase": "startup"
+    },
+    {
+      "seconds": 0.5279741609999746,
+      "capture_seconds": 0.00402051400004666,
+      "frame_id": 0,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.5532021450000002,
+      "capture_seconds": 0.004334129999961078,
+      "frame_id": 0,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.578168450000021,
+      "capture_seconds": 0.0041203200000268225,
+      "frame_id": 0,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.6033838575000345,
+      "capture_seconds": 0.0043545990000097845,
+      "frame_id": 1,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.6281892110000058,
+      "capture_seconds": 0.003821172000016304,
+      "frame_id": 1,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.6533038835000298,
+      "capture_seconds": 0.0038926149999838344,
+      "frame_id": 1,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.6783768669999972,
+      "capture_seconds": 0.003890080000019225,
+      "frame_id": 1,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.7034818209999685,
+      "capture_seconds": 0.00395242600001211,
+      "frame_id": 2,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.7284840329999724,
+      "capture_seconds": 0.003814338000040607,
+      "frame_id": 2,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.7535587045000511,
+      "capture_seconds": 0.0038231350000046405,
+      "frame_id": 2,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.7788057390000063,
+      "capture_seconds": 0.0041606859999774315,
+      "frame_id": 3,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.803795983499981,
+      "capture_seconds": 0.003992813000024853,
+      "frame_id": 3,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.8287419454999849,
+      "capture_seconds": 0.0037442469999859895,
+      "frame_id": 3,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.8541882194999744,
+      "capture_seconds": 0.004463230999988355,
+      "frame_id": 4,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.8788218040000402,
+      "capture_seconds": 0.0035892100000296523,
+      "frame_id": 4,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.903977859500003,
+      "capture_seconds": 0.003758865000008882,
+      "frame_id": 4,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.9291124559999844,
+      "capture_seconds": 0.0038883120000150484,
+      "frame_id": 4,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.9543961015000377,
+      "capture_seconds": 0.004297151000002941,
+      "frame_id": 5,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 0.9794253884999762,
+      "capture_seconds": 0.004213494999987688,
+      "frame_id": 5,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.0044679454999823,
+      "capture_seconds": 0.0042197570000439555,
+      "frame_id": 5,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.02960338150001,
+      "capture_seconds": 0.004283294999993359,
+      "frame_id": 6,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.054669677999982,
+      "capture_seconds": 0.004260011999974722,
+      "frame_id": 6,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.0796622615000047,
+      "capture_seconds": 0.004108858999984477,
+      "frame_id": 6,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.104467788500017,
+      "capture_seconds": 0.0035679630000231555,
+      "frame_id": 7,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.1299928634999787,
+      "capture_seconds": 0.004479199000002154,
+      "frame_id": 7,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.1547982105000187,
+      "capture_seconds": 0.0039506709999841405,
+      "frame_id": 7,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.1800304610000012,
+      "capture_seconds": 0.004270983999958844,
+      "frame_id": 7,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.2048286980000285,
+      "capture_seconds": 0.003725402000043232,
+      "frame_id": 8,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.2299362515000212,
+      "capture_seconds": 0.0037988789999872097,
+      "frame_id": 8,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.2549225635000312,
+      "capture_seconds": 0.003632838999976684,
+      "frame_id": 8,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.2801251750000233,
+      "capture_seconds": 0.0038934259999905407,
+      "frame_id": 9,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.3051009370000202,
+      "capture_seconds": 0.0036945040000091467,
+      "frame_id": 9,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.3301458685000398,
+      "capture_seconds": 0.003643438999972659,
+      "frame_id": 9,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.3551395599999978,
+      "capture_seconds": 0.003556777999961014,
+      "frame_id": 10,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.380470576499988,
+      "capture_seconds": 0.0040200930000082735,
+      "frame_id": 10,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.4053511359999789,
+      "capture_seconds": 0.0036403240000026926,
+      "frame_id": 10,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.4308660909999844,
+      "capture_seconds": 0.004520807999995213,
+      "frame_id": 10,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.4557896645000028,
+      "capture_seconds": 0.0041781369999966955,
+      "frame_id": 11,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.480700519500033,
+      "capture_seconds": 0.0038582410000458367,
+      "frame_id": 11,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.5057700319999867,
+      "capture_seconds": 0.0038573599999836006,
+      "frame_id": 11,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.5308882964999952,
+      "capture_seconds": 0.003935587000000851,
+      "frame_id": 12,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.555948482500014,
+      "capture_seconds": 0.003914385000030052,
+      "frame_id": 12,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.5808548150000092,
+      "capture_seconds": 0.0035817140000062864,
+      "frame_id": 12,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.6060932325000294,
+      "capture_seconds": 0.0038999669999952857,
+      "frame_id": 13,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.6318421595000245,
+      "capture_seconds": 0.005259400999989339,
+      "frame_id": 13,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.6562063289999855,
+      "capture_seconds": 0.003846908000014082,
+      "frame_id": 13,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.6819221300000322,
+      "capture_seconds": 0.005132054000000608,
+      "frame_id": 13,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.7064569899999924,
+      "capture_seconds": 0.003990668000028563,
+      "frame_id": 14,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.7314652275000526,
+      "capture_seconds": 0.003860524999993231,
+      "frame_id": 14,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.756555343499997,
+      "capture_seconds": 0.0038939969999773894,
+      "frame_id": 14,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.781966183999998,
+      "capture_seconds": 0.004571363999957612,
+      "frame_id": 15,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.8068385985000077,
+      "capture_seconds": 0.004173660999981621,
+      "frame_id": 15,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.8318859995000025,
+      "capture_seconds": 0.004125048999981118,
+      "frame_id": 15,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.8568369304999806,
+      "capture_seconds": 0.0038831569999615567,
+      "frame_id": 16,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.8821243104999894,
+      "capture_seconds": 0.004307831000005535,
+      "frame_id": 16,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.9070294255000135,
+      "capture_seconds": 0.0039791970000351284,
+      "frame_id": 16,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.9327135080000062,
+      "capture_seconds": 0.005204909999974916,
+      "frame_id": 16,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.9570496800000114,
+      "capture_seconds": 0.0037351380000245626,
+      "frame_id": 17,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 1.9821431359999906,
+      "capture_seconds": 0.0037781199999926685,
+      "frame_id": 17,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 2.0071252354999842,
+      "capture_seconds": 0.0036026129999982004,
+      "frame_id": 17,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 2.0322191095000335,
+      "capture_seconds": 0.0037151549999521194,
+      "frame_id": 18,
+      "phase": "playing-before-pause"
+    },
+    {
+      "seconds": 2.302137114000004,
+      "capture_seconds": 0.004287665999981982,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.666493473999992,
+      "capture_seconds": 0.004177229999982046,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.695605287000035,
+      "capture_seconds": 0.0038065839999603668,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.7244206450000092,
+      "capture_seconds": 0.0035895280000204366,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.753277751500036,
+      "capture_seconds": 0.0038964129999499164,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.7823217920000047,
+      "capture_seconds": 0.0039482079999970665,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.8113438215000315,
+      "capture_seconds": 0.0037760069999990264,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.8401708965000125,
+      "capture_seconds": 0.003633780999962255,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.8689190195000265,
+      "capture_seconds": 0.0036175810000145248,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.897717966500011,
+      "capture_seconds": 0.0037339289999636094,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.9266435560000446,
+      "capture_seconds": 0.0038552159999767355,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.9556110145000503,
+      "capture_seconds": 0.003833874999997988,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 2.984472883999956,
+      "capture_seconds": 0.0036362660000008873,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.0132839945,
+      "capture_seconds": 0.0036758490000465827,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.042104747000053,
+      "capture_seconds": 0.0037185699999895405,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.070942602499997,
+      "capture_seconds": 0.0037095730000373806,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.099864500000024,
+      "capture_seconds": 0.003892124000003605,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.1288248739999744,
+      "capture_seconds": 0.003801433999967685,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.1579182320000427,
+      "capture_seconds": 0.0041331040000045505,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.187018733000002,
+      "capture_seconds": 0.0038246179999532615,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.2159591894999835,
+      "capture_seconds": 0.00380257699998765,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.24477523500002,
+      "capture_seconds": 0.003560623999987911,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.2736164359999975,
+      "capture_seconds": 0.0038747520000015356,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.3025416499999665,
+      "capture_seconds": 0.0036726039999734894,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.3313797199999726,
+      "capture_seconds": 0.003753064000022732,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.360293607000017,
+      "capture_seconds": 0.0038257799999996678,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.3891368624999814,
+      "capture_seconds": 0.003612320999991425,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.41793729799997,
+      "capture_seconds": 0.0037411220000080903,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.44687075249999,
+      "capture_seconds": 0.0038770150000004833,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.4759084859999803,
+      "capture_seconds": 0.003960461999952258,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.504851988500036,
+      "capture_seconds": 0.0036905970000020716,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.533745553000017,
+      "capture_seconds": 0.003843754000001809,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.56270880750003,
+      "capture_seconds": 0.0038347069999531413,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.5916467499999953,
+      "capture_seconds": 0.003788942000028328,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.6205508940000186,
+      "capture_seconds": 0.003769153999996888,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.6494704970000384,
+      "capture_seconds": 0.003819277999980386,
+      "frame_id": 18,
+      "phase": "pause"
+    },
+    {
+      "seconds": 3.69442607350004,
+      "capture_seconds": 0.003578871000001982,
+      "frame_id": 18,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.719608712499962,
+      "capture_seconds": 0.003790756999990208,
+      "frame_id": 18,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.745004340000037,
+      "capture_seconds": 0.0043833100000369996,
+      "frame_id": 18,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.769818518500017,
+      "capture_seconds": 0.0038733889999775784,
+      "frame_id": 19,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.794853807499976,
+      "capture_seconds": 0.003799410999988595,
+      "frame_id": 19,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.8198329909999984,
+      "capture_seconds": 0.003618211999992127,
+      "frame_id": 19,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.8449437959999955,
+      "capture_seconds": 0.0036964480000278854,
+      "frame_id": 20,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.8699914134999744,
+      "capture_seconds": 0.0036493929999892316,
+      "frame_id": 20,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.8950270545000194,
+      "capture_seconds": 0.003582165000011628,
+      "frame_id": 20,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.9200760825000316,
+      "capture_seconds": 0.003536827000004905,
+      "frame_id": 21,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.945264545999976,
+      "capture_seconds": 0.003758544000049824,
+      "frame_id": 21,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.9702057099999593,
+      "capture_seconds": 0.003488075999996454,
+      "frame_id": 21,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 3.995952326500003,
+      "capture_seconds": 0.0041836990000092555,
+      "frame_id": 22,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.020901600000002,
+      "capture_seconds": 0.003931557999976576,
+      "frame_id": 22,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.045850992499993,
+      "capture_seconds": 0.003678594999996676,
+      "frame_id": 22,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.070848079500024,
+      "capture_seconds": 0.003533102999995208,
+      "frame_id": 22,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.096094963500036,
+      "capture_seconds": 0.003879851000021972,
+      "frame_id": 23,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.121081641500041,
+      "capture_seconds": 0.0037107349999701,
+      "frame_id": 23,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.146524745999955,
+      "capture_seconds": 0.004458940000006351,
+      "frame_id": 23,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.171188188500025,
+      "capture_seconds": 0.0036622750000105952,
+      "frame_id": 24,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.1963257280000335,
+      "capture_seconds": 0.0037305220000121153,
+      "frame_id": 24,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.221449707500028,
+      "capture_seconds": 0.0038219229999754134,
+      "frame_id": 24,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.246518238500016,
+      "capture_seconds": 0.0038027869999837094,
+      "frame_id": 25,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.271579972500035,
+      "capture_seconds": 0.0037872710000215193,
+      "frame_id": 25,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.296627375000014,
+      "capture_seconds": 0.003740399999969668,
+      "frame_id": 25,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.321638888999985,
+      "capture_seconds": 0.0036245439999902374,
+      "frame_id": 25,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.346678870999995,
+      "capture_seconds": 0.0035613339999827076,
+      "frame_id": 26,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.371815808999997,
+      "capture_seconds": 0.003692419999993035,
+      "frame_id": 26,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.396792638000022,
+      "capture_seconds": 0.003508978000013485,
+      "frame_id": 26,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.421907526500036,
+      "capture_seconds": 0.003596522999998797,
+      "frame_id": 27,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.446987589000003,
+      "capture_seconds": 0.0036153559999547724,
+      "frame_id": 27,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.472333482500005,
+      "capture_seconds": 0.004148342999997112,
+      "frame_id": 27,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.497234730499997,
+      "capture_seconds": 0.003796725000029255,
+      "frame_id": 28,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.52242481899998,
+      "capture_seconds": 0.004134697999973014,
+      "frame_id": 28,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.547537051500001,
+      "capture_seconds": 0.004152610999994977,
+      "frame_id": 28,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.572731479000026,
+      "capture_seconds": 0.0043955479999908675,
+      "frame_id": 28,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.59775204150003,
+      "capture_seconds": 0.004294716999993398,
+      "frame_id": 29,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.622773468499986,
+      "capture_seconds": 0.004187124999987191,
+      "frame_id": 29,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.647619652499998,
+      "capture_seconds": 0.003740327000002708,
+      "frame_id": 29,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.672973875000025,
+      "capture_seconds": 0.004278816000010011,
+      "frame_id": 30,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.697923783999954,
+      "capture_seconds": 0.004031214000008276,
+      "frame_id": 30,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.723115030000031,
+      "capture_seconds": 0.004263760000014827,
+      "frame_id": 30,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.748050231999969,
+      "capture_seconds": 0.0039879220000216264,
+      "frame_id": 31,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.773313480499951,
+      "capture_seconds": 0.0043733910000014475,
+      "frame_id": 31,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.798321867000027,
+      "capture_seconds": 0.004252767999957996,
+      "frame_id": 31,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.823527034499989,
+      "capture_seconds": 0.0045241170000167585,
+      "frame_id": 31,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.848515842499978,
+      "capture_seconds": 0.004359337000039432,
+      "frame_id": 32,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.873479056500003,
+      "capture_seconds": 0.00421338499995727,
+      "frame_id": 32,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.898496366500012,
+      "capture_seconds": 0.004073333000008006,
+      "frame_id": 32,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.923632603499982,
+      "capture_seconds": 0.004202714999962609,
+      "frame_id": 33,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.94860365750003,
+      "capture_seconds": 0.004001027000015256,
+      "frame_id": 33,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.973482085499995,
+      "capture_seconds": 0.003604917000018304,
+      "frame_id": 33,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 4.998646005500007,
+      "capture_seconds": 0.00378880300002038,
+      "frame_id": 34,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.023894504000054,
+      "capture_seconds": 0.004144746000008581,
+      "frame_id": 34,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.04870581900002,
+      "capture_seconds": 0.0036280300000157695,
+      "frame_id": 34,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.0744384299999865,
+      "capture_seconds": 0.004952886000012313,
+      "frame_id": 34,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.0988977869999985,
+      "capture_seconds": 0.003731593999987126,
+      "frame_id": 35,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.124127683999973,
+      "capture_seconds": 0.0040516219999631176,
+      "frame_id": 35,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.149118138999995,
+      "capture_seconds": 0.003894307999985358,
+      "frame_id": 35,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.174169833000008,
+      "capture_seconds": 0.0038525400000253285,
+      "frame_id": 36,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.199160453499985,
+      "capture_seconds": 0.0036914489999730904,
+      "frame_id": 36,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.224162014000001,
+      "capture_seconds": 0.0036061600000039107,
+      "frame_id": 36,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.249303945999998,
+      "capture_seconds": 0.003683612000031644,
+      "frame_id": 37,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.274857197500012,
+      "capture_seconds": 0.00464289900003223,
+      "frame_id": 37,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.299628759500024,
+      "capture_seconds": 0.004049216999987948,
+      "frame_id": 37,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.325126252500013,
+      "capture_seconds": 0.0049073829999883856,
+      "frame_id": 37,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.3495249865000005,
+      "capture_seconds": 0.003559673000040675,
+      "frame_id": 38,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.374639698999999,
+      "capture_seconds": 0.003647345999979734,
+      "frame_id": 38,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.399693737500002,
+      "capture_seconds": 0.003604257000006328,
+      "frame_id": 38,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.424779942499981,
+      "capture_seconds": 0.003624916999967809,
+      "frame_id": 39,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.449847707499998,
+      "capture_seconds": 0.0036177509999788526,
+      "frame_id": 39,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.474999683500016,
+      "capture_seconds": 0.0037734850000106235,
+      "frame_id": 39,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.500271164499964,
+      "capture_seconds": 0.004174631000012141,
+      "frame_id": 40,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.525396661000002,
+      "capture_seconds": 0.004285977999984425,
+      "frame_id": 40,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.550405969500048,
+      "capture_seconds": 0.004164053000010881,
+      "frame_id": 40,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.576027770499991,
+      "capture_seconds": 0.005343949000007342,
+      "frame_id": 40,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.600271950999968,
+      "capture_seconds": 0.003621506000001773,
+      "frame_id": 41,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.625431424999988,
+      "capture_seconds": 0.003797608000013497,
+      "frame_id": 41,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.650413238499993,
+      "capture_seconds": 0.0036079230000041207,
+      "frame_id": 41,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.675670518000004,
+      "capture_seconds": 0.003971775999957572,
+      "frame_id": 42,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.700650198999995,
+      "capture_seconds": 0.003788740000004509,
+      "frame_id": 42,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.725665363999951,
+      "capture_seconds": 0.00366898999999421,
+      "frame_id": 42,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.7507696824999925,
+      "capture_seconds": 0.003735171000016635,
+      "frame_id": 43,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.775958020999951,
+      "capture_seconds": 0.003961661999994703,
+      "frame_id": 43,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.801004233500009,
+      "capture_seconds": 0.003898896999999124,
+      "frame_id": 43,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.826837285500005,
+      "capture_seconds": 0.005377991000045768,
+      "frame_id": 43,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.8511278734999905,
+      "capture_seconds": 0.003817276999996011,
+      "frame_id": 44,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.876451537499975,
+      "capture_seconds": 0.004317258999947171,
+      "frame_id": 44,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.901425566,
+      "capture_seconds": 0.004120842000020275,
+      "frame_id": 44,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.926457253000024,
+      "capture_seconds": 0.003981070000008913,
+      "frame_id": 45,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.951507088499966,
+      "capture_seconds": 0.003936766999970587,
+      "frame_id": 45,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 5.976462803499999,
+      "capture_seconds": 0.0037033009999731803,
+      "frame_id": 45,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.001610461500036,
+      "capture_seconds": 0.003853540999955385,
+      "frame_id": 46,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.026565759500045,
+      "capture_seconds": 0.0036148949999983415,
+      "frame_id": 46,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.0517519989999755,
+      "capture_seconds": 0.0038488539999548266,
+      "frame_id": 46,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.077436008500001,
+      "capture_seconds": 0.005050452999967092,
+      "frame_id": 46,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.102217291499983,
+      "capture_seconds": 0.0044748869999580165,
+      "frame_id": 47,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.127095949500017,
+      "capture_seconds": 0.004090485000006083,
+      "frame_id": 47,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.152083363999964,
+      "capture_seconds": 0.0039285319999748936,
+      "frame_id": 47,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.177287683000031,
+      "capture_seconds": 0.004192796000040744,
+      "frame_id": 48,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.202225610000028,
+      "capture_seconds": 0.003928582000014558,
+      "frame_id": 48,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.227346267500025,
+      "capture_seconds": 0.0040278270000158045,
+      "frame_id": 48,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.2522880579999764,
+      "capture_seconds": 0.0038607280000064748,
+      "frame_id": 49,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.277449593500023,
+      "capture_seconds": 0.004026554999995824,
+      "frame_id": 49,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.302565202499977,
+      "capture_seconds": 0.0041206110000189256,
+      "frame_id": 49,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.328416770999979,
+      "capture_seconds": 0.005663104000007024,
+      "frame_id": 49,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.352709071499987,
+      "capture_seconds": 0.004108858999984477,
+      "frame_id": 50,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.377735718499991,
+      "capture_seconds": 0.004011246999994,
+      "frame_id": 50,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.4028198185000065,
+      "capture_seconds": 0.004041262999976425,
+      "frame_id": 50,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.4278594644999885,
+      "capture_seconds": 0.003939191000029041,
+      "frame_id": 51,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.452802735500029,
+      "capture_seconds": 0.003683604999991985,
+      "frame_id": 51,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.478036094499998,
+      "capture_seconds": 0.003999714999963544,
+      "frame_id": 51,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.503033171499965,
+      "capture_seconds": 0.0038350269999796183,
+      "frame_id": 52,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.528038794500048,
+      "capture_seconds": 0.003706046999980117,
+      "frame_id": 52,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.553215186499983,
+      "capture_seconds": 0.003921348999995189,
+      "frame_id": 52,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.578813536499979,
+      "capture_seconds": 0.00490698899994868,
+      "frame_id": 52,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.603612508000026,
+      "capture_seconds": 0.004306197999994765,
+      "frame_id": 53,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.628642912000032,
+      "capture_seconds": 0.004219765999948777,
+      "frame_id": 53,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.653664815500008,
+      "capture_seconds": 0.004116512999985389,
+      "frame_id": 53,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.678607015500006,
+      "capture_seconds": 0.003856337000001986,
+      "frame_id": 54,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.703766099999996,
+      "capture_seconds": 0.004015084000002389,
+      "frame_id": 54,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.728846664000002,
+      "capture_seconds": 0.004013819999954649,
+      "frame_id": 54,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.754179192000038,
+      "capture_seconds": 0.0045320400000150585,
+      "frame_id": 55,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.779029139000045,
+      "capture_seconds": 0.004088039999999182,
+      "frame_id": 55,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.804112277999991,
+      "capture_seconds": 0.004113609999990331,
+      "frame_id": 55,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.829341852499965,
+      "capture_seconds": 0.004416357000025073,
+      "frame_id": 56,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.8541579479999655,
+      "capture_seconds": 0.003910277999978007,
+      "frame_id": 56,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.87924997250002,
+      "capture_seconds": 0.003953798999987157,
+      "frame_id": 56,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.9043191690000185,
+      "capture_seconds": 0.003954150000026857,
+      "frame_id": 56,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.929275003000043,
+      "capture_seconds": 0.0036251419999757672,
+      "frame_id": 57,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.954340146499987,
+      "capture_seconds": 0.0036136429999942266,
+      "frame_id": 57,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 6.97952067150004,
+      "capture_seconds": 0.003834787000016604,
+      "frame_id": 57,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.0045507349999525,
+      "capture_seconds": 0.0037531840000042394,
+      "frame_id": 58,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.029618148499992,
+      "capture_seconds": 0.003737344999990455,
+      "frame_id": 58,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.0546718424999995,
+      "capture_seconds": 0.0036963109999987864,
+      "frame_id": 58,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.080004991999999,
+      "capture_seconds": 0.004199744000004557,
+      "frame_id": 59,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.105299606000017,
+      "capture_seconds": 0.004651120000005449,
+      "frame_id": 59,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.130127156000015,
+      "capture_seconds": 0.004167801999983567,
+      "frame_id": 59,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.155303172499998,
+      "capture_seconds": 0.004382307000014407,
+      "frame_id": 59,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.180049445000009,
+      "capture_seconds": 0.0036813499999652777,
+      "frame_id": 60,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.205129662499985,
+      "capture_seconds": 0.0036923409999758405,
+      "frame_id": 60,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.230202188500016,
+      "capture_seconds": 0.0036797989999968195,
+      "frame_id": 60,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.25528381950005,
+      "capture_seconds": 0.0036427169999910802,
+      "frame_id": 61,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.280338689500013,
+      "capture_seconds": 0.0036099469999726352,
+      "frame_id": 61,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.305568773999994,
+      "capture_seconds": 0.0039302480000174,
+      "frame_id": 61,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.330842364500029,
+      "capture_seconds": 0.004317979000006744,
+      "frame_id": 62,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.355926344500006,
+      "capture_seconds": 0.004337676999966789,
+      "frame_id": 62,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.380717185499975,
+      "capture_seconds": 0.003773983000030512,
+      "frame_id": 62,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.4059298900000385,
+      "capture_seconds": 0.004043760000001839,
+      "frame_id": 62,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.430815460000019,
+      "capture_seconds": 0.003669758000000911,
+      "frame_id": 63,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.455933867999988,
+      "capture_seconds": 0.003761440000005223,
+      "frame_id": 63,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.480974612000011,
+      "capture_seconds": 0.0036931820000063453,
+      "frame_id": 63,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.506082920500035,
+      "capture_seconds": 0.003765685000018948,
+      "frame_id": 64,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.531175879999978,
+      "capture_seconds": 0.0038102000000321823,
+      "frame_id": 64,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.556167266499983,
+      "capture_seconds": 0.0036546709999925042,
+      "frame_id": 64,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.58122428050001,
+      "capture_seconds": 0.0037195810000412166,
+      "frame_id": 65,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.606609333499989,
+      "capture_seconds": 0.004297543000006954,
+      "frame_id": 65,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.631631533000018,
+      "capture_seconds": 0.004196021999973709,
+      "frame_id": 65,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.657223793500009,
+      "capture_seconds": 0.00524394299998221,
+      "frame_id": 65,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.681595633000029,
+      "capture_seconds": 0.003845025999964946,
+      "frame_id": 66,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.706662188999985,
+      "capture_seconds": 0.0038359060000061618,
+      "frame_id": 66,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.731666705000009,
+      "capture_seconds": 0.0036929100000406834,
+      "frame_id": 66,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.75690828300003,
+      "capture_seconds": 0.004023359999962395,
+      "frame_id": 67,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.781854901999964,
+      "capture_seconds": 0.003773846000001413,
+      "frame_id": 67,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.806835093500013,
+      "capture_seconds": 0.003594899000006535,
+      "frame_id": 67,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.831976253999983,
+      "capture_seconds": 0.003734226000005947,
+      "frame_id": 68,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.8572078340000076,
+      "capture_seconds": 0.004060812000034275,
+      "frame_id": 68,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.882129501999998,
+      "capture_seconds": 0.003763574000004155,
+      "frame_id": 68,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.907934361499997,
+      "capture_seconds": 0.005235771000002387,
+      "frame_id": 68,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.932455402500011,
+      "capture_seconds": 0.004190150999988873,
+      "frame_id": 69,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.9573318850000305,
+      "capture_seconds": 0.0037428159999990385,
+      "frame_id": 69,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 7.982606621000002,
+      "capture_seconds": 0.004150235999986762,
+      "frame_id": 69,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.00753617700002,
+      "capture_seconds": 0.0038624079999749483,
+      "frame_id": 70,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.032576975999973,
+      "capture_seconds": 0.0038021160000312193,
+      "frame_id": 70,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.057558268499974,
+      "capture_seconds": 0.003621688999999151,
+      "frame_id": 70,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.082685076500013,
+      "capture_seconds": 0.0037322729999687,
+      "frame_id": 71,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.10781276649999,
+      "capture_seconds": 0.0038352469999836103,
+      "frame_id": 71,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.132949780499985,
+      "capture_seconds": 0.003966283000011117,
+      "frame_id": 71,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.158030608499985,
+      "capture_seconds": 0.003981420999991769,
+      "frame_id": 71,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.182994027999996,
+      "capture_seconds": 0.003761199999985365,
+      "frame_id": 71,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.20802282950001,
+      "capture_seconds": 0.0036795969999730005,
+      "frame_id": 71,
+      "phase": "playing-after-resume"
+    },
+    {
+      "seconds": 8.212489692500014,
+      "capture_seconds": 0.0036324789999753193,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.241376499000012,
+      "capture_seconds": 0.003844616000037604,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.270481999000026,
+      "capture_seconds": 0.004045080000025791,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.299670429999992,
+      "capture_seconds": 0.004071969999984049,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.328818114,
+      "capture_seconds": 0.003967996000028506,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.357942790000038,
+      "capture_seconds": 0.004027718000031655,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.38702910500001,
+      "capture_seconds": 0.003910108000013679,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.416080969500001,
+      "capture_seconds": 0.00396136300003036,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.44518995650003,
+      "capture_seconds": 0.004009163000034732,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.474261723500035,
+      "capture_seconds": 0.0038840589999722397,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.503277276000006,
+      "capture_seconds": 0.0039004599999543643,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.532319072500002,
+      "capture_seconds": 0.003932438999981969,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.561433520500032,
+      "capture_seconds": 0.003967355000042971,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.59051412849999,
+      "capture_seconds": 0.00393587500002468,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.619459104000043,
+      "capture_seconds": 0.0037263840000036907,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.648321269999997,
+      "capture_seconds": 0.003686539999989691,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.677197220500034,
+      "capture_seconds": 0.0038380330000222784,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.706089497499988,
+      "capture_seconds": 0.003703540999993038,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.734942065000041,
+      "capture_seconds": 0.0037574720000179695,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.764028299499955,
+      "capture_seconds": 0.004176986999993915,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.793214370999976,
+      "capture_seconds": 0.003938190000042141,
+      "frame_id": 71,
+      "phase": "eof"
+    },
+    {
+      "seconds": 8.822744113999988,
+      "capture_seconds": 0.003864041999975143,
+      "frame_id": 71,
+      "phase": "eof"
+    }
+  ],
+  "process_samples": [
+    {
+      "seconds": 0.5097921110000243,
+      "phase": "playing-before-pause-start",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.04,
+        "rss_kib": 16264,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.08,
+        "rss_kib": 62008,
+        "hwm_kib": 62008
+      }
+    },
+    {
+      "seconds": 0.530123838999998,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.04,
+        "rss_kib": 16264,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.08,
+        "rss_kib": 62012,
+        "hwm_kib": 62012
+      },
+      "time_pos": 0.0,
+      "eof_reached": false
+    },
+    {
+      "seconds": 0.7810576730000207,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.05,
+        "rss_kib": 16956,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.1,
+        "rss_kib": 62564,
+        "hwm_kib": 62564
+      },
+      "time_pos": 0.25,
+      "eof_reached": false
+    },
+    {
+      "seconds": 1.0319072519999963,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.07,
+        "rss_kib": 17632,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.11,
+        "rss_kib": 62572,
+        "hwm_kib": 62572
+      },
+      "time_pos": 0.5,
+      "eof_reached": false
+    },
+    {
+      "seconds": 1.2822324780000258,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.1,
+        "rss_kib": 18308,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.12,
+        "rss_kib": 62572,
+        "hwm_kib": 62572
+      },
+      "time_pos": 0.75,
+      "eof_reached": false
+    },
+    {
+      "seconds": 1.533032750000018,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.13,
+        "rss_kib": 18984,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.14,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      },
+      "time_pos": 1.0,
+      "eof_reached": false
+    },
+    {
+      "seconds": 1.7844360400000028,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.15,
+        "rss_kib": 19656,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.15,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      },
+      "time_pos": 1.25,
+      "eof_reached": false
+    },
+    {
+      "seconds": 2.034236625999995,
+      "phase": "playing-before-pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.17,
+        "rss_kib": 20332,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.15,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      },
+      "time_pos": 1.5,
+      "eof_reached": false
+    },
+    {
+      "seconds": 2.0346083310000154,
+      "phase": "playing-before-pause-end",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.17,
+        "rss_kib": 20332,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.15,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      }
+    },
+    {
+      "seconds": 3.676658826999983,
+      "phase": "pause",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.17,
+        "rss_kib": 20332,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.15,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      }
+    },
+    {
+      "seconds": 3.677076838000005,
+      "phase": "playing-after-resume-start",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.17,
+        "rss_kib": 20332,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.16,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      }
+    },
+    {
+      "seconds": 3.696382409000023,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.17,
+        "rss_kib": 20332,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.17,
+        "rss_kib": 62580,
+        "hwm_kib": 62580
+      },
+      "time_pos": 1.583,
+      "eof_reached": false
+    },
+    {
+      "seconds": 3.947304841999994,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.19,
+        "rss_kib": 21008,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.17,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 1.833,
+      "eof_reached": false
+    },
+    {
+      "seconds": 4.198390190999987,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.21,
+        "rss_kib": 21684,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.19,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 2.083,
+      "eof_reached": false
+    },
+    {
+      "seconds": 4.448969531999978,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.23,
+        "rss_kib": 22360,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.19,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 2.333,
+      "eof_reached": false
+    },
+    {
+      "seconds": 4.700103919000014,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.25,
+        "rss_kib": 23032,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.21,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 2.583,
+      "eof_reached": false
+    },
+    {
+      "seconds": 4.950786278999999,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.27,
+        "rss_kib": 23708,
+        "hwm_kib": 24008
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.22,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 2.833,
+      "eof_reached": false
+    },
+    {
+      "seconds": 5.201169864000008,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.3,
+        "rss_kib": 24384,
+        "hwm_kib": 24384
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.23,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 3.083,
+      "eof_reached": false
+    },
+    {
+      "seconds": 5.4518209980000165,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.32,
+        "rss_kib": 25060,
+        "hwm_kib": 25060
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.25,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 3.333,
+      "eof_reached": false
+    },
+    {
+      "seconds": 5.702707131000011,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.34,
+        "rss_kib": 25732,
+        "hwm_kib": 25732
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.25,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 3.583,
+      "eof_reached": false
+    },
+    {
+      "seconds": 5.953646853000009,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.36,
+        "rss_kib": 26408,
+        "hwm_kib": 26408
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.27,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 3.833,
+      "eof_reached": false
+    },
+    {
+      "seconds": 6.204373293999993,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.39,
+        "rss_kib": 27084,
+        "hwm_kib": 27084
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.28,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 4.083,
+      "eof_reached": false
+    },
+    {
+      "seconds": 6.454815998000015,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.41,
+        "rss_kib": 27760,
+        "hwm_kib": 27760
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.29,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 4.333,
+      "eof_reached": false
+    },
+    {
+      "seconds": 6.705946686999994,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.43,
+        "rss_kib": 28436,
+        "hwm_kib": 28436
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.3,
+        "rss_kib": 62584,
+        "hwm_kib": 62584
+      },
+      "time_pos": 4.583,
+      "eof_reached": false
+    },
+    {
+      "seconds": 6.956310113000029,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.45,
+        "rss_kib": 29108,
+        "hwm_kib": 29108
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.31,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      },
+      "time_pos": 4.833,
+      "eof_reached": false
+    },
+    {
+      "seconds": 7.207151118000013,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.47,
+        "rss_kib": 29784,
+        "hwm_kib": 29784
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.33,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      },
+      "time_pos": 5.083,
+      "eof_reached": false
+    },
+    {
+      "seconds": 7.457968626000024,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.5,
+        "rss_kib": 30460,
+        "hwm_kib": 30460
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.34,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      },
+      "time_pos": 5.333,
+      "eof_reached": false
+    },
+    {
+      "seconds": 7.708750103,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.52,
+        "rss_kib": 31136,
+        "hwm_kib": 31136
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.35,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      },
+      "time_pos": 5.583,
+      "eof_reached": false
+    },
+    {
+      "seconds": 7.959385854000004,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.55,
+        "rss_kib": 31808,
+        "hwm_kib": 31808
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.36,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      },
+      "time_pos": 5.833,
+      "eof_reached": false
+    },
+    {
+      "seconds": 8.21003192400002,
+      "phase": "playing-after-resume",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.56,
+        "rss_kib": 32260,
+        "hwm_kib": 32260
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.37,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      },
+      "time_pos": 5.917,
+      "eof_reached": true
+    },
+    {
+      "seconds": 8.210391767000033,
+      "phase": "playing-after-resume-end",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.56,
+        "rss_kib": 32260,
+        "hwm_kib": 32260
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.37,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      }
+    },
+    {
+      "seconds": 8.820474873000023,
+      "phase": "eof",
+      "kokuban": {
+        "pid": 7143,
+        "start_ticks": 27803,
+        "cpu_seconds": 0.56,
+        "rss_kib": 32260,
+        "hwm_kib": 32260
+      },
+      "mpv": {
+        "pid": 7151,
+        "start_ticks": 27810,
+        "cpu_seconds": 0.37,
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      }
+    }
+  ],
+  "active_measurements": [
+    {
+      "phase": "playing-before-pause",
+      "wall_seconds": 1.524816219999991,
+      "kokuban": {
+        "cpu_seconds": 0.13,
+        "cpu_percent_one_core": 8.525617598690074
+      },
+      "mpv": {
+        "cpu_seconds": 0.06999999999999999,
+        "cpu_percent_one_core": 4.590717168525424
+      }
+    },
+    {
+      "phase": "playing-after-resume",
+      "wall_seconds": 4.533314929000028,
+      "kokuban": {
+        "cpu_seconds": 0.39,
+        "cpu_percent_one_core": 8.602976102655797
+      },
+      "mpv": {
+        "cpu_seconds": 0.21,
+        "cpu_percent_one_core": 4.632371747583891
+      }
+    }
+  ],
+  "versions": {
+    "mpv": [
+      "mpv 0.37.0 Copyright \u00a9 2000-2023 mpv/MPlayer/mplayer2 projects",
+      "libplacebo version: v6.338.2",
+      "FFmpeg version: 6.1.1-3ubuntu5"
+    ],
+    "ffmpeg": [
+      "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+      "built with gcc 13 (Ubuntu 13.2.0-23ubuntu3)",
+      "configuration: --prefix=/usr --extra-version=3ubuntu5 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --disable-omx --enable-gnutls --enable-libaom --enable-libass --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libharfbuzz --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-openal --enable-opencl --enable-opengl --disable-sndio --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-ladspa --enable-libbluray --enable-libjack --enable-libpulse --enable-librabbitmq --enable-librist --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libx264 --enable-libzmq --enable-libzvbi --enable-lv2 --enable-sdl2 --enable-libplacebo --enable-librav1e --enable-pocketsphinx --enable-librsvg --enable-libjxl --enable-shared"
+    ],
+    "python": [
+      "Python 3.12.3"
+    ]
+  },
+  "encoded_stream": {
+    "codec_name": "ffv1",
+    "width": 320,
+    "height": 180,
+    "r_frame_rate": "12/1",
+    "nb_read_frames": "72"
+  },
+  "window_pixels": [
+    720,
+    408
+  ],
+  "mpv_duration_seconds": 6.0,
+  "pause": {
+    "frame_id": 18,
+    "stable_seconds": 1.0,
+    "input": "XTest Space through winit and PTY"
+  },
+  "eof": {
+    "frame_id": 71,
+    "eof_reached": true,
+    "time_pos": 5.917,
+    "stable_seconds": 0.6
+  },
+  "observations": {
+    "distinct_visible_frame_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71
+    ],
+    "active_capture_count": 242,
+    "invalid_active_captures": 0,
+    "observed_active_transitions": 71,
+    "observed_frame_rate_lower_bound_hz": 11.719785896632423,
+    "rate_note": "Distinct observed transitions / measured active wall time; sampling lower bound, not source FPS.",
+    "capture_interval_seconds": {
+      "min": 0.02424418049997712,
+      "median": 0.025060960000018895,
+      "max": 0.02585156850000203
+    },
+    "process_peaks_kib": {
+      "kokuban": {
+        "rss_kib": 32260,
+        "hwm_kib": 32260
+      },
+      "mpv": {
+        "rss_kib": 62588,
+        "hwm_kib": 62588
+      }
+    }
+  },
+  "clean_exit": {
+    "kokuban": 0,
+    "mpv": 0
+  },
+  "total_seconds": 9.72076088
+}

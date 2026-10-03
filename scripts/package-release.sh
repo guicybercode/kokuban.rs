@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Package an already-built release or candidate. This does not compile or publish.
-# Usage: bash scripts/package-release.sh v0.1 TARGET --notices FILE --sources-dir DIR [--output-dir DIR]
-# Validation only: bash scripts/package-release.sh --check-tag v0.1
+# Usage: bash scripts/package-release.sh v0.2 TARGET --notices FILE --sources-dir DIR [--output-dir DIR]
+# Validation only: bash scripts/package-release.sh --check-tag v0.2
 # Candidate before tagging: add --candidate; BUILD-INFO.json records the source commit.
 set -euo pipefail
 
@@ -14,10 +14,12 @@ import io
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import subprocess
 import sys
 import tarfile
+from urllib.parse import quote, urlsplit
 
 root = Path(sys.argv[1]).resolve()
 parser = argparse.ArgumentParser(description="Package a built and tagged Kokuban release")
@@ -62,19 +64,39 @@ binary = root / "target" / arguments.target / "release" / "kokuban"
 if not binary.is_file() or not os.access(binary, os.X_OK):
     raise SystemExit(f"built executable is missing: {binary}")
 files = {name: root / name for name in (
-    "LICENSE", "README.md", "SECURITY.md", "ABOUT.md", "CONTRIBUTING.md", "CHANGELOG.md", "kokuban.toml",
+    "LICENSE", "README.md", "SECURITY.md", "ABOUT.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
+    "CITATION.cff", "CHANGELOG.md", "kokuban.toml",
     "assets/kokuban-icon.png", "assets/io.github.guicybercode.kokuban.desktop", "assets/README.md")}
 files["THIRD_PARTY_LICENSES.txt"] = arguments.notices.resolve()
-documentation = root / "docs"
-if not documentation.is_dir():
-    raise SystemExit("the docs directory is required for packaged README links")
-for path in sorted(documentation.rglob("*")):
-    if path.is_symlink():
-        raise SystemExit(f"packaged documentation must not contain symbolic links: {path}")
-    if path.is_file():
-        files[path.relative_to(root).as_posix()] = path
+required_nonempty = set(files)
+# Test harnesses and raw benchmark snapshots stay in the source repository.
+# Snapshots can contain compressed Python sources as well as loose scripts.
+development_directories = ("scripts/", ".github/", "docs/linux-evidence/", "docs/macos-evidence/", "docs/glyph-cache-evidence/")
+
+def development_file(name):
+    return name.startswith(development_directories) or name.endswith((".py", ".pyc"))
+
+# Ship versioned documentation and vendored-source notices, not local metadata
+# or personal files that happen to be present in the checkout.
+for directory in ("docs", "THIRD_PARTY_LICENSES"):
+    tracked = subprocess.check_output(
+        ["git", "ls-files", "-z", "--", directory], cwd=root).decode().split("\0")
+    names = sorted(name for name in tracked if name)
+    if not (root / directory).is_dir() or not names:
+        raise SystemExit(f"required distribution directory is missing or untracked: {directory}")
+    for name in names:
+        if development_file(name):
+            continue
+        path = root / name
+        if path.is_symlink():
+            raise SystemExit(f"packaged documentation must not contain symbolic links: {path}")
+        files[name] = path
+        if directory == "THIRD_PARTY_LICENSES":
+            required_nonempty.add(name)
 for name, path in files.items():
-    if not path.is_file() or path.stat().st_size == 0:
+    # An empty captured stderr log is valid evidence, but a license or policy
+    # must contain its required text.
+    if not path.is_file() or (name in required_nonempty and path.stat().st_size == 0):
         raise SystemExit(f"required distribution text is missing or empty: {name} ({path})")
 sources = arguments.sources_dir.resolve()
 if not sources.is_dir():
@@ -93,6 +115,7 @@ output.mkdir(parents=True, exist_ok=True)
 stem = f"kokuban-{arguments.tag}-{arguments.target}"
 archive = output / (stem + ".tar.gz")
 epoch = int(command("git", "show", "-s", "--format=%ct", "HEAD"))
+source_ref = commit if arguments.candidate else arguments.tag
 build_info = {
     "package": package["name"], "version": version, "tag": arguments.tag,
     "target": arguments.target, "commit": commit,
@@ -105,7 +128,29 @@ build_info = {
     "macos_deployment_target": os.environ.get("MACOSX_DEPLOYMENT_TARGET"),
     "release_debug": os.environ.get("CARGO_PROFILE_RELEASE_DEBUG"),
     "distribution": "Native command-line executable; no app bundle, developer signing or notarization.",
+    "development_tools_included": False,
+    "source_url": f"{package['repository']}/tree/{source_ref}",
 }
+
+def distribution_content(name, path):
+    content = path.read_bytes()
+    if path.suffix != ".md":
+        return content
+
+    def link(match):
+        destination = urlsplit(match.group(1))
+        if destination.scheme or destination.netloc or not destination.path:
+            return match.group(0)
+        target = posixpath.normpath(posixpath.join(posixpath.dirname(name), destination.path))
+        if not development_file(target) and not target.startswith("src/"):
+            return match.group(0)
+        url = f"{package['repository']}/blob/{source_ref}/{quote(target)}"
+        if destination.fragment:
+            url += "#" + destination.fragment
+        return "](" + url + ")"
+
+    # Preserve local documentation links; omitted source/tooling links to the revision.
+    return re.sub(r"\]\(([^\s)]+)\)", link, content.decode("utf-8")).encode("utf-8")
 
 # Stable gzip/tar timestamps and ownership avoid adding local user metadata.
 with archive.open("wb") as destination:
@@ -118,7 +163,7 @@ with archive.open("wb") as destination:
 
             add("kokuban", binary.read_bytes(), 0o755)
             for name, path in sorted(files.items()):
-                add(name, path.read_bytes())
+                add(name, distribution_content(name, path))
             for path in source_files:
                 add("THIRD_PARTY_SOURCES/" + path.relative_to(sources).as_posix(), path.read_bytes())
             add("BUILD-INFO.json", (json.dumps(build_info, indent=2) + "\n").encode())

@@ -44,7 +44,9 @@ jobs:
           sudo apt-get install --yes --no-install-recommends \
             desktop-file-utils \
             ffmpeg \
+            fontconfig \
             fonts-dejavu-core \
+            fonts-noto-color-emoji \
             libfontconfig1-dev \
             libfreetype6-dev \
             libxkbcommon-x11-0 \
@@ -55,6 +57,7 @@ jobs:
             openssh-server \
             pkg-config \
             tmux \
+            weston \
             x11-apps \
             x11-utils \
             x11-xserver-utils \
@@ -75,8 +78,14 @@ jobs:
       - name: Check all targets
         run: cargo check --locked --all-targets
 
+      - name: Verify generated Unicode grapheme tables
+        run: python3 -B scripts/generate-grapheme-tables.py --check
+
       - name: Test all targets
         run: cargo test --locked --all-targets
+
+      - name: Test benchmark reports and process cleanup
+        run: python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
 
       - name: Run Clippy
         run: cargo clippy --locked --all-targets
@@ -176,6 +185,37 @@ jobs:
             timeout --kill-after=5s 30s python3 scripts/linux-icon-smoke.py \
               "$PWD/target/debug/kokuban"
 
+      - name: Verify Omarchy launch arguments under X11
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=5s 40s python3 scripts/linux-launch-smoke.py \
+              "$PWD/target/debug/kokuban"
+
+      - name: Verify native Wayland frame and command launch
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WAYLAND_DISPLAY=wayland-kokuban-ci
+          unset DISPLAY WAYLAND_SOCKET
+          weston --backend=headless-backend.so --use-pixman \
+            --socket="$WAYLAND_DISPLAY" --idle-time=0 --width=1280 --height=900 \
+            --log="$RUNNER_TEMP/kokuban-weston.log" &
+          weston_pid=$!
+          trap 'kill "$weston_pid" 2>/dev/null || true; wait "$weston_pid" 2>/dev/null || true; rm -rf "$XDG_RUNTIME_DIR"' EXIT
+          for attempt in {1..100}; do
+            test ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" || break
+            kill -0 "$weston_pid"
+            sleep 0.1
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
+          KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 timeout --kill-after=5s 15s \
+            "$PWD/target/debug/kokuban"
+          timeout --kill-after=5s 40s python3 scripts/linux-launch-smoke.py \
+            "$PWD/target/debug/kokuban" --backend wayland
+
       - name: Verify presented Linux images and frame replacement
         if: runner.os == 'Linux'
         shell: bash
@@ -214,6 +254,24 @@ jobs:
         with:
           name: linux-clipboard-smoke
           path: target/linux-clipboard-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Verify live Omarchy theme reload and session preservation
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 800x600x24" \
+            timeout --kill-after=5s 90s python3 scripts/linux-theme-smoke.py \
+              "$PWD/target/debug/kokuban" \
+              --artifacts-dir "$RUNNER_TEMP/kokuban-theme-artifacts"
+
+      - name: Upload Linux theme smoke evidence
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-theme-smoke
+          path: ${{ runner.temp }}/kokuban-theme-artifacts
           if-no-files-found: ignore
           retention-days: 7
 

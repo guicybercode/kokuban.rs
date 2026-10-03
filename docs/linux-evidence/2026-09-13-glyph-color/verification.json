@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "command": "python3 -B docs/linux-evidence/2026-09-13-glyph-color/verify.py --repo /Users/eguimacs/kokuban.rs --restore /private/tmp/kokuban-perf-20260913/glyph-package-verified-originals",
+  "exit_code": 0,
+  "original_files": 67,
+  "git_blobs_verified": {
+    "before": 1167,
+    "after": 1167
+  },
+  "runtime_prefixes": "preserved",
+  "samples": 120,
+  "pixel_pairs": 12,
+  "ascii_pre_post_emoji_pairs": 8,
+  "restore_completed": true
+}
