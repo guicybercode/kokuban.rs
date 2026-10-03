@@ -1492,7 +1492,6 @@ impl Grid {
         self.auto_wrap = true;
         self.insert_mode = false;
         self.charset = CharSet::Ascii;
-        self.mark_all_dirty();
     }
 
     pub(crate) fn synchronized_output_active(&self) -> bool {
@@ -1512,15 +1511,14 @@ impl Grid {
             if self.synchronized_output_deadline.is_none_or(|deadline| now >= deadline) {
                 self.synchronized_output_deadline = Some(now + SYNCHRONIZED_OUTPUT_TIMEOUT);
             }
-        } else if self.synchronized_output_deadline.take().is_some() {
-            self.mark_all_dirty();
+        } else {
+            self.synchronized_output_deadline = None;
         }
     }
 
     pub(crate) fn expire_synchronized_output(&mut self, now: Instant) -> bool {
         if self.synchronized_output_deadline.is_some_and(|deadline| now >= deadline) {
             self.synchronized_output_deadline = None;
-            self.mark_all_dirty();
             true
         } else {
             false
