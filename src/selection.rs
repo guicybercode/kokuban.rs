@@ -246,6 +246,30 @@ fn check_text_budget(
     }
 }
 
+// Stub for PR #10 compatibility - selection sync feature partially merged
+#[derive(Debug, Default)]
+pub(crate) struct SelectionContext {
+    revision: u64,
+    dropped_rows: usize,
+}
+
+pub(crate) fn sync_selection(
+    selection: &mut SelectionState,
+    context: &mut SelectionContext,
+    grid: &Grid,
+) {
+    let dropped_rows = grid
+        .total_lines_pushed
+        .saturating_sub(grid.scrollback_len());
+    if context.revision != grid.selection_revision() || dropped_rows < context.dropped_rows {
+        selection.clear();
+    } else {
+        selection.rebase_after_eviction(dropped_rows - context.dropped_rows);
+    }
+    context.revision = grid.selection_revision();
+    context.dropped_rows = dropped_rows;
+}
+
 #[cfg(test)]
 mod tests {
     use super::{point_from_viewport, GridPoint, SelectionState, SelectionTextError};

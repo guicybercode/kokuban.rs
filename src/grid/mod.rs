@@ -1473,7 +1473,10 @@ impl Grid {
     // Stub methods for PR #10 compatibility (synchronized output feature removed in merge)
     pub fn soft_reset(&mut self) {
         // Simplified reset: clear screen but keep scrollback
-        self.buffer.clear();
+        let template = Cell::default();
+        for row in 0..self.buffer.rows() {
+            self.buffer.clear_row(row, template.clone());
+        }
     }
 
     pub fn synchronized_output_active(&self) -> bool {

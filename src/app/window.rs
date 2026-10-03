@@ -1749,6 +1749,7 @@ fn render_frame() {
                     Vec::new()
                 };
                 pane_render_data.push(PaneRenderData {
+                    id: *id,
                     grid: &pane.grid,
                     rect: *rect,
                     selection: sel,
