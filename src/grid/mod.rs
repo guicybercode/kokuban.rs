@@ -19,7 +19,7 @@ use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
-const SYNCHRONIZED_OUTPUT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const SYNCHRONIZED_OUTPUT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
