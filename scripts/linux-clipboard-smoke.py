@@ -8,12 +8,14 @@ The full run also verifies compound graphemes and a wrapped URL across four
 window resizes without reprinting the fixture. --graphemes-only isolates copy.
 """
 
+import argparse
 import json
 import os
 from pathlib import Path
 import re
 import select
 import shlex
+import shutil
 import signal
 import struct
 import subprocess
@@ -21,6 +23,7 @@ import sys
 import tempfile
 import time
 import tty
+from typing import Optional
 
 
 COPY_LINE = b"COPY_THIS_TEXT extra"
@@ -145,8 +148,16 @@ class ClipboardSmoke:
         self.cell_height = 0.0
         self.expected_input = b""
         self.resize_probe = 0
+        self.stage = "starting"
+        self.current_phase = None
+        self.geometry = {}
+        self.grid_size = {}
+        self.expected_clipboard = None
+        self.last_clipboard = None
+        self.last_clipboard_bytes = b""
 
     def wait(self, condition, description: str, timeout: float = 8):
+        self.stage = description
         deadline = min(self.deadline, time.monotonic() + timeout)
         while time.monotonic() < deadline:
             if self.terminal.poll() is not None:
@@ -158,6 +169,7 @@ class ClipboardSmoke:
         raise AssertionError(f"timed out waiting for {description}")
 
     def phase(self, name: str) -> dict:
+        self.current_phase = name
         atomic_text(self.directory / "phase", name)
 
         def ready():
@@ -168,7 +180,11 @@ class ClipboardSmoke:
                     return status
             return None
 
-        return self.wait(ready, f"{name} mode acknowledgment")
+        status = self.wait(ready, f"{name} mode acknowledgment")
+        self.grid_size = status
+        if self.window:
+            self.update_geometry(status)
+        return status
 
     def locate_window(self) -> None:
         def search():
@@ -192,17 +208,34 @@ class ClipboardSmoke:
         geometry = dict(line.split("=", 1) for line in xdo(
             "getwindowgeometry", "--shell", self.window
         ).decode().splitlines() if "=" in line)
-        self.cell_width = int(geometry["WIDTH"]) / size["columns"]
-        self.cell_height = int(geometry["HEIGHT"]) / size["rows"]
+        self.geometry = geometry
+        self.cell_width = int(geometry["WIDTH"]) / self.grid_size["columns"]
+        self.cell_height = int(geometry["HEIGHT"]) / self.grid_size["rows"]
         if self.cell_width < 2 or self.cell_height < 2:
-            raise AssertionError(f"invalid terminal cell geometry: {geometry}, {size}")
+            raise AssertionError(f"invalid terminal cell geometry: {geometry}, {self.grid_size}")
 
     def clipboard(self) -> bytes:
-        result = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-out", "-target", "UTF8_STRING"],
-            capture_output=True, timeout=2,
-        )
+        try:
+            result = subprocess.run(
+                ["xclip", "-selection", "clipboard", "-out", "-target", "UTF8_STRING"],
+                capture_output=True, timeout=2,
+            )
+        except subprocess.TimeoutExpired as error:
+            self.record_clipboard(error.stdout or b"", error.stderr or b"", None, timed_out=True)
+            raise
+        self.record_clipboard(result.stdout, result.stderr, result.returncode)
         return result.stdout if result.returncode == 0 else b""
+
+    def record_clipboard(self, stdout: bytes, stderr: bytes, returncode, timed_out: bool = False) -> None:
+        self.last_clipboard_bytes = stdout[:MAX_CAPTURE_BYTES]
+        self.last_clipboard = {
+            "returncode": returncode, "timed_out": timed_out,
+            "stdout_bytes": len(stdout), "stdout_hex": stdout[:4096].hex(),
+            "stdout_preview": repr(stdout[:256]), "stdout_hex_truncated": len(stdout) > 4096,
+            "captured_bytes": len(self.last_clipboard_bytes),
+            "capture_truncated": len(stdout) > MAX_CAPTURE_BYTES,
+            "stderr_bytes": len(stderr), "stderr": stderr[-4096:].decode(errors="replace"),
+        }
 
     def set_clipboard(self, text: bytes) -> None:
         path = self.directory / f"clipboard-{len(self.owners)}.txt"
@@ -269,8 +302,10 @@ class ClipboardSmoke:
                   >= minimum_changes, "visible selection highlight", timeout=4)
 
     def copy_selection(self, expected: bytes, shift: bool = False) -> None:
+        self.expected_clipboard = expected
         self.update_geometry(self.probe())
         before = self.row_pixels()
+        self.stage = "drag selection"
         self.drag(len(expected), shift)
         self.verify_highlight(before, len(expected))
         for keys in ("ctrl+shift+c", "ctrl+Insert"):
@@ -359,6 +394,55 @@ class ClipboardSmoke:
         self.verify_input(b"\x1b[<0;26;5M\x1b[<0;26;5m")
         self.copy_selection(SHIFT_TEXT, shift=True)
 
+    def failure_diagnostics(self, error: Exception, artifacts: Optional[Path]) -> dict:
+        """Observe the failed attempt without repeating its input or copy action."""
+        report = {
+            "status": "failed", "error": f"{type(error).__name__}: {error}",
+            "stage": self.stage, "phase": self.current_phase, "window": self.window,
+            "geometry": self.geometry, "cell_size": [self.cell_width, self.cell_height],
+            "clipboard": self.last_clipboard,
+            "expected_clipboard_hex": (self.expected_clipboard.hex()
+                                       if self.expected_clipboard is not None else None),
+            "terminal_returncode": self.terminal.poll(),
+            "clipboard_owners": [{"pid": owner.pid, "returncode": owner.poll()} for owner in self.owners],
+            "expected_input_hex": self.expected_input.hex(),
+        }
+        diagnostics = {}
+        if self.window:
+            for name, arguments in (
+                    ("geometry", ["xdotool", "getwindowgeometry", "--shell", self.window]),
+                    ("pointer", ["xdotool", "getmouselocation", "--shell"]),
+                    ("focus", ["xdotool", "getwindowfocus"]),
+                    ("screenshot", ["xwd", "-id", self.window, "-silent", "-out",
+                                    str(self.directory / "failure.xwd")])):
+                try:
+                    result = run(arguments)
+                    diagnostics[name] = {"returncode": result.returncode,
+                                         "stdout": result.stdout[:4096].decode(errors="replace"),
+                                         "stderr": result.stderr[-4096:].decode(errors="replace")}
+                except Exception as diagnostic_error:
+                    diagnostics[name] = {"error": f"{type(diagnostic_error).__name__}: {diagnostic_error}"}
+        report["diagnostics"] = diagnostics
+        if artifacts is not None:
+            artifacts.mkdir(parents=True, exist_ok=True)
+            copied = {}
+            # Only our raw PTY fixture, clipboard observation, XWD captures and
+            # terminal log are retained. Never copy arbitrary temporary files.
+            for name in ("input.bin", "selection.xwd", "failure.xwd", "terminal.log"):
+                source = self.directory / name
+                if source.is_file():
+                    size = source.stat().st_size
+                    if size <= 4 * 1024 * 1024:
+                        shutil.copyfile(source, artifacts / name)
+                        copied[name] = {"bytes": size}
+                    else:
+                        copied[name] = {"bytes": size, "skipped": "exceeds 4 MiB diagnostic limit"}
+            (artifacts / "clipboard.bin").write_bytes(self.last_clipboard_bytes)
+            copied["clipboard.bin"] = {"bytes": len(self.last_clipboard_bytes)}
+            report["artifacts"] = copied
+            atomic_text(artifacts / "results.json", json.dumps(report, indent=2) + "\n")
+        return report
+
     def cleanup(self) -> None:
         (self.directory / "stop").touch()
         try:
@@ -392,6 +476,7 @@ def main() -> None:
     if len(sys.argv) != 2 and not (len(sys.argv) == 3 and graphemes_only):
         raise SystemExit(f"usage: xvfb-run python3 {sys.argv[0]} /path/to/kokuban [--graphemes-only]")
     binary = Path(sys.argv[1]).resolve(strict=True)
+    artifacts = None
     with tempfile.TemporaryDirectory(prefix="kokuban-clipboard-") as temporary:
         directory = Path(temporary)
         (directory / "kokuban.toml").write_text(
@@ -419,7 +504,12 @@ def main() -> None:
                     smoke.exercise()
                 smoke.exercise_content(graphemes_only)
             except Exception as error:
+                try:
+                    diagnostic = smoke.failure_diagnostics(error, artifacts)
+                except Exception as diagnostic_error:
+                    diagnostic = {"diagnostic_error": f"{type(diagnostic_error).__name__}: {diagnostic_error}"}
                 raise AssertionError(f"Linux clipboard smoke: {error}\n"
+                                     + json.dumps(diagnostic, indent=2) + "\n"
                                      + log_path.read_text(errors="replace")[-4000:]) from error
             finally:
                 smoke.cleanup()
