@@ -10,7 +10,7 @@ use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use history::HistoryRow;
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Instant};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -19,6 +19,7 @@ use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
+const SYNCHRONIZED_OUTPUT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
@@ -197,6 +198,7 @@ pub struct Grid {
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
     pub charset: CharSet,
+    synchronized_output_deadline: Option<Instant>,
     // Underline state (current SGR)
     pub underline_style: UnderlineStyle,
     pub underline_color: Color,
@@ -271,6 +273,7 @@ impl Grid {
             cursor_style: CursorStyle::default(),
             insert_mode: false,
             charset: CharSet::Ascii,
+            synchronized_output_deadline: None,
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
             title: String::new(),
@@ -1470,33 +1473,58 @@ impl Grid {
         *buffer = Buffer::from_retained_rows(cols, &reflowed);
     }
 
-    // Stub methods for PR #10 compatibility (synchronized output feature removed in merge)
-    pub fn soft_reset(&mut self) {
-        // Simplified reset: clear screen but keep scrollback
-        let template = Cell::default();
-        for row in 0..self.buffer.rows() {
-            self.buffer.clear_row(row, template.clone());
+    pub(crate) fn soft_reset(&mut self) {
+        self.cancel_pending_wrap();
+        self.saved_cursor_row = 0;
+        self.saved_cursor_col = 0;
+        self.saved_wrap_pending = false;
+        self.saved_cursor_retained_row = None;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows() - 1;
+        self.fg = Color::Default;
+        self.bg = Color::Default;
+        self.flags = CellFlags::empty();
+        self.underline_style = UnderlineStyle::None;
+        self.underline_color = Color::Default;
+        self.cursor_visible = true;
+        self.cursor_style = CursorStyle::default();
+        self.application_cursor_keys = false;
+        self.auto_wrap = true;
+        self.insert_mode = false;
+        self.charset = CharSet::Ascii;
+        self.mark_all_dirty();
+    }
+
+    pub(crate) fn synchronized_output_active(&self) -> bool {
+        self.synchronized_output_deadline.is_some()
+    }
+
+    pub(crate) fn synchronized_output_deadline(&self) -> Option<Instant> {
+        self.synchronized_output_deadline
+    }
+
+    pub(crate) fn set_synchronized_output(&mut self, enabled: bool) {
+        self.set_synchronized_output_at(enabled, Instant::now());
+    }
+
+    pub(crate) fn set_synchronized_output_at(&mut self, enabled: bool, now: Instant) {
+        if enabled {
+            if self.synchronized_output_deadline.is_none_or(|deadline| now >= deadline) {
+                self.synchronized_output_deadline = Some(now + SYNCHRONIZED_OUTPUT_TIMEOUT);
+            }
+        } else if self.synchronized_output_deadline.take().is_some() {
+            self.mark_all_dirty();
         }
     }
 
-    pub fn synchronized_output_active(&self) -> bool {
-        false // Feature not fully merged
-    }
-
-    pub fn set_synchronized_output(&mut self, _active: bool) {
-        // No-op: synchronized output feature not merged
-    }
-
-    pub fn set_synchronized_output_at(&mut self, _active: bool, _deadline: std::time::Instant) {
-        // No-op: synchronized output feature not merged  
-    }
-
-    pub fn synchronized_output_deadline(&self) -> Option<std::time::Instant> {
-        None // Feature not fully merged
-    }
-
-    pub fn expire_synchronized_output(&mut self, _now: std::time::Instant) -> bool {
-        false // Feature not fully merged
+    pub(crate) fn expire_synchronized_output(&mut self, now: Instant) -> bool {
+        if self.synchronized_output_deadline.is_some_and(|deadline| now >= deadline) {
+            self.synchronized_output_deadline = None;
+            self.mark_all_dirty();
+            true
+        } else {
+            false
+        }
     }
 }
 
