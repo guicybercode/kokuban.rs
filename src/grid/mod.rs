@@ -380,8 +380,16 @@ impl Grid {
     pub(crate) fn reset_terminal_state(&mut self) {
         // Xterm keeps its resource-backed alternate-scroll mode across RIS.
         let alternate_scroll = self.alternate_scroll;
+        let cell_pixel_width = self.cell_pixel_width;
+        let cell_pixel_height = self.cell_pixel_height;
+        let default_fg_hex = self.default_fg_hex.clone();
+        let default_bg_hex = self.default_bg_hex.clone();
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
         reset.alternate_scroll = alternate_scroll;
+        reset.cell_pixel_width = cell_pixel_width;
+        reset.cell_pixel_height = cell_pixel_height;
+        reset.default_fg_hex = default_fg_hex;
+        reset.default_bg_hex = default_bg_hex;
         reset.selection_revision = self.selection_revision.wrapping_add(1);
         reset.screen_revision = self.screen_revision.wrapping_add(1);
         // RIS clears the title, but consumers still need a monotonic change signal.
@@ -1492,6 +1500,7 @@ impl Grid {
         self.auto_wrap = true;
         self.insert_mode = false;
         self.charset = CharSet::Ascii;
+        self.synchronized_output_deadline = None;
     }
 
     pub(crate) fn synchronized_output_active(&self) -> bool {
