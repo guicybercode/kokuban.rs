@@ -112,9 +112,20 @@ fn deliver(config: &NotificationsConfig, request: &NotificationRequest) {
     }
 }
 
-/// Strip control characters from untrusted OSC title/body text.
+/// Strip C0/C1 controls and Unicode bidi formatting characters from untrusted
+/// OSC title/body text.
 pub fn sanitize_notification_text(text: &str) -> String {
-    text.chars().filter(|character| !character.is_control()).collect()
+    text.chars()
+        .filter(|&character| !character.is_control() && !is_bidi_control(character))
+        .collect()
+}
+
+/// Bidi marks, embeddings, overrides, and isolates that can reorder displayed text.
+fn is_bidi_control(character: char) -> bool {
+    matches!(
+        character,
+        '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+    )
 }
 
 /// Escape text for notify-send's Pango markup body/summary.
@@ -135,16 +146,17 @@ pub fn escape_notify_send_markup(text: &str) -> String {
 /// processes do not accumulate as zombies.
 fn spawn_and_reap(mut command: Command) -> std::io::Result<()> {
     let child = command.spawn()?;
-    reap_in_background(child);
+    let _ = reap_in_background(child);
     Ok(())
 }
 
-fn reap_in_background(mut child: Child) {
-    let _ = std::thread::Builder::new()
+fn reap_in_background(mut child: Child) -> Option<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
         .name("kokuban-notify-reaper".into())
         .spawn(move || {
             let _ = child.wait();
-        });
+        })
+        .ok()
 }
 
 /// Run the configured command with title/body as env vars only — never `sh -c`.
@@ -323,6 +335,16 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_strips_c1_and_bidi_controls() {
+        let cleaned = sanitize_notification_text(
+            "a\u{0085}b\u{009B}31mc\u{202E}d\u{2066}e\u{2069}f\u{200F}g\u{061C}h",
+        );
+        assert_eq!(cleaned, "ab31mcdefgh");
+        // Ordinary non-ASCII text is preserved.
+        assert_eq!(sanitize_notification_text("café — 完了"), "café — 完了");
+    }
+
+    #[test]
     fn notify_send_markup_escapes_ampersand_and_angles() {
         assert_eq!(
             escape_notify_send_markup("a & b <c> \"q\""),
@@ -333,16 +355,24 @@ mod tests {
 
     #[test]
     fn spawn_and_reap_reaps_short_lived_child() {
+        use nix::errno::Errno;
+        use nix::sys::wait::{waitpid, WaitPidFlag};
+        use nix::unistd::Pid;
+
         // Portable helper: macOS runners do not ship /bin/true.
         let script = temp_script("#!/bin/sh\nexit 0\n");
         let mut cmd = Command::new(&script);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        spawn_and_reap(cmd).unwrap();
-        // Give the reaper thread a moment; the important part is spawn succeeds
-        // and wait runs without leaving the Child dropped un-waited on this thread.
-        thread::sleep(Duration::from_millis(50));
+        let child = cmd.spawn().unwrap();
+        let pid = Pid::from_raw(child.id() as i32);
+        reap_in_background(child)
+            .expect("reaper thread should start")
+            .join()
+            .unwrap();
+        // Once reaped, the pid is no longer our child: no zombie remains.
+        assert_eq!(waitpid(pid, Some(WaitPidFlag::WNOHANG)), Err(Errno::ECHILD));
         let _ = fs::remove_file(&script);
     }
 
