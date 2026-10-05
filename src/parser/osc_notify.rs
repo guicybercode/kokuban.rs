@@ -31,6 +31,18 @@ fn truncate_chars(mut text: String, max_chars: usize) -> String {
     text
 }
 
+fn append_capped(target: &mut String, chunk: &str, max_chars: usize) {
+    let remaining = max_chars.saturating_sub(target.chars().count());
+    if remaining == 0 || chunk.is_empty() {
+        return;
+    }
+    if chunk.chars().count() <= remaining {
+        target.push_str(chunk);
+    } else {
+        target.push_str(&chunk.chars().take(remaining).collect::<String>());
+    }
+}
+
 pub(crate) fn is_osc9_progress(payload: &str) -> bool {
     // ConEmu / iTerm2 progress: OSC 9;4 or OSC 9;4;… — not a notification.
     payload == "4" || payload.starts_with("4;")
@@ -100,8 +112,9 @@ pub(crate) fn parse_osc99(payload: &str, prior: Option<Osc99Draft>) -> Osc99Acti
 
     let mut draft = prior.unwrap_or_default();
     match part {
-        "title" => draft.title.push_str(&decoded),
-        "body" => draft.body.push_str(&decoded),
+        // Cap each chunk and the held draft so a flood of d=0 OSC 99 cannot grow unboundedly.
+        "title" => append_capped(&mut draft.title, &decoded, MAX_TITLE_CHARS),
+        "body" => append_capped(&mut draft.body, &decoded, MAX_BODY_CHARS),
         _ => return Osc99Action::Ignore,
     }
 
@@ -187,5 +200,32 @@ mod tests {
         let request = NotificationRequest::new(title, body);
         assert_eq!(request.title.chars().count(), MAX_TITLE_CHARS);
         assert_eq!(request.body.chars().count(), MAX_BODY_CHARS);
+    }
+
+    #[test]
+    fn osc99_caps_each_chunk_and_held_draft() {
+        let big = "X".repeat(MAX_TITLE_CHARS + 80);
+        let hold = match parse_osc99(&format!("i=cap:d=0:p=title;{big}"), None) {
+            Osc99Action::Hold { draft, .. } => {
+                assert_eq!(draft.title.chars().count(), MAX_TITLE_CHARS);
+                draft
+            }
+            other => panic!("unexpected {other:?}"),
+        };
+        // A second oversized chunk must not grow the draft past the cap.
+        let hold = match parse_osc99(&format!("i=cap:d=0:p=title;{big}"), Some(hold)) {
+            Osc99Action::Hold { draft, .. } => {
+                assert_eq!(draft.title.chars().count(), MAX_TITLE_CHARS);
+                draft
+            }
+            other => panic!("unexpected {other:?}"),
+        };
+        match parse_osc99(&format!("i=cap:p=body;{}","Y".repeat(MAX_BODY_CHARS + 20)), Some(hold)) {
+            Osc99Action::Notify(request) => {
+                assert_eq!(request.title.chars().count(), MAX_TITLE_CHARS);
+                assert_eq!(request.body.chars().count(), MAX_BODY_CHARS);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 }

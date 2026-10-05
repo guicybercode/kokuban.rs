@@ -602,4 +602,37 @@ mod tests {
             assert_eq!(config.sixel_graphics_enabled(), expected_sixel);
         }
     }
+
+    #[test]
+    fn shipped_toml_notifications_example_is_not_notify_send() {
+        // The optional `command` must be a helper that reads env vars. Pointing it at
+        // notify-send would spawn that binary with no argv summary/body.
+        let shipped = include_str!("../kokuban.toml");
+        assert!(
+            shipped.contains("[notifications]"),
+            "shipped kokuban.toml must document [notifications]"
+        );
+        for line in shipped.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('#') {
+                let lowered = trimmed.to_ascii_lowercase();
+                if lowered.contains("command") && lowered.contains('=') {
+                    assert!(
+                        !lowered.contains("notify-send"),
+                        "example command must not be notify-send: {trimmed}"
+                    );
+                }
+            } else if let Some((key, value)) = trimmed.split_once('=') {
+                if key.trim() == "command" {
+                    assert!(
+                        !value.to_ascii_lowercase().contains("notify-send"),
+                        "command must not point at notify-send: {trimmed}"
+                    );
+                }
+            }
+        }
+        let parsed: Config = toml::from_str(shipped).expect("shipped kokuban.toml must parse");
+        assert!(parsed.notifications.enabled);
+        assert!(parsed.notifications.command.is_none());
+    }
 }

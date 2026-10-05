@@ -33,8 +33,10 @@ check_on_startup = true
 [notifications]
 # Desktop notifications for OSC 9 / 777 / 99, and Dock/taskbar attention for BEL.
 enabled = true
-# Optional program; title/body arrive in KOKUBAN_NOTIFICATION_TITLE / _BODY (never via a shell).
-# command = "/usr/bin/notify-send"
+# Optional helper invoked with title/body in KOKUBAN_NOTIFICATION_TITLE / _BODY only
+# (never through a shell). Leave unset to use the built-in notify-send / osascript path.
+# Do not set this to notify-send itself — that binary expects argv, not these env vars.
+# command = "/usr/local/bin/kokuban-notify-hook"
 
 [prompt_marks]
 enabled = true
