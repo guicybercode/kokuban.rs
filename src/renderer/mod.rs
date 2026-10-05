@@ -11,6 +11,8 @@ pub(crate) mod software_image_store;
 #[cfg(target_os = "linux")]
 pub(crate) use software_image_store as image_store;
 pub mod kitty_handler;
+#[cfg(any(target_os = "macos", test))]
+pub(crate) mod pane_scene;
 #[cfg(target_os = "macos")]
 pub mod metal;
 #[cfg(target_os = "macos")]

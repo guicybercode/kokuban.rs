@@ -50,6 +50,7 @@ pub struct AnimationUpdate {
     pub next_deadline: Option<Instant>,
 }
 
+#[derive(Clone)]
 pub(crate) struct AnimationFrame {
     pub pixels: Arc<[u8]>,
     opaque: bool,
@@ -64,6 +65,7 @@ pub(crate) fn pixels_are_opaque(pixels: &[u8]) -> bool {
 
 /// Stored separately from static images, so an ordinary image needs no frame
 /// vector, clock, or duplicate pixel allocation.
+#[derive(Clone)]
 pub(crate) struct Animation {
     frames: Vec<AnimationFrame>,
     current: usize,

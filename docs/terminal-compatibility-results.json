@@ -1,0 +1,304 @@
+{
+  "scope": "Desktop terminal compatibility; local fixture streams, no model service or performance comparison",
+  "clear_over_ssh": {
+    "run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34051074018",
+    "commit": "2aa3f8c",
+    "result": {
+      "status": "passed",
+      "post_clear_input": "after-clear",
+      "blank_after_scroll_samples": 11,
+      "history_erased": true,
+      "image_removed": true,
+      "clear_executed_with_inherited_ssh_pty": true
+    },
+    "metadata": {
+      "term": "xterm-256color",
+      "clear_version": "ncurses 6.4.20240113",
+      "clear_stdout_hex": "1b5b481b5b324a1b5b334a",
+      "clear_capture_note": "Metadata invocation captured separately; tested invocation inherits the SSH PTY.",
+      "has_scrollback_erase": true,
+      "tty_fds": [
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  "synchronized_presentation": {
+    "run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34051902457",
+    "commit": "6b46f4e",
+    "result": {
+      "status": "passed",
+      "held_samples": 11,
+      "timeout_observed_seconds": 2.0124388760000045,
+      "forced_resize_and_scroll": true,
+      "reply_during_sync": {
+        "reply_hex": "1b5b3f323032363b312479"
+      }
+    }
+  },
+  "real_ai_clients": {
+    "run": "https://github.com/guicybercode/kokuban.rs/actions/runs/34071403430",
+    "commit": "eee48ba721e3564feb5409af1f134565d2361e56",
+    "versions": [
+      "v22.23.2",
+      "10.9.8",
+      "codex-cli 0.153.4",
+      "2.1.261 (Claude Code)"
+    ],
+    "kokuban_binary_sha256": "38c8e2d8dee9274cab3b418fcc33fd31bd0fe9f8787cf221481000d7ef863753",
+    "platform": "Linux / Xvfb / loopback SSH / XTest keyboard and mouse",
+    "clients": {
+      "codex": {
+        "result": {
+          "client": "codex",
+          "status": "passed",
+          "scope": "real CLI / localhost SSE / loopback SSH / XTest; no model service",
+          "stage": "normal exit and subsequent input passed",
+          "startup": {
+            "client": "codex",
+            "version": "codex-cli 0.153.4",
+            "size": [
+              100,
+              30
+            ],
+            "term": "xterm-256color",
+            "ssh": true
+          },
+          "client_state": "fresh fixture directory; onboarding/trust preconfigured; no user credentials",
+          "edited_input": {
+            "markers_copied_once": [
+              "compat-input-42"
+            ],
+            "forbidden_markers_absent": [
+              "compat-input-4x",
+              "COMPAT_BEGIN"
+            ],
+            "visible_marker_regions": [
+              [
+                9,
+                238,
+                162,
+                255
+              ]
+            ]
+          },
+          "typing_interval_ms": 150,
+          "partial": {
+            "markers_copied_once": [
+              "COMPAT_BEGIN"
+            ],
+            "forbidden_markers_absent": [
+              "COMPAT_END"
+            ],
+            "visible_marker_regions": [
+              [
+                9,
+                340,
+                135,
+                357
+              ]
+            ]
+          },
+          "partial_resized": {
+            "markers_copied_once": [
+              "COMPAT_BEGIN"
+            ],
+            "forbidden_markers_absent": [
+              "COMPAT_END"
+            ],
+            "visible_marker_regions": [
+              [
+                9,
+                323,
+                135,
+                340
+              ]
+            ]
+          },
+          "complete": {
+            "markers_copied_once": [
+              "COMPAT_BEGIN",
+              "COMPAT_END"
+            ],
+            "forbidden_markers_absent": [],
+            "visible_marker_regions": [
+              [
+                9,
+                306,
+                135,
+                323
+              ],
+              [
+                9,
+                340,
+                117,
+                357
+              ]
+            ]
+          },
+          "stream": {
+            "partial_before_release": true,
+            "final_after_release": true,
+            "resized_pty": [
+              88,
+              26
+            ],
+            "requests": 1,
+            "output_marker_counts": {
+              "COMPAT_BEGIN": 3,
+              "COMPAT_END": 1
+            }
+          },
+          "exit": {
+            "status": 0,
+            "termios_restored": true
+          },
+          "post_exit": {
+            "status": "passed",
+            "input": "after-tui",
+            "real_clear_after_exit": true
+          }
+        },
+        "endpoint": {
+          "scope": "real CLI talking only to deterministic localhost fixture; no model service",
+          "requests": [
+            {
+              "path": "/v1/responses",
+              "model": "compat-fixture",
+              "stream": true,
+              "prompt_received": true,
+              "request_bytes": 40932
+            }
+          ],
+          "errors": []
+        }
+      },
+      "claude": {
+        "result": {
+          "client": "claude",
+          "status": "passed",
+          "scope": "real CLI / localhost SSE / loopback SSH / XTest; no model service",
+          "stage": "normal exit and subsequent input passed",
+          "startup": {
+            "client": "claude",
+            "version": "2.1.261 (Claude Code)",
+            "size": [
+              100,
+              30
+            ],
+            "term": "xterm-256color",
+            "ssh": true
+          },
+          "client_state": "fresh fixture directory; onboarding/trust preconfigured; no user credentials",
+          "edited_input": {
+            "markers_copied_once": [
+              "compat-input-42"
+            ],
+            "forbidden_markers_absent": [
+              "compat-input-4x",
+              "COMPAT_BEGIN"
+            ],
+            "visible_marker_regions": [
+              [
+                9,
+                459,
+                162,
+                476
+              ]
+            ]
+          },
+          "typing_interval_ms": 150,
+          "partial": {
+            "markers_copied_once": [
+              "COMPAT_BEGIN"
+            ],
+            "forbidden_markers_absent": [
+              "COMPAT_END"
+            ],
+            "visible_marker_regions": [
+              [
+                9,
+                136,
+                135,
+                153
+              ]
+            ]
+          },
+          "partial_resized": {
+            "markers_copied_once": [
+              "COMPAT_BEGIN"
+            ],
+            "forbidden_markers_absent": [
+              "COMPAT_END"
+            ],
+            "visible_marker_regions": [
+              [
+                9,
+                136,
+                135,
+                153
+              ]
+            ]
+          },
+          "complete": {
+            "markers_copied_once": [
+              "COMPAT_BEGIN",
+              "COMPAT_END"
+            ],
+            "forbidden_markers_absent": [],
+            "visible_marker_regions": [
+              [
+                9,
+                136,
+                135,
+                153
+              ],
+              [
+                9,
+                170,
+                117,
+                187
+              ]
+            ]
+          },
+          "stream": {
+            "partial_before_release": true,
+            "final_after_release": true,
+            "resized_pty": [
+              88,
+              26
+            ],
+            "requests": 1,
+            "output_marker_counts": {
+              "COMPAT_BEGIN": 2,
+              "COMPAT_END": 1
+            }
+          },
+          "exit": {
+            "status": 0,
+            "termios_restored": true
+          },
+          "post_exit": {
+            "status": "passed",
+            "input": "after-tui",
+            "real_clear_after_exit": true
+          }
+        },
+        "endpoint": {
+          "scope": "real CLI talking only to deterministic localhost fixture; no model service",
+          "requests": [
+            {
+              "path": "/v1/messages",
+              "model": "compat-fixture",
+              "stream": true,
+              "prompt_received": true,
+              "request_bytes": 1217
+            }
+          ],
+          "errors": []
+        }
+      }
+    }
+  }
+}

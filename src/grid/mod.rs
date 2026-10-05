@@ -10,7 +10,7 @@ use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use history::HistoryRow;
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Instant};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -19,6 +19,7 @@ use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
+const SYNCHRONIZED_OUTPUT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
@@ -197,6 +198,7 @@ pub struct Grid {
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
     pub charset: CharSet,
+    synchronized_output_deadline: Option<Instant>,
     // Underline state (current SGR)
     pub underline_style: UnderlineStyle,
     pub underline_color: Color,
@@ -271,6 +273,7 @@ impl Grid {
             cursor_style: CursorStyle::default(),
             insert_mode: false,
             charset: CharSet::Ascii,
+            synchronized_output_deadline: None,
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
             title: String::new(),
@@ -377,8 +380,16 @@ impl Grid {
     pub(crate) fn reset_terminal_state(&mut self) {
         // Xterm keeps its resource-backed alternate-scroll mode across RIS.
         let alternate_scroll = self.alternate_scroll;
+        let cell_pixel_width = self.cell_pixel_width;
+        let cell_pixel_height = self.cell_pixel_height;
+        let default_fg_hex = self.default_fg_hex.clone();
+        let default_bg_hex = self.default_bg_hex.clone();
         let mut reset = Self::new(self.cols(), self.rows(), self.scrollback_max());
         reset.alternate_scroll = alternate_scroll;
+        reset.cell_pixel_width = cell_pixel_width;
+        reset.cell_pixel_height = cell_pixel_height;
+        reset.default_fg_hex = default_fg_hex;
+        reset.default_bg_hex = default_bg_hex;
         reset.selection_revision = self.selection_revision.wrapping_add(1);
         reset.screen_revision = self.screen_revision.wrapping_add(1);
         // RIS clears the title, but consumers still need a monotonic change signal.
@@ -1468,6 +1479,59 @@ impl Grid {
         if reflowed.len() > rows { *tail = reflowed.split_off(rows); }
         reflowed.resize_with(rows, || RetainedRow::blank(cols));
         *buffer = Buffer::from_retained_rows(cols, &reflowed);
+    }
+
+    pub(crate) fn soft_reset(&mut self) {
+        self.cancel_pending_wrap();
+        self.saved_cursor_row = 0;
+        self.saved_cursor_col = 0;
+        self.saved_wrap_pending = false;
+        self.saved_cursor_retained_row = None;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows() - 1;
+        self.fg = Color::Default;
+        self.bg = Color::Default;
+        self.flags = CellFlags::empty();
+        self.underline_style = UnderlineStyle::None;
+        self.underline_color = Color::Default;
+        self.cursor_visible = true;
+        self.cursor_style = CursorStyle::default();
+        self.application_cursor_keys = false;
+        self.auto_wrap = true;
+        self.insert_mode = false;
+        self.charset = CharSet::Ascii;
+        self.synchronized_output_deadline = None;
+    }
+
+    pub(crate) fn synchronized_output_active(&self) -> bool {
+        self.synchronized_output_deadline.is_some()
+    }
+
+    pub(crate) fn synchronized_output_deadline(&self) -> Option<Instant> {
+        self.synchronized_output_deadline
+    }
+
+    pub(crate) fn set_synchronized_output(&mut self, enabled: bool) {
+        self.set_synchronized_output_at(enabled, Instant::now());
+    }
+
+    pub(crate) fn set_synchronized_output_at(&mut self, enabled: bool, now: Instant) {
+        if enabled {
+            if self.synchronized_output_deadline.is_none_or(|deadline| now >= deadline) {
+                self.synchronized_output_deadline = Some(now + SYNCHRONIZED_OUTPUT_TIMEOUT);
+            }
+        } else {
+            self.synchronized_output_deadline = None;
+        }
+    }
+
+    pub(crate) fn expire_synchronized_output(&mut self, now: Instant) -> bool {
+        if self.synchronized_output_deadline.is_some_and(|deadline| now >= deadline) {
+            self.synchronized_output_deadline = None;
+            true
+        } else {
+            false
+        }
     }
 }
 
