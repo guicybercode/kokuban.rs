@@ -25,6 +25,12 @@ Version 0.4 updates itself from GitHub releases, adds a macOS disk image with `K
 - **Prompt marks (macOS)**: Visual indicators for command boundaries with navigation shortcuts
 - **Configuration**: Local or XDG TOML configuration for fonts, colors and supported keybinds
 
+  
+
+https://github.com/user-attachments/assets/4769ed61-12ed-4bb9-817f-5f3ee06c3238
+
+
+
 ## Platform Support
 
 - **macOS**: Metal GPU renderer; release archives for Apple Silicon and Intel
