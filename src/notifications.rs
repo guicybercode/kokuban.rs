@@ -333,7 +333,9 @@ mod tests {
 
     #[test]
     fn spawn_and_reap_reaps_short_lived_child() {
-        let mut cmd = Command::new("/bin/true");
+        // Portable helper: macOS runners do not ship /bin/true.
+        let script = temp_script("#!/bin/sh\nexit 0\n");
+        let mut cmd = Command::new(&script);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -341,6 +343,7 @@ mod tests {
         // Give the reaper thread a moment; the important part is spawn succeeds
         // and wait runs without leaving the Child dropped un-waited on this thread.
         thread::sleep(Duration::from_millis(50));
+        let _ = fs::remove_file(&script);
     }
 
     #[test]
