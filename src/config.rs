@@ -16,6 +16,7 @@ pub struct Config {
     pub confirm: ConfirmConfig,
     pub omarchy: OmarchyConfig,
     pub update: UpdateConfig,
+    pub notifications: NotificationsConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +125,24 @@ impl Default for UpdateConfig {
     fn default() -> Self {
         Self {
             check_on_startup: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct NotificationsConfig {
+    /// Show desktop notifications for OSC 9 / 777 / 99 and BEL attention.
+    pub enabled: bool,
+    /// Optional program invoked with title/body in env vars (never through a shell).
+    pub command: Option<String>,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            command: None,
         }
     }
 }
@@ -270,6 +289,7 @@ impl Default for Config {
             confirm: ConfirmConfig::default(),
             omarchy: OmarchyConfig::default(),
             update: UpdateConfig::default(),
+            notifications: NotificationsConfig::default(),
         }
     }
 }

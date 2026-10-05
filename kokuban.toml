@@ -30,6 +30,12 @@ show_pane_index = true
 # Install it with `kokuban --update` or, on macOS, from the app menu.
 check_on_startup = true
 
+[notifications]
+# Desktop notifications for OSC 9 / 777 / 99, and Dock/taskbar attention for BEL.
+enabled = true
+# Optional program; title/body arrive in KOKUBAN_NOTIFICATION_TITLE / _BODY (never via a shell).
+# command = "/usr/bin/notify-send"
+
 [prompt_marks]
 enabled = true
 show_indicator = true

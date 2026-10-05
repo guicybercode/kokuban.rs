@@ -2,6 +2,7 @@
 mod app;
 mod app_icon;
 mod config;
+mod notifications;
 #[cfg(test)]
 mod content_preservation_tests;
 mod graphics;

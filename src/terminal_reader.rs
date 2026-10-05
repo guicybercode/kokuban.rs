@@ -681,6 +681,9 @@ mod tests {
                         Ok(Some(KITTY_REPLY.to_vec()))
                     }
                     TerminalEvent::Response(_) => panic!("responses bypass the graphics callback"),
+                    TerminalEvent::Notification { .. } | TerminalEvent::Bell => {
+                        panic!("unexpected notification event in graphics test")
+                    }
                 }
             },
             &mut || updates += 1,

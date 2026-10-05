@@ -20,6 +20,7 @@ use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
 use crate::selection::GridPoint;
 use crate::terminal_writer::TerminalWriteQueueError;
+use crate::notifications::NotificationController;
 use crate::update::{self, SharedUpdateStatus, UpdateStatus};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
@@ -530,6 +531,23 @@ fn dispatch_window_focus_transition(focused: bool) {
         );
     });
 }
+/// Bounce the Dock icon when BEL arrived while the window was unfocused.
+pub(super) fn apply_pending_user_attention(notifications: &NotificationController) {
+    if notifications.window_focused() {
+        notifications.on_focus_gained();
+        return;
+    }
+    if !notifications.take_attention_request() {
+        return;
+    }
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    // InformationalRequest == 0; avoid depending on an extra AppKit feature flag.
+    let app = NSApplication::sharedApplication(mtm);
+    let _: usize = unsafe { msg_send![&app, requestUserAttention: 0usize] };
+}
+
 
 define_class!(
     #[unsafe(super(NSView))]

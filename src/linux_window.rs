@@ -1,4 +1,6 @@
 use crate::config::Config;
+use crate::notifications::{NotificationController, NotificationRequest};
+use crate::grid::TerminalEvent;
 use crate::glyph_atlas::{GlyphAtlas, GlyphKey};
 use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
 use crate::grid::{CursorShape, Grid, MouseTracking};
@@ -40,7 +42,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::platform::wayland::WindowAttributesExtWayland;
 use winit::platform::x11::WindowAttributesExtX11;
-use winit::window::{Icon, ImePurpose, Window, WindowId};
+use winit::window::{Icon, ImePurpose, UserAttentionType, Window, WindowId};
 
 const INITIAL_CELL_WIDTH: u32 = 10;
 const INITIAL_CELL_HEIGHT: u32 = 20;
@@ -108,6 +110,7 @@ enum LinuxEvent {
     ThemeChanged,
     GridUpdated,
     WindowTitleChanged,
+    UserAttention,
     ReaderExited(ReaderStatus),
     WriterExited(WriterStatus),
 }
@@ -806,6 +809,12 @@ pub(crate) fn launch(
     };
     let graphics = Arc::new(Mutex::new(SoftwareGraphics::new(&config.images)));
     let reader_graphics = graphics.clone();
+    let window_focused = Arc::new(AtomicBool::new(false));
+    let notifications = Arc::new(NotificationController::new(
+        config.notifications.clone(),
+        window_focused.clone(),
+    ));
+    let reader_notifications = notifications.clone();
     let pty = if options.command.is_empty() {
         Pty::spawn(columns, rows, graphics_support.kitty, graphics_support.sixel)
     } else {
@@ -837,13 +846,29 @@ pub(crate) fn launch(
     let update_title_grid = grid.clone();
     let update_title_pending = window_title_pending.clone();
     let mut observed_window_title = WINDOW_TITLE.to_string();
+    let attention_proxy = event_proxy.clone();
     let reader = match TerminalReader::spawn_with_graphics(
         pty.clone(),
         grid.clone(),
         graphics_support,
         move |event, grid| {
-            let mut graphics = reader_graphics.lock().map_err(|_| ReaderExit::GridPoisoned)?;
-            Ok(graphics.process(event, grid))
+            match event {
+                TerminalEvent::Notification { title, body } => {
+                    reader_notifications
+                        .handle_notification(NotificationRequest::new(title, body));
+                    Ok(None)
+                }
+                TerminalEvent::Bell => {
+                    reader_notifications.handle_bell();
+                    let _ = attention_proxy.send_event(LinuxEvent::UserAttention);
+                    Ok(None)
+                }
+                event => {
+                    let mut graphics =
+                        reader_graphics.lock().map_err(|_| ReaderExit::GridPoisoned)?;
+                    Ok(graphics.process(event, grid))
+                }
+            }
         },
         move || {
             signal_grid_update(&update_proxy, update_pending.as_ref());
@@ -884,6 +909,8 @@ pub(crate) fn launch(
         writer,
         redraw_pending,
         window_title_pending,
+        notifications,
+        window_focused,
     );
     application.clipboard = clipboard;
     application.theme_watcher = theme_watcher;
@@ -947,6 +974,8 @@ struct LinuxWindow {
     writer: Option<TerminalWriter>,
     redraw_pending: Arc<AtomicBool>,
     window_title_pending: Arc<AtomicBool>,
+    notifications: Arc<NotificationController>,
+    window_focused: Arc<AtomicBool>,
     update_status: crate::update::SharedUpdateStatus,
     reader_status: Option<ReaderStatus>,
     modifiers: ModifiersState,
@@ -974,6 +1003,8 @@ impl LinuxWindow {
         writer: TerminalWriter,
         redraw_pending: Arc<AtomicBool>,
         window_title_pending: Arc<AtomicBool>,
+        notifications: Arc<NotificationController>,
+        window_focused: Arc<AtomicBool>,
     ) -> Self {
         let background = colors.default_background();
         Self {
@@ -1009,6 +1040,8 @@ impl LinuxWindow {
             writer: Some(writer),
             redraw_pending,
             window_title_pending,
+            notifications,
+            window_focused,
             update_status: Arc::new(Mutex::new(crate::update::UpdateStatus::Idle)),
             reader_status: None,
             modifiers: ModifiersState::empty(),
@@ -1741,6 +1774,10 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             }
             WindowEvent::Focused(focused) => {
                 self.modifiers = modifiers_after_focus_change(self.modifiers, focused);
+                self.window_focused.store(focused, Ordering::Release);
+                if focused {
+                    self.notifications.on_focus_gained();
+                }
                 if !focused {
                     self.update_ime_preedit(None);
                 }
@@ -2018,6 +2055,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     if let Err(error) = self.handle_clipboard_event(event) {
                         self.fail(event_loop, error.to_string());
+                    }
+                }
+            }
+            LinuxEvent::UserAttention => {
+                if self.notifications.take_attention_request() {
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_user_attention(Some(UserAttentionType::Informational));
                     }
                 }
             }

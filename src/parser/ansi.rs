@@ -616,6 +616,46 @@ impl Parser {
                         _ => {}
                     }
                 }
+                "9" => {
+                    // OSC 9;4 is the ConEmu/iTerm2 progress bar — not a notification.
+                    if crate::parser::osc_notify::is_osc9_progress(pt) {
+                        log::trace!("Ignoring OSC 9 progress sequence");
+                    } else {
+                        grid.queue_notification(String::new(), pt.to_string());
+                    }
+                }
+                "777" => {
+                    if let Some(request) = crate::parser::osc_notify::parse_osc777_notify(pt) {
+                        grid.queue_notification(request.title, request.body);
+                    } else {
+                        log::trace!("Ignoring OSC 777 (unsupported subcommand)");
+                    }
+                }
+                "99" => {
+                    use crate::parser::osc_notify::{parse_osc99, Osc99Action};
+                    // Peek id from metadata so we can look up a held draft.
+                    let id = pt
+                        .split_once(';')
+                        .map(|(metadata, _)| {
+                            metadata
+                                .split(':')
+                                .filter_map(|entry| entry.split_once('='))
+                                .find_map(|(key, value)| (key == "i").then(|| value.to_string()))
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default();
+                    let prior = grid.take_osc99_draft(&id);
+                    match parse_osc99(pt, prior) {
+                        Osc99Action::Notify(request) => {
+                            grid.clear_osc99_draft(&id);
+                            grid.queue_notification(request.title, request.body);
+                        }
+                        Osc99Action::Hold { id: hold_id, draft } => {
+                            grid.store_osc99_draft(hold_id, draft);
+                        }
+                        Osc99Action::Ignore => {}
+                    }
+                }
                 _ => { log::trace!("Ignoring OSC {ps}"); }
             }
         }
@@ -627,7 +667,7 @@ impl Parser {
             0x0d => grid.carriage_return(),
             0x08 => grid.backspace(),
             0x09 => grid.tab(),
-            0x07 => {}
+            0x07 => grid.queue_bell(),
             0x0e => { grid.charset = CharSet::DecSpecial; } // SO (Shift Out) → G1
             0x0f => { grid.charset = CharSet::Ascii; }      // SI (Shift In) → G0
             _ => {}
@@ -1456,7 +1496,10 @@ mod tests {
             .into_iter()
             .filter_map(|event| match event {
                 TerminalEvent::KittyGraphics { command, .. } => Some(command),
-                TerminalEvent::Response(_) | TerminalEvent::SixelGraphics { .. } => None,
+                TerminalEvent::Response(_)
+                | TerminalEvent::SixelGraphics { .. }
+                | TerminalEvent::Notification { .. }
+                | TerminalEvent::Bell => None,
             })
             .collect()
     }
@@ -1466,7 +1509,10 @@ mod tests {
             .into_iter()
             .filter_map(|event| match event {
                 TerminalEvent::SixelGraphics { image, .. } => Some(image),
-                TerminalEvent::Response(_) | TerminalEvent::KittyGraphics { .. } => None,
+                TerminalEvent::Response(_)
+                | TerminalEvent::KittyGraphics { .. }
+                | TerminalEvent::Notification { .. }
+                | TerminalEvent::Bell => None,
             })
             .collect()
     }
@@ -2548,6 +2594,68 @@ mod tests {
     }
 
     #[test]
+    fn osc9_queues_notification_but_ignores_progress_bar() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]9;Build finished\x07", &mut screen);
+        let events = screen.drain_terminal_events();
+        assert!(matches!(
+            &events[..],
+            [TerminalEvent::Notification { title, body }]
+                if title.is_empty() && body == "Build finished"
+        ));
+
+        let mut screen = grid();
+        parser.feed(b"\x1b]9;4;1;50\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty(), "OSC 9;4 must not notify");
+
+        let mut screen = grid();
+        parser.feed(b"\x1b]9;4\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty(), "OSC 9;4 clear must not notify");
+    }
+
+    #[test]
+    fn osc777_and_osc99_queue_notifications() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]777;notify;Deploy;Production is live\x07", &mut screen);
+        assert!(matches!(
+            &screen.drain_terminal_events()[..],
+            [TerminalEvent::Notification { title, body }]
+                if title == "Deploy" && body == "Production is live"
+        ));
+
+        let mut screen = grid();
+        parser.feed(b"\x1b]99;;Hello world\x1b\\", &mut screen);
+        assert!(matches!(
+            &screen.drain_terminal_events()[..],
+            [TerminalEvent::Notification { title, body }]
+                if title == "Hello world" && body.is_empty()
+        ));
+
+        let mut screen = grid();
+        parser.feed(b"\x1b]99;i=7:d=0:p=title;Build\x1b\\", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+        parser.feed(b"\x1b]99;i=7:p=body;finished\x1b\\", &mut screen);
+        assert!(matches!(
+            &screen.drain_terminal_events()[..],
+            [TerminalEvent::Notification { title, body }]
+                if title == "Build" && body == "finished"
+        ));
+    }
+
+    #[test]
+    fn bel_outside_string_queues_bell_event() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"hello\x07world", &mut screen);
+        assert!(matches!(
+            &screen.drain_terminal_events()[..],
+            [TerminalEvent::Bell]
+        ));
+    }
+
+    #[test]
     fn bounds_osc_and_discards_overflow_for_bell_and_st() {
         let mut parser = limited_parser(8, 64, 64);
         let mut grid = grid();
@@ -2642,7 +2750,10 @@ mod tests {
                 assert_eq!(command.action, KittyAction::Delete);
                 assert_eq!((*cursor_row, *cursor_col), (1, 2));
             }
-            TerminalEvent::Response(_) | TerminalEvent::SixelGraphics { .. } => {
+            TerminalEvent::Response(_)
+            | TerminalEvent::SixelGraphics { .. }
+            | TerminalEvent::Notification { .. }
+            | TerminalEvent::Bell => {
                 panic!("expected a Kitty delete event")
             }
         }
@@ -2655,7 +2766,10 @@ mod tests {
                 assert_eq!(command.action, KittyAction::Query);
                 assert_eq!((*cursor_row, *cursor_col), (2, 3));
             }
-            TerminalEvent::Response(_) | TerminalEvent::SixelGraphics { .. } => {
+            TerminalEvent::Response(_)
+            | TerminalEvent::SixelGraphics { .. }
+            | TerminalEvent::Notification { .. }
+            | TerminalEvent::Bell => {
                 panic!("expected a Kitty query event")
             }
         }

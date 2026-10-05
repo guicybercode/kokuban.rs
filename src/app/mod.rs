@@ -203,6 +203,10 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let window_title = Arc::new(window::WindowTitleMailbox::new());
     let should_close = Arc::new(AtomicBool::new(false));
     let window_is_key = Arc::new(AtomicBool::new(false));
+    let notifications = Arc::new(crate::notifications::NotificationController::new(
+        config.notifications.clone(),
+        window_is_key.clone(),
+    ));
     let (pane_cleanup, pane_cleanup_handle) = PaneCleanup::spawn();
 
     let default_fg = ColorConfig::parse_hex(&config.colors.foreground);
@@ -313,6 +317,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     // callback also applies window titles and termination requested elsewhere.
     let frame_dirty = dirty.clone();
     let frame_should_close = should_close.clone();
+    let frame_notifications = notifications.clone();
     // Keep the callback sendable; recover the main-thread-only window by number per frame.
     let frame_window_number = window.windowNumber();
     let render_scheduler = render_scheduler::RenderScheduler::new(
@@ -323,6 +328,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                 NSApplication::sharedApplication(mtm).terminate(None);
                 return;
             }
+            window::apply_pending_user_attention(frame_notifications.as_ref());
             window::sync_window_title(frame_window_number);
             window::render_if_dirty(&frame_dirty);
         }),
@@ -393,6 +399,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         pane_cleanup: pane_cleanup.clone(),
         kitty_enabled,
         sixel_enabled,
+        notifications: notifications.clone(),
     };
 
     let reader_handle = std::thread::Builder::new()
