@@ -1032,6 +1032,15 @@ unsafe fn exec_child(
         }
         libc::close(slave_fd);
 
+        // Rust's runtime ignores SIGPIPE; execve preserves SIG_IGN and the
+        // thread signal mask. Terminal children must match Command/exec
+        // behavior so writers die with SIGPIPE (rc 141) on broken pipes.
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        let mut empty_set = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+        if libc::sigemptyset(empty_set.as_mut_ptr()) == 0 {
+            libc::sigprocmask(libc::SIG_SETMASK, empty_set.as_ptr(), std::ptr::null_mut());
+        }
+
         libc::execve(program.as_ptr(), argv.as_ptr(), environment.as_ptr());
         child_setup_failed(error_writer_fd, 4);
     }
@@ -2736,5 +2745,61 @@ mod tests {
             !process_exists(descendant_pid),
             "descendant process group survived PTY cleanup"
         );
+    }
+
+    #[test]
+    fn child_restores_default_sigpipe_before_exec() {
+        // Without restoring SIG_DFL, the child inherits Rust's SIG_IGN and
+        // `yes | head` exits with 1 (EPIPE) instead of 141 (SIGPIPE).
+        let program = CString::new("/bin/sh").unwrap();
+        let script = [
+            "exec 3>&1;",
+            // fd 3 mirrors the PTY so the writer's status survives the pipe.
+            "(yes 2>/dev/null; printf '__YES_RC__:%s__\\n' \"$?\" >&3) | head -n 1 >/dev/null;",
+            // Linux: SigIgn bit 13 (0x1000) and SigBlk must be clear after the fix.
+            "if [ -r /proc/self/status ]; then",
+            "awk '/^SigIgn:/ { printf \"__SIGIGN__:%s__\\n\", $2 }' /proc/self/status;",
+            "awk '/^SigBlk:/ { printf \"__SIGBLK__:%s__\\n\", $2 }' /proc/self/status;",
+            "fi",
+        ]
+        .join(" ");
+        let argv = ["sh", "-c", script.as_str()]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let output = read_until(&pty, b"__YES_RC__:");
+        let output = String::from_utf8_lossy(&output);
+
+        assert!(
+            output.contains("__YES_RC__:141__"),
+            "PTY child must deliver SIGPIPE to pipe writers, got: {output:?}"
+        );
+
+        if let Some(sigign) = output
+            .split("__SIGIGN__:")
+            .nth(1)
+            .and_then(|rest| rest.split("__").next())
+        {
+            let mask = u64::from_str_radix(sigign.trim(), 16).expect("SigIgn hex");
+            const SIGPIPE_BIT: u64 = 1 << (13 - 1); // signal 13 → bit 12
+            assert_eq!(
+                mask & SIGPIPE_BIT,
+                0,
+                "SIGPIPE must not be ignored in the PTY child (SigIgn={sigign})"
+            );
+        }
+
+        if let Some(sigblk) = output
+            .split("__SIGBLK__:")
+            .nth(1)
+            .and_then(|rest| rest.split("__").next())
+        {
+            let mask = u64::from_str_radix(sigblk.trim(), 16).expect("SigBlk hex");
+            assert_eq!(
+                mask, 0,
+                "PTY child signal mask must be cleared (SigBlk={sigblk})"
+            );
+        }
     }
 }
