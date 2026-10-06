@@ -1,6 +1,7 @@
 pub mod ansi;
 pub mod kitty_graphics;
 pub mod sixel;
+pub mod osc_notify;
 
 #[derive(Debug, Clone)]
 pub enum Action {

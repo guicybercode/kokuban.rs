@@ -10,12 +10,13 @@ use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use history::HistoryRow;
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::{HashMap, VecDeque}, sync::Arc};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::parser::kitty_graphics::KittyCommand;
 use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES as MAX_PENDING_SIXEL_BYTES};
+use crate::parser::osc_notify::Osc99Draft;
 use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
@@ -33,6 +34,13 @@ pub(crate) enum TerminalEvent {
         cursor_row: usize,
         cursor_col: usize,
     },
+    /// Desktop notification from OSC 9 / 777 / 99.
+    Notification {
+        title: String,
+        body: String,
+    },
+    /// ASCII BEL (0x07) outside a control string.
+    Bell,
 }
 
 const DEFAULT_CELL: Cell = Cell {
@@ -212,6 +220,8 @@ pub struct Grid {
     screen_revision: u64,
     // Ordered protocol events to process before parsing subsequent PTY bytes.
     pending_terminal_events: Vec<TerminalEvent>,
+    /// In-progress OSC 99 notifications keyed by id (empty string when omitted).
+    pending_osc99: HashMap<String, Osc99Draft>,
     // Colors for query responses
     pub default_fg_hex: String,
     pub default_bg_hex: String,
@@ -281,6 +291,7 @@ impl Grid {
             selection_revision: 0,
             screen_revision: 0,
             pending_terminal_events: Vec::new(),
+            pending_osc99: HashMap::new(),
             default_fg_hex: String::new(),
             default_bg_hex: String::new(),
             pending_sixel_count: 0,
@@ -438,6 +449,34 @@ impl Grid {
 
     pub(crate) fn queue_response(&mut self, response: Vec<u8>) {
         self.pending_terminal_events.push(TerminalEvent::Response(response));
+    }
+
+    pub(crate) fn queue_notification(&mut self, title: String, body: String) {
+        self.pending_terminal_events
+            .push(TerminalEvent::Notification { title, body });
+    }
+
+    pub(crate) fn queue_bell(&mut self) {
+        self.pending_terminal_events.push(TerminalEvent::Bell);
+    }
+
+    pub(crate) fn take_osc99_draft(&mut self, id: &str) -> Option<Osc99Draft> {
+        self.pending_osc99.remove(id)
+    }
+
+    pub(crate) fn store_osc99_draft(&mut self, id: String, draft: Osc99Draft) {
+        // Bound pending drafts to avoid unbounded growth from bad input.
+        const MAX_PENDING_OSC99: usize = 32;
+        if self.pending_osc99.len() >= MAX_PENDING_OSC99 && !self.pending_osc99.contains_key(&id) {
+            if let Some(oldest) = self.pending_osc99.keys().next().cloned() {
+                self.pending_osc99.remove(&oldest);
+            }
+        }
+        self.pending_osc99.insert(id, draft);
+    }
+
+    pub(crate) fn clear_osc99_draft(&mut self, id: &str) {
+        self.pending_osc99.remove(id);
     }
 
     pub(crate) fn queue_kitty_command(&mut self, command: KittyCommand) {

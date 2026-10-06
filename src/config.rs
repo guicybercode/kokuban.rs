@@ -16,6 +16,7 @@ pub struct Config {
     pub confirm: ConfirmConfig,
     pub omarchy: OmarchyConfig,
     pub update: UpdateConfig,
+    pub notifications: NotificationsConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +125,24 @@ impl Default for UpdateConfig {
     fn default() -> Self {
         Self {
             check_on_startup: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct NotificationsConfig {
+    /// Show desktop notifications for OSC 9 / 777 / 99 and BEL attention.
+    pub enabled: bool,
+    /// Optional program invoked with title/body in env vars (never through a shell).
+    pub command: Option<String>,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            command: None,
         }
     }
 }
@@ -270,6 +289,7 @@ impl Default for Config {
             confirm: ConfirmConfig::default(),
             omarchy: OmarchyConfig::default(),
             update: UpdateConfig::default(),
+            notifications: NotificationsConfig::default(),
         }
     }
 }
@@ -581,5 +601,38 @@ mod tests {
             assert_eq!(config.kitty_graphics_enabled(), expected_kitty);
             assert_eq!(config.sixel_graphics_enabled(), expected_sixel);
         }
+    }
+
+    #[test]
+    fn shipped_toml_notifications_example_is_not_notify_send() {
+        // The optional `command` must be a helper that reads env vars. Pointing it at
+        // notify-send would spawn that binary with no argv summary/body.
+        let shipped = include_str!("../kokuban.toml");
+        assert!(
+            shipped.contains("[notifications]"),
+            "shipped kokuban.toml must document [notifications]"
+        );
+        for line in shipped.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('#') {
+                let lowered = trimmed.to_ascii_lowercase();
+                if lowered.contains("command") && lowered.contains('=') {
+                    assert!(
+                        !lowered.contains("notify-send"),
+                        "example command must not be notify-send: {trimmed}"
+                    );
+                }
+            } else if let Some((key, value)) = trimmed.split_once('=') {
+                if key.trim() == "command" {
+                    assert!(
+                        !value.to_ascii_lowercase().contains("notify-send"),
+                        "command must not point at notify-send: {trimmed}"
+                    );
+                }
+            }
+        }
+        let parsed: Config = toml::from_str(shipped).expect("shipped kokuban.toml must parse");
+        assert!(parsed.notifications.enabled);
+        assert!(parsed.notifications.command.is_none());
     }
 }

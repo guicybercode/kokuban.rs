@@ -5,6 +5,7 @@ use super::render_scheduler::RenderScheduler;
 use super::{process_sixel_event, snapshot_then_lock, PaneCleanup};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::TerminalEvent;
+use crate::notifications::{NotificationController, NotificationRequest};
 use crate::layout::PaneId;
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
@@ -212,6 +213,7 @@ pub(super) struct ReaderShared {
     pub(super) pane_cleanup: PaneCleanup,
     pub(super) kitty_enabled: bool,
     pub(super) sixel_enabled: bool,
+    pub(super) notifications: Arc<NotificationController>,
 }
 
 /// Decode one read of PTY output for `id`. The caller holds the tree lock
@@ -249,6 +251,15 @@ pub(super) fn process_pane_output(
                     if let Some(pane) = tree.pane(id) {
                         pane.queue_input(response);
                     }
+                }
+                TerminalEvent::Notification { title, body } => {
+                    shared
+                        .notifications
+                        .handle_notification(NotificationRequest::new(title, body));
+                }
+                TerminalEvent::Bell => {
+                    // Dock bounce / attention is applied on the main thread.
+                    shared.notifications.handle_bell();
                 }
                 TerminalEvent::KittyGraphics {
                     command,
