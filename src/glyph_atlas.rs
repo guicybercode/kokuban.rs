@@ -180,46 +180,47 @@ impl GlyphAtlas {
     ) -> Result<Self, GlyphAtlasError> {
         validate_sizing(font_size, scale_factor)?;
 
-        let mut properties = Properties::new();
-        properties.style = Style::Normal;
-        properties.weight = Weight::NORMAL;
-
         let family = if font_family.eq_ignore_ascii_case("monospace") {
             FamilyName::Monospace
         } else {
             FamilyName::Title(font_family.to_string())
         };
-        let requested_font = source
-            .select_best_match(&[family], &properties)
-            .map_err(|error| format!("selection failed: {error}"))
-            .and_then(|handle| {
-                ShapingFont::load(&handle)
-                    .map_err(|error| format!("loading failed: {error}"))
-            });
+        let requested_font = load_face(source, &family, false, false);
 
-        let font = match requested_font {
-            Ok(font) => font,
+        let (font, family) = match requested_font {
+            Ok(font) => (font, family),
             Err(requested_error) => {
                 log::warn!(
                     "Font '{font_family}' failed ({requested_error}); falling back to system monospace"
                 );
 
                 let fallback_handle = source
-                    .select_best_match(&[FamilyName::Monospace], &properties)
+                    .select_best_match(&[FamilyName::Monospace], &style_properties(false, false))
                     .map_err(|source| GlyphAtlasError::FallbackSelection {
                         requested_family: font_family.to_string(),
                         requested_error: requested_error.clone(),
                         source,
                     })?;
 
-                ShapingFont::load(&fallback_handle)
+                let font = ShapingFont::load(&fallback_handle)
                     .map_err(|source| GlyphAtlasError::FallbackLoad {
                         requested_family: font_family.to_string(),
                         requested_error,
                         source,
-                    })?
+                    })?;
+                (font, FamilyName::Monospace)
             }
         };
+
+        // Bold and italic are separate faces of the same family. A style the
+        // family does not ship keeps the regular face instead of borrowing a
+        // face of the wrong slant.
+        let faces = [
+            font.clone(),
+            load_face(source, &family, true, false).unwrap_or_else(|_| font.clone()),
+            load_face(source, &family, false, true).unwrap_or_else(|_| font.clone()),
+            load_face(source, &family, true, true).unwrap_or_else(|_| font.clone()),
+        ];
 
         let metrics = scaled_font_metrics(&font.font, font_size, scale_factor)?;
         let cell_width = metrics.cell_width;
@@ -252,7 +253,7 @@ impl GlyphAtlas {
             rgba_pixels,
             text_glyphs: std::array::from_fn(|_| HashMap::new()),
             font: font.font.clone(),
-            rasterizer: TextRasterizer::new(font),
+            rasterizer: TextRasterizer::new(faces),
             glyphs: ScalarGlyphCache::new(),
             cell_width,
             cell_height,
@@ -327,7 +328,7 @@ impl GlyphAtlas {
         }
         let mut bytes = [0; 4];
         let text = key.c.encode_utf8(&mut bytes);
-        let entry = self.rasterize_text(text);
+        let entry = self.rasterize_text(text, key.bold, key.italic);
         self.glyphs.insert(key, entry);
         entry
     }
@@ -351,11 +352,11 @@ impl GlyphAtlas {
         if let (Some(c), None) = (chars.next(), chars.next()) {
             return self.get_or_insert(GlyphKey { c, bold, italic });
         }
-        let style = usize::from(bold) | (usize::from(italic) << 1);
+        let style = style_index(bold, italic);
         if let Some(&entry) = self.text_glyphs[style].get(text) {
             return entry;
         }
-        let entry = self.rasterize_text(text);
+        let entry = self.rasterize_text(text, bold, italic);
         self.text_glyphs[style].insert(text.to_owned(), entry);
         entry
     }
@@ -364,9 +365,11 @@ impl GlyphAtlas {
         glyph.color
     }
 
-    fn rasterize_text(&mut self, text: &str) -> GlyphEntry {
+    fn rasterize_text(&mut self, text: &str, bold: bool, italic: bool) -> GlyphEntry {
         let width = UnicodeWidthStr::width(text).max(1) as f32 * self.cell_width;
-        let bitmap = self.rasterizer.rasterize(text, self.font_size * self.scale_factor, width);
+        let style = style_index(bold, italic);
+        let bitmap =
+            self.rasterizer.rasterize(text, style, self.font_size * self.scale_factor, width);
         match bitmap {
             Some(bitmap) => self.insert_bitmap(text, bitmap),
             None => GlyphEntry::empty(),
@@ -413,6 +416,68 @@ impl GlyphAtlas {
         entry
     }
 
+}
+
+/// Index into the per-style face and cache tables: bit 0 bold, bit 1 italic.
+fn style_index(bold: bool, italic: bool) -> usize {
+    usize::from(bold) | (usize::from(italic) << 1)
+}
+
+fn style_properties(bold: bool, italic: bool) -> Properties {
+    let mut properties = Properties::new();
+    properties.style = if italic { Style::Italic } else { Style::Normal };
+    properties.weight = if bold { Weight::BOLD } else { Weight::NORMAL };
+    properties
+}
+
+fn slant_matches(style: Style, italic: bool) -> bool {
+    (style == Style::Normal) != italic
+}
+
+/// Pick the face whose slant matches and whose weight is closest to the request.
+fn closest_face(faces: &[Properties], bold: bool, italic: bool) -> Option<usize> {
+    let wanted = style_properties(bold, italic).weight.0;
+    faces
+        .iter()
+        .enumerate()
+        .filter(|(_, face)| slant_matches(face.style, italic))
+        .min_by(|(_, a), (_, b)| (a.weight.0 - wanted).abs().total_cmp(&(b.weight.0 - wanted).abs()))
+        .map(|(index, _)| index)
+}
+
+/// Select and load one style of `family`. The platform matcher may hand back a
+/// face of the wrong slant (for example an italic face for a bold-only request);
+/// that is corrected from the family's own faces, and reported as an error when
+/// the family has no face of the requested slant.
+fn load_face(
+    source: &dyn Source,
+    family: &FamilyName,
+    bold: bool,
+    italic: bool,
+) -> Result<ShapingFont, String> {
+    let handle = source
+        .select_best_match(std::slice::from_ref(family), &style_properties(bold, italic))
+        .map_err(|error| format!("selection failed: {error}"))?;
+    let font = ShapingFont::load(&handle).map_err(|error| format!("loading failed: {error}"))?;
+    if slant_matches(font.font.properties().style, italic) {
+        return Ok(font);
+    }
+    let FamilyName::Title(name) = family else {
+        return Err("no face with the requested slant".to_owned());
+    };
+    let handles = source
+        .select_family_by_name(name)
+        .map_err(|error| format!("selection failed: {error}"))?
+        .fonts()
+        .to_vec();
+    let candidates: Vec<_> = handles
+        .iter()
+        .filter_map(|handle| ShapingFont::load(handle).ok())
+        .collect();
+    let properties: Vec<_> = candidates.iter().map(|face| face.font.properties()).collect();
+    closest_face(&properties, bold, italic)
+        .map(|index| candidates[index].clone())
+        .ok_or_else(|| "no face with the requested slant".to_owned())
 }
 
 fn validate_sizing(font_size: f32, scale_factor: f32) -> Result<(), GlyphAtlasError> {
@@ -542,6 +607,87 @@ mod tests {
         fn as_mut_any(&mut self) -> &mut dyn Any {
             self
         }
+    }
+
+    /// Delegates to the system fonts and records every requested style.
+    struct RecordingSource {
+        inner: SystemSource,
+        requests: std::sync::Mutex<Vec<Properties>>,
+    }
+
+    impl Source for RecordingSource {
+        fn all_fonts(&self) -> Result<Vec<Handle>, SelectionError> {
+            self.inner.all_fonts()
+        }
+
+        fn all_families(&self) -> Result<Vec<String>, SelectionError> {
+            self.inner.all_families()
+        }
+
+        fn select_family_by_name(&self, name: &str) -> Result<FamilyHandle, SelectionError> {
+            self.inner.select_family_by_name(name)
+        }
+
+        fn select_best_match(
+            &self,
+            family_names: &[FamilyName],
+            properties: &Properties,
+        ) -> Result<Handle, SelectionError> {
+            self.requests.lock().unwrap().push(*properties);
+            self.inner.select_best_match(family_names, properties)
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_mut_any(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    #[test]
+    fn bold_only_attributes_request_an_upright_bold_face() {
+        let source = RecordingSource {
+            inner: SystemSource::new(),
+            requests: Default::default(),
+        };
+        GlyphAtlas::new_with_source(&source, "monospace", 14.0, 1.0)
+            .expect("system monospace should be available");
+        let requests = source.requests.lock().unwrap();
+        let wanted = |bold: bool, italic: bool| {
+            requests.iter().any(|p| {
+                (p.weight == Weight::BOLD) == bold
+                    && (p.style == Style::Italic) == italic
+            })
+        };
+        assert!(wanted(true, false), "no upright bold face requested: {requests:?}");
+        assert!(wanted(false, true), "no italic face requested: {requests:?}");
+        assert!(wanted(true, true), "no bold italic face requested: {requests:?}");
+    }
+
+    #[test]
+    fn closest_face_never_returns_the_wrong_slant_for_bold_only() {
+        let face = |style, weight| {
+            let mut p = Properties::new();
+            p.style = style;
+            p.weight = weight;
+            p
+        };
+        // The bold italic face comes first, as a platform matcher might return it.
+        let faces = [
+            face(Style::Italic, Weight::BOLD),
+            face(Style::Italic, Weight::NORMAL),
+            face(Style::Normal, Weight::NORMAL),
+            face(Style::Normal, Weight::BOLD),
+        ];
+        assert_eq!(closest_face(&faces, true, false), Some(3));
+        assert_eq!(closest_face(&faces, false, false), Some(2));
+        assert_eq!(closest_face(&faces, true, true), Some(0));
+        assert_eq!(closest_face(&faces, false, true), Some(1));
+        let upright_only = [face(Style::Normal, Weight::NORMAL)];
+        assert_eq!(closest_face(&upright_only, false, true), None);
+        assert_eq!(closest_face(&upright_only, true, false), Some(0));
     }
 
     #[test]
