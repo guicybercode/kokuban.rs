@@ -90,8 +90,7 @@ pub struct MetalRenderer {
 impl MetalRenderer {
     pub fn new(
         device: Retained<ProtocolObject<dyn MTLDevice>>,
-        default_fg: (u8, u8, u8),
-        default_bg: (u8, u8, u8),
+        colors: TerminalColors,
     ) -> Self {
         unsafe {
             let command_queue = device.newCommandQueue().expect("Failed to create command queue");
@@ -224,7 +223,7 @@ impl MetalRenderer {
                 atlas_texture,
                 sampler_state,
                 brush,
-                colors: TerminalColors::new(default_fg, default_bg),
+                colors,
             }
         }
     }
@@ -1067,7 +1066,10 @@ mod tests {
             eprintln!("No Metal device is available for the renderer smoke test");
             return;
         };
-        let renderer = super::MetalRenderer::new(device, (255, 255, 255), (0, 0, 0));
+        let renderer = super::MetalRenderer::new(
+            device,
+            super::TerminalColors::new((255, 255, 255), (0, 0, 0)),
+        );
         assert_eq!(renderer.atlas_texture.pixelFormat(), objc2_metal::MTLPixelFormat::RGBA8Unorm);
         assert_eq!(renderer.brush.texture.pixelFormat(), objc2_metal::MTLPixelFormat::RGBA8Unorm);
     }
