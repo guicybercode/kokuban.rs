@@ -68,3 +68,63 @@ impl PaletteOverrides {
         colors
     }
 }
+
+/// Colors for a renderer without a system palette, such as Metal on macOS.
+#[cfg_attr(all(target_os = "linux", not(test)), allow(dead_code))]
+pub(crate) fn configured_colors(config: &Config) -> TerminalColors {
+    PaletteOverrides::from_config(config).resolve(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn custom_palette() -> (Config, [Rgb; 16]) {
+        let ansi: [Rgb; 16] =
+            std::array::from_fn(|index| (index as u8 * 16, 0x40, 0x80 + index as u8));
+        let mut source = "[colors]\nforeground = '#a1b2c3'\nbackground = '#0d0e0f'\n\
+                          cursor = '#112233'\nansi = ["
+            .to_string();
+        for (red, green, blue) in ansi {
+            source.push_str(&format!("'#{red:02x}{green:02x}{blue:02x}',"));
+        }
+        source.push_str("]\n");
+        (toml::from_str(&source).unwrap(), ansi)
+    }
+
+    #[test]
+    fn configured_colors_use_the_custom_ansi_palette() {
+        let (config, ansi) = custom_palette();
+        let colors = configured_colors(&config);
+        for (index, expected) in ansi.into_iter().enumerate() {
+            let color = Color::Indexed(index as u8);
+            assert_eq!(
+                colors.resolve_foreground(color, false),
+                expected,
+                "color{index}"
+            );
+            assert_eq!(colors.resolve_background(color), expected, "color{index}");
+        }
+        assert_eq!(colors.resolve_foreground(Color::Indexed(1), true), ansi[9]);
+        assert_eq!(
+            colors.resolve_foreground(Color::Default, false),
+            (0xa1, 0xb2, 0xc3)
+        );
+        assert_eq!(colors.default_background(), (0x0d, 0x0e, 0x0f));
+        assert_eq!(colors.cursor(), Some((0x11, 0x22, 0x33)));
+    }
+
+    #[test]
+    fn configured_colors_match_the_linux_resolution_without_a_system_theme() {
+        let (custom, _) = custom_palette();
+        let selection: Config =
+            toml::from_str("[selection]\nforeground = '#010101'\nbackground = '#fefefe'\n")
+                .unwrap();
+        for config in [Config::default(), custom, selection] {
+            assert_eq!(
+                configured_colors(&config),
+                PaletteOverrides::from_config(&config).resolve(None)
+            );
+        }
+    }
+}

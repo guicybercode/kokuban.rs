@@ -19,6 +19,7 @@ use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
 use crate::selection::GridPoint;
+use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::notifications::NotificationController;
 use crate::update::{self, SharedUpdateStatus, UpdateStatus};
@@ -1904,8 +1905,7 @@ pub(super) fn create_terminal_view(
     should_close: Arc<AtomicBool>,
     reader_wake: Arc<ReaderWake>,
     window_is_key: Arc<AtomicBool>,
-    default_fg: (u8, u8, u8),
-    default_bg: (u8, u8, u8),
+    terminal_colors: TerminalColors,
     scale_factor: f32,
     font_family: String,
     font_size: f32,
@@ -1961,7 +1961,7 @@ pub(super) fn create_terminal_view(
     }
 
     let retained_device: Retained<ProtocolObject<dyn MTLDevice>> = device.retain();
-    let renderer = MetalRenderer::new(retained_device, default_fg, default_bg);
+    let renderer = MetalRenderer::new(retained_device, terminal_colors);
 
     VIEW_STATE.with(|state| {
         *state.borrow_mut() = Some(ViewState {
