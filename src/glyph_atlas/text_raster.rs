@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 const MAX_BITMAP_SIDE: u32 = 1024;
 
+#[derive(Clone)]
 pub(super) struct ShapingFont {
     pub font: Font,
     data: Arc<Vec<u8>>,
@@ -89,7 +90,8 @@ impl ShapingFont {
 }
 
 pub(super) struct TextRasterizer {
-    primary: ShapingFont,
+    /// Faces indexed by `bold | italic << 1`.
+    primary: [ShapingFont; 4],
     fallbacks: Vec<ShapingFont>,
     preferred_loaded: bool,
     remaining: Option<Vec<Handle>>,
@@ -97,8 +99,8 @@ pub(super) struct TextRasterizer {
 }
 
 impl TextRasterizer {
-    pub fn new(primary: ShapingFont) -> Self {
-        let loaded_names = HashSet::from([primary.font.full_name()]);
+    pub fn new(primary: [ShapingFont; 4]) -> Self {
+        let loaded_names = primary.iter().map(|face| face.font.full_name()).collect();
         Self {
             primary,
             fallbacks: Vec::new(),
@@ -108,10 +110,16 @@ impl TextRasterizer {
         }
     }
 
-    pub fn rasterize(&mut self, text: &str, size: f32, max_width: f32) -> Option<Bitmap> {
+    pub fn rasterize(
+        &mut self,
+        text: &str,
+        style: usize,
+        size: f32,
+        max_width: f32,
+    ) -> Option<Bitmap> {
         let emoji = prefers_emoji(text);
         if !emoji {
-            if let Some(bitmap) = self.primary.rasterize(text, size, max_width) {
+            if let Some(bitmap) = self.primary[style].rasterize(text, size, max_width) {
                 return Some(bitmap);
             }
         }
@@ -123,7 +131,7 @@ impl TextRasterizer {
             }
         }
         if emoji {
-            if let Some(bitmap) = self.primary.rasterize(text, size, max_width) {
+            if let Some(bitmap) = self.primary[style].rasterize(text, size, max_width) {
                 return Some(bitmap);
             }
         }
@@ -152,9 +160,9 @@ impl TextRasterizer {
         }
 
         // An unavailable font must leave a visible replacement, not erase text.
-        self.primary
+        self.primary[style]
             .rasterize("\u{fffd}", size, max_width)
-            .or_else(|| self.primary.rasterize("?", size, max_width))
+            .or_else(|| self.primary[style].rasterize("?", size, max_width))
     }
 
     fn load_preferred_fallbacks(&mut self) {
