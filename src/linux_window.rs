@@ -19,6 +19,7 @@ use crate::omarchy_theme::{watch_current_theme, PaletteOverrides, ThemeWatcher};
 use crate::selection::{point_from_viewport, GridPoint, SelectionState};
 use crate::pty::Pty;
 use crate::parser::ansi::GraphicsSupport;
+use crate::renderer::box_drawing::{self, CellRect};
 use crate::software_graphics::{ImageSnapshot, SoftwareGraphics};
 use crate::software_raster::{draw_glyph_a8, draw_glyph_rgba, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
@@ -3752,7 +3753,13 @@ fn draw_grid_snapshot_in_band(
                 continue;
             }
 
-            let glyph = if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
+            let has_content = cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0');
+            let builtin = if has_content {
+                builtin_cell_rects(cell, cell_size, atlas.scale_factor())
+            } else {
+                None
+            };
+            let glyph = if has_content && builtin.is_none() {
                 let glyph = atlas.get_or_insert_cell(cell);
                 let intersects = !partial || baseline
                     .and_then(|y| y.checked_add(glyph.bearing_y))
@@ -3767,10 +3774,17 @@ fn draw_grid_snapshot_in_band(
             // Underlines stay inside the cell box even when the glyph's ink
             // misses the band; they must not be skipped along with that glyph.
             let underline = underline_row && cell.underline_style != UnderlineStyle::None;
-            if glyph.is_none() && !underline {
+            // Built-in shapes stay inside the cell box, like underlines.
+            let builtin = builtin.filter(|_| underline_row);
+            if glyph.is_none() && builtin.is_none() && !underline {
                 continue;
             }
             let resolved = resolve_cell_colors(colors, cell);
+            if let Some(rects) = builtin {
+                if let Some(origin) = band_origin(row, column) {
+                    draw_builtin_rects(frame, frame_size, &rects, origin, resolved.foreground, None);
+                }
+            }
             if let Some(glyph) = glyph {
                 let source = GlyphSource {
                     pixels: &atlas.pixels,
@@ -3861,13 +3875,6 @@ fn draw_grid_snapshot_in_band(
         cursor.column
     };
     let Some(cell_origin) = cell_origin(cursor.row, column, cell_dimensions) else { return; };
-    let glyph = atlas.get_or_insert_cell(cell);
-    let Some(destination_x) = cell_origin.0.checked_add(glyph.bearing_x) else { return; };
-    let Some(baseline) = rounded_f64_i32(f64::from(cell_origin.1) + f64::from(atlas.ascent)) else {
-        return;
-    };
-    let Some(destination_y) = baseline.checked_add(glyph.bearing_y)
-        .and_then(|y| y.checked_sub(offset)) else { return; };
     let cursor_color = rgb_to_xrgb(cursor_color.0, cursor_color.1, cursor_color.2);
     let default_background = colors.default_background();
     let mut foreground = cursor_background;
@@ -3877,6 +3884,19 @@ fn draw_grid_snapshot_in_band(
     if foreground == cursor_color {
         foreground = contrasting_cursor_color(cursor_color);
     }
+    if let Some(rects) = builtin_cell_rects(cell, cell_size, atlas.scale_factor()) {
+        let Some(origin_y) = cell_origin.1.checked_sub(offset) else { return; };
+        draw_builtin_rects(frame, frame_size, &rects, (cell_origin.0, origin_y), foreground,
+            Some((cursor_origin, cursor_size)));
+        return;
+    }
+    let glyph = atlas.get_or_insert_cell(cell);
+    let Some(destination_x) = cell_origin.0.checked_add(glyph.bearing_x) else { return; };
+    let Some(baseline) = rounded_f64_i32(f64::from(cell_origin.1) + f64::from(atlas.ascent)) else {
+        return;
+    };
+    let Some(destination_y) = baseline.checked_add(glyph.bearing_y)
+        .and_then(|y| y.checked_sub(offset)) else { return; };
     let source = GlyphSource {
         pixels: &atlas.pixels,
         rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
@@ -3885,6 +3905,52 @@ fn draw_grid_snapshot_in_band(
     };
     draw_glyph_in_cursor(frame, frame_size, source, glyph, (destination_x, destination_y),
         foreground, (cursor_origin, cursor_size));
+}
+
+/// Pixel-exact shapes for block and box drawing characters, which bypass the
+/// font so neighbouring cells join without blended seams.
+fn builtin_cell_rects(cell: &Cell, cell_size: (u32, u32), scale: f32) -> Option<Vec<CellRect>> {
+    if cell.grapheme.is_some() {
+        return None;
+    }
+    let width = if cell.flags.contains(CellFlags::WIDE) {
+        cell_size.0.saturating_mul(2)
+    } else {
+        cell_size.0
+    };
+    box_drawing::builtin_rects(cell.c, width, cell_size.1, scale)
+}
+
+/// Fill built-in shape rectangles at a cell origin, optionally clipped to a
+/// cursor rectangle.
+fn draw_builtin_rects(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    rects: &[CellRect],
+    origin: (i32, i32),
+    color: u32,
+    clip: Option<((i32, i32), (u32, u32))>,
+) {
+    for rect in rects {
+        let mut left = i64::from(origin.0) + i64::from(rect.x);
+        let mut top = i64::from(origin.1) + i64::from(rect.y);
+        let mut right = left + i64::from(rect.width);
+        let mut bottom = top + i64::from(rect.height);
+        if let Some((clip_origin, clip_size)) = clip {
+            left = left.max(i64::from(clip_origin.0));
+            top = top.max(i64::from(clip_origin.1));
+            right = right.min(i64::from(clip_origin.0) + i64::from(clip_size.0));
+            bottom = bottom.min(i64::from(clip_origin.1) + i64::from(clip_size.1));
+        }
+        if left >= right || top >= bottom {
+            continue;
+        }
+        let (Ok(x), Ok(y), Ok(width), Ok(height)) = (
+            i32::try_from(left), i32::try_from(top),
+            u32::try_from(right - left), u32::try_from(bottom - top),
+        ) else { continue; };
+        fill_rect(frame, frame_size, (x, y), (width, height), color, rect.alpha);
+    }
 }
 
 /// Crop the cached glyph itself, retaining the destination stride and source
@@ -10497,5 +10563,220 @@ mod damage_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod builtin_shape_tests {
+    use super::*;
+    use crate::renderer::box_drawing::light_thickness;
+    use crate::selection::{point_from_viewport, SelectionState};
+
+    const FOREGROUND: (u8, u8, u8) = (220, 130, 85);
+    const BACKGROUND: (u8, u8, u8) = (7, 25, 55);
+    const SELECTION_FOREGROUND: (u8, u8, u8) = (250, 240, 10);
+    const SELECTION_BACKGROUND: (u8, u8, u8) = (30, 90, 200);
+    const CURSOR: (u8, u8, u8) = (45, 210, 140);
+
+    fn xrgb(color: (u8, u8, u8)) -> u32 {
+        rgb_to_xrgb(color.0, color.1, color.2)
+    }
+
+    fn atlas(scale: f32) -> GlyphAtlas {
+        GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, scale).unwrap()
+    }
+
+    fn colors() -> TerminalColors {
+        TerminalColors::new(FOREGROUND, BACKGROUND)
+            .with_selection(Some(SELECTION_FOREGROUND), Some(SELECTION_BACKGROUND))
+    }
+
+    fn grid(lines: &[&str]) -> Grid {
+        let columns = lines.iter().map(|line| line.chars().count()).max().unwrap();
+        let mut grid = Grid::new(columns, lines.len(), 0);
+        for (row, line) in lines.iter().enumerate() {
+            grid.carriage_return();
+            grid.cursor_row = row;
+            for c in line.chars() {
+                grid.put_char(c);
+            }
+        }
+        grid.carriage_return();
+        grid.cursor_row = 0;
+        grid
+    }
+
+    struct Frame {
+        pixels: Vec<u32>,
+        width: u32,
+        cell: (u32, u32),
+    }
+
+    impl Frame {
+        fn at(&self, x: u32, y: u32) -> u32 {
+            self.pixels[(y * self.width + x) as usize]
+        }
+
+        /// Pixels of one cell, row by row.
+        fn cell_pixels(&self, row: u32, column: u32) -> Vec<u32> {
+            let (w, h) = self.cell;
+            (0..h).flat_map(|y| (0..w).map(move |x| (x, y)))
+                .map(|(x, y)| self.at(column * w + x, row * h + y))
+                .collect()
+        }
+    }
+
+    fn render(
+        snapshot: &GridSnapshot,
+        atlas: &mut GlyphAtlas,
+        colors: &TerminalColors,
+        cursor: bool,
+    ) -> Frame {
+        let dimensions = atlas_cell_dimensions(atlas).unwrap();
+        let cell = (u32::from(dimensions.0), u32::from(dimensions.1));
+        let size = (snapshot.columns as u32 * cell.0, snapshot.rows as u32 * cell.1);
+        let mut pixels = vec![xrgb(BACKGROUND); (size.0 * size.1) as usize];
+        draw_grid_snapshot(&mut pixels, size, atlas, *colors, dimensions, snapshot, cursor);
+        Frame { pixels, width: size.0, cell }
+    }
+
+    /// Expected cell pixels for a block filling rows `ink_rows`.
+    fn rows_cell(cell: (u32, u32), ink_rows: std::ops::Range<u32>, ink: u32, paper: u32) -> Vec<u32> {
+        (0..cell.1).flat_map(|y| {
+            let color = if ink_rows.contains(&y) { ink } else { paper };
+            std::iter::repeat_n(color, cell.0 as usize)
+        }).collect()
+    }
+
+    #[test]
+    fn blocks_fill_whole_cells_and_lines_join_across_cells_at_scale_1_and_2() {
+        for scale in [1.0, 2.0] {
+            let mut atlas = atlas(scale);
+            let snapshot = snapshot_locked_grid(&grid(&["████", "────", "│▀▄│", "│▄▀│"]));
+            let frame = render(&snapshot, &mut atlas, &colors(), false);
+            let (w, h) = frame.cell;
+            let (fg, bg) = (xrgb(FOREGROUND), xrgb(BACKGROUND));
+
+            // Solid blocks leave no seams between cells.
+            for y in 0..h {
+                for x in 0..frame.width {
+                    assert_eq!(frame.at(x, y), fg, "seam in █ row at ({x}, {y}), scale {scale}");
+                }
+            }
+            // The horizontal line is one unbroken band of light thickness.
+            let thickness = light_thickness(scale);
+            let top = (h - thickness) / 2;
+            for y in 0..h {
+                let expected = if (top..top + thickness).contains(&y) { fg } else { bg };
+                for x in 0..frame.width {
+                    assert_eq!(frame.at(x, h + y), expected, "─ at ({x}, {y}), scale {scale}");
+                }
+            }
+            // Vertical lines continue between rows 2 and 3 in both edge columns.
+            let left = (w - thickness) / 2;
+            for column in [0, 3] {
+                for y in 2 * h..4 * h {
+                    for x in 0..w {
+                        let expected = if (left..left + thickness).contains(&x) { fg } else { bg };
+                        assert_eq!(frame.at(column * w + x, y), expected,
+                            "│ at column {column} ({x}, {y}), scale {scale}");
+                    }
+                }
+            }
+            // Half blocks: the upper half is floor(h / 2) rows.
+            assert_eq!(frame.cell_pixels(2, 1), rows_cell(frame.cell, 0..h / 2, fg, bg));
+            assert_eq!(frame.cell_pixels(2, 2), rows_cell(frame.cell, h / 2..h, fg, bg));
+            // Stacked ▀ over ▄ and ▄ over ▀ meet without a gap.
+            assert_eq!(frame.cell_pixels(3, 1), rows_cell(frame.cell, h / 2..h, fg, bg));
+            assert_eq!(frame.cell_pixels(3, 2), rows_cell(frame.cell, 0..h / 2, fg, bg));
+        }
+    }
+
+    #[test]
+    fn selection_and_reverse_video_recolor_blocks_like_text() {
+        let mut atlas = atlas(1.0);
+        let colors = colors();
+        let grid = grid(&["▀█▀▄"]);
+        let mut snapshot = snapshot_locked_grid(&grid);
+        let mut selection = SelectionState::default();
+        selection.start(point_from_viewport(&grid, 0, 0));
+        selection.update(point_from_viewport(&grid, 0, 1));
+        apply_selection_to_snapshot(&mut snapshot, &selection, &grid, &colors);
+        snapshot.cells[3].flags.insert(CellFlags::REVERSE);
+        let frame = render(&snapshot, &mut atlas, &colors, false);
+        let h = frame.cell.1;
+
+        let (selected_ink, selected_paper) = (xrgb(SELECTION_FOREGROUND), xrgb(SELECTION_BACKGROUND));
+        assert_eq!(frame.cell_pixels(0, 0), rows_cell(frame.cell, 0..h / 2, selected_ink, selected_paper));
+        assert_eq!(frame.cell_pixels(0, 1), rows_cell(frame.cell, 0..h, selected_ink, selected_paper));
+        // Unselected cells keep the ordinary colours; reverse video swaps them.
+        let (fg, bg) = (xrgb(FOREGROUND), xrgb(BACKGROUND));
+        assert_eq!(frame.cell_pixels(0, 2), rows_cell(frame.cell, 0..h / 2, fg, bg));
+        assert_eq!(frame.cell_pixels(0, 3), rows_cell(frame.cell, h / 2..h, bg, fg));
+    }
+
+    #[test]
+    fn opaque_block_cursor_inverts_builtin_shapes() {
+        let colors = colors().with_cursor(CURSOR);
+        for scale in [1.0, 2.0] {
+            let mut atlas = atlas(scale);
+            for text in ["▀", "░", "╭", "┼", "█", "╳"] {
+                let grid = grid(&[&format!("{text}─"), "  "]);
+                let snapshot = snapshot_locked_grid(&grid);
+                let baseline = render(&snapshot, &mut atlas, &colors, false);
+                let actual = render(&snapshot, &mut atlas, &colors, true);
+
+                // Oracle: the cursor cell drawn normally with the cursor
+                // colour as background and the cell background as ink.
+                let mut reference = snapshot_locked_grid(&grid);
+                reference.cells[0].fg = Color::Rgb(BACKGROUND.0, BACKGROUND.1, BACKGROUND.2);
+                reference.cells[0].bg = Color::Rgb(CURSOR.0, CURSOR.1, CURSOR.2);
+                let reference = render(&reference, &mut atlas, &colors, false);
+                assert_eq!(actual.cell_pixels(0, 0), reference.cell_pixels(0, 0),
+                    "cursor over {text} at scale {scale}");
+                assert_ne!(actual.cell_pixels(0, 0), baseline.cell_pixels(0, 0), "{text}");
+                // Nothing outside the cursor cell changes.
+                for (row, column) in [(0, 1), (1, 0), (1, 1)] {
+                    assert_eq!(actual.cell_pixels(row, column), baseline.cell_pixels(row, column));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn translucent_cursor_is_drawn_over_builtin_shapes() {
+        let mut atlas = atlas(1.0);
+        let colors = colors();
+        for shape in [CursorShape::Block, CursorShape::Bar, CursorShape::Underline] {
+            let grid = grid(&["▄"]);
+            let mut snapshot = snapshot_locked_grid(&grid);
+            snapshot.cursor.as_mut().unwrap().shape = shape;
+            let baseline = render(&snapshot, &mut atlas, &colors, false);
+            let actual = render(&snapshot, &mut atlas, &colors, true);
+
+            let mut expected = baseline.pixels.clone();
+            let (origin, size) = cursor_rectangle(shape, (0, 0), baseline.cell).unwrap();
+            fill_rect(&mut expected, (baseline.width, baseline.cell.1), origin, size,
+                contrasting_cursor_color(xrgb(BACKGROUND)), CURSOR_ALPHA);
+            assert_eq!(actual.pixels, expected, "{shape:?} cursor over ▄");
+        }
+    }
+
+    #[test]
+    fn partial_band_repaint_matches_a_full_repaint() {
+        let mut atlas = atlas(2.0);
+        let colors = colors().with_cursor(CURSOR);
+        let snapshot = snapshot_locked_grid(&grid(&["▀╭─╮█", "▒│▚│▄", "▄╰┴╯▀"]));
+        let full = render(&snapshot, &mut atlas, &colors, true);
+        let h = full.cell.1;
+        let width = full.width as usize;
+        let frame_size = (full.width, 3 * h);
+        let band = h / 2..2 * h + h / 3;
+        let (start, end) = (band.start as usize * width, band.end as usize * width);
+        let mut partial = full.pixels.clone();
+        partial[start..end].fill(xrgb(BACKGROUND));
+        draw_grid_snapshot_in_band(&mut partial, frame_size, &mut atlas, &colors,
+            (full.cell.0 as u16, h as u16), &snapshot, true, &[], band);
+        assert_eq!(partial, full.pixels);
     }
 }
