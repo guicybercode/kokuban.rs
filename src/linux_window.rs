@@ -15,7 +15,8 @@ use crate::input::mouse::{
 };
 use crate::input::paste::{encode_paste, MAX_PASTE_BYTES};
 use crate::linux_clipboard::{ClipboardEvent, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES};
-use crate::omarchy_theme::{watch_current_theme, PaletteOverrides, ThemeWatcher};
+use crate::omarchy_theme::{watch_current_theme, ThemeWatcher};
+use crate::palette::PaletteOverrides;
 use crate::selection::{point_from_viewport, GridPoint, SelectionState};
 use crate::pty::Pty;
 use crate::parser::ansi::GraphicsSupport;
