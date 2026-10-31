@@ -3175,6 +3175,7 @@ mod tests {
         assert!(grid.application_cursor_keys);
         parser.feed(b"\x1b[?1l", &mut grid);
         assert!(!grid.application_cursor_keys);
+    }
 
     fn osc8_spans(grid: &Grid) -> Vec<(usize, usize, usize, String)> {
         grid.hyperlinks
