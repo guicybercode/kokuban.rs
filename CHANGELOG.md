@@ -17,6 +17,7 @@
 - README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
 - macOS applies the configured ANSI palette and the configured cursor color follows the text color.
+- README states macOS-first and lists platform support explicitly.
 
 ## v0.4 — 2026-09-28
 
