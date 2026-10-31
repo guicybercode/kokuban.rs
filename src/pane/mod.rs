@@ -1,3 +1,5 @@
+// `pane::pane::Pane` is the leaf; the parent module owns the tree.
+#[allow(clippy::module_inception)]
 pub mod pane;
 
 use crate::graphics::{retain_unreferenced_image_ids, ImageId};

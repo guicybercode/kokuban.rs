@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub font: FontConfig,
@@ -171,7 +171,7 @@ pub struct StatusBarConfig {
     pub show_pane_index: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ThemeConfig {
     pub chrome: ChromeConfig,
@@ -292,27 +292,6 @@ impl Default for KittyImagesConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            font: FontConfig::default(),
-            window: WindowConfig::default(),
-            colors: ColorConfig::default(),
-            selection: SelectionConfig::default(),
-            status_bar: StatusBarConfig::default(),
-            theme: ThemeConfig::default(),
-            keybind: KeybindConfig::default(),
-            prompt_marks: PromptMarksConfig::default(),
-            images: ImagesConfig::default(),
-            confirm: ConfirmConfig::default(),
-            omarchy: OmarchyConfig::default(),
-            update: UpdateConfig::default(),
-            notifications: NotificationsConfig::default(),
-            clipboard: ClipboardConfig::default(),
-        }
-    }
-}
-
 impl Default for FontConfig {
     fn default() -> Self {
         Self {
@@ -367,14 +346,6 @@ impl Default for StatusBarConfig {
             show_shell: true,
             show_cwd: true,
             show_pane_index: true,
-        }
-    }
-}
-
-impl Default for ThemeConfig {
-    fn default() -> Self {
-        Self {
-            chrome: ChromeConfig::default(),
         }
     }
 }

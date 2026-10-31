@@ -1001,6 +1001,8 @@ struct LinuxWindow {
 }
 
 impl LinuxWindow {
+    // Window construction takes every subsystem handle once; a builder is not worth it.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         colors: TerminalColors,
         palette_overrides: PaletteOverrides,
@@ -2891,6 +2893,8 @@ where
     }
 }
 
+// Injectable wheel dispatch for tests: every collaborator is passed explicitly.
+#[allow(clippy::too_many_arguments)]
 fn dispatch_mouse_wheel_with<W>(
     grid: &Mutex<Grid>,
     pointer_position: Option<PhysicalPosition<f64>>,
@@ -3338,14 +3342,12 @@ fn layout_ime_preedit_with_mode(
                 column = column.min(columns - 1);
             }
         }
-        if width != 0 {
-            if width_usize > columns.saturating_sub(column) {
-                if auto_wrap {
-                    row = row.saturating_add(1);
-                    column = 0;
-                } else {
-                    renderable = false;
-                }
+        if width != 0 && width_usize > columns.saturating_sub(column) {
+            if auto_wrap {
+                row = row.saturating_add(1);
+                column = 0;
+            } else {
+                renderable = false;
             }
         }
         if preedit
@@ -3606,6 +3608,7 @@ fn underline_anchor_y(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 fn draw_cell_underline(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -3620,6 +3623,8 @@ fn draw_cell_underline(
         ascent, style, color, 0);
 }
 
+// Software raster helpers take frame, geometry and style as flat arguments.
+#[allow(clippy::too_many_arguments)]
 fn draw_cell_underline_in_band(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -3717,6 +3722,7 @@ fn draw_images(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 fn draw_grid_snapshot_with_images(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -3731,6 +3737,7 @@ fn draw_grid_snapshot_with_images(
         snapshot, draw_terminal_cursor, images, 0..frame_size.1);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_grid_snapshot_in_band(
     frame: &mut [u32],
     frame_size: (u32, u32),

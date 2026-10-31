@@ -407,7 +407,7 @@ pub(super) fn publish_focused_window_title(
 }
 
 thread_local! {
-    static VIEW_STATE: RefCell<Option<ViewState>> = RefCell::new(None);
+    static VIEW_STATE: RefCell<Option<ViewState>> = const { RefCell::new(None) };
 }
 
 fn focus_report_bytes(focused: bool) -> &'static [u8] {
@@ -586,7 +586,7 @@ define_class!(
 
             // If confirm dialog is active, route ALL keys to it (including Cmd+keys).
             let confirm_active = VIEW_STATE.with(|state| {
-                state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
+                state.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some())
             });
             if confirm_active {
                 let ch = event.charactersIgnoringModifiers()
@@ -848,7 +848,7 @@ define_class!(
 
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, event: &NSEvent) {
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             let has_cmd = event.modifierFlags().contains(NSEventModifierFlags::Command);
@@ -912,7 +912,7 @@ define_class!(
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, event: &NSEvent) {
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             VIEW_STATE.with(|state| {
@@ -952,7 +952,7 @@ define_class!(
 
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, event: &NSEvent) {
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if blocked { return; }
             VIEW_STATE.with(|state| {
                 let state = state.borrow();
@@ -983,7 +983,7 @@ define_class!(
             let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
 
             // If confirm dialog is active, route keys to it
-            let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if confirm_active {
                 let ch = event.charactersIgnoringModifiers()
                     .and_then(|s| s.to_string().chars().next());
@@ -1977,7 +1977,7 @@ fn render_frame() {
         drop(tree);
 
         // Keep rendering during fade-in animation
-        let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
+        let still_animating = state.confirm_dialog.as_ref().is_some_and(|d| d.is_animating());
         if still_animating {
             state.request_render();
         }
@@ -2046,6 +2046,8 @@ pub fn sync_window_title(window_number: NSInteger) {
     }
 }
 
+// Parameter struct refactor is tracked separately; keep the signature stable here.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn create_terminal_view(
     mtm: MainThreadMarker,
     device: &ProtocolObject<dyn MTLDevice>,

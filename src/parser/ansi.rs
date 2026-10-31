@@ -706,7 +706,7 @@ impl Parser {
 
     fn execute(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
-            0x0a | 0x0b | 0x0c => grid.newline(),
+            0x0a..=0x0c => grid.newline(),
             0x0d => grid.carriage_return(),
             0x08 => grid.backspace(),
             0x09 => grid.tab(),

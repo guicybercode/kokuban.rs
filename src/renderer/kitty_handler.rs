@@ -342,6 +342,8 @@ impl KittyHandler {
 
     /// Process a parsed Kitty graphics command.
     /// Returns any PTY response, cursor movement, and deferred cache effects.
+    // Every argument is a distinct piece of terminal state the protocol can touch.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn process(
         &mut self,
         mut cmd: KittyCommand,
@@ -1188,6 +1190,8 @@ impl KittyHandler {
         }
     }
 
+    // Placement needs the command, image geometry and grid state together.
+    #[allow(clippy::too_many_arguments)]
     fn create_placement(
         &mut self,
         cmd: &KittyCommand,
@@ -2045,7 +2049,7 @@ fn open_canonical_parent(path: &Path) -> Result<(OwnedFd, CString), FileLoadErro
 
     let root_fd = unsafe {
         libc::open(
-            b"/\0".as_ptr().cast(),
+            c"/".as_ptr(),
             libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
         )
     };
