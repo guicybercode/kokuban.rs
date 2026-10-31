@@ -40,6 +40,12 @@ fn shapeable(c: char) -> bool {
     matches!(c, '!'..='~')
 }
 
+/// Um run só alfanumérico não liga em Fira Code, JetBrains Mono ou Cascadia,
+/// fora `www`; pular esses runs poupa o shaping de quase todo texto corrido.
+fn may_ligate(text: &str) -> bool {
+    text.bytes().any(|b| !b.is_ascii_alphanumeric()) || text.contains("ww")
+}
+
 /// Cache de linhas moldadas. A chave é o hash de (escalares, estilos); o valor
 /// é compartilhado com o renderizador por `Arc` para que o atlas continue
 /// mutável durante o laço de células.
@@ -134,6 +140,7 @@ pub fn shape_row<'f>(
         Feature::new(Tag::from_bytes(b"liga"), 1, ..),
         Feature::new(Tag::from_bytes(b"dlig"), 0, ..),
     ];
+    let mut faces: [Option<Option<rustybuzz::Face<'f>>>; 4] = [None, None, None, None];
     let mut text = String::new();
     let mut col = 0;
     while col < cells.len() {
@@ -148,13 +155,19 @@ pub fn shape_row<'f>(
             text.push(cells[col].0);
             col += 1;
         }
-        if text.len() < 2 {
+        if text.len() < 2 || !may_ligate(&text) {
             continue;
         }
-        let Some(face) = face_for(style) else {
+        // Uma Face rustybuzz por estilo e por linha: montar a Face custa
+        // dezenas de microssegundos, mais que moldar um run curto.
+        let slot = &mut faces[usize::from(style & 3)];
+        if slot.is_none() {
+            *slot = Some(face_for(style));
+        }
+        let Some(Some(face)) = slot.as_ref() else {
             continue;
         };
-        shape_run(&face, &features, &text, start, style, out);
+        shape_run(face, &features, &text, start, style, out);
     }
 }
 
