@@ -10,6 +10,7 @@
 - kitty keyboard protocol, progressive-enhancement level 1 (disambiguate escape codes): push/pop/set/query of the flag stack per screen, and `CSI u` encodings for Escape, modified Enter/Tab/Backspace and Ctrl/Alt letters.
 - Per-pane attention on macOS: a BEL or desktop notification in an unfocused pane marks it with ● in the status bar and turns its dividers hanko red; `Cmd+Shift+A` jumps to the next marked pane.
 - Chalkboard factory theme: `#1f3a2a` board, `#f4f6f0` chalk text and cursor, chalk-inverted selection, window chrome in the same green family and hanko red as the only accent.
+- A fresh four-terminal throughput run on `main` (`docs/linux-evidence/2026-10-31-four-terminals/`): Kokuban now leads ASCII (92.4 MiB/s) and ANSI (63.6) on the CI host.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
 
 ### Changed

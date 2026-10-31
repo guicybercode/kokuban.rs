@@ -76,7 +76,7 @@ Kokuban, Ghostty, Alacritty and Kitty were driven through the same PTY harness o
 
 ## Performance
 
-On the same Linux host Kokuban led ANSI throughput at 55.7 MiB/s against Ghostty tip 22.1, Alacritty 53.8 and Kitty 16.7, and beat Ghostty on all four workloads; Kitty led ASCII and Unicode. Full numbers, methods and limits: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+On the same Linux host (CI run of 2026-10-31) Kokuban led ASCII throughput at 92.4 MiB/s and ANSI at 63.6, against Ghostty tip 25.6 / 20.7, Alacritty 53.8 / 58.0 and Kitty 84.5 / 16.5; Kitty led Unicode and Alacritty led short lines. Full numbers, methods and limits: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Keybinds
 
