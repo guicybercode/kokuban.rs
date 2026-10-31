@@ -4,15 +4,45 @@ use super::keyboard::{
 };
 use super::keybind::KeyModifiers;
 use super::mouse::mouse_button_with_modifier_flags;
+use crate::config::OptionAsAlt;
 use objc2_app_kit::{NSEvent, NSEventModifierFlags};
+
+/// Device-dependent bits AppKit sets alongside `NSEventModifierFlags::Option`
+/// to tell the two Option keys apart (`NX_DEVICELALTKEYMASK` / `NX_DEVICERALTKEYMASK`).
+const LEFT_OPTION_DEVICE_BIT: usize = 0x20;
+const RIGHT_OPTION_DEVICE_BIT: usize = 0x40;
+
+/// Whether the Option key in `modifiers` should act as Meta (ESC prefix)
+/// under `option_as_alt`, or be left to macOS text composition.
+pub(crate) fn option_acts_as_meta(modifiers: NSEventModifierFlags, option_as_alt: OptionAsAlt) -> bool {
+    if !modifiers.contains(NSEventModifierFlags::Option) {
+        return false;
+    }
+    let raw = modifiers.0;
+    let left = raw & LEFT_OPTION_DEVICE_BIT != 0;
+    let right = raw & RIGHT_OPTION_DEVICE_BIT != 0;
+    match option_as_alt {
+        OptionAsAlt::Both => true,
+        OptionAsAlt::None => false,
+        // Without device bits (synthetic events) fall back to Meta.
+        OptionAsAlt::Left => left || (!left && !right),
+        OptionAsAlt::Right => right || (!left && !right),
+    }
+}
 
 pub fn translate_key_event(
     event: &NSEvent,
     application_cursor_keys: bool,
     kitty_disambiguate: bool,
+    option_as_alt: OptionAsAlt,
 ) -> Option<Vec<u8>> {
     let key_code = event.keyCode();
-    let modifiers = event.modifierFlags();
+    let mut modifiers = event.modifierFlags();
+    if !option_acts_as_meta(modifiers, option_as_alt) {
+        // Composed text ("∫", "ç", dead keys) arrives in `characters()`;
+        // dropping the flag keeps every encoder on the plain-text path.
+        modifiers.remove(NSEventModifierFlags::Option);
+    }
     let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
     let has_alt = modifiers.contains(NSEventModifierFlags::Option);
 
@@ -219,6 +249,8 @@ mod tests {
         encode_macos_terminal_key, encode_macos_text_input, key_modifiers_from_appkit,
         mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
     };
+    use super::{option_acts_as_meta, LEFT_OPTION_DEVICE_BIT, RIGHT_OPTION_DEVICE_BIT};
+    use crate::config::OptionAsAlt;
 
     #[test]
     fn kitty_disambiguate_routes_macos_keys_through_csi_u() {
@@ -322,6 +354,29 @@ mod tests {
             encode_macos_terminal_key(48, NSEventModifierFlags::Shift, false).as_deref(),
             Some(b"\x1b[Z".as_slice())
         );
+    }
+
+    #[test]
+    fn option_as_alt_setting_selects_which_option_key_is_meta() {
+        let left = NSEventModifierFlags(NSEventModifierFlags::Option.0 | LEFT_OPTION_DEVICE_BIT);
+        let right = NSEventModifierFlags(NSEventModifierFlags::Option.0 | RIGHT_OPTION_DEVICE_BIT);
+        let plain = NSEventModifierFlags::Option;
+        let none = NSEventModifierFlags::empty();
+        for (modifiers, setting, expected) in [
+            (left, OptionAsAlt::Both, true),
+            (right, OptionAsAlt::Both, true),
+            (left, OptionAsAlt::Left, true),
+            (right, OptionAsAlt::Left, false),
+            (left, OptionAsAlt::Right, false),
+            (right, OptionAsAlt::Right, true),
+            (left, OptionAsAlt::None, false),
+            (right, OptionAsAlt::None, false),
+            (plain, OptionAsAlt::Left, true),
+            (plain, OptionAsAlt::None, false),
+            (none, OptionAsAlt::Both, false),
+        ] {
+            assert_eq!(option_acts_as_meta(modifiers, setting), expected, "{modifiers:?} {setting:?}");
+        }
     }
 
     #[test]

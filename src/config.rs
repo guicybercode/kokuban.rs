@@ -18,6 +18,7 @@ pub struct Config {
     pub update: UpdateConfig,
     pub notifications: NotificationsConfig,
     pub clipboard: ClipboardConfig,
+    pub input: InputConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -154,6 +155,26 @@ pub struct ClipboardConfig {
     /// Let programs copy text to the system clipboard with OSC 52.
     /// Reads (`OSC 52 ; ? `) are never answered.
     pub osc52_write: bool,
+}
+
+/// Which Option key acts as Alt/Meta (ESC prefix) instead of composing
+/// characters such as `∫` or `ç` (macOS).
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OptionAsAlt {
+    #[default]
+    Both,
+    Left,
+    Right,
+    None,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct InputConfig {
+    /// `both` (default) keeps every Option key as Meta; `left`/`right` keep
+    /// one side for accents; `none` lets macOS compose text with both.
+    pub option_as_alt: OptionAsAlt,
 }
 
 impl Default for ClipboardConfig {
@@ -309,6 +330,7 @@ impl Default for Config {
             update: UpdateConfig::default(),
             notifications: NotificationsConfig::default(),
             clipboard: ClipboardConfig::default(),
+            input: InputConfig::default(),
         }
     }
 }

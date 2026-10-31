@@ -380,6 +380,7 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         bg_opacity,
         status_bar_height,
         status_bar_enabled: config.status_bar.enabled,
+        option_as_alt: config.input.option_as_alt,
         status_bar_layout: StatusBarLayout {
             show_shell: config.status_bar.show_shell,
             show_cwd: config.status_bar.show_cwd,

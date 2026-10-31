@@ -46,6 +46,12 @@ enabled = true
 # with OSC 52. Only writes are honoured; clipboard reads are never answered.
 osc52_write = true
 
+[input]
+# macOS: which Option key sends ESC-prefixed Meta sequences. "both" (default),
+# "left" or "right" keep the other side for accents (∫, ç); "none" lets macOS
+# compose text with both keys.
+option_as_alt = "both"
+
 [prompt_marks]
 enabled = true
 show_indicator = true

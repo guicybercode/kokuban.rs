@@ -15,6 +15,7 @@ use crate::input::mouse::{
 use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
+use crate::config::OptionAsAlt;
 use crate::render_scene::{StatusBarLayout, ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::{FrameInputs, MetalRenderer};
@@ -320,6 +321,7 @@ struct ViewState {
     status_bar_height: f32,
     status_bar_enabled: bool,
     status_bar_layout: StatusBarLayout,
+    option_as_alt: OptionAsAlt,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
@@ -1052,6 +1054,7 @@ define_class!(
                             event,
                             pane.grid.application_cursor_keys,
                             pane.grid.kitty_disambiguate(),
+                            state.option_as_alt,
                         ) {
                             pane.queue_input(bytes);
                         }
@@ -2083,6 +2086,7 @@ pub(super) struct TerminalViewParams<'a> {
     pub(super) status_bar_height: f32,
     pub(super) status_bar_enabled: bool,
     pub(super) status_bar_layout: StatusBarLayout,
+    pub(super) option_as_alt: OptionAsAlt,
     pub(super) resize_step: f32,
     pub(super) prompt_indicator_color: Option<(u8, u8, u8)>,
     pub(super) image_store: Arc<Mutex<ImageStore>>,
@@ -2119,6 +2123,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
         status_bar_height,
         status_bar_enabled,
         status_bar_layout,
+        option_as_alt,
         resize_step,
         prompt_indicator_color,
         image_store,
@@ -2191,6 +2196,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
             status_bar_height,
             status_bar_enabled,
             status_bar_layout,
+            option_as_alt,
             resize_step,
             prompt_indicator_color,
             image_store,
