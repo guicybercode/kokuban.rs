@@ -291,18 +291,15 @@ impl Parser {
                     self.state = State::CsiIgnore;
                 }
             }
-            b'?' | b'>' => {
+            b'<'..=b'?' => {
+                // Private parameter markers. They are recorded alongside the
+                // intermediates; `dispatch_csi` only lets whitelisted
+                // (marker, final) pairs through to the handlers.
                 if self.push_intermediate(byte) {
                     self.state = State::CsiParam;
                 } else {
                     self.state = State::CsiIgnore;
                 }
-            }
-            b'<' | b'=' => {
-                // These are valid CSI private parameter markers, but Kokuban
-                // does not implement their namespaces. Consume the complete
-                // sequence without letting it reach standard CSI handlers.
-                self.state = State::CsiIgnore;
             }
             0x20..=0x2f => {
                 if self.push_intermediate(byte) {
@@ -731,8 +728,9 @@ impl Parser {
         let namespace = self.intermediates.as_slice();
         match namespace {
             [] => {}
-            [b'?'] if matches!(final_byte, b'h' | b'l') => {}
-            [b'>'] if matches!(final_byte, b'c' | b'q') => {}
+            [b'?'] if matches!(final_byte, b'h' | b'l' | b'u') => {}
+            [b'>'] if matches!(final_byte, b'c' | b'q' | b'u') => {}
+            [b'<' | b'='] if final_byte == b'u' => {}
             [b' '] if final_byte == b'q' => {}
             [b'!'] if final_byte == b'p' => {}
             _ => {
@@ -745,9 +743,35 @@ impl Parser {
         }
         let has_question = matches!(namespace, [b'?']);
         let has_gt = matches!(namespace, [b'>']);
+        let has_lt = matches!(namespace, [b'<']);
+        let has_eq = matches!(namespace, [b'=']);
         let has_space = matches!(namespace, [b' ']);
 
         match final_byte {
+            // Kitty keyboard protocol (https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+            // CSI > flags u — push flags (default 0)
+            b'u' if has_gt => {
+                let flags = params.first().copied().unwrap_or(0);
+                grid.push_keyboard_flags(u8::try_from(flags).unwrap_or(u8::MAX));
+            }
+            // CSI < n u — pop n entries (default 1)
+            b'u' if has_lt => {
+                let count = params.first().copied().unwrap_or(1).max(1);
+                grid.pop_keyboard_flags(count as usize);
+            }
+            // CSI = flags ; mode u — set (1), set bits (2) or reset bits (3)
+            b'u' if has_eq => {
+                let flags = params.first().copied().unwrap_or(0);
+                let mode = params.get(1).copied().unwrap_or(1);
+                grid.set_keyboard_flags(u8::try_from(flags).unwrap_or(u8::MAX), mode);
+            }
+            // CSI ? u — query. Only "disambiguate" (bit 1) is honored, so the
+            // reply advertises just that bit: a program must not believe the
+            // other enhancements are active when the encoder ignores them.
+            b'u' if has_question => {
+                let flags = grid.keyboard_flags() & crate::grid::KITTY_KEYBOARD_DISAMBIGUATE;
+                grid.queue_response(format!("\x1b[?{flags}u").into_bytes());
+            }
             // DECSCUSR — cursor shape (CSI Ps SP q)
             b'q' if has_space => {
                 let ps = params.first().copied().unwrap_or(0);
@@ -3013,6 +3037,144 @@ mod tests {
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].image_id, Some(7));
         assert!(parser.parser.active_control_string.is_none());
+    }
+    fn kitty_reply(grid: &mut Grid) -> Vec<u8> {
+        let events = grid.drain_terminal_events();
+        match events.as_slice() {
+            [TerminalEvent::Response(response)] => response.clone(),
+            other => panic!("expected a single response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn kitty_keyboard_push_pop_and_query() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?0u");
+        assert!(!grid.kitty_disambiguate());
+
+        parser.feed(b"\x1b[>1u\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?1u");
+        assert!(grid.kitty_disambiguate());
+        assert_eq!(grid.keyboard_flags(), 1);
+
+        // Default push is 0, which masks the previous entry until popped.
+        parser.feed(b"\x1b[>u\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?0u");
+        parser.feed(b"\x1b[<u\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?1u");
+
+        // Pop more than pushed is harmless.
+        parser.feed(b"\x1b[<5u\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?0u");
+        assert_eq!(grid.keyboard_flags(), 0);
+    }
+
+    #[test]
+    fn kitty_keyboard_query_reports_only_honored_bits() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b[>31u", &mut grid);
+        // Every bit is stored...
+        assert_eq!(grid.keyboard_flags(), 0b1_1111);
+        // ...but the reply only advertises "disambiguate", the one we honor.
+        parser.feed(b"\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?1u");
+        parser.feed(b"\x1b[>2u\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?0u");
+        assert!(!grid.kitty_disambiguate());
+    }
+
+    #[test]
+    fn kitty_keyboard_set_modes() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        // Mode 1 (default): replace.
+        parser.feed(b"\x1b[=3u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 3);
+        parser.feed(b"\x1b[=1;1u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 1);
+        // Mode 2: set bits.
+        parser.feed(b"\x1b[=4;2u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 5);
+        // Mode 3: reset bits.
+        parser.feed(b"\x1b[=1;3u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 4);
+        assert!(!grid.kitty_disambiguate());
+        // Set modifies the top entry only; a pop reveals the previous one.
+        parser.feed(b"\x1b[>1u\x1b[=0u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 0);
+        parser.feed(b"\x1b[<u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 4);
+    }
+
+    #[test]
+    fn kitty_keyboard_stack_is_per_screen() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b[>1u", &mut grid);
+        assert!(grid.kitty_disambiguate());
+
+        // The alternate screen starts with an empty stack.
+        parser.feed(b"\x1b[?1049h\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?0u");
+        assert!(!grid.kitty_disambiguate());
+        parser.feed(b"\x1b[>1u\x1b[>1u", &mut grid);
+        assert!(grid.kitty_disambiguate());
+
+        // Leaving restores the primary stack and drops the alternate one.
+        parser.feed(b"\x1b[?1049l\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?1u");
+        parser.feed(b"\x1b[<u", &mut grid);
+        assert!(!grid.kitty_disambiguate());
+
+        // Re-entering the alternate screen starts from scratch again.
+        parser.feed(b"\x1b[?47h\x1b[?u", &mut grid);
+        assert_eq!(kitty_reply(&mut grid), b"\x1b[?0u");
+        parser.feed(b"\x1b[?47l", &mut grid);
+    }
+
+    #[test]
+    fn kitty_keyboard_stack_reset_by_ris() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b[>1u\x1b[>1u", &mut grid);
+        assert!(grid.kitty_disambiguate());
+        parser.feed(b"\x1bc", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 0);
+        parser.feed(b"\x1b[<u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 0);
+    }
+
+    #[test]
+    fn kitty_keyboard_stack_cap_evicts_bottom() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b[>1u", &mut grid);
+        for _ in 0..16 {
+            parser.feed(b"\x1b[>0u", &mut grid);
+        }
+        // 17 pushes: the first (flags=1) was evicted, so popping all 16
+        // remaining entries leaves the default 0 rather than 1.
+        parser.feed(b"\x1b[<16u", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 0);
+        assert!(!grid.kitty_disambiguate());
+    }
+
+    #[test]
+    fn kitty_keyboard_plain_csi_u_and_other_markers_are_ignored() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        // Plain `CSI u` and unrelated finals under `<`/`=` must not touch the stack.
+        parser.feed(b"\x1b[1u\x1b[<1h\x1b[=1h", &mut grid);
+        assert_eq!(grid.keyboard_flags(), 0);
+        assert!(grid.drain_terminal_events().is_empty());
+        // DEC private modes keep working next to the `?` marker.
+        parser.feed(b"\x1b[?1h", &mut grid);
+        assert!(grid.application_cursor_keys);
+        parser.feed(b"\x1b[?1l", &mut grid);
+        assert!(!grid.application_cursor_keys);
     }
 
     fn osc8_spans(grid: &Grid) -> Vec<(usize, usize, usize, String)> {

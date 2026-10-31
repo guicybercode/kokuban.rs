@@ -1957,9 +1957,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 let result = dispatch_keyboard_input_with(
                     self.grid.as_ref(),
                     scrollback_action,
-                    |application_cursor_keys| {
+                    |application_cursor_keys, kitty_disambiguate| {
                         key_press.and_then(|key_press| {
-                            encode_key_press(key_press, application_cursor_keys)
+                            encode_key_press(key_press, application_cursor_keys, kitty_disambiguate)
                         })
                     },
                     |bytes| {
@@ -2553,10 +2553,10 @@ fn dispatch_keyboard_input_with<E, W>(
     write: W,
 ) -> Result<KeyboardInputOutcome, KeyboardInputError>
 where
-    E: FnOnce(bool) -> Option<Vec<u8>>,
+    E: FnOnce(bool, bool) -> Option<Vec<u8>>,
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
-    let application_cursor_keys = {
+    let (application_cursor_keys, kitty_disambiguate) = {
         let mut grid = grid
             .lock()
             .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
@@ -2566,9 +2566,13 @@ where
             return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
         }
 
-        grid.application_cursor_keys
+        (grid.application_cursor_keys, grid.kitty_disambiguate())
     };
-    dispatch_encoded_terminal_input_with(grid, encode(application_cursor_keys), write)
+    dispatch_encoded_terminal_input_with(
+        grid,
+        encode(application_cursor_keys, kitty_disambiguate),
+        write,
+    )
 }
 
 fn accumulate_wheel_steps(
@@ -5203,7 +5207,7 @@ mod tests {
         let outcome = dispatch_keyboard_input_with(
             &grid,
             None,
-            |application_cursor_keys| {
+            |application_cursor_keys, _kitty_disambiguate| {
                 assert!(application_cursor_keys);
                 assert!(
                     grid.try_lock().is_ok(),
@@ -6187,7 +6191,7 @@ mod tests {
             dispatch_keyboard_input_with(
                 &grid,
                 Some(action),
-                |_| {
+                |_, _| {
                     encode_calls.fetch_add(1, Ordering::Relaxed);
                     Some(b"trap".to_vec())
                 },
@@ -8401,7 +8405,7 @@ mod tests {
             dispatch_keyboard_input_with(
                 &grid,
                 None,
-                |_| None,
+                |_, _| None,
                 |_| {
                     writes.fetch_add(1, Ordering::Relaxed);
                     Ok(())
@@ -8424,7 +8428,7 @@ mod tests {
         let error = dispatch_keyboard_input_with(
             &grid,
             None,
-            |_| Some(b"x".to_vec()),
+            |_, _| Some(b"x".to_vec()),
             |_| Err(TerminalWriteQueueError::Full),
         )
         .expect_err("fake queue failure should be preserved");
@@ -8452,7 +8456,7 @@ mod tests {
         let error = dispatch_keyboard_input_with(
             grid.as_ref(),
             Some(ScrollbackAction::PageUp),
-            |_| {
+            |_, _| {
                 encode_calls.fetch_add(1, Ordering::Relaxed);
                 Some(b"x".to_vec())
             },

@@ -23,6 +23,17 @@ use crate::graphics::{ImageId, ImagePlacement, PlacementMode};
 
 const MAX_PENDING_SIXEL_IMAGES: usize = 256;
 
+/// Kitty keyboard protocol: "disambiguate escape codes" (bit 1). This is the
+/// only progressive enhancement Kokuban honors so far.
+pub const KITTY_KEYBOARD_DISAMBIGUATE: u8 = 0b1;
+/// All progressive enhancement bits defined by the protocol (1|2|4|8|16).
+/// They are stored so push/pop/query round-trip, but only bit 1 changes the
+/// encoding of key presses.
+const KITTY_KEYBOARD_FLAG_MASK: u8 = 0b1_1111;
+/// Kitty caps the per-screen flag stack and evicts the bottom entry on
+/// overflow so misbehaving programs cannot grow it without bound.
+const KITTY_KEYBOARD_STACK_CAP: usize = 16;
+
 #[derive(Debug)]
 pub(crate) enum TerminalEvent {
     Response(Vec<u8>),
@@ -209,6 +220,13 @@ pub struct Grid {
     pub cursor_style: CursorStyle,
     pub insert_mode: bool,
     pub charset: CharSet,
+    /// Kitty keyboard protocol flag stack for the screen currently shown
+    /// (`CSI > flags u` pushes, `CSI < n u` pops). Empty means flags = 0.
+    keyboard_flags: Vec<u8>,
+    /// Flag stack of the screen that is *not* shown. Kitty keeps a separate
+    /// stack per screen: the alternate screen starts empty and the primary
+    /// stack is restored when leaving it.
+    inactive_keyboard_flags: Vec<u8>,
     // Underline state (current SGR)
     pub underline_style: UnderlineStyle,
     pub underline_color: Color,
@@ -289,6 +307,8 @@ impl Grid {
             cursor_style: CursorStyle::default(),
             insert_mode: false,
             charset: CharSet::Ascii,
+            keyboard_flags: Vec::new(),
+            inactive_keyboard_flags: Vec::new(),
             underline_style: UnderlineStyle::None,
             underline_color: Color::Default,
             title: String::new(),
@@ -460,6 +480,51 @@ impl Grid {
 
     pub(crate) fn queue_response(&mut self, response: Vec<u8>) {
         self.pending_terminal_events.push(TerminalEvent::Response(response));
+    }
+
+    /// Effective kitty keyboard protocol flags for the current screen (top of
+    /// the stack, or 0 when nothing was pushed). All bits are stored, but
+    /// only [`KITTY_KEYBOARD_DISAMBIGUATE`] is honored by the input path.
+    pub fn keyboard_flags(&self) -> u8 {
+        self.keyboard_flags.last().copied().unwrap_or(0)
+    }
+
+    /// True when the application asked for "disambiguate escape codes"
+    /// (progressive enhancement bit 1 of the kitty keyboard protocol).
+    pub fn kitty_disambiguate(&self) -> bool {
+        self.keyboard_flags() & KITTY_KEYBOARD_DISAMBIGUATE != 0
+    }
+
+    /// `CSI > flags u`: push a new flag set. Like kitty, the stack is capped
+    /// and the oldest entry is evicted when it overflows.
+    pub(crate) fn push_keyboard_flags(&mut self, flags: u8) {
+        if self.keyboard_flags.len() >= KITTY_KEYBOARD_STACK_CAP {
+            self.keyboard_flags.remove(0);
+        }
+        self.keyboard_flags.push(flags & KITTY_KEYBOARD_FLAG_MASK);
+    }
+
+    /// `CSI < n u`: pop `n` flag sets (popping an empty stack is a no-op).
+    pub(crate) fn pop_keyboard_flags(&mut self, count: usize) {
+        let keep = self.keyboard_flags.len().saturating_sub(count.max(1));
+        self.keyboard_flags.truncate(keep);
+    }
+
+    /// `CSI = flags ; mode u`: modify the current flags in place. Mode 1
+    /// replaces them, 2 sets the given bits, 3 clears them. When the stack is
+    /// empty the result replaces the implicit 0 entry.
+    pub(crate) fn set_keyboard_flags(&mut self, flags: u8, mode: u16) {
+        let flags = flags & KITTY_KEYBOARD_FLAG_MASK;
+        let current = self.keyboard_flags();
+        let next = match mode {
+            2 => current | flags,
+            3 => current & !flags,
+            _ => flags,
+        };
+        match self.keyboard_flags.last_mut() {
+            Some(top) => *top = next,
+            None => self.keyboard_flags.push(next),
+        }
     }
 
     pub(crate) fn queue_notification(&mut self, title: String, body: String) {
@@ -1138,6 +1203,8 @@ impl Grid {
         debug_assert!(self.saved_primary_image_placements.is_none());
         self.using_alt_screen = true;
         self.scroll_offset = 0;
+        // The alternate screen starts with its own empty keyboard flag stack.
+        self.inactive_keyboard_flags = std::mem::take(&mut self.keyboard_flags);
         self.alt_cursor = (
             self.cursor_row,
             self.screen_cursor_col().unwrap_or(self.cols() - 1),
@@ -1178,6 +1245,9 @@ impl Grid {
         if !self.using_alt_screen { return; }
         self.selection_revision = self.selection_revision.wrapping_add(1);
         self.screen_revision = self.screen_revision.wrapping_add(1);
+        // Restore the primary screen's keyboard flag stack; the alternate
+        // screen's stack is discarded.
+        self.keyboard_flags = std::mem::take(&mut self.inactive_keyboard_flags);
         if let Some(primary) = self.alt_buffer.take() {
             self.buffer = primary;
         }
