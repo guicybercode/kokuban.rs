@@ -434,7 +434,12 @@ impl MetalRenderer {
                 let cx0 = rect.x + ccol as f32 * cell_w;
                 let cy0 = rect.y + crow as f32 * cell_h;
                 if cy0 + cell_h <= rect.y + grid_height {
-                    let cursor_color = Self::pack_color(192, 192, 192, 180);
+                    // Chalk cursor: follow the configured cursor color, else the text color.
+                    let (cr, cg, cb) = self
+                        .colors
+                        .cursor()
+                        .unwrap_or_else(|| self.colors.resolve_foreground(Color::Default, false));
+                    let cursor_color = Self::pack_color(cr, cg, cb, 180);
                     match grid.cursor_style.shape {
                         CursorShape::Block => {
                             Self::add_rect(vertices, cx0, cy0, cx0 + cell_w, cy0 + cell_h, white_u, white_v, cursor_color);

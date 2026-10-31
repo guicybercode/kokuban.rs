@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn explicit_values_equal_to_defaults_still_override_system_colors() {
         let config: Config = toml::from_str(
-            "[colors]\nforeground = '#c0c0c0'\n[selection]\nbackground = '#b4d5fe'\n",
+            "[colors]\nforeground = '#f4f6f0'\n[selection]\nbackground = '#f4f6f0'\n",
         )
         .unwrap();
         let overrides = PaletteOverrides::from_config(&config);

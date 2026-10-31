@@ -320,8 +320,8 @@ impl Default for WindowConfig {
 impl Default for SelectionConfig {
     fn default() -> Self {
         Self {
-            foreground: "#000000".to_string(),
-            background: "#b4d5fe".to_string(),
+            foreground: "#1f3a2a".to_string(),
+            background: "#f4f6f0".to_string(),
             explicit_foreground: false,
             explicit_background: false,
         }
@@ -331,8 +331,8 @@ impl Default for SelectionConfig {
 impl Default for ColorConfig {
     fn default() -> Self {
         Self {
-            foreground: "#c0c0c0".to_string(),
-            background: "#1a1a2e".to_string(),
+            foreground: "#f4f6f0".to_string(),
+            background: "#1f3a2a".to_string(),
             cursor: None,
             ansi: None,
             explicit_foreground: false,
@@ -363,11 +363,11 @@ impl Default for ThemeConfig {
 impl Default for ChromeConfig {
     fn default() -> Self {
         Self {
-            sumi_black: "#1a1a1a".to_string(),
-            sumi_dark: "#2d2d2d".to_string(),
-            sumi_medium: "#4a4a4a".to_string(),
-            sumi_light: "#7a7a7a".to_string(),
-            sumi_ghost: "#3a3a3a".to_string(),
+            sumi_black: "#142619".to_string(),
+            sumi_dark: "#182e21".to_string(),
+            sumi_medium: "#3b5a48".to_string(),
+            sumi_light: "#c9d3c6".to_string(),
+            sumi_ghost: "#2d4a3a".to_string(),
             hanko_red: "#b5312c".to_string(),
             hanko_dim: "#6b2320".to_string(),
         }
