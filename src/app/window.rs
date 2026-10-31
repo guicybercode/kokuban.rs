@@ -1286,6 +1286,11 @@ fn handle_pane_action(action: PaneAction) {
             PaneAction::FocusRight => {
                 tree.focus_neighbor(SplitDirection::Vertical, true);
             }
+            PaneAction::FocusAttention => {
+                if let Some(target) = tree.next_attention_pane() {
+                    tree.focused = target;
+                }
+            }
             PaneAction::FocusUp => {
                 tree.focus_neighbor(SplitDirection::Horizontal, false);
             }
