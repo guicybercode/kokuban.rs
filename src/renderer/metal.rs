@@ -10,7 +10,7 @@ use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
-use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::render_scene::{StatusBarLayout, ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::search::MatchKind;
 use crate::terminal_colors::TerminalColors;
 use objc2::rc::Retained;
@@ -102,6 +102,7 @@ pub struct FrameInputs<'a> {
     pub selection_bg: (u8, u8, u8),
     pub chrome: &'a ChromeColors,
     pub status_bar_height: f32,
+    pub status_bar_layout: StatusBarLayout,
     pub prompt_indicator_color: Option<(u8, u8, u8)>,
     pub image_store: Option<&'a ImageStore>,
     pub confirm_overlay: Option<&'a ConfirmOverlayInfo>,
@@ -540,6 +541,7 @@ impl MetalRenderer {
         atlas: &mut GlyphAtlas,
         chrome: &ChromeColors,
         status_bar_height: f32,
+        layout: StatusBarLayout,
         vertices: &mut Vec<Vertex>,
     ) {
         let rect = pane.rect;
@@ -574,9 +576,14 @@ impl MetalRenderer {
             Self::pack_color(chrome.sumi_ghost.0, chrome.sumi_ghost.1, chrome.sumi_ghost.2, 255)
         };
 
-        // "黒板"
+        // "黒板", then the 1-based pane index when enabled: "黒板 2".
         for c in "黒板".chars() {
             cursor_x = self.render_char(c, cursor_x, text_y, light, bg, atlas, vertices);
+        }
+        if layout.show_pane_index {
+            for c in format!(" {}", pane.pane_index + 1).chars() {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
         }
 
         // Busca aberta: "黒板 · /consulta  n/m" no lugar do shell e do cwd.
@@ -609,9 +616,11 @@ impl MetalRenderer {
             return;
         }
 
-        // " · zsh"
-        for c in " · zsh".chars() {
-            cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+        // " · zsh": the program actually running in the pane.
+        if layout.show_shell && !pane.program.is_empty() {
+            for c in " · ".chars().chain(pane.program.chars()) {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
         }
 
         // Update notice, right-aligned before the focus indicator. It is
@@ -622,7 +631,7 @@ impl MetalRenderer {
         let notice_width = notice.map_or(0.0, |notice| cell_w * (notice.chars().count() + 1) as f32);
 
         // " · /cwd"
-        if !pane.cwd.is_empty() {
+        if layout.show_cwd && !pane.cwd.is_empty() {
             for c in " · ".chars() {
                 cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
             }
@@ -764,6 +773,7 @@ impl MetalRenderer {
             selection_bg,
             chrome,
             status_bar_height,
+            status_bar_layout,
             prompt_indicator_color,
             image_store,
             confirm_overlay,
@@ -772,7 +782,7 @@ impl MetalRenderer {
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {
             self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, &mut content_vertices);
-            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut content_vertices);
+            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, status_bar_layout, &mut content_vertices);
         }
 
         // Build divider vertices (use brush texture)

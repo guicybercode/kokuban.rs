@@ -13,7 +13,7 @@ use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::parser::sixel::SixelImage;
-use crate::render_scene::ChromeColors;
+use crate::render_scene::{ChromeColors, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use crate::window_title::WINDOW_TITLE;
@@ -375,6 +375,11 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         bg_opacity,
         status_bar_height,
         status_bar_enabled: config.status_bar.enabled,
+        status_bar_layout: StatusBarLayout {
+            show_shell: config.status_bar.show_shell,
+            show_cwd: config.status_bar.show_cwd,
+            show_pane_index: config.status_bar.show_pane_index,
+        },
         resize_step,
         prompt_indicator_color,
         image_store: image_store.clone(),

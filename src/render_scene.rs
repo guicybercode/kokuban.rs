@@ -11,6 +11,8 @@ pub struct PaneRenderData<'a> {
     /// Unwatched BEL / notification: draws a red dot next to the focus marker.
     pub attention: bool,
     pub pane_index: usize,
+    /// Program running in the pane (shell or `-e` command), for the status bar.
+    pub program: &'a str,
     pub cwd: &'a str,
     pub prompt_mark_rows: Vec<usize>,
     pub show_cursor: bool,
@@ -19,6 +21,14 @@ pub struct PaneRenderData<'a> {
     /// Busca aberta neste painel; os resultados são destacados e a consulta
     /// aparece na barra de status.
     pub search: Option<&'a SearchState>,
+}
+
+/// Which status bar segments `[status_bar]` enables.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatusBarLayout {
+    pub show_shell: bool,
+    pub show_cwd: bool,
+    pub show_pane_index: bool,
 }
 
 pub struct ConfirmOverlayInfo {

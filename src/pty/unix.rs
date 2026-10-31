@@ -31,6 +31,9 @@ pub(crate) enum CancellableWriteOutcome {
 pub struct Pty {
     master: Option<OwnedFd>,
     pub child_pid: nix::unistd::Pid,
+    /// Basename of the program started in this PTY (shell or `-e` command),
+    /// shown in the status bar.
+    pub program_name: String,
     output_lock: Mutex<()>,
 }
 
@@ -54,8 +57,9 @@ impl Pty {
         let argv = vec![CString::new(login_name)
             .map_err(|_| PtyError::InvalidShell("shell name contains NUL".to_string()))?];
         let environment = child_environment(&shell_path, kitty_graphics, sixel_graphics)?;
+        let program_name = shell_name.to_string_lossy().into_owned();
 
-        Self::spawn_prepared(cols, rows, shell, argv, environment)
+        Self::spawn_prepared(cols, rows, shell, argv, environment, program_name)
     }
 
     #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -85,7 +89,11 @@ impl Pty {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let environment = child_environment(&resolve_shell(), kitty_graphics, sixel_graphics)?;
-        Self::spawn_prepared(cols, rows, program, argv, environment)
+        let program_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| name.to_string_lossy().into_owned());
+        Self::spawn_prepared(cols, rows, program, argv, environment, program_name)
     }
 
     fn spawn_prepared(
@@ -94,6 +102,7 @@ impl Pty {
         program: CString,
         argv: Vec<CString>,
         environment: Vec<CString>,
+        program_name: String,
     ) -> Result<Self, PtyError> {
         if argv.is_empty() {
             return Err(PtyError::InvalidShell(
@@ -170,6 +179,7 @@ impl Pty {
                 Ok(Self {
                     master: Some(master),
                     child_pid: child,
+                    program_name,
                     output_lock: Mutex::new(()),
                 })
             }
@@ -1174,7 +1184,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment(), "test".to_string()).unwrap();
         assert_eq!(read_until(&pty, b"__SIZE_READY__"), b"__SIZE_READY__");
 
         let size = || {
@@ -1403,7 +1413,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment(), "test".to_string()).unwrap();
         assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
         let payload = vec![b'x'; mib * 1024 * 1024];
         let cancelled = AtomicBool::new(false);
@@ -1429,7 +1439,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap());
+        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap());
         assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
 
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -2278,7 +2288,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
 
         assert!(!pty.wait_readable(Duration::ZERO).unwrap());
         let started = Instant::now();
@@ -2407,7 +2417,7 @@ mod tests {
                 .into_iter()
                 .map(|argument| CString::new(argument).unwrap())
                 .collect();
-            Pty::spawn_prepared(40, 4, program.clone(), argv, test_environment()).unwrap()
+            Pty::spawn_prepared(40, 4, program.clone(), argv, test_environment(), "test".to_string()).unwrap()
         };
         let silent = spawn("read line");
         let speaking = spawn("printf '__KOKUBAN_SPOKE__'; read line");
@@ -2448,7 +2458,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap());
+        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap());
         assert_eq!(read_until(&pty, b"__KOKUBAN_IDLE__"), b"__KOKUBAN_IDLE__");
         let (signal, cancellation) = UnixStream::pair().unwrap();
         for stream in [&signal, &cancellation] {
@@ -2489,7 +2499,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
         let (signal, cancellation) = UnixStream::pair().unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(2)).unwrap());
@@ -2508,7 +2518,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         assert!(pty.wait_readable(Duration::ZERO).unwrap());
@@ -2529,7 +2539,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         let (_signal, cancellation) = UnixStream::pair().unwrap();
@@ -2602,7 +2612,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
         let expected = b"__KOKUBAN_PTY__:xterm-256color:kokuban";
         let output = read_until(&pty, expected);
 
@@ -2664,7 +2674,7 @@ mod tests {
         let program = CString::new("/definitely/not/a/kokuban-program").unwrap();
         let argv = vec![CString::new("missing-program").unwrap()];
 
-        let error = match Pty::spawn_prepared(40, 4, program, argv, test_environment()) {
+        let error = match Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()) {
             Ok(_) => panic!("missing executable unexpectedly started"),
             Err(error) => error,
         };
@@ -2683,7 +2693,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
         let pid = pty.child_pid;
         let output = read_until(&pty, b"__KOKUBAN_READY__");
         assert!(output
@@ -2710,7 +2720,7 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
         let shell_pid = pty.child_pid;
         let output = read_until(&pty, b"\r\n");
         let output = String::from_utf8_lossy(&output);
@@ -2767,7 +2777,7 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string()).unwrap();
         let output = read_until(&pty, b"__YES_RC__:");
         let output = String::from_utf8_lossy(&output);
 

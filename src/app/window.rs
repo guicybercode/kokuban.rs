@@ -15,7 +15,7 @@ use crate::input::mouse::{
 use crate::layout::{PaneId, PixelRect, SplitDirection};
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
-use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::render_scene::{StatusBarLayout, ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::{FrameInputs, MetalRenderer};
 use crate::search::SearchState;
@@ -319,6 +319,7 @@ struct ViewState {
     bg_opacity: f32,
     status_bar_height: f32,
     status_bar_enabled: bool,
+    status_bar_layout: StatusBarLayout,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
@@ -1925,6 +1926,7 @@ fn render_frame() {
                     is_focused: *id == focused_id,
                     attention: pane.attention,
                     pane_index: i,
+                    program: &pane.pty.program_name,
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
@@ -1968,6 +1970,7 @@ fn render_frame() {
             selection_bg: state.selection_bg,
             chrome: &state.chrome,
             status_bar_height: state.status_bar_height,
+            status_bar_layout: state.status_bar_layout,
             prompt_indicator_color: state.prompt_indicator_color,
             image_store: Some(&img_store),
             confirm_overlay: confirm_overlay.as_ref(),
@@ -2074,6 +2077,7 @@ pub(super) struct TerminalViewParams<'a> {
     pub(super) bg_opacity: f32,
     pub(super) status_bar_height: f32,
     pub(super) status_bar_enabled: bool,
+    pub(super) status_bar_layout: StatusBarLayout,
     pub(super) resize_step: f32,
     pub(super) prompt_indicator_color: Option<(u8, u8, u8)>,
     pub(super) image_store: Arc<Mutex<ImageStore>>,
@@ -2109,6 +2113,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
         bg_opacity,
         status_bar_height,
         status_bar_enabled,
+        status_bar_layout,
         resize_step,
         prompt_indicator_color,
         image_store,
@@ -2180,6 +2185,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
             bg_opacity,
             status_bar_height,
             status_bar_enabled,
+            status_bar_layout,
             resize_step,
             prompt_indicator_color,
             image_store,
