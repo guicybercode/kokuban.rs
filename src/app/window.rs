@@ -1251,7 +1251,9 @@ fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) ->
                     .map(|s| s.to_string())
                     .unwrap_or_default()
                     .chars()
-                    .filter(|c| !c.is_control())
+                    // Setas e teclas de função chegam como caracteres de uso
+                    // privado (U+F700..U+F8FF) e não entram na consulta.
+                    .filter(|c| !c.is_control() && !('\u{F700}'..='\u{F8FF}').contains(c))
                     .collect();
                 if typed.is_empty() {
                     return true;
