@@ -88,6 +88,25 @@ pub struct MetalRenderer {
     colors: TerminalColors,
 }
 
+/// Inputs of one frame, grouped so `draw_frame` reads as named fields.
+pub struct FrameInputs<'a> {
+    pub panes: &'a [PaneRenderData<'a>],
+    pub dividers: &'a [DividerInfo],
+    pub atlas: &'a mut GlyphAtlas,
+    pub drawable: &'a ProtocolObject<dyn MTLDrawable>,
+    pub texture: &'a ProtocolObject<dyn MTLTexture>,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
+    pub bg_opacity: f32,
+    pub selection_fg: (u8, u8, u8),
+    pub selection_bg: (u8, u8, u8),
+    pub chrome: &'a ChromeColors,
+    pub status_bar_height: f32,
+    pub prompt_indicator_color: Option<(u8, u8, u8)>,
+    pub image_store: Option<&'a ImageStore>,
+    pub confirm_overlay: Option<&'a ConfirmOverlayInfo>,
+}
+
 impl MetalRenderer {
     pub fn new(
         device: Retained<ProtocolObject<dyn MTLDevice>>,
@@ -731,24 +750,24 @@ impl MetalRenderer {
         vertices
     }
 
-    pub fn draw_frame(
-        &mut self,
-        panes: &[PaneRenderData],
-        dividers: &[DividerInfo],
-        atlas: &mut GlyphAtlas,
-        drawable: &ProtocolObject<dyn MTLDrawable>,
-        texture: &ProtocolObject<dyn MTLTexture>,
-        viewport_width: f32,
-        viewport_height: f32,
-        bg_opacity: f32,
-        selection_fg: (u8, u8, u8),
-        selection_bg: (u8, u8, u8),
-        chrome: &ChromeColors,
-        status_bar_height: f32,
-        prompt_indicator_color: Option<(u8, u8, u8)>,
-        image_store: Option<&ImageStore>,
-        confirm_overlay: Option<&ConfirmOverlayInfo>,
-    ) {
+    pub fn draw_frame(&mut self, inputs: FrameInputs<'_>) {
+        let FrameInputs {
+            panes,
+            dividers,
+            atlas,
+            drawable,
+            texture,
+            viewport_width,
+            viewport_height,
+            bg_opacity,
+            selection_fg,
+            selection_bg,
+            chrome,
+            status_bar_height,
+            prompt_indicator_color,
+            image_store,
+            confirm_overlay,
+        } = inputs;
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {

@@ -17,7 +17,7 @@ use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
-use crate::renderer::metal::MetalRenderer;
+use crate::renderer::metal::{FrameInputs, MetalRenderer};
 use crate::search::SearchState;
 use crate::selection::GridPoint;
 use crate::terminal_colors::TerminalColors;
@@ -1955,23 +1955,23 @@ fn render_frame() {
         });
 
         let img_store = state.image_store.lock().unwrap();
-        state.renderer.draw_frame(
-            &pane_render_data,
-            &dividers,
-            &mut atlas,
-            ProtocolObject::from_ref(&*drawable),
-            &texture,
-            size.width as f32,
-            size.height as f32,
-            state.bg_opacity,
-            state.selection_fg,
-            state.selection_bg,
-            &state.chrome,
-            state.status_bar_height,
-            state.prompt_indicator_color,
-            Some(&img_store),
-            confirm_overlay.as_ref(),
-        );
+        state.renderer.draw_frame(FrameInputs {
+            panes: &pane_render_data,
+            dividers: &dividers,
+            atlas: &mut atlas,
+            drawable: ProtocolObject::from_ref(&*drawable),
+            texture: &texture,
+            viewport_width: size.width as f32,
+            viewport_height: size.height as f32,
+            bg_opacity: state.bg_opacity,
+            selection_fg: state.selection_fg,
+            selection_bg: state.selection_bg,
+            chrome: &state.chrome,
+            status_bar_height: state.status_bar_height,
+            prompt_indicator_color: state.prompt_indicator_color,
+            image_store: Some(&img_store),
+            confirm_overlay: confirm_overlay.as_ref(),
+        });
         drop(img_store);
 
         drop(atlas);
