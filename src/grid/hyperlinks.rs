@@ -25,6 +25,7 @@ pub struct HyperlinkIndex {
     max_abs_row: Option<usize>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 impl HyperlinkIndex {
     pub fn len(&self) -> usize { self.spans.len() }
     pub fn is_empty(&self) -> bool { self.spans.is_empty() }

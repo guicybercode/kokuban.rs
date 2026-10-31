@@ -1302,6 +1302,26 @@ impl LinuxWindow {
         }
     }
 
+    /// OSC 8 target under the pointer, in retained-grid coordinates.
+    fn hyperlink_at_pointer(
+        &self,
+        position: PhysicalPosition<f64>,
+    ) -> Result<Option<String>, GridAccessError> {
+        let Some(cell_size) = self.cell_dimensions else {
+            return Ok(None);
+        };
+        let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+        let Some(point) = selection_point_at_pointer(&grid, position, cell_size) else {
+            return Ok(None);
+        };
+        let Ok(retained_row) = usize::try_from(point.row) else {
+            return Ok(None);
+        };
+        Ok(grid
+            .hyperlink_at_retained(retained_row, point.col)
+            .map(str::to_owned))
+    }
+
     fn select_at_pointer(
         &mut self,
         position: PhysicalPosition<f64>,
@@ -1690,6 +1710,27 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     button_code,
                     self.cell_dimensions,
                 );
+                // Ctrl+click opens an OSC 8 hyperlink under the pointer instead
+                // of reporting the press or starting a selection.
+                if button == MouseButton::Left
+                    && state.is_pressed()
+                    && self.modifiers.control_key()
+                    && !self.modifiers.shift_key()
+                {
+                    if let Some(position) = self.pointer_route.position_for(device_id) {
+                        match self.hyperlink_at_pointer(position) {
+                            Ok(Some(url)) => {
+                                if let Err(error) = crate::notifications::open_hyperlink(&url) {
+                                    log::warn!("Failed to open hyperlink: {error}");
+                                }
+                                self.pointer_route.record_button_dispatch(device_id, state, button_code, false, cell_dimensions);
+                                return;
+                            }
+                            Ok(None) => {}
+                            Err(error) => { self.fail(event_loop, error.to_string()); return; }
+                        }
+                    }
+                }
                 let local_press = if button == MouseButton::Left && state.is_pressed() {
                     match self.grid.lock() {
                         Ok(grid) => grid.mouse_tracking == MouseTracking::None || self.modifiers.shift_key(),
