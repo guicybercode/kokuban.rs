@@ -25,7 +25,7 @@ use crate::software_graphics::{ImageSnapshot, SoftwareGraphics};
 use crate::software_raster::{draw_glyph_a8, draw_glyph_rgba, draw_image_rgba, fill_rect};
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
-use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
+use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 use softbuffer::{Context, Surface};
 use std::collections::HashMap;
@@ -47,8 +47,13 @@ use winit::platform::x11::WindowAttributesExtX11;
 use winit::window::{Icon, ImePurpose, UserAttentionType, Window, WindowId};
 
 mod damage;
+mod status;
 
 use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
+use status::{
+    classify_reader_exit, classify_writer_exit, combine_launch_results, reader_status_result,
+    terminal_accepts_input, writer_status_result, ReaderStatus, WriterStatus,
+};
 
 const INITIAL_CELL_WIDTH: u32 = 10;
 const INITIAL_CELL_HEIGHT: u32 = 20;
@@ -191,17 +196,6 @@ fn clipboard_action(key: Key<&str>, modifiers: ModifiersState) -> Option<Clipboa
         }
     }
     None
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ReaderStatus {
-    Normal,
-    Failed(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum WriterStatus {
-    Normal,
-    Failed(String),
 }
 
 #[derive(Clone, Copy)]
@@ -2133,72 +2127,6 @@ fn arm_grid_redraw(redraw_pending: &AtomicBool) -> bool {
 
 fn begin_grid_redraw(redraw_pending: &AtomicBool) {
     redraw_pending.store(false, Ordering::Release);
-}
-
-fn classify_reader_exit(exit: &ReaderExit) -> ReaderStatus {
-    match exit {
-        ReaderExit::Shutdown | ReaderExit::Eof => ReaderStatus::Normal,
-        ReaderExit::WaitFailed(error) => ReaderStatus::Failed(format!(
-            "terminal reader could not wait for PTY output: {error}"
-        )),
-        ReaderExit::ReadFailed(error) => ReaderStatus::Failed(format!(
-            "terminal reader could not read PTY output: {error}"
-        )),
-        ReaderExit::ResponseWriteFailed(error) => ReaderStatus::Failed(format!(
-            "terminal reader could not write a protocol response: {error}"
-        )),
-        ReaderExit::GridPoisoned => {
-            ReaderStatus::Failed("terminal reader lost access to the terminal grid".to_string())
-        }
-        ReaderExit::DecoderStalled => {
-            ReaderStatus::Failed("terminal decoder stopped making progress".to_string())
-        }
-        ReaderExit::UnexpectedProtocolEvent => ReaderStatus::Failed(
-            "terminal reader received a graphics event in text-only mode".to_string(),
-        ),
-    }
-}
-
-fn reader_status_result(status: ReaderStatus) -> Result<(), String> {
-    match status {
-        ReaderStatus::Normal => Ok(()),
-        ReaderStatus::Failed(error) => Err(error),
-    }
-}
-
-fn classify_writer_exit(exit: &WriterExit) -> WriterStatus {
-    match exit {
-        WriterExit::Shutdown => WriterStatus::Normal,
-        WriterExit::ChannelClosed => {
-            WriterStatus::Failed("terminal writer lost its input queue".to_string())
-        }
-        WriterExit::WriteFailed(error) => WriterStatus::Failed(format!(
-            "terminal writer could not write keyboard input to the PTY: {error}"
-        )),
-    }
-}
-
-fn writer_status_result(status: WriterStatus) -> Result<(), String> {
-    match status {
-        WriterStatus::Normal => Ok(()),
-        WriterStatus::Failed(error) => Err(error),
-    }
-}
-
-fn combine_launch_results(
-    run_result: Result<(), String>,
-    reader_join_result: Result<(), String>,
-    writer_join_result: Result<(), String>,
-    finish_result: Result<(), String>,
-) -> Result<(), String> {
-    run_result
-        .and(reader_join_result)
-        .and(writer_join_result)
-        .and(finish_result)
-}
-
-fn terminal_accepts_input(exiting: bool, reader_status: Option<&ReaderStatus>) -> bool {
-    !exiting && reader_status.is_none()
 }
 
 fn create_glyph_atlas(
@@ -4450,35 +4378,92 @@ mod themed_cursor_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        accumulate_wheel_steps, apply_scrollback_action, apply_terminal_resize, arm_grid_redraw,
-        arm_window_title_update, atlas_cell_dimensions, begin_grid_redraw,
-        begin_window_title_update, cell_content_is_visible, changed_window_title,
-        classify_reader_exit, classify_writer_exit, combine_launch_results,
+        accumulate_wheel_steps,
+        apply_scrollback_action,
+        apply_terminal_resize,
+        arm_grid_redraw,
+        arm_window_title_update,
+        atlas_cell_dimensions,
+        begin_grid_redraw,
+        begin_window_title_update,
+        cell_content_is_visible,
+        changed_window_title,
         configured_terminal_dimensions,
-        contrasting_cursor_color, dispatch_encoded_terminal_input_with, dispatch_focus_event_with,
-        dispatch_keyboard_input_with, dispatch_mouse_button_and_motion_with,
-        dispatch_mouse_button_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
-        draw_cell_glyph, draw_cell_underline, draw_grid_snapshot, draw_ime_preedit,
+        contrasting_cursor_color,
+        dispatch_encoded_terminal_input_with,
+        dispatch_focus_event_with,
+        dispatch_keyboard_input_with,
+        dispatch_mouse_button_and_motion_with,
+        dispatch_mouse_button_with,
+        dispatch_mouse_motion_with,
+        dispatch_mouse_wheel_with,
+        draw_cell_glyph,
+        draw_cell_underline,
+        draw_grid_snapshot,
+        draw_ime_preedit,
         drawable_dimensions,
-        focus_report_bytes, ime_cursor_area, ime_payload_from_event, ime_preedit_background_at,
-        ime_preedit_glyph_colors, ime_preedit_payload_with_limits,
-        immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
-        layout_ime_preedit, layout_ime_preedit_for_snapshot, layout_ime_preedit_with_mode,
-        modifiers_after_focus_change, mouse_button_code_from_winit, mouse_button_with_modifiers,
-        physical_size_for_terminal, record_window_focus_change, replace_glyph_atlas_for_scale,
-        replace_ime_preedit, resize_terminal_with, resolve_cell_colors,
-        resolve_cell_underline_color, reveal_ime_input_viewport, rgb_to_xrgb, rounded_i32,
-        set_grid_cell_dimensions, snapshot_grid, snapshot_window_title,
-        sync_ime_cursor_area_with, terminal_accepts_input, terminal_cell_at_pointer,
-        terminal_color_query_value, terminal_dimensions_for_surface, terminal_size_for_surface,
-        underline_anchor_y, GridAccessError,
-        ImeCursorArea, ImePreedit, ImePreeditCursor, ImePreeditGlyph, ImePreeditLayout,
-        ImePreeditPayload, KeyboardInputError, KeyboardInputOutcome, MouseMotionDispatchOutcome,
-        MouseMotionState, MouseWheelState, PointerRouteState, ReaderStatus, ResolvedCellColors,
-        SurfaceSizeError, TerminalDimensions, TerminalResizeError, WriterStatus, CURSOR_THICKNESS,
-        IME_PREEDIT_REPLACEMENT, MAX_IME_PREEDIT_BYTES, MAX_IME_PREEDIT_RENDER_CELLS,
-        MAX_INITIAL_LOGICAL_HEIGHT, MAX_INITIAL_LOGICAL_WIDTH, MAX_REQUESTED_PHYSICAL_HEIGHT,
-        MAX_REQUESTED_PHYSICAL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS, WINDOW_TITLE,
+        focus_report_bytes,
+        ime_cursor_area,
+        ime_payload_from_event,
+        ime_preedit_background_at,
+        ime_preedit_glyph_colors,
+        ime_preedit_payload_with_limits,
+        immediate_surface_size_to_reconcile,
+        initial_window_dimensions,
+        is_current_surface_size,
+        layout_ime_preedit,
+        layout_ime_preedit_for_snapshot,
+        layout_ime_preedit_with_mode,
+        modifiers_after_focus_change,
+        mouse_button_code_from_winit,
+        mouse_button_with_modifiers,
+        physical_size_for_terminal,
+        record_window_focus_change,
+        replace_glyph_atlas_for_scale,
+        replace_ime_preedit,
+        resize_terminal_with,
+        resolve_cell_colors,
+        resolve_cell_underline_color,
+        reveal_ime_input_viewport,
+        rgb_to_xrgb,
+        rounded_i32,
+        set_grid_cell_dimensions,
+        snapshot_grid,
+        snapshot_window_title,
+        sync_ime_cursor_area_with,
+        terminal_cell_at_pointer,
+        terminal_color_query_value,
+        terminal_dimensions_for_surface,
+        terminal_size_for_surface,
+        underline_anchor_y,
+        GridAccessError,
+        ImeCursorArea,
+        ImePreedit,
+        ImePreeditCursor,
+        ImePreeditGlyph,
+        ImePreeditLayout,
+        ImePreeditPayload,
+        KeyboardInputError,
+        KeyboardInputOutcome,
+        MouseMotionDispatchOutcome,
+        MouseMotionState,
+        MouseWheelState,
+        PointerRouteState,
+        ResolvedCellColors,
+        SurfaceSizeError,
+        TerminalDimensions,
+        TerminalResizeError,
+        CURSOR_THICKNESS,
+        IME_PREEDIT_REPLACEMENT,
+        MAX_IME_PREEDIT_BYTES,
+        MAX_IME_PREEDIT_RENDER_CELLS,
+        MAX_INITIAL_LOGICAL_HEIGHT,
+        MAX_INITIAL_LOGICAL_WIDTH,
+        MAX_REQUESTED_PHYSICAL_HEIGHT,
+        MAX_REQUESTED_PHYSICAL_WIDTH,
+        MAX_TERMINAL_COLUMNS,
+        MAX_TERMINAL_ROWS,
+        WINDOW_TITLE,
     };
     use crate::glyph_atlas::{GlyphAtlas, GlyphEntry};
     use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
@@ -4488,8 +4473,7 @@ mod tests {
         MouseWheelRoute, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
     };
     use crate::terminal_colors::TerminalColors;
-    use crate::terminal_reader::ReaderExit;
-    use crate::terminal_writer::{TerminalWriteQueueError, WriterExit};
+    use crate::terminal_writer::TerminalWriteQueueError;
     use std::cell::RefCell;
     use std::io;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -9232,118 +9216,6 @@ mod tests {
             |_, _| Ok(()),
         )
         .expect("duplicate scale should be a no-op"));
-    }
-
-    #[test]
-    fn shutdown_and_eof_are_normal_reader_exits() {
-        assert_eq!(
-            classify_reader_exit(&ReaderExit::Shutdown),
-            ReaderStatus::Normal
-        );
-        assert_eq!(classify_reader_exit(&ReaderExit::Eof), ReaderStatus::Normal);
-    }
-
-    #[test]
-    fn reader_failures_include_actionable_context() {
-        let failures = [
-            (
-                ReaderExit::WaitFailed(io::Error::from_raw_os_error(5)),
-                "wait for PTY output",
-            ),
-            (
-                ReaderExit::ReadFailed(io::Error::from_raw_os_error(5)),
-                "read PTY output",
-            ),
-            (
-                ReaderExit::ResponseWriteFailed(io::Error::from_raw_os_error(32)),
-                "write a protocol response",
-            ),
-            (ReaderExit::GridPoisoned, "terminal grid"),
-            (ReaderExit::DecoderStalled, "stopped making progress"),
-            (
-                ReaderExit::UnexpectedProtocolEvent,
-                "graphics event in text-only mode",
-            ),
-        ];
-
-        for (exit, expected_context) in failures {
-            let ReaderStatus::Failed(message) = classify_reader_exit(&exit) else {
-                panic!("reader failure was classified as a normal exit");
-            };
-            assert!(
-                message.contains(expected_context),
-                "missing `{expected_context}` in `{message}`"
-            );
-        }
-    }
-
-    #[test]
-    fn writer_shutdown_is_normal_and_failures_include_actionable_context() {
-        assert_eq!(
-            classify_writer_exit(&WriterExit::Shutdown),
-            WriterStatus::Normal
-        );
-
-        let channel_status = classify_writer_exit(&WriterExit::ChannelClosed);
-        let WriterStatus::Failed(channel_message) = channel_status else {
-            panic!("closed writer queue should be a failure");
-        };
-        assert!(channel_message.contains("input queue"));
-
-        let write_status =
-            classify_writer_exit(&WriterExit::WriteFailed(io::Error::from_raw_os_error(5)));
-        let WriterStatus::Failed(write_message) = write_status else {
-            panic!("PTY write error should be a failure");
-        };
-        assert!(write_message.contains("write keyboard input to the PTY"));
-        assert!(write_message.contains("5"));
-    }
-
-    #[test]
-    fn launch_result_preserves_worker_failures_before_late_finish_errors() {
-        assert_eq!(
-            combine_launch_results(
-                Ok(()),
-                Ok(()),
-                Err("native writer failure".to_string()),
-                Err("input queue disconnected".to_string()),
-            ),
-            Err("native writer failure".to_string())
-        );
-        assert_eq!(
-            combine_launch_results(
-                Ok(()),
-                Err("reader failure".to_string()),
-                Err("writer failure".to_string()),
-                Err("finish failure".to_string()),
-            ),
-            Err("reader failure".to_string())
-        );
-        assert_eq!(
-            combine_launch_results(
-                Err("event loop failure".to_string()),
-                Err("reader failure".to_string()),
-                Err("writer failure".to_string()),
-                Err("finish failure".to_string()),
-            ),
-            Err("event loop failure".to_string())
-        );
-        assert_eq!(
-            combine_launch_results(Ok(()), Ok(()), Ok(()), Err("finish failure".to_string()),),
-            Err("finish failure".to_string())
-        );
-    }
-
-    #[test]
-    fn terminal_stops_accepting_input_while_exiting_or_after_the_reader_exits() {
-        assert!(terminal_accepts_input(false, None));
-        assert!(!terminal_accepts_input(true, None));
-        assert!(!terminal_accepts_input(false, Some(&ReaderStatus::Normal)));
-        assert!(!terminal_accepts_input(
-            false,
-            Some(&ReaderStatus::Failed("read failed".to_string()))
-        ));
-        assert!(!terminal_accepts_input(true, Some(&ReaderStatus::Normal)));
     }
 
     #[test]
