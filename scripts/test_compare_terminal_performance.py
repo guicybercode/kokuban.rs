@@ -272,6 +272,273 @@ class MacosObservationTests(unittest.TestCase):
             self.assertEqual(json.loads((sample_directory / 'case.json').read_text())['idle_seconds'], 7)
 
 
+class MacosBackendTests(unittest.TestCase):
+    """macOS backend: defaults, Terminal.app launcher, darwin stop path, summary schema."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.directory = Path(self.temporary.name)
+        self.args = SimpleNamespace(backend="macos", screen="alternate", scrollback_lines=10000,
+                                    font_pixels=14.0, columns=80, rows=24, thread_cpu=False,
+                                    settle_seconds=0, timeout=1)
+
+    def test_backend_defaults_to_macos_on_darwin_and_wayland_elsewhere(self):
+        with patch.object(RUNNER["sys"], "platform", "darwin"):
+            self.assertEqual(RUNNER["default_backend"](), "macos")
+        with patch.object(RUNNER["sys"], "platform", "linux"):
+            self.assertEqual(RUNNER["default_backend"](), "wayland")
+            with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()), \
+                    patch.object(RUNNER["sys"], "stderr", io.StringIO()):
+                RUNNER["main"](["--output-dir", str(self.directory / "out"), "--backend", "macos"])
+        with patch.object(RUNNER["sys"], "platform", "darwin"):
+            with self.assertRaises(SystemExit), patch.object(RUNNER["sys"], "stderr", io.StringIO()):
+                RUNNER["main"](["--output-dir", str(self.directory / "out"), "--thread-cpu"])
+            with self.assertRaises(SystemExit), patch.object(RUNNER["sys"], "stderr", io.StringIO()):
+                RUNNER["main"](["--output-dir", str(self.directory / "out"), "--backend", "wayland",
+                                "--terminals", "kokuban", "terminal"])
+
+    def test_terminal_app_launcher_sets_font_grid_and_runs_the_driver(self):
+        command, config = RUNNER["terminal_command"]("terminal", Path("/System/Applications/Utilities/Terminal.app"),
+                                                     "Terminal.app 2.15", self.directory, self.args)
+        self.assertEqual(command[:2], ["osascript", "-e"])
+        script = command[2]
+        self.assertEqual(config["text"], script)
+        self.assertEqual(config["launcher"], "osascript")
+        self.assertEqual((self.directory / config["filename"]).read_text(), script)
+        self.assertIn('tell application "Terminal"', script)
+        self.assertIn(f'do script "exec {RUNNER["sys"].executable} ', script)
+        self.assertIn(f"--child-dir {self.directory}", script)
+        self.assertIn('set font name of driverTab to "Menlo"', script)
+        self.assertIn("set font size of driverTab to 14\n", script)
+        self.assertIn("set number of columns of driverTab to 80", script)
+        self.assertIn("set number of rows of driverTab to 24", script)
+        self.assertIn("close window id 77 saving no", RUNNER["terminal_app_close_script"](77))
+        self.args.cell_adjustments = {"terminal": (1, 0)}
+        with self.assertRaises(ValueError):
+            RUNNER["terminal_command"]("terminal", Path("/Applications/Terminal.app"), "x", self.directory, self.args)
+
+    def test_macos_backend_uses_points_equal_to_logical_pixels_and_quits_kitty(self):
+        _, alacritty = RUNNER["terminal_command"]("alacritty", Path("/bin/alacritty"), "alacritty 0.17.0",
+                                                  self.directory, self.args)
+        self.assertIn("size = 14.0\n", alacritty["text"])
+        command, kitty = RUNNER["terminal_command"]("kitty", Path("/bin/kitty"), "kitty 0.46.2",
+                                                    self.directory, self.args)
+        self.assertIn("font_size 14.0\n", kitty["text"])
+        self.assertIn("macos_quit_when_last_window_closed=yes", command)
+        self.assertNotIn("linux_display_server", kitty["text"])
+        self.args.backend = "x11"
+        _, linux = RUNNER["terminal_command"]("alacritty", Path("/bin/alacritty"), "alacritty 0.17.0",
+                                              self.directory, self.args)
+        self.assertIn("size = 10.5\n", linux["text"])
+
+    def test_terminal_app_sample_measures_the_application_pid_and_closes_its_window(self):
+        window = {"pid": 4321, "tty": "/dev/ttys009", "window_id": 8560, "application_was_running": True}
+        calls = []
+
+        def wait(observe, description, *_timeout):
+            calls.append(description)
+            return {"workloads": {}} if "measurements" in description else True
+
+        sample_directory = self.directory / "sample"
+        with patch.dict(GLOBALS, launch_terminal_app=Mock(return_value=dict(window)), wait_for=wait,
+                        close_terminal_app_window=Mock(return_value={"status": 0, "output": ""}),
+                        stop_owned_child=Mock(), terminal_command=Mock(return_value=(["osascript"], {}))), \
+                patch.object(RUNNER["os"], "kill"), \
+                patch.object(RUNNER["subprocess"], "Popen", side_effect=AssertionError("Terminal.app is not spawned")):
+            sample = RUNNER["execute_sample"]("terminal", Path("/Applications/Terminal.app"), "Terminal.app 2.15",
+                                              sample_directory, {}, self.args)
+            GLOBALS["close_terminal_app_window"].assert_called_once_with(window)
+            GLOBALS["stop_owned_child"].assert_called_once_with(sample_directory)
+        self.assertEqual(sample["status"], "passed")
+        self.assertEqual(sample["terminal_window"]["pid"], 4321)
+        self.assertEqual(json.loads((sample_directory / "case.json").read_text())["terminal_pid"], 4321)
+        self.assertEqual(calls, ["terminal measurements", "Terminal.app driver exit"])
+        # A failed sample still stops the driver and closes the window.
+        failed_directory = self.directory / "failed"
+        with patch.dict(GLOBALS, launch_terminal_app=Mock(return_value=dict(window)),
+                        wait_for=Mock(side_effect=AssertionError("timed out")),
+                        close_terminal_app_window=Mock(return_value={"status": 0, "output": ""}),
+                        stop_owned_child=Mock(), terminal_command=Mock(return_value=(["osascript"], {}))):
+            sample = RUNNER["execute_sample"]("terminal", Path("/Applications/Terminal.app"), "Terminal.app 2.15",
+                                              failed_directory, {}, self.args)
+            GLOBALS["close_terminal_app_window"].assert_called_once_with(window)
+            GLOBALS["stop_owned_child"].assert_called_once_with(failed_directory)
+        self.assertEqual(sample["status"], "failed")
+        self.assertIn("timed out", sample["error"])
+
+    def test_launch_terminal_app_parses_tty_and_window_and_rejects_failures(self):
+        completed = Mock(returncode=0, stdout="/dev/ttys014|8560\n", stderr="")
+        with patch.object(RUNNER["subprocess"], "run", return_value=completed), \
+                patch.dict(GLOBALS, terminal_app_pid=Mock(side_effect=[None, 19726])):
+            window = RUNNER["launch_terminal_app"](["osascript", "-e", "script"])
+        self.assertEqual((window["pid"], window["tty"], window["window_id"]), (19726, "/dev/ttys014", 8560))
+        self.assertFalse(window["application_was_running"])
+        with patch.object(RUNNER["subprocess"], "run", return_value=Mock(returncode=1, stdout="", stderr="denied")), \
+                patch.dict(GLOBALS, terminal_app_pid=Mock(return_value=1)), self.assertRaises(RuntimeError):
+            RUNNER["launch_terminal_app"](["osascript"])
+        with patch.object(RUNNER["subprocess"], "run", return_value=Mock(returncode=0, stdout="garbage", stderr="")), \
+                patch.dict(GLOBALS, terminal_app_pid=Mock(return_value=1)), self.assertRaises(RuntimeError):
+            RUNNER["launch_terminal_app"](["osascript"])
+
+    def test_ps_stats_keep_the_process_start_time(self):
+        stats = RUNNER["parse_ps_stats"](42, "  0:12.34  20480 Sat Oct 31 20:15:34 2026\n")
+        self.assertEqual(stats["start_time"], "Sat Oct 31 20:15:34 2026")
+        self.assertIsNone(RUNNER["parse_ps_stats"](42, "0:12.34 20480")["start_time"])
+
+    def test_darwin_stop_path_signals_only_the_recorded_process(self):
+        helpers = RUNNER["HELPERS"]
+        (self.directory / "child.json").write_text(json.dumps({"pid": 4242, "start_time": "Sat Oct 31 20:15:34 2026"}))
+        signals = (helpers["signal"].SIGTERM, helpers["signal"].SIGKILL)
+
+        def run_stop(stdout, returncode=0):
+            completed = Mock(returncode=returncode, stdout=stdout, stderr="")
+            with patch.object(helpers["sys"], "platform", "darwin"), \
+                    patch.object(helpers["subprocess"], "run", return_value=completed) as run, \
+                    patch.object(helpers["os"], "kill") as kill, patch.object(helpers["time"], "sleep"):
+                helpers["stop_owned_child"](self.directory)
+            self.assertTrue(all(call.args[0][:3] == ["ps", "-o", "lstart="] for call in run.call_args_list))
+            return [call.args for call in kill.call_args_list]
+
+        self.assertEqual(run_stop("Sat Oct 31 20:15:34 2026\n"), [(4242, signals[0]), (4242, signals[1])])
+        self.assertEqual(run_stop("Sun Nov  1 00:00:00 2026\n"), [])
+        self.assertEqual(run_stop("", returncode=1), [])
+        with patch.object(helpers["sys"], "platform", "darwin"), \
+                patch.object(helpers["subprocess"], "run", side_effect=AssertionError("no process read without child.json")):
+            helpers["stop_owned_child"](self.directory / "absent")
+
+    def sample(self, name, binary, version, directory, paths, args):
+        directory.mkdir()
+        command, config = RUNNER["terminal_command"](name, binary, version, directory, args)
+        pixels = {"kokuban": [0, 0], "alacritty": [480, 288], "terminal": [560, 336], "kitty": [640, 384]}[name]
+        geometry = [args.rows, args.columns, *pixels]
+        self.calls.append((directory.name, name))
+        workloads = {}
+        for workload, path in paths.items():
+            payload = Path(path).read_bytes()
+            workloads[workload] = {"bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest(),
+                                   "geometry_before": geometry, "geometry_after": geometry,
+                                   "write_and_dsr_seconds": 0.5, "mib_per_second": len(payload) / 1048576 / 0.5,
+                                   "terminal_cpu_seconds": 0.01}
+        return {"status": "passed", "command": command, "config": config,
+                "measurements": {"initial_geometry": geometry, "workloads": workloads,
+                                 "protocol_rtt_seconds": [0.001]}}
+
+    def run_macos_comparison(self, options):
+        self.calls = []
+        self.runs = getattr(self, "runs", 0) + 1
+        output = self.directory / f"report-{self.runs}"
+        binaries = {}
+        for name in ("kokuban", "alacritty", "kitty"):
+            binary = self.directory / name
+            binary.write_bytes(name.encode())
+            binary.chmod(0o700)
+            binaries[name] = binary
+        versions = {"kokuban": "kokuban 0.4.0", "alacritty": "alacritty 0.17.0 (94e7c88)", "kitty": "kitty 0.46.2"}
+
+        def observation(command):
+            if command[-1] == "--version":
+                return {"command": command, "status": 0, "output": versions[Path(command[0]).name]}
+            return {"command": command, "status": 0, "output": "observed"}
+
+        terminal_app = {"path": "/System/Applications/Utilities/Terminal.app", "version": "Terminal.app 2.15",
+                        "sha256": "0" * 64, "samples": [], "process_scope": "application"}
+        argv = ["--output-dir", str(output), "--samples", "3", "--bytes", "1024", "--backend", "macos",
+                "--kokuban", str(binaries["kokuban"]), "--alacritty", str(binaries["alacritty"]),
+                "--kitty", str(binaries["kitty"]), "--ghostty", str(self.directory / "missing-ghostty"), *options]
+        with patch.dict(GLOBALS, execute_sample=self.sample, command_observation=observation,
+                        terminal_app_observation=Mock(return_value=terminal_app), terminal_app_pid=Mock(return_value=1)), \
+                patch.object(GLOBALS["sys"], "platform", "darwin"), redirect_stdout(io.StringIO()):
+            status = RUNNER["main"](argv)
+        return status, output, json.loads((output / "report.json").read_text())
+
+    def test_macos_backend_verifies_the_grid_without_pixel_calibration(self):
+        status, output, report = self.run_macos_comparison(
+            ["--match-cell-size", "--terminals", "kokuban", "alacritty", "terminal"])
+        self.assertEqual(status, 0, report["comparability"])
+        self.assertEqual(report["backend"], "macos")
+        self.assertIsNone(report["cpu_affinity"])
+        self.assertEqual(report["hardware"]["command"], ["sysctl", "-n", "machdep.cpu.brand_string"])
+        self.assertIn("displays", report)
+        calibration = report["cell_size_calibration"]
+        self.assertEqual((calibration["status"], calibration["mode"]), ("passed", "rows_columns"))
+        self.assertIsNone(calibration["target_cell_pixels"])
+        self.assertEqual(calibration["observed_pixel_geometry"], {"kokuban": [0, 0], "alacritty": [480, 288],
+                                                                   "terminal": [560, 336]})
+        self.assertEqual(sorted(calibration["preflight"]["baseline"]), ["alacritty", "kokuban", "terminal"])
+        self.assertEqual(calibration["preflight"]["adjusted"], {})
+        self.assertEqual(len(self.calls), 3 + 9)
+        self.assertEqual(report["comparability"]["geometries_rows_cols_pixels"], [[24, 80]])
+        self.assertTrue(any("Terminal.app CPU/RSS" in note for note in report["comparability"]["notes"]))
+        self.assertEqual(report["terminals"]["terminal"]["version"], "Terminal.app 2.15")
+        self.assertIn("osascript", report["terminals"]["terminal"]["samples"][0]["command"][0])
+        self.assertNotIn("skipped_terminals", report)
+
+    def test_macos_backend_skips_missing_ghostty_only_when_not_requested(self):
+        status, _, report = self.run_macos_comparison(["--match-cell-size"])
+        self.assertEqual(status, 0, report["comparability"])
+        self.assertEqual(sorted(report["terminals"]), ["alacritty", "kitty", "kokuban"])
+        self.assertIn("ghostty", report["skipped_terminals"])
+        status, _, report = self.run_macos_comparison(["--match-cell-size", "--terminals", "kokuban", "ghostty"])
+        self.assertEqual(status, 1)
+        self.assertEqual(report["terminals"]["ghostty"]["status"], "missing")
+        self.assertIn("ghostty: calibration requires", report["error"])
+
+    def test_macos_backend_rejects_grids_that_differ_from_the_request(self):
+        original = self.sample
+
+        def tiled(name, binary, version, directory, paths, args):
+            sample = original(name, binary, version, directory, paths, args)
+            if name == "kokuban":
+                geometry = [58, 106, 0, 0]
+                sample["measurements"]["initial_geometry"] = geometry
+                for workload in sample["measurements"]["workloads"].values():
+                    workload.update(geometry_before=geometry, geometry_after=geometry)
+            return sample
+
+        self.sample = tiled
+        status, _, report = self.run_macos_comparison(["--match-cell-size", "--terminals", "kokuban", "alacritty"])
+        self.assertEqual(status, 1)
+        self.assertIn("kokuban: effective PTY rows/columns differ", report["error"])
+        self.assertEqual(report["execution_order"], [])
+        self.sample = original
+        status, _, report = self.run_macos_comparison(["--terminals", "kokuban", "alacritty"])
+        self.assertEqual(status, 0, report["comparability"])
+        self.sample = tiled
+        status, _, report = self.run_macos_comparison(["--terminals", "kokuban", "alacritty"])
+        self.assertEqual(status, 1)
+        self.assertIn("kokuban: effective PTY rows/columns differ from the requested geometry",
+                      report["comparability"]["reasons"])
+
+    def test_summary_files_keep_the_audited_schema(self):
+        status, output, report = self.run_macos_comparison(
+            ["--match-cell-size", "--terminals", "kokuban", "alacritty", "terminal"])
+        self.assertEqual(status, 0)
+        summary = json.loads((output / "summary.json").read_text())
+        self.assertEqual(summary["schema"], 1)
+        self.assertEqual(sorted(summary["terminal_summaries"]), ["alacritty", "kokuban", "terminal"])
+        for terminal in summary["terminal_summaries"].values():
+            self.assertEqual(sorted(terminal["workloads"]), ["ansi", "ascii", "short_lines", "unicode"])
+            for workload in terminal["workloads"].values():
+                self.assertEqual(sorted(workload), ["mib_per_second", "terminal_cpu_seconds", "write_and_dsr_seconds"])
+                self.assertEqual(sorted(workload["mib_per_second"]),
+                                 ["count", "max", "median", "median_absolute_deviation", "min", "samples"])
+                self.assertEqual(workload["mib_per_second"]["count"], 3)
+            self.assertEqual(sorted(terminal["protocol_rtt"]),
+                             ["count", "max", "median", "median_absolute_deviation", "min", "samples"])
+        self.assertEqual(sorted(summary["kokuban_vs_rivals"]["ascii"]), ["alacritty", "terminal"])
+        self.assertEqual((summary["timed_processes"], summary["calibration_processes"], summary["timed_loads"]), (9, 3, 36))
+        self.assertEqual(summary["comparability"], report["comparability"])
+        for name in ("kokuban", "alacritty", "terminal"):
+            per_terminal = json.loads((output / f"summary-{name}.json").read_text())
+            self.assertEqual((per_terminal["terminal"], len(per_terminal["samples"])), (name, 3))
+            self.assertEqual(per_terminal["summary"], report["terminals"][name]["summary"])
+        chart = runpy.run_path(str(Path(__file__).with_name("render-comparison-chart.py")))
+        medians = chart["load_medians"](output / "summary.json")
+        self.assertEqual(list(medians), ["kokuban", "alacritty", "terminal"])
+        self.assertIn("Terminal.app", chart["render_svg"](medians, title="macOS", subtitle_lines=("one", "two")))
+
+
 class CellCalibrationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
