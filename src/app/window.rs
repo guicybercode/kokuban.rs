@@ -849,6 +849,7 @@ define_class!(
             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
+            let has_cmd = event.modifierFlags().contains(NSEventModifierFlags::Command);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
@@ -869,6 +870,19 @@ define_class!(
                                 None,
                             );
                             publish_focused_window_title(&tree, state.window_title.as_ref());
+                        }
+                        // Cmd+click opens an OSC 8 hyperlink under the pointer
+                        // instead of reporting the press or starting a selection.
+                        if has_cmd && !has_shift {
+                            let url = pixel_to_grid_point(event, state, &tree, cell_w, cell_h)
+                                .and_then(|(_id, point)| hyperlink_at_point(tree.pane(pane_id)?, point));
+                            if let Some(url) = url {
+                                if let Err(error) = crate::notifications::open_hyperlink(&url) {
+                                    log::warn!("Failed to open hyperlink: {error}");
+                                }
+                                drop(tree);
+                                return;
+                            }
                         }
                         let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
                         if let Some((mt, encoding)) = tracking {
@@ -1566,6 +1580,14 @@ fn pixel_to_cell(
     let col = ((px - pane.rect.x) / cell_w).max(0.0) as usize;
     let row = ((py - pane.rect.y) / cell_h).max(0.0) as usize;
     Some((pane_id, col.min(pane.grid.cols().saturating_sub(1)), row.min(pane.grid.rows().saturating_sub(1))))
+}
+
+/// OSC 8 target under a retained-grid point, if the pane recorded one there.
+fn hyperlink_at_point(pane: &Pane, point: GridPoint) -> Option<String> {
+    let retained_row = usize::try_from(point.row).ok()?;
+    pane.grid
+        .hyperlink_at_retained(retained_row, point.col)
+        .map(str::to_owned)
 }
 
 fn pixel_to_grid_point(
