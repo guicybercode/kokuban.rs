@@ -1,19 +1,38 @@
-use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
+use super::keyboard::{
+    encode_key_kitty_disambiguate, encode_terminal_key_with_modifiers, KittyKey, TerminalKey,
+    TerminalKeyModifiers,
+};
 use super::keybind::KeyModifiers;
 use super::mouse::mouse_button_with_modifier_flags;
 use objc2_app_kit::{NSEvent, NSEventModifierFlags};
 
-pub fn translate_key_event(event: &NSEvent, application_cursor_keys: bool) -> Option<Vec<u8>> {
+pub fn translate_key_event(
+    event: &NSEvent,
+    application_cursor_keys: bool,
+    kitty_disambiguate: bool,
+) -> Option<Vec<u8>> {
     let key_code = event.keyCode();
     let modifiers = event.modifierFlags();
+    let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
+    let has_alt = modifiers.contains(NSEventModifierFlags::Option);
 
-    if let Some(sequence) = encode_macos_terminal_key(key_code, modifiers, application_cursor_keys)
+    if kitty_disambiguate {
+        let characters_ignoring_modifiers = event
+            .charactersIgnoringModifiers()
+            .map(|characters| characters.to_string());
+        if let Some(sequence) = encode_macos_kitty_key(
+            key_code,
+            modifiers,
+            characters_ignoring_modifiers.as_deref(),
+            application_cursor_keys,
+        ) {
+            return Some(sequence);
+        }
+    } else if let Some(sequence) =
+        encode_macos_terminal_key(key_code, modifiers, application_cursor_keys)
     {
         return Some(sequence);
     }
-
-    let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
-    let has_alt = modifiers.contains(NSEventModifierFlags::Option);
 
     let characters = event.characters().map(|characters| characters.to_string());
     let characters_ignoring_modifiers = has_alt
@@ -123,6 +142,44 @@ fn encode_macos_terminal_key(
     )
 }
 
+/// Kitty "disambiguate escape codes" encoding for a macOS key press. Named
+/// keys always go through the kitty encoder; text keys only when Control or
+/// Option is held (the codepoint comes from `charactersIgnoringModifiers`,
+/// lowercased). Plain text returns `None` so the regular text path handles
+/// shifted characters, dead keys and IME input unchanged.
+fn encode_macos_kitty_key(
+    key_code: u16,
+    modifiers: NSEventModifierFlags,
+    characters_ignoring_modifiers: Option<&str>,
+    application_cursor_keys: bool,
+) -> Option<Vec<u8>> {
+    let has_shift = modifiers.contains(NSEventModifierFlags::Shift);
+    let has_alt = modifiers.contains(NSEventModifierFlags::Option);
+    let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
+    let terminal_modifiers = TerminalKeyModifiers::new(has_shift, has_alt, has_ctrl);
+
+    if let Some(key) = terminal_key_from_key_code(key_code, has_shift) {
+        return encode_key_kitty_disambiguate(
+            KittyKey::Named(key),
+            application_cursor_keys,
+            terminal_modifiers,
+        );
+    }
+    if !(has_ctrl || has_alt) {
+        return None;
+    }
+    let codepoint = characters_ignoring_modifiers?
+        .chars()
+        .next()?
+        .to_lowercase()
+        .next()?;
+    encode_key_kitty_disambiguate(
+        KittyKey::Text(codepoint),
+        application_cursor_keys,
+        terminal_modifiers,
+    )
+}
+
 fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<TerminalKey> {
     match key_code {
         36 => Some(TerminalKey::Enter),
@@ -158,9 +215,52 @@ fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<Terminal
 #[cfg(test)]
 mod tests {
     use super::{
+        encode_macos_kitty_key,
         encode_macos_terminal_key, encode_macos_text_input, key_modifiers_from_appkit,
         mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
     };
+
+    #[test]
+    fn kitty_disambiguate_routes_macos_keys_through_csi_u() {
+        let none = NSEventModifierFlags::empty();
+        // Escape is always CSI 27 u.
+        assert_eq!(
+            encode_macos_kitty_key(53, none, Some("\x1b"), false).as_deref(),
+            Some(b"\x1b[27u".as_slice())
+        );
+        // Enter alone stays legacy; Shift+Enter is reported.
+        assert_eq!(
+            encode_macos_kitty_key(36, none, Some("\r"), false).as_deref(),
+            Some(b"\r".as_slice())
+        );
+        assert_eq!(
+            encode_macos_kitty_key(36, NSEventModifierFlags::Shift, Some("\r"), false).as_deref(),
+            Some(b"\x1b[13;2u".as_slice())
+        );
+        // Ctrl+I (key code 34 is `i`) no longer collides with Tab.
+        assert_eq!(
+            encode_macos_kitty_key(34, NSEventModifierFlags::Control, Some("i"), false).as_deref(),
+            Some(b"\x1b[105;5u".as_slice())
+        );
+        // Ctrl+Shift+A: shift goes in the modifier, codepoint is lowercase.
+        assert_eq!(
+            encode_macos_kitty_key(
+                0,
+                NSEventModifierFlags::Control | NSEventModifierFlags::Shift,
+                Some("A"),
+                false,
+            )
+            .as_deref(),
+            Some(b"\x1b[97;6u".as_slice())
+        );
+        // Plain text is left to the regular text path.
+        assert_eq!(encode_macos_kitty_key(0, none, Some("a"), false), None);
+        // Arrows keep the legacy / application encoding.
+        assert_eq!(
+            encode_macos_kitty_key(126, none, None, true).as_deref(),
+            Some(b"\x1bOA".as_slice())
+        );
+    }
     use crate::input::keybind::KeyModifiers;
     use crate::input::keyboard::TerminalKey;
     use crate::input::mouse::{MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP};

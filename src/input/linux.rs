@@ -1,4 +1,7 @@
-use super::keyboard::{encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers};
+use super::keyboard::{
+    encode_key_kitty_disambiguate, encode_terminal_key_with_modifiers, KittyKey, TerminalKey,
+    TerminalKeyModifiers,
+};
 use crate::terminal_writer::TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
@@ -11,6 +14,8 @@ pub(crate) struct LinuxKeyPress<'a> {
     named_key: Option<NamedKey>,
     text: Option<&'a str>,
     control_text: Option<&'a str>,
+    /// Character the key produces with no modifiers held (kitty codepoint).
+    base_char: Option<char>,
     modifiers: ModifiersState,
 }
 
@@ -64,8 +69,16 @@ pub(crate) fn key_press_from_winit<'a>(
         named_key: named_key_from_logical(event.logical_key.as_ref()),
         text: event.text.as_deref(),
         control_text: event.text_with_all_modifiers(),
+        base_char: base_char_from_key(event.key_without_modifiers()),
         modifiers,
     })
+}
+
+fn base_char_from_key(key: Key) -> Option<char> {
+    match key {
+        Key::Character(text) => text.chars().next(),
+        _ => None,
+    }
 }
 
 pub(crate) fn scrollback_action_from_winit(
@@ -85,9 +98,17 @@ pub(crate) fn scrollback_action_from_winit(
 pub(crate) fn encode_key_press(
     press: LinuxKeyPress<'_>,
     application_cursor_keys: bool,
+    kitty_disambiguate: bool,
 ) -> Option<Vec<u8>> {
     if press.modifiers.super_key() {
         return None;
+    }
+
+    if kitty_disambiguate {
+        if let Some(bytes) = encode_key_press_kitty(press, application_cursor_keys) {
+            return Some(bytes);
+        }
+        // Plain text falls through to the regular path below.
     }
 
     // Winit also exposes text for named keys such as Enter. Resolve the named
@@ -130,6 +151,41 @@ pub(crate) fn encode_key_press(
     }
 
     Some(bytes)
+}
+
+/// Kitty "disambiguate escape codes" encoding. Named keys always go through
+/// the kitty encoder; text keys only with Ctrl or Alt held, using the
+/// unmodified key character (falling back to the produced text) lowercased.
+/// Returns `None` for plain text so IME input and shifted characters keep
+/// using the legacy text path.
+fn encode_key_press_kitty(
+    press: LinuxKeyPress<'_>,
+    application_cursor_keys: bool,
+) -> Option<Vec<u8>> {
+    let has_shift = press.modifiers.shift_key();
+    let has_alt = press.modifiers.alt_key();
+    let has_ctrl = press.modifiers.control_key();
+    let modifiers = TerminalKeyModifiers::new(has_shift, has_alt, has_ctrl);
+
+    if let Some(key) = press
+        .named_key
+        .and_then(|named_key| terminal_key_from_named(named_key, has_shift))
+    {
+        return encode_key_kitty_disambiguate(
+            KittyKey::Named(key),
+            application_cursor_keys,
+            modifiers,
+        );
+    }
+    if !(has_ctrl || has_alt) {
+        return None;
+    }
+    let codepoint = press
+        .base_char
+        .or_else(|| press.text.and_then(|text| text.chars().next()))?
+        .to_lowercase()
+        .next()?;
+    encode_key_kitty_disambiguate(KittyKey::Text(codepoint), application_cursor_keys, modifiers)
 }
 
 fn named_key_from_logical(logical_key: Key<&str>) -> Option<NamedKey> {
@@ -226,8 +282,69 @@ mod tests {
             named_key,
             text,
             control_text,
+            base_char: text.and_then(|text| text.chars().next()),
             modifiers,
         }
+    }
+
+    #[test]
+    fn kitty_disambiguate_routes_linux_keys_through_csi_u() {
+        let none = ModifiersState::empty();
+        assert_eq!(
+            encode_key_press(press(Some(NamedKey::Escape), Some("\x1b"), None, none), false, true)
+                .as_deref(),
+            Some(b"\x1b[27u".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(press(Some(NamedKey::Enter), Some("\r"), None, none), false, true)
+                .as_deref(),
+            Some(b"\r".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(
+                press(Some(NamedKey::Enter), Some("\r"), None, ModifiersState::SHIFT),
+                false,
+                true,
+            )
+            .as_deref(),
+            Some(b"\x1b[13;2u".as_slice())
+        );
+        // Ctrl+I: the unmodified key wins over the control text (`\t`).
+        let mut ctrl_i = press(None, Some("i"), Some("\t"), ModifiersState::CONTROL);
+        ctrl_i.base_char = Some('i');
+        assert_eq!(
+            encode_key_press(ctrl_i, false, true).as_deref(),
+            Some(b"\x1b[105;5u".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(
+                press(None, Some("A"), None, ModifiersState::CONTROL | ModifiersState::SHIFT),
+                false,
+                true,
+            )
+            .as_deref(),
+            Some(b"\x1b[97;6u".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(press(None, Some("x"), None, ModifiersState::ALT), false, true)
+                .as_deref(),
+            Some(b"\x1b[120;3u".as_slice())
+        );
+        // Plain text and arrows are unchanged.
+        assert_eq!(
+            encode_key_press(press(None, Some("a"), None, none), false, true).as_deref(),
+            Some(b"a".as_slice())
+        );
+        assert_eq!(
+            encode_key_press(press(Some(NamedKey::ArrowUp), None, None, none), true, true)
+                .as_deref(),
+            Some(b"\x1bOA".as_slice())
+        );
+        // Without the flag, Ctrl+I keeps the legacy control byte.
+        assert_eq!(
+            encode_key_press(ctrl_i, false, false).as_deref(),
+            Some(b"\t".as_slice())
+        );
     }
 
     #[test]
@@ -430,7 +547,7 @@ mod tests {
                 "{modifiers:?} PageUp must stay on the terminal input path"
             );
             assert_eq!(
-                encode_key_press(press(Some(NamedKey::PageUp), None, None, modifiers), false,)
+                encode_key_press(press(Some(NamedKey::PageUp), None, None, modifiers), false, false)
                     .as_deref(),
                 Some(expected),
                 "unexpected terminal sequence for {modifiers:?} PageUp"
@@ -531,6 +648,7 @@ mod tests {
                         ModifiersState::empty(),
                     ),
                     false,
+                    false,
                 )
                 .as_deref(),
                 Some(expected),
@@ -550,6 +668,7 @@ mod tests {
                     ModifiersState::empty(),
                 ),
                 false,
+                false,
             )
             .as_deref(),
             Some(b"\r".as_slice())
@@ -563,6 +682,7 @@ mod tests {
                     ModifiersState::SHIFT,
                 ),
                 false,
+                false,
             )
             .as_deref(),
             Some(b"\x1b[Z".as_slice())
@@ -573,11 +693,11 @@ mod tests {
     fn named_cursor_keys_follow_the_terminal_application_mode() {
         let up = press(Some(NamedKey::ArrowUp), None, None, ModifiersState::empty());
         assert_eq!(
-            encode_key_press(up, false).as_deref(),
+            encode_key_press(up, false, false).as_deref(),
             Some(b"\x1b[A".as_slice())
         );
         assert_eq!(
-            encode_key_press(up, true).as_deref(),
+            encode_key_press(up, true, false).as_deref(),
             Some(b"\x1bOA".as_slice())
         );
     }
@@ -588,12 +708,14 @@ mod tests {
             encode_key_press(
                 press(None, Some("é日本"), None, ModifiersState::empty()),
                 false,
+                false,
             ),
             Some("é日本".as_bytes().to_vec())
         );
         assert_eq!(
             encode_key_press(
                 press(None, Some("a"), Some("\x01"), ModifiersState::CONTROL,),
+                false,
                 false,
             ),
             Some(vec![0x01])
@@ -607,11 +729,12 @@ mod tests {
                     ModifiersState::CONTROL,
                 ),
                 false,
+                false,
             ),
             Some(vec![0x00])
         );
         assert_eq!(
-            encode_key_press(press(None, Some("a"), None, ModifiersState::CONTROL), false,),
+            encode_key_press(press(None, Some("a"), None, ModifiersState::CONTROL), false, false),
             None,
             "missing all-modifier text must not leak printable input"
         );
@@ -622,6 +745,7 @@ mod tests {
         assert_eq!(
             encode_key_press(
                 press(None, Some("é"), Some("é"), ModifiersState::ALT),
+                false,
                 false,
             ),
             Some([b"\x1b".as_slice(), "é".as_bytes()].concat())
@@ -635,12 +759,14 @@ mod tests {
                     ModifiersState::CONTROL | ModifiersState::ALT,
                 ),
                 false,
+                false,
             ),
             Some(vec![0x1b, 0x01])
         );
         assert_eq!(
             encode_key_press(
                 press(Some(NamedKey::ArrowLeft), None, None, ModifiersState::ALT,),
+                false,
                 false,
             )
             .as_deref(),
@@ -659,6 +785,7 @@ mod tests {
                     ModifiersState::CONTROL | ModifiersState::ALT,
                 ),
                 false,
+                false,
             )
             .as_deref(),
             Some(b"\x1b[3;7~".as_slice())
@@ -672,6 +799,7 @@ mod tests {
                     ModifiersState::SHIFT,
                 ),
                 true,
+                false,
             )
             .as_deref(),
             Some(b"\x1b[1;2P".as_slice())
@@ -708,6 +836,7 @@ mod tests {
                 encode_key_press(
                     press(Some(NamedKey::Tab), Some("trap"), Some("trap"), modifiers),
                     false,
+                    false,
                 )
                 .as_deref(),
                 Some(expected)
@@ -721,6 +850,7 @@ mod tests {
             encode_key_press(
                 press(None, Some("1"), Some("1"), ModifiersState::ALT),
                 false,
+                false,
             )
             .as_deref(),
             Some(b"\x1b1".as_slice())
@@ -728,6 +858,7 @@ mod tests {
         assert_eq!(
             encode_key_press(
                 press(Some(NamedKey::End), None, None, ModifiersState::CONTROL,),
+                false,
                 false,
             )
             .as_deref(),
@@ -741,12 +872,14 @@ mod tests {
             encode_key_press(
                 press(None, Some("x"), Some("x"), ModifiersState::SUPER),
                 false,
+                false,
             ),
             None
         );
         assert_eq!(
             encode_key_press(
                 press(None, Some(""), Some(""), ModifiersState::empty()),
+                false,
                 false,
             ),
             None

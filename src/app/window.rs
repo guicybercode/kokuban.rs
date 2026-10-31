@@ -1036,9 +1036,11 @@ define_class!(
                             pane.selection.clear();
                             state.request_render();
                         }
-                        if let Some(bytes) =
-                            translate_key_event(event, pane.grid.application_cursor_keys)
-                        {
+                        if let Some(bytes) = translate_key_event(
+                            event,
+                            pane.grid.application_cursor_keys,
+                            pane.grid.kitty_disambiguate(),
+                        ) {
                             pane.queue_input(bytes);
                         }
                     }
