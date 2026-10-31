@@ -1,3 +1,4 @@
+pub mod block_elements;
 pub mod box_drawing;
 pub mod braille;
 #[cfg(target_os = "macos")]

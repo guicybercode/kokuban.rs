@@ -1,4 +1,4 @@
-use super::box_drawing;
+use super::{block_elements, box_drawing};
 use super::braille;
 use super::brush::BrushRenderer;
 use super::image_store::ImageStore;
@@ -335,6 +335,24 @@ impl MetalRenderer {
                             vertices.push(Vertex::new(rx1, ry0, white_u, white_v, fg_packed, fg_packed));
                             vertices.push(Vertex::new(rx1, ry1, white_u, white_v, fg_packed, fg_packed));
                             vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
+                        }
+                    } else if let Some((rects, alpha)) =
+                        block_elements::block_element_rects(cell.c).filter(|_| cell.grapheme.is_none())
+                    {
+                        // Block elements: exact rectangles sharing edges with neighbouring cells,
+                        // so pixel art drawn with half blocks has no seams or anti-aliased gaps.
+                        let color = (fg_packed & !0xff) | alpha as u32;
+                        for [fx0, fy0, fx1, fy1] in rects {
+                            Self::add_rect(
+                                vertices,
+                                x0 + fx0 * cw,
+                                y0 + fy0 * cell_h,
+                                x0 + fx1 * cw,
+                                y0 + fy1 * cell_h,
+                                white_u,
+                                white_v,
+                                color,
+                            );
                         }
                     } else if cell.grapheme.is_none() && braille::is_braille(cell.c) {
                         // Braille: render dots
