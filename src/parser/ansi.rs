@@ -176,9 +176,15 @@ impl Parser {
 
     fn ground(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
-            0x1b => { self.state = State::Escape; }
-            0x00..=0x1a | 0x1c..=0x1f => { self.execute(byte, grid); }
-            0x20..=0x7e => { grid.put_char(byte as char); }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            0x00..=0x1a | 0x1c..=0x1f => {
+                self.execute(byte, grid);
+            }
+            0x20..=0x7e => {
+                grid.put_char(byte as char);
+            }
             0x80..=0xff => {
                 if byte >= 0xc0 {
                     // Start of multi-byte UTF-8 — handled by Utf8Parser wrapper
@@ -220,10 +226,21 @@ impl Parser {
                 self.begin_control_string(ControlStringKind::Osc);
                 self.state = State::OscString;
             }
-            0x1b => { self.state = State::Escape; }
-            b'7' => { grid.save_cursor(); self.state = State::Ground; }
-            b'8' => { grid.restore_cursor(); self.state = State::Ground; }
-            b'D' => { grid.newline(); self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            b'7' => {
+                grid.save_cursor();
+                self.state = State::Ground;
+            }
+            b'8' => {
+                grid.restore_cursor();
+                self.state = State::Ground;
+            }
+            b'D' => {
+                grid.newline();
+                self.state = State::Ground;
+            }
             b'M' => {
                 grid.cancel_pending_wrap();
                 if grid.cursor_row == grid.scroll_top {
@@ -242,7 +259,9 @@ impl Parser {
                 self.push_intermediate(byte);
                 self.state = State::EscapeIntermediate;
             }
-            _ => { self.state = State::Ground; }
+            _ => {
+                self.state = State::Ground;
+            }
         }
     }
 
@@ -264,15 +283,23 @@ impl Parser {
                 }
                 self.state = State::Ground;
             }
-            0x1b => { self.state = State::Escape; }
-            _ => { self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
         }
     }
 
     fn escape_ignore(&mut self, byte: u8) {
         match byte {
-            0x1b => { self.state = State::Escape; }
-            0x18 | 0x1a | 0x30..=0x7e => { self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            0x18 | 0x1a | 0x30..=0x7e => {
+                self.state = State::Ground;
+            }
             _ => {}
         }
     }
@@ -312,8 +339,12 @@ impl Parser {
                 self.dispatch_csi(byte, grid);
                 self.state = State::Ground;
             }
-            0x1b => { self.state = State::Escape; }
-            _ => { self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
         }
     }
 
@@ -329,10 +360,8 @@ impl Parser {
                 );
             }
             b';' => {
-                let accepted = self.push_param(
-                    self.current_param.unwrap_or(0),
-                    self.current_is_sub,
-                );
+                let accepted =
+                    self.push_param(self.current_param.unwrap_or(0), self.current_is_sub);
                 self.current_param = None;
                 self.current_is_sub = false;
                 if !accepted {
@@ -340,10 +369,8 @@ impl Parser {
                 }
             }
             b':' => {
-                let accepted = self.push_param(
-                    self.current_param.unwrap_or(0),
-                    self.current_is_sub,
-                );
+                let accepted =
+                    self.push_param(self.current_param.unwrap_or(0), self.current_is_sub);
                 self.current_param = None;
                 self.current_is_sub = true; // next param is a sub-param
                 if !accepted {
@@ -378,8 +405,12 @@ impl Parser {
                 }
                 self.state = State::Ground;
             }
-            0x1b => { self.state = State::Escape; }
-            _ => { self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
         }
     }
 
@@ -390,7 +421,9 @@ impl Parser {
                     self.state = State::CsiIgnore;
                 }
             }
-            0x30..=0x3f => { self.state = State::CsiIgnore; }
+            0x30..=0x3f => {
+                self.state = State::CsiIgnore;
+            }
             0x40..=0x7e => {
                 let accepted = match self.current_param.take() {
                     Some(param) => self.push_param(param, self.current_is_sub),
@@ -401,15 +434,23 @@ impl Parser {
                 }
                 self.state = State::Ground;
             }
-            0x1b => { self.state = State::Escape; }
-            _ => { self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            _ => {
+                self.state = State::Ground;
+            }
         }
     }
 
     fn csi_ignore(&mut self, byte: u8) {
         match byte {
-            0x1b => { self.state = State::Escape; }
-            0x18 | 0x1a | 0x40..=0x7e => { self.state = State::Ground; }
+            0x1b => {
+                self.state = State::Escape;
+            }
+            0x18 | 0x1a | 0x40..=0x7e => {
+                self.state = State::Ground;
+            }
             _ => {}
         }
     }
@@ -497,18 +538,24 @@ impl Parser {
                 self.finish_active_control_string(grid);
                 self.state = State::Ground;
             }
-            0x1b => { self.state = State::Escape; }
+            0x1b => {
+                self.state = State::Escape;
+            }
             0x18 | 0x1a => {
                 self.cancel_active_control_string();
                 self.state = State::Ground;
             }
-            _ => { self.push_control_string_byte(ControlStringKind::Osc, byte); }
+            _ => {
+                self.push_control_string_byte(ControlStringKind::Osc, byte);
+            }
         }
     }
 
     fn apc_string(&mut self, byte: u8, _grid: &mut Grid) {
         match byte {
-            0x1b => { self.state = State::Escape; } // Will see '\' next for ST
+            0x1b => {
+                self.state = State::Escape;
+            } // Will see '\' next for ST
             0x18 | 0x1a => {
                 self.cancel_active_control_string();
                 self.state = State::Ground;
@@ -522,7 +569,9 @@ impl Parser {
 
     fn dcs_passthrough(&mut self, byte: u8, _grid: &mut Grid) {
         match byte {
-            0x1b => { self.state = State::Escape; } // Will see '\' next for ST
+            0x1b => {
+                self.state = State::Escape;
+            } // Will see '\' next for ST
             0x18 | 0x1a => {
                 self.cancel_active_control_string();
                 self.state = State::Ground;
@@ -623,8 +672,10 @@ impl Parser {
                         let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(192);
                         let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(192);
                         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(192);
-                        let resp = format!("\x1b]10;rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
-                            r, r, g, g, b, b);
+                        let resp = format!(
+                            "\x1b]10;rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
+                            r, r, g, g, b, b
+                        );
                         grid.queue_response(resp.into_bytes());
                     }
                 }
@@ -635,22 +686,30 @@ impl Parser {
                         let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(26);
                         let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(26);
                         let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(46);
-                        let resp = format!("\x1b]11;rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
-                            r, r, g, g, b, b);
+                        let resp = format!(
+                            "\x1b]11;rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x1b\\",
+                            r, r, g, g, b, b
+                        );
                         grid.queue_response(resp.into_bytes());
                     }
                 }
                 "133" => {
                     let abs_row = grid.current_absolute_row();
                     match pt.chars().next() {
-                        Some('A') => { grid.marks.push(PromptMarkKind::PromptStart, abs_row); }
-                        Some('B') => { grid.marks.push(PromptMarkKind::CommandStart, abs_row); }
-                        Some('C') => { grid.marks.push(PromptMarkKind::CommandExecuted, abs_row); }
+                        Some('A') => {
+                            grid.marks.push(PromptMarkKind::PromptStart, abs_row);
+                        }
+                        Some('B') => {
+                            grid.marks.push(PromptMarkKind::CommandStart, abs_row);
+                        }
+                        Some('C') => {
+                            grid.marks.push(PromptMarkKind::CommandExecuted, abs_row);
+                        }
                         Some('D') => {
-                            let exit_code = pt.get(2..)
-                                .and_then(|s| s.parse::<i32>().ok())
-                                .unwrap_or(0);
-                            grid.marks.push(PromptMarkKind::CommandFinished { exit_code }, abs_row);
+                            let exit_code =
+                                pt.get(2..).and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                            grid.marks
+                                .push(PromptMarkKind::CommandFinished { exit_code }, abs_row);
                         }
                         _ => {}
                     }
@@ -705,7 +764,9 @@ impl Parser {
                         grid.queue_clipboard_write(text);
                     }
                 }
-                _ => { log::trace!("Ignoring OSC {ps}"); }
+                _ => {
+                    log::trace!("Ignoring OSC {ps}");
+                }
             }
         }
     }
@@ -717,8 +778,12 @@ impl Parser {
             0x08 => grid.backspace(),
             0x09 => grid.tab(),
             0x07 => grid.queue_bell(),
-            0x0e => { grid.charset = CharSet::DecSpecial; } // SO (Shift Out) → G1
-            0x0f => { grid.charset = CharSet::Ascii; }      // SI (Shift In) → G0
+            0x0e => {
+                grid.charset = CharSet::DecSpecial;
+            } // SO (Shift Out) → G1
+            0x0f => {
+                grid.charset = CharSet::Ascii;
+            } // SI (Shift In) → G0
             _ => {}
         }
     }
@@ -776,12 +841,30 @@ impl Parser {
             b'q' if has_space => {
                 let ps = params.first().copied().unwrap_or(0);
                 grid.cursor_style = match ps {
-                    0 | 1 => CursorStyle { shape: CursorShape::Block, blinking: true },
-                    2 => CursorStyle { shape: CursorShape::Block, blinking: false },
-                    3 => CursorStyle { shape: CursorShape::Underline, blinking: true },
-                    4 => CursorStyle { shape: CursorShape::Underline, blinking: false },
-                    5 => CursorStyle { shape: CursorShape::Bar, blinking: true },
-                    6 => CursorStyle { shape: CursorShape::Bar, blinking: false },
+                    0 | 1 => CursorStyle {
+                        shape: CursorShape::Block,
+                        blinking: true,
+                    },
+                    2 => CursorStyle {
+                        shape: CursorShape::Block,
+                        blinking: false,
+                    },
+                    3 => CursorStyle {
+                        shape: CursorShape::Underline,
+                        blinking: true,
+                    },
+                    4 => CursorStyle {
+                        shape: CursorShape::Underline,
+                        blinking: false,
+                    },
+                    5 => CursorStyle {
+                        shape: CursorShape::Bar,
+                        blinking: true,
+                    },
+                    6 => CursorStyle {
+                        shape: CursorShape::Bar,
+                        blinking: false,
+                    },
                     _ => CursorStyle::default(),
                 };
             }
@@ -798,20 +881,37 @@ impl Parser {
                 let col = params.get(1).copied().unwrap_or(1).max(1) as usize - 1;
                 grid.set_cursor_pos(row, col);
             }
-            b'A' => { grid.move_cursor_up(params.first().copied().unwrap_or(1).max(1) as usize); }
-            b'B' => { grid.move_cursor_down(params.first().copied().unwrap_or(1).max(1) as usize); }
-            b'C' => { grid.move_cursor_forward(params.first().copied().unwrap_or(1).max(1) as usize); }
-            b'D' => { grid.move_cursor_backward(params.first().copied().unwrap_or(1).max(1) as usize); }
-            b'J' => { grid.erase_in_display(params.first().copied().unwrap_or(0)); }
-            b'K' => { grid.erase_in_line(params.first().copied().unwrap_or(0)); }
+            b'A' => {
+                grid.move_cursor_up(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
+            b'B' => {
+                grid.move_cursor_down(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
+            b'C' => {
+                grid.move_cursor_forward(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
+            b'D' => {
+                grid.move_cursor_backward(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
+            b'J' => {
+                grid.erase_in_display(params.first().copied().unwrap_or(0));
+            }
+            b'K' => {
+                grid.erase_in_line(params.first().copied().unwrap_or(0));
+            }
 
             b'r' => {
                 let top = params.first().copied().unwrap_or(1).max(1) as usize - 1;
-                let bottom = params.get(1).copied().unwrap_or(grid.rows() as u16).max(1) as usize - 1;
+                let bottom =
+                    params.get(1).copied().unwrap_or(grid.rows() as u16).max(1) as usize - 1;
                 grid.set_scroll_region(top, bottom);
             }
-            b'L' => { grid.insert_lines(params.first().copied().unwrap_or(1).max(1) as usize); }
-            b'M' => { grid.delete_lines(params.first().copied().unwrap_or(1).max(1) as usize); }
+            b'L' => {
+                grid.insert_lines(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
+            b'M' => {
+                grid.delete_lines(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
             b'G' => {
                 let col = params.first().copied().unwrap_or(1).max(1) as usize - 1;
                 grid.cancel_pending_wrap();
@@ -842,8 +942,12 @@ impl Parser {
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
                 grid.erase_chars(n);
             }
-            b'S' => { grid.scroll_up(params.first().copied().unwrap_or(1).max(1) as usize); }
-            b'T' => { grid.scroll_down(params.first().copied().unwrap_or(1).max(1) as usize); }
+            b'S' => {
+                grid.scroll_up(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
+            b'T' => {
+                grid.scroll_down(params.first().copied().unwrap_or(1).max(1) as usize);
+            }
 
             // Device status report
             b'n' => {
@@ -900,33 +1004,83 @@ impl Parser {
                     // DEC private modes
                     for &param in params.iter() {
                         match param {
-                            1 => { grid.application_cursor_keys = set; }
-                            7 => { grid.set_auto_wrap(set); }
+                            1 => {
+                                grid.application_cursor_keys = set;
+                            }
+                            7 => {
+                                grid.set_auto_wrap(set);
+                            }
                             1049 => {
-                                if set { grid.save_cursor(); grid.enter_alt_screen(); }
-                                else { grid.leave_alt_screen(); grid.restore_cursor(); }
+                                if set {
+                                    grid.save_cursor();
+                                    grid.enter_alt_screen();
+                                } else {
+                                    grid.leave_alt_screen();
+                                    grid.restore_cursor();
+                                }
                             }
                             47 | 1047 => {
-                                if set { grid.enter_alt_screen(); }
-                                else { grid.leave_alt_screen(); }
+                                if set {
+                                    grid.enter_alt_screen();
+                                } else {
+                                    grid.leave_alt_screen();
+                                }
                             }
-                            25 => { grid.cursor_visible = set; }
-                            1000 => { grid.mouse_tracking = if set { MouseTracking::Normal } else { MouseTracking::None }; }
-                            1002 => { grid.mouse_tracking = if set { MouseTracking::ButtonEvent } else { MouseTracking::None }; }
-                            1003 => { grid.mouse_tracking = if set { MouseTracking::AnyEvent } else { MouseTracking::None }; }
-                            1004 => { grid.focus_events = set; }
-                            1006 => { grid.mouse_encoding = if set { MouseEncoding::Sgr } else { MouseEncoding::Default }; }
-                            1007 => { grid.alternate_scroll = set; }
-                            2004 => { grid.bracketed_paste = set; }
-                            _ => { log::trace!("Ignoring DEC private mode {param}"); }
+                            25 => {
+                                grid.cursor_visible = set;
+                            }
+                            1000 => {
+                                grid.mouse_tracking = if set {
+                                    MouseTracking::Normal
+                                } else {
+                                    MouseTracking::None
+                                };
+                            }
+                            1002 => {
+                                grid.mouse_tracking = if set {
+                                    MouseTracking::ButtonEvent
+                                } else {
+                                    MouseTracking::None
+                                };
+                            }
+                            1003 => {
+                                grid.mouse_tracking = if set {
+                                    MouseTracking::AnyEvent
+                                } else {
+                                    MouseTracking::None
+                                };
+                            }
+                            1004 => {
+                                grid.focus_events = set;
+                            }
+                            1006 => {
+                                grid.mouse_encoding = if set {
+                                    MouseEncoding::Sgr
+                                } else {
+                                    MouseEncoding::Default
+                                };
+                            }
+                            1007 => {
+                                grid.alternate_scroll = set;
+                            }
+                            2004 => {
+                                grid.bracketed_paste = set;
+                            }
+                            _ => {
+                                log::trace!("Ignoring DEC private mode {param}");
+                            }
                         }
                     }
                 } else {
                     // ANSI modes (non-private)
                     for &param in params.iter() {
                         match param {
-                            4 => { grid.insert_mode = set; }
-                            _ => { log::trace!("Ignoring ANSI mode {param}"); }
+                            4 => {
+                                grid.insert_mode = set;
+                            }
+                            _ => {
+                                log::trace!("Ignoring ANSI mode {param}");
+                            }
                         }
                     }
                 }
@@ -934,7 +1088,9 @@ impl Parser {
             _ => {
                 log::trace!(
                     "Unhandled CSI: params={:?} intermediates={:?} final={}",
-                    params, self.intermediates, final_byte as char
+                    params,
+                    self.intermediates,
+                    final_byte as char
                 );
             }
         }
@@ -1018,7 +1174,9 @@ impl Parser {
                         grid.underline_color = color;
                     }
                 }
-                59 => { grid.underline_color = Color::Default; }
+                59 => {
+                    grid.underline_color = Color::Default;
+                }
                 90..=97 => grid.fg = Color::Indexed((params[i] - 90 + 8) as u8),
                 100..=107 => grid.bg = Color::Indexed((params[i] - 100 + 8) as u8),
                 _ => {}
@@ -1032,7 +1190,9 @@ impl Parser {
     }
 
     fn parse_extended_color(&self, params: &[u16], i: &mut usize) -> Option<Color> {
-        if *i + 1 >= params.len() { return None; }
+        if *i + 1 >= params.len() {
+            return None;
+        }
 
         if self.is_sub_param(*i + 1) {
             let group_start = *i + 1;
@@ -1150,7 +1310,8 @@ impl Utf8Parser {
                     b' '..=b'~' => {
                         // The first byte is already printable; scan its tail.
                         let tail = &input[index + 1..];
-                        let printable = 1 + tail.iter()
+                        let printable = 1 + tail
+                            .iter()
                             .position(|byte| !matches!(byte, b' '..=b'~'))
                             .unwrap_or(tail.len());
                         grid.put_ascii(&input[index..index + printable]);
@@ -1185,7 +1346,8 @@ impl Utf8Parser {
         // ASCII inside multilingual text belongs to the same block. Stop before
         // C0/DEL so escape sequences and terminal events retain their boundaries.
         let tail = &input[1..];
-        let block_len = 1 + tail.iter()
+        let block_len = 1 + tail
+            .iter()
             .position(|byte| *byte < 0x20 || *byte == 0x7f)
             .unwrap_or(tail.len());
         let block = &input[..block_len];
@@ -1194,8 +1356,9 @@ impl Utf8Parser {
             Err(error) => {
                 let (valid, rest) = block.split_at(error.valid_up_to());
                 if !valid.is_empty() {
-                    grid.put_utf8(std::str::from_utf8(valid)
-                        .expect("valid_up_to ends at a UTF-8 boundary"));
+                    grid.put_utf8(
+                        std::str::from_utf8(valid).expect("valid_up_to ends at a UTF-8 boundary"),
+                    );
                 }
                 // Preserve exact recovery through the entire suffix. A lead
                 // interrupting a partial scalar is consumed, not restarted;
@@ -1244,11 +1407,17 @@ impl Utf8Parser {
         } else if byte & 0x80 == 0 {
             self.parser.advance(byte, grid);
         } else if byte & 0xe0 == 0xc0 {
-            self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 1;
+            self.utf8_buf[0] = byte;
+            self.utf8_len = 1;
+            self.utf8_expected = 1;
         } else if byte & 0xf0 == 0xe0 {
-            self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 2;
+            self.utf8_buf[0] = byte;
+            self.utf8_len = 1;
+            self.utf8_expected = 2;
         } else if byte & 0xf8 == 0xf0 {
-            self.utf8_buf[0] = byte; self.utf8_len = 1; self.utf8_expected = 3;
+            self.utf8_buf[0] = byte;
+            self.utf8_len = 1;
+            self.utf8_expected = 3;
         } else {
             self.parser.advance(byte, grid);
         }
@@ -1265,10 +1434,10 @@ mod tests {
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::marks::PromptMarkKind;
     use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking, TerminalEvent};
+    use crate::input::keyboard::{encode_terminal_key, TerminalKey};
     use crate::parser::kitty_graphics::{KittyAction, KittyCommand};
     use crate::parser::sixel::{SixelImage, MAX_RGBA_BYTES};
     use crate::parser::State;
-    use crate::input::keyboard::{encode_terminal_key, TerminalKey};
 
     fn grid() -> Grid {
         Grid::new(40, 4, 100)
@@ -1296,19 +1465,29 @@ mod tests {
                 for &byte in remaining {
                     scalar.feed_byte(byte, &mut expected);
                     scalar_consumed += 1;
-                    if expected.has_pending_terminal_events() { break; }
+                    if expected.has_pending_terminal_events() {
+                        break;
+                    }
                 }
-                assert_eq!(consumed, scalar_consumed,
-                    "cols={cols}, chunk={chunk_index}, remaining={remaining:?}");
+                assert_eq!(
+                    consumed, scalar_consumed,
+                    "cols={cols}, chunk={chunk_index}, remaining={remaining:?}"
+                );
                 // Includes grapheme text, screen/history cells, cursor,
                 // damage and ordered events with their cursor snapshots.
-                assert_eq!(format!("{actual:?}"), format!("{expected:?}"),
-                    "cols={cols}, chunk={chunk_index}, remaining={remaining:?}");
+                assert_eq!(
+                    format!("{actual:?}"),
+                    format!("{expected:?}"),
+                    "cols={cols}, chunk={chunk_index}, remaining={remaining:?}"
+                );
                 assert_eq!(fast.parser.state, scalar.parser.state);
                 assert_eq!(fast.utf8_expected, scalar.utf8_expected);
                 if fast.utf8_expected != 0 {
                     assert_eq!(fast.utf8_len, scalar.utf8_len);
-                    assert_eq!(&fast.utf8_buf[..fast.utf8_len], &scalar.utf8_buf[..scalar.utf8_len]);
+                    assert_eq!(
+                        &fast.utf8_buf[..fast.utf8_len],
+                        &scalar.utf8_buf[..scalar.utf8_len]
+                    );
                 }
                 actual.drain_terminal_events();
                 expected.drain_terminal_events();
@@ -1336,7 +1515,13 @@ mod tests {
             "\u{80}\u{7ff}\u{800}\u{d7ff}\u{e000}\u{ffff}\u{10000}\u{10ffff}\r\n\x1b[6n",
         );
         for cols in [1, 2, 8] {
-            for mode in [b"".as_slice(), b"\x1b[4h", b"\x1b[?7l", b"\x1b(0", b"\x1b[?1049h"] {
+            for mode in [
+                b"".as_slice(),
+                b"\x1b[4h",
+                b"\x1b[?7l",
+                b"\x1b(0",
+                b"\x1b[?1049h",
+            ] {
                 let input = [mode, text.as_bytes()].concat();
                 assert_utf8_matches_byte_decoding_at_every_split(&input, cols);
             }
@@ -1346,11 +1531,25 @@ mod tests {
     #[test]
     fn malformed_and_partial_utf8_keep_byte_decoding_recovery() {
         let malformed: &[&[u8]] = &[
-            b"\x80", b"\xbf", b"\xc0\xaf", b"\xc1\xbf", b"\xc2",
-            b"\xe0\x80\xaf", b"\xed\xa0\x80", b"\xe2", b"\xe2\x82",
-            b"\xf0\x80\x80\xaf", b"\xf4\x90\x80\x80", b"\xf5\x80\x80\x80",
-            b"\xf0", b"\xf0\x9f", b"\xf0\x9f\x99", b"\xf8\xff",
-            b"\xe2X", b"\xe2\x1b[6n", b"\xf0\x9f\xc3\xa9",
+            b"\x80",
+            b"\xbf",
+            b"\xc0\xaf",
+            b"\xc1\xbf",
+            b"\xc2",
+            b"\xe0\x80\xaf",
+            b"\xed\xa0\x80",
+            b"\xe2",
+            b"\xe2\x82",
+            b"\xf0\x80\x80\xaf",
+            b"\xf4\x90\x80\x80",
+            b"\xf5\x80\x80\x80",
+            b"\xf0",
+            b"\xf0\x9f",
+            b"\xf0\x9f\x99",
+            b"\xf8\xff",
+            b"\xe2X",
+            b"\xe2\x1b[6n",
+            b"\xf0\x9f\xc3\xa9",
         ];
         for &prefix in malformed {
             assert_utf8_matches_byte_decoding_at_every_split(prefix, 8);
@@ -1373,9 +1572,16 @@ mod tests {
     #[test]
     fn utf8_blocks_preserve_malformed_suffix_recovery_and_event_boundaries() {
         let suffixes: &[&[u8]] = &[
-            b"\xe2\xc3\xa9", b"\xf0\x9f\xc3\xa9", b"\xe2\x82\xc3\xa9",
-            b"\x80\x9b\xff", b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80",
-            b"\xc2", b"\xe2\x82", b"\xf0\x9f\x99",
+            b"\xe2\xc3\xa9",
+            b"\xf0\x9f\xc3\xa9",
+            b"\xe2\x82\xc3\xa9",
+            b"\x80\x9b\xff",
+            b"\xc0\xaf",
+            b"\xed\xa0\x80",
+            b"\xf4\x90\x80\x80",
+            b"\xc2",
+            b"\xe2\x82",
+            b"\xf0\x9f\x99",
         ];
         for &suffix in suffixes {
             let input = ["é日本λ".as_bytes(), suffix, "β🙂\x1b[6nZ".as_bytes()].concat();
@@ -1388,7 +1594,10 @@ mod tests {
         let mut actual = grid();
         let input = "λ".as_bytes();
         let stream = [input, b"\xe2\xc3\xa9\xf0\x9f\xc3\xa9", b"X\x1b[6n"].concat();
-        assert_eq!(parser.feed_until_terminal_event(&stream, &mut actual), stream.len());
+        assert_eq!(
+            parser.feed_until_terminal_event(&stream, &mut actual),
+            stream.len()
+        );
         assert_eq!(row_prefix(&actual, 2), "λX");
         assert!(matches!(actual.drain_terminal_events().as_slice(),
             [TerminalEvent::Response(response)] if response == b"\x1b[1;3R"));
@@ -1398,9 +1607,11 @@ mod tests {
     fn utf8_blocks_preserve_every_ascii_byte_and_graphics_boundaries() {
         for ascii in 0..=0x7f {
             let input = [
-                "é日λ".as_bytes(), &[ascii],
+                "é日λ".as_bytes(),
+                &[ascii],
                 "β\x1b[6n\x1b_Ga=d,d=c\x1b\\日\x1bPq~\x1b\\λ".as_bytes(),
-            ].concat();
+            ]
+            .concat();
             assert_utf8_matches_byte_decoding_at_every_split(&input, 8);
         }
     }
@@ -1418,7 +1629,8 @@ mod tests {
             "\x1b[?1049h日é\u{301}\r\nλβ\x1b[?1049l日本語\x1b[6n",
             "\x1b]2;日本語\x1b\\λ\x1bPq~\x1b\\日\x1b_Ga=d,d=c\x1b\\β",
             "\x1b[2J\x1b[3J日本語\x1bc日λé\x1b[6n",
-        ).as_bytes();
+        )
+        .as_bytes();
         for cols in [1, 2, 7, 40] {
             for chunk_size in [1, 2, 3, 7, 16, 63, input.len()] {
                 assert_utf8_chunks_match_byte_decoding(input.chunks(chunk_size), cols);
@@ -1440,23 +1652,36 @@ mod tests {
             assert_utf8_chunks_match_byte_decoding(input.chunks(chunk_size), 8);
         }
         for pending in [b"\xc3".as_slice(), b"\xe6\x97", b"\xf0\x9f\x99"] {
-            assert_utf8_chunks_match_byte_decoding([
-                "λ".as_bytes(), pending, b"\x82\xe2\xc3\xa9", "日\x1b[6nZ".as_bytes(),
-            ], 8);
+            assert_utf8_chunks_match_byte_decoding(
+                [
+                    "λ".as_bytes(),
+                    pending,
+                    b"\x82\xe2\xc3\xa9",
+                    "日\x1b[6nZ".as_bytes(),
+                ],
+                8,
+            );
         }
     }
 
     #[test]
     fn mixed_utf8_blocks_keep_ascii_recovery_and_stop_before_escape_events() {
         let suffixes: &[&[u8]] = &[
-            b"\xe2X", b"\xe2\xc3\xa9 ~", b"\xf0\x9f\xc3\xa9 abc",
-            b"\xff A\xc2B", b"\x80 ~ \xed\xa0\x80 text", b"\xe2 X \xf0\x9f Y",
+            b"\xe2X",
+            b"\xe2\xc3\xa9 ~",
+            b"\xf0\x9f\xc3\xa9 abc",
+            b"\xff A\xc2B",
+            b"\x80 ~ \xed\xa0\x80 text",
+            b"\xe2 X \xf0\x9f Y",
         ];
         for &suffix in suffixes {
             let input = [
-                "é a 日 ".as_bytes(), suffix, " β x 本 ".as_bytes(),
+                "é a 日 ".as_bytes(),
+                suffix,
+                " β x 本 ".as_bytes(),
                 b"\xe2\x1b[6nEND",
-            ].concat();
+            ]
+            .concat();
             assert_utf8_matches_byte_decoding_at_every_split(&input, 8);
         }
 
@@ -1464,12 +1689,18 @@ mod tests {
         // interrupting it is consumed. A partial scalar before ESC must leave
         // that ESC to begin the query, with trailing text still unconsumed.
         let stream = [
-            "é a".as_bytes(), b"\xe2X \xf0\x9f\xc3\xa9Y", " β".as_bytes(),
+            "é a".as_bytes(),
+            b"\xe2X \xf0\x9f\xc3\xa9Y",
+            " β".as_bytes(),
             b"\xe2\x1b[6nEND",
-        ].concat();
+        ]
+        .concat();
         let mut parser = Utf8Parser::new();
         let mut actual = grid();
-        assert_eq!(parser.feed_until_terminal_event(&stream, &mut actual), stream.len() - 3);
+        assert_eq!(
+            parser.feed_until_terminal_event(&stream, &mut actual),
+            stream.len() - 3
+        );
         assert_eq!(row_prefix(&actual, 8), "é aX Y β");
         assert_eq!(actual.buffer.cell(0, 8).c, ' ');
         assert_eq!(parser.utf8_expected, 0);
@@ -1484,14 +1715,22 @@ mod tests {
             for start in [b"\x82".as_slice(), b"X", b"\x1b[6n"] {
                 let prefix = ["α ".as_bytes(), pending].concat();
                 let text = [start, "日 abc λ e\u{301} 本 xyz \x1b[6n".as_bytes()].concat();
-                assert_utf8_chunks_match_byte_decoding([
-                    prefix.as_slice(), text.as_slice(),
-                    "é text \x1b_Ga=d,d=c\x1b\\日 next \x1bPq~\x1b\\β".as_bytes(),
-                ], 8);
+                assert_utf8_chunks_match_byte_decoding(
+                    [
+                        prefix.as_slice(),
+                        text.as_slice(),
+                        "é text \x1b_Ga=d,d=c\x1b\\日 next \x1bPq~\x1b\\β".as_bytes(),
+                    ],
+                    8,
+                );
             }
         }
 
-        let text = format!("λ{}{}\x1b[6nEND", "a b ".repeat(30), "日 x 本 é ".repeat(20));
+        let text = format!(
+            "λ{}{}\x1b[6nEND",
+            "a b ".repeat(30),
+            "日 x 本 é ".repeat(20)
+        );
         for cols in [8, 80, 256] {
             for chunk_size in [31, 63, 64, 65, 127, text.len()] {
                 assert_utf8_chunks_match_byte_decoding(text.as_bytes().chunks(chunk_size), cols);
@@ -1513,7 +1752,8 @@ mod tests {
             b"\x1b]2;title with ASCII\x1b\\text\x1bPq~\x1b\\after sixel",
             b"\x1b_Ga=d,d=c\x1b\\after kitty\x1b[6n\xff\xe6ASCII\xf0\x9fASCII",
             b"\x1b[2J\x1b[3Jafter erase\x1bcafter reset\x1b[6n",
-        ].concat();
+        ]
+        .concat();
         for cols in [1, 2, 7, 40] {
             for chunk_size in [1, 2, 3, 7, 16, input.len()] {
                 let mut batched = Utf8Parser::new();
@@ -1535,8 +1775,11 @@ mod tests {
                         assert_eq!(consumed, scalar_consumed);
                         // Debug covers screen/history cells, cursor, damage, modes,
                         // revisions and ordered events, including graphics snapshots.
-                        assert_eq!(format!("{actual:?}"), format!("{expected:?}"),
-                            "cols={cols}, chunk_size={chunk_size}, remaining={remaining:?}");
+                        assert_eq!(
+                            format!("{actual:?}"),
+                            format!("{expected:?}"),
+                            "cols={cols}, chunk_size={chunk_size}, remaining={remaining:?}"
+                        );
                         assert_eq!(batched.parser.state, scalar.parser.state);
                         assert_eq!(batched.utf8_expected, scalar.utf8_expected);
                         actual.drain_terminal_events();
@@ -1621,12 +1864,7 @@ mod tests {
         assert_eq!(drain_sixel_images(&mut grid).len(), 1);
     }
 
-    fn feed_st_string(
-        parser: &mut Utf8Parser,
-        grid: &mut Grid,
-        introducer: &[u8],
-        data: &[u8],
-    ) {
+    fn feed_st_string(parser: &mut Utf8Parser, grid: &mut Grid, introducer: &[u8], data: &[u8]) {
         parser.feed(introducer, grid);
         parser.feed(data, grid);
         parser.feed(b"\x1b", grid);
@@ -2337,7 +2575,11 @@ mod tests {
             if index > 0 {
                 at_limit.push(';');
             }
-            at_limit.push(if index + 1 == MAX_CSI_PARAMS { '1' } else { '0' });
+            at_limit.push(if index + 1 == MAX_CSI_PARAMS {
+                '1'
+            } else {
+                '0'
+            });
         }
         at_limit.push('h');
         parser.feed(at_limit.as_bytes(), &mut grid);
@@ -2465,7 +2707,11 @@ mod tests {
 
     #[test]
     fn conceal_resets_with_sgr_zero_empty_sgr_and_ris_without_revealing_written_cells() {
-        for reset in [b"\x1b[0m".as_slice(), b"\x1b[m".as_slice(), b"\x1bc".as_slice()] {
+        for reset in [
+            b"\x1b[0m".as_slice(),
+            b"\x1b[m".as_slice(),
+            b"\x1bc".as_slice(),
+        ] {
             let mut parser = Utf8Parser::new();
             let mut grid = grid();
 
@@ -2672,7 +2918,6 @@ mod tests {
         assert_eq!(grid.buffer.cell(0, 0).c, 'z');
     }
 
-
     #[test]
     fn osc52_write_queues_decoded_clipboard_text() {
         let mut parser = Utf8Parser::new();
@@ -2703,7 +2948,10 @@ mod tests {
         let mut parser = Utf8Parser::new();
         let mut screen = grid();
         parser.feed(b"\x1b]52;c;?\x07", &mut screen);
-        assert!(screen.drain_terminal_events().is_empty(), "OSC 52 reads must not answer");
+        assert!(
+            screen.drain_terminal_events().is_empty(),
+            "OSC 52 reads must not answer"
+        );
     }
 
     #[test]
@@ -2727,7 +2975,10 @@ mod tests {
         let mut screen = grid();
         parser.feed(&sequence, &mut screen);
         assert!(screen.drain_terminal_events().is_empty());
-        assert!(decode_osc52_write(std::str::from_utf8(&sequence[5..sequence.len() - 1]).unwrap()).is_none());
+        assert!(
+            decode_osc52_write(std::str::from_utf8(&sequence[5..sequence.len() - 1]).unwrap())
+                .is_none()
+        );
     }
 
     #[test]
@@ -2735,7 +2986,10 @@ mod tests {
         // "a\x1bb\r\nc\x07" -> "ab\nc"
         let decoded = decode_osc52_write("c;YRtiDQpjBw==").unwrap();
         assert_eq!(decoded, "ab\nc");
-        assert!(decode_osc52_write("c;Gxs=").is_none(), "control-only text is dropped");
+        assert!(
+            decode_osc52_write("c;Gxs=").is_none(),
+            "control-only text is dropped"
+        );
     }
 
     #[test]
@@ -2752,18 +3006,27 @@ mod tests {
 
         let mut screen = grid();
         parser.feed(b"\x1b]9;4;1;50\x07", &mut screen);
-        assert!(screen.drain_terminal_events().is_empty(), "OSC 9;4 must not notify");
+        assert!(
+            screen.drain_terminal_events().is_empty(),
+            "OSC 9;4 must not notify"
+        );
 
         let mut screen = grid();
         parser.feed(b"\x1b]9;4\x07", &mut screen);
-        assert!(screen.drain_terminal_events().is_empty(), "OSC 9;4 clear must not notify");
+        assert!(
+            screen.drain_terminal_events().is_empty(),
+            "OSC 9;4 clear must not notify"
+        );
     }
 
     #[test]
     fn osc777_and_osc99_queue_notifications() {
         let mut parser = Utf8Parser::new();
         let mut screen = grid();
-        parser.feed(b"\x1b]777;notify;Deploy;Production is live\x07", &mut screen);
+        parser.feed(
+            b"\x1b]777;notify;Deploy;Production is live\x07",
+            &mut screen,
+        );
         assert!(matches!(
             &screen.drain_terminal_events()[..],
             [TerminalEvent::Notification { title, body }]
@@ -2857,7 +3120,10 @@ mod tests {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
         let mut stream = b"\x1b_Ga=T,f=32,s=24577,v=1,i=9,m=1;".to_vec();
-        stream.extend(std::iter::repeat_n(b'A', super::kitty_graphics::MAX_PAYLOAD_BASE64_BYTES));
+        stream.extend(std::iter::repeat_n(
+            b'A',
+            super::kitty_graphics::MAX_PAYLOAD_BASE64_BYTES,
+        ));
         stream.extend_from_slice(b"\x1b\\\x1b_Gm=0;AQIDBA\x1b\\X");
         for part in stream.chunks(4096) {
             parser.feed(part, &mut grid);
@@ -2958,8 +3224,7 @@ mod tests {
         ));
 
         let text_start = consumed + response_consumed;
-        let text_consumed =
-            parser.feed_until_terminal_event(&stream[text_start..], &mut grid);
+        let text_consumed = parser.feed_until_terminal_event(&stream[text_start..], &mut grid);
 
         assert_eq!(text_consumed, 1);
         assert_eq!(grid.buffer.cell(1, 2).c, 'X');
@@ -2987,10 +3252,8 @@ mod tests {
         ));
         grid.advance_image_cursor(2, 1);
 
-        let second_consumed = parser.feed_until_terminal_event(
-            &stream[first_consumed..],
-            &mut grid,
-        );
+        let second_consumed =
+            parser.feed_until_terminal_event(&stream[first_consumed..], &mut grid);
         assert_eq!(second_consumed, SECOND.len());
         let second_events = grid.drain_terminal_events();
         assert!(matches!(
@@ -3180,7 +3443,14 @@ mod tests {
     fn osc8_spans(grid: &Grid) -> Vec<(usize, usize, usize, String)> {
         grid.hyperlinks
             .spans()
-            .map(|span| (span.abs_row, span.start_col, span.end_col, span.url.to_string()))
+            .map(|span| {
+                (
+                    span.abs_row,
+                    span.start_col,
+                    span.end_col,
+                    span.url.to_string(),
+                )
+            })
             .collect()
     }
 
@@ -3188,15 +3458,30 @@ mod tests {
     fn osc8_open_text_close_records_one_span() {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
-        parser.feed(b"ab\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\tail", &mut grid);
-        assert_eq!(osc8_spans(&grid), vec![(0, 2, 6, "https://example.com".to_string())]);
+        parser.feed(
+            b"ab\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\tail",
+            &mut grid,
+        );
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![(0, 2, 6, "https://example.com".to_string())]
+        );
         assert!(grid.active_hyperlink.is_none());
-        assert_eq!(grid.hyperlinks.hyperlink_at(0, 2), Some("https://example.com"));
-        assert_eq!(grid.hyperlinks.hyperlink_at(0, 5), Some("https://example.com"));
+        assert_eq!(
+            grid.hyperlinks.hyperlink_at(0, 2),
+            Some("https://example.com")
+        );
+        assert_eq!(
+            grid.hyperlinks.hyperlink_at(0, 5),
+            Some("https://example.com")
+        );
         assert_eq!(grid.hyperlinks.hyperlink_at(0, 6), None);
         assert_eq!(grid.hyperlinks.hyperlink_at(0, 1), None);
         assert_eq!(grid.hyperlinks.hyperlink_at(1, 2), None);
-        assert_eq!(grid.hyperlink_at_retained(0, 3), Some("https://example.com"));
+        assert_eq!(
+            grid.hyperlink_at_retained(0, 3),
+            Some("https://example.com")
+        );
     }
 
     #[test]
@@ -3220,7 +3505,10 @@ mod tests {
     fn osc8_link_across_soft_wrap_spans_two_rows() {
         let mut parser = Utf8Parser::new();
         let mut grid = Grid::new(6, 3, 10);
-        parser.feed(b"xxxx\x1b]8;;https://w.example\x1b\\abcd\x1b]8;;\x1b\\", &mut grid);
+        parser.feed(
+            b"xxxx\x1b]8;;https://w.example\x1b\\abcd\x1b]8;;\x1b\\",
+            &mut grid,
+        );
         assert_eq!(
             osc8_spans(&grid),
             vec![
@@ -3234,33 +3522,59 @@ mod tests {
     fn osc8_wide_char_covers_two_columns() {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
-        parser.feed("\x1b]8;;https://w.example\x1b\\漢\x1b]8;;\x1b\\".as_bytes(), &mut grid);
-        assert_eq!(osc8_spans(&grid), vec![(0, 0, 2, "https://w.example".to_string())]);
+        parser.feed(
+            "\x1b]8;;https://w.example\x1b\\漢\x1b]8;;\x1b\\".as_bytes(),
+            &mut grid,
+        );
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![(0, 0, 2, "https://w.example".to_string())]
+        );
     }
 
     #[test]
     fn osc8_overwrite_without_link_forgets_the_cells() {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
-        parser.feed(b"\x1b]8;;https://o.example\x1b\\abcdef\x1b]8;;\x1b\\\r  ", &mut grid);
+        parser.feed(
+            b"\x1b]8;;https://o.example\x1b\\abcdef\x1b]8;;\x1b\\\r  ",
+            &mut grid,
+        );
         assert_eq!(grid.hyperlinks.hyperlink_at(0, 0), None);
         assert_eq!(grid.hyperlinks.hyperlink_at(0, 1), None);
-        assert_eq!(grid.hyperlinks.hyperlink_at(0, 2), Some("https://o.example"));
+        assert_eq!(
+            grid.hyperlinks.hyperlink_at(0, 2),
+            Some("https://o.example")
+        );
     }
 
     #[test]
     fn osc8_spans_follow_scrollback_eviction_and_absolute_rows() {
         let mut parser = Utf8Parser::new();
         let mut grid = Grid::new(8, 2, 2);
-        parser.feed(b"\x1b]8;;https://e.example\x1b\\L0\x1b]8;;\x1b\\\r\n", &mut grid);
-        for _ in 0..6 { parser.feed(b"x\r\n", &mut grid); }
+        parser.feed(
+            b"\x1b]8;;https://e.example\x1b\\L0\x1b]8;;\x1b\\\r\n",
+            &mut grid,
+        );
+        for _ in 0..6 {
+            parser.feed(b"x\r\n", &mut grid);
+        }
         // Row 0 scrolled past the two-line history; its span is gone.
         assert!(grid.hyperlinks.is_empty(), "{:?}", osc8_spans(&grid));
-        parser.feed(b"\x1b]8;;https://k.example\x1b\\K\x1b]8;;\x1b\\\r\n", &mut grid);
+        parser.feed(
+            b"\x1b]8;;https://k.example\x1b\\K\x1b]8;;\x1b\\\r\n",
+            &mut grid,
+        );
         let abs_row = grid.current_absolute_row() - 1;
-        assert_eq!(osc8_spans(&grid), vec![(abs_row, 0, 1, "https://k.example".to_string())]);
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![(abs_row, 0, 1, "https://k.example".to_string())]
+        );
         let retained = grid.scrollback_len() + grid.cursor_row - 1;
-        assert_eq!(grid.hyperlink_at_retained(retained, 0), Some("https://k.example"));
+        assert_eq!(
+            grid.hyperlink_at_retained(retained, 0),
+            Some("https://k.example")
+        );
         parser.feed(b"a\r\nb\r\nc\r\n", &mut grid);
         assert!(grid.hyperlinks.is_empty());
     }
@@ -3270,10 +3584,19 @@ mod tests {
         let mut parser = Utf8Parser::new();
         let mut grid = grid();
         parser.feed(b"\x1b]8;;https://p.example\x1b\\P\x1b]8;;\x1b\\", &mut grid);
-        parser.feed(b"\x1b[?1049h\x1b]8;;https://alt.example\x1b\\A\x1b]8;;\x1b\\", &mut grid);
-        assert_eq!(grid.hyperlinks.hyperlink_at(0, 0), Some("https://alt.example"));
+        parser.feed(
+            b"\x1b[?1049h\x1b]8;;https://alt.example\x1b\\A\x1b]8;;\x1b\\",
+            &mut grid,
+        );
+        assert_eq!(
+            grid.hyperlinks.hyperlink_at(0, 0),
+            Some("https://alt.example")
+        );
         parser.feed(b"\x1b[?1049l", &mut grid);
-        assert_eq!(osc8_spans(&grid), vec![(0, 0, 1, "https://p.example".to_string())]);
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![(0, 0, 1, "https://p.example".to_string())]
+        );
     }
 
     #[test]

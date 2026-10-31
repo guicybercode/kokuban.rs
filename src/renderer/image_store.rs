@@ -154,12 +154,7 @@ impl ImageStore {
         Some(id)
     }
 
-    fn create_texture(
-        &self,
-        width: u32,
-        height: u32,
-        rgba_data: &[u8],
-    ) -> Option<MetalTexture> {
+    fn create_texture(&self, width: u32, height: u32, rgba_data: &[u8]) -> Option<MetalTexture> {
         unsafe {
             let desc =
                 MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
@@ -182,8 +177,7 @@ impl ImageStore {
             };
 
             let bytes_per_row = (width * 4) as usize;
-            let bytes_ptr =
-                std::ptr::NonNull::new(rgba_data.as_ptr() as *mut std::ffi::c_void)?;
+            let bytes_ptr = std::ptr::NonNull::new(rgba_data.as_ptr() as *mut std::ffi::c_void)?;
             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                 region,
                 0,
@@ -256,11 +250,7 @@ impl ImageStore {
     }
 
     fn evict_lru(&mut self) {
-        if let Some((&oldest_id, _)) = self
-            .images
-            .iter()
-            .min_by_key(|(_, img)| img.created_at)
-        {
+        if let Some((&oldest_id, _)) = self.images.iter().min_by_key(|(_, img)| img.created_at) {
             log::trace!("Evicting image id={oldest_id} (LRU)");
             self.remove(oldest_id);
         }
@@ -430,17 +420,11 @@ mod tests {
         let second_created_at = store.get(2).unwrap().created_at;
         let next_id = store.next_id;
 
-        let result = store.store_rgba_with(
-            &[63; 8],
-            1,
-            2,
-            None,
-            |cache, _, _, _| {
-                assert_eq!(cache.image_count(), 2);
-                assert_eq!(cache.total_bytes, 8);
-                None
-            },
-        );
+        let result = store.store_rgba_with(&[63; 8], 1, 2, None, |cache, _, _, _| {
+            assert_eq!(cache.image_count(), 2);
+            assert_eq!(cache.total_bytes, 8);
+            None
+        });
 
         assert_eq!(result, None);
         assert_eq!(store.image_count(), 2);

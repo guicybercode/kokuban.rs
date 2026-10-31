@@ -1,8 +1,8 @@
+use super::keybind::KeyModifiers;
 use super::keyboard::{
     encode_key_kitty_disambiguate, encode_terminal_key_with_modifiers, KittyKey, TerminalKey,
     TerminalKeyModifiers,
 };
-use super::keybind::KeyModifiers;
 use super::mouse::mouse_button_with_modifier_flags;
 use objc2_app_kit::{NSEvent, NSEventModifierFlags};
 
@@ -215,9 +215,8 @@ fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<Terminal
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_macos_kitty_key,
-        encode_macos_terminal_key, encode_macos_text_input, key_modifiers_from_appkit,
-        mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
+        encode_macos_kitty_key, encode_macos_terminal_key, encode_macos_text_input,
+        key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
     };
 
     #[test]
@@ -424,9 +423,18 @@ mod tests {
             (NSEventModifierFlags::Shift, 68),
             (NSEventModifierFlags::Option, 72),
             (NSEventModifierFlags::Control, 80),
-            (NSEventModifierFlags::Shift | NSEventModifierFlags::Option, 76),
-            (NSEventModifierFlags::Shift | NSEventModifierFlags::Control, 84),
-            (NSEventModifierFlags::Option | NSEventModifierFlags::Control, 88),
+            (
+                NSEventModifierFlags::Shift | NSEventModifierFlags::Option,
+                76,
+            ),
+            (
+                NSEventModifierFlags::Shift | NSEventModifierFlags::Control,
+                84,
+            ),
+            (
+                NSEventModifierFlags::Option | NSEventModifierFlags::Control,
+                88,
+            ),
             (
                 NSEventModifierFlags::Shift
                     | NSEventModifierFlags::Option

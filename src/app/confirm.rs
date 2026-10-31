@@ -56,8 +56,8 @@ impl ConfirmDialog {
 
         // Fall back to key codes for special keys
         match key_code {
-            36 => ConfirmResult::Confirmed,  // Return
-            53 => ConfirmResult::Cancelled,   // Escape
+            36 => ConfirmResult::Confirmed, // Return
+            53 => ConfirmResult::Cancelled, // Escape
             _ => ConfirmResult::Pending,
         }
     }
@@ -72,7 +72,9 @@ impl ConfirmDialog {
 
     /// Generate the process status text, if any.
     pub fn process_text(&self) -> Option<String> {
-        self.process_name.as_ref().map(|name| format!("{name} is running"))
+        self.process_name
+            .as_ref()
+            .map(|name| format!("{name} is running"))
     }
 }
 

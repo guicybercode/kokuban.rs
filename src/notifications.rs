@@ -101,7 +101,11 @@ fn deliver(config: &NotificationsConfig, request: &NotificationRequest) {
     if title.is_empty() && body.is_empty() {
         return;
     }
-    if let Some(command) = config.command.as_deref().filter(|command| !command.is_empty()) {
+    if let Some(command) = config
+        .command
+        .as_deref()
+        .filter(|command| !command.is_empty())
+    {
         if let Err(error) = run_notification_command(command, &title, &body) {
             log::warn!("notification command failed: {error}");
         }
@@ -263,15 +267,11 @@ mod tests {
     #[test]
     fn custom_command_passes_shell_metacharacters_without_evaluation() {
         // Proves title/body with `$(...)` and `;` never reach a shell.
-        let out = std::env::temp_dir().join(format!(
-            "kokuban-notify-capture-{}",
-            std::process::id()
-        ));
+        let out =
+            std::env::temp_dir().join(format!("kokuban-notify-capture-{}", std::process::id()));
         let _ = fs::remove_file(&out);
-        let marker = std::env::temp_dir().join(format!(
-            "kokuban-notify-pwned-{}",
-            std::process::id()
-        ));
+        let marker =
+            std::env::temp_dir().join(format!("kokuban-notify-pwned-{}", std::process::id()));
         let _ = fs::remove_file(&marker);
 
         let script = temp_script(&format!(
@@ -401,10 +401,8 @@ mod tests {
 
     #[test]
     fn deliver_sanitizes_before_invoking_custom_command() {
-        let out = std::env::temp_dir().join(format!(
-            "kokuban-notify-sanitized-{}",
-            std::process::id()
-        ));
+        let out =
+            std::env::temp_dir().join(format!("kokuban-notify-sanitized-{}", std::process::id()));
         let _ = fs::remove_file(&out);
         let script = temp_script(&format!(
             "#!/bin/sh\nprintf '%s\\n%s\\n' \"$KOKUBAN_NOTIFICATION_TITLE\" \"$KOKUBAN_NOTIFICATION_BODY\" > '{}'\n",
@@ -418,10 +416,7 @@ mod tests {
             },
             focused,
         );
-        controller.handle_notification(NotificationRequest::new(
-            "hi\u{0007}&x",
-            "body\n<tag>",
-        ));
+        controller.handle_notification(NotificationRequest::new("hi\u{0007}&x", "body\n<tag>"));
         for _ in 0..50 {
             if out.exists() {
                 break;

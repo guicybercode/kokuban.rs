@@ -40,7 +40,11 @@ pub fn builtin_rects(
     cell_height: u32,
     scale: f32,
 ) -> Option<Vec<CellRect>> {
-    let mut canvas = Canvas { width: cell_width, height: cell_height, rects: Vec::new() };
+    let mut canvas = Canvas {
+        width: cell_width,
+        height: cell_height,
+        rects: Vec::new(),
+    };
     match c {
         '\u{2580}'..='\u{259F}' => block_element(c, &mut canvas),
         '\u{2500}'..='\u{257F}' => box_drawing(c, &mut canvas, light_thickness(scale)),
@@ -74,7 +78,13 @@ impl Canvas {
     fn fill_alpha(&mut self, x0: u32, y0: u32, x1: u32, y1: u32, alpha: u8) {
         let (x1, y1) = (x1.min(self.width), y1.min(self.height));
         if x0 < x1 && y0 < y1 {
-            self.rects.push(CellRect { x: x0, y: y0, width: x1 - x0, height: y1 - y0, alpha });
+            self.rects.push(CellRect {
+                x: x0,
+                y: y0,
+                width: x1 - x0,
+                height: y1 - y0,
+                alpha,
+            });
         }
     }
 }
@@ -112,16 +122,16 @@ fn block_element(c: char, canvas: &mut Canvas) {
             const LOWER_LEFT: u8 = 4;
             const LOWER_RIGHT: u8 = 8;
             const QUADRANTS: [u8; 10] = [
-                LOWER_LEFT,                              // ▖
-                LOWER_RIGHT,                             // ▗
-                UPPER_LEFT,                              // ▘
-                UPPER_LEFT | LOWER_LEFT | LOWER_RIGHT,   // ▙
-                UPPER_LEFT | LOWER_RIGHT,                // ▚
-                UPPER_LEFT | UPPER_RIGHT | LOWER_LEFT,   // ▛
-                UPPER_LEFT | UPPER_RIGHT | LOWER_RIGHT,  // ▜
-                UPPER_RIGHT,                             // ▝
-                UPPER_RIGHT | LOWER_LEFT,                // ▞
-                UPPER_RIGHT | LOWER_LEFT | LOWER_RIGHT,  // ▟
+                LOWER_LEFT,                             // ▖
+                LOWER_RIGHT,                            // ▗
+                UPPER_LEFT,                             // ▘
+                UPPER_LEFT | LOWER_LEFT | LOWER_RIGHT,  // ▙
+                UPPER_LEFT | LOWER_RIGHT,               // ▚
+                UPPER_LEFT | UPPER_RIGHT | LOWER_LEFT,  // ▛
+                UPPER_LEFT | UPPER_RIGHT | LOWER_RIGHT, // ▜
+                UPPER_RIGHT,                            // ▝
+                UPPER_RIGHT | LOWER_LEFT,               // ▞
+                UPPER_RIGHT | LOWER_LEFT | LOWER_RIGHT, // ▟
             ];
             let quadrants = QUADRANTS[(code - 0x2596) as usize];
             let (mid_x, mid_y) = (eighth(w, 4), eighth(h, 4));
@@ -159,7 +169,12 @@ struct Arms {
 }
 
 const fn arms(left: Weight, right: Weight, up: Weight, down: Weight) -> Arms {
-    Arms { left, right, up, down }
+    Arms {
+        left,
+        right,
+        up,
+        down,
+    }
 }
 
 fn box_drawing(c: char, canvas: &mut Canvas, light: u32) {
@@ -171,14 +186,40 @@ fn box_drawing(c: char, canvas: &mut Canvas, light: u32) {
         '│' => arms(N, N, L, L),
         '┃' => arms(N, N, H, H),
         '┄' | '┈' | '╌' | '┅' | '┉' | '╍' => {
-            let weight = if matches!(c, '┄' | '┈' | '╌') { L } else { H };
-            let count = match c { '┄' | '┅' => 3, '┈' | '┉' => 4, _ => 2 };
-            return dashes(canvas, true, count, stroke_span(canvas.height, weight, light));
+            let weight = if matches!(c, '┄' | '┈' | '╌') {
+                L
+            } else {
+                H
+            };
+            let count = match c {
+                '┄' | '┅' => 3,
+                '┈' | '┉' => 4,
+                _ => 2,
+            };
+            return dashes(
+                canvas,
+                true,
+                count,
+                stroke_span(canvas.height, weight, light),
+            );
         }
         '┆' | '┊' | '╎' | '┇' | '┋' | '╏' => {
-            let weight = if matches!(c, '┆' | '┊' | '╎') { L } else { H };
-            let count = match c { '┆' | '┇' => 3, '┊' | '┋' => 4, _ => 2 };
-            return dashes(canvas, false, count, stroke_span(canvas.width, weight, light));
+            let weight = if matches!(c, '┆' | '┊' | '╎') {
+                L
+            } else {
+                H
+            };
+            let count = match c {
+                '┆' | '┇' => 3,
+                '┊' | '┋' => 4,
+                _ => 2,
+            };
+            return dashes(
+                canvas,
+                false,
+                count,
+                stroke_span(canvas.width, weight, light),
+            );
         }
         '┌' => arms(N, L, N, L),
         '┍' => arms(N, H, N, L),
@@ -321,10 +362,17 @@ fn strokes(n: u32, weight: Weight, light: u32) -> ([(u32, u32); 2], usize) {
         return ([span, span], 1);
     }
     // Shrink the stroke when three of them do not fit, so both lines remain.
-    let thickness = if light.saturating_mul(3) > n { (n / 3).max(1) } else { light };
+    let thickness = if light.saturating_mul(3) > n {
+        (n / 3).max(1)
+    } else {
+        light
+    };
     let (start, _) = centred(n, thickness * 3);
     (
-        [(start, start + thickness), (start + 2 * thickness, start + 3 * thickness)],
+        [
+            (start, start + thickness),
+            (start + 2 * thickness, start + 3 * thickness),
+        ],
         2,
     )
 }
@@ -381,10 +429,20 @@ fn meeting_point(
     neighbours: Neighbours,
     positive: bool,
 ) -> u32 {
-    let Neighbours { before, after, opposite } = neighbours;
+    let Neighbours {
+        before,
+        after,
+        opposite,
+    } = neighbours;
     match crossing {
         Crossing::None => n / 2,
-        Crossing::Single((start, end)) => if positive { start } else { end },
+        Crossing::Single((start, end)) => {
+            if positive {
+                start
+            } else {
+                end
+            }
+        }
         Crossing::Double(near, far) => {
             // Stop at the nearer line where the double line continues past
             // this stroke, leaving its inside open; otherwise wrap around to
@@ -412,9 +470,10 @@ fn draw_arms(canvas: &mut Canvas, shape: Arms, light: u32) {
     let vertical = crossing(w, shape.up, shape.down, light);
     let horizontal = crossing(h, shape.left, shape.right, light);
 
-    for (weight, positive, opposite) in
-        [(shape.left, false, shape.right), (shape.right, true, shape.left)]
-    {
+    for (weight, positive, opposite) in [
+        (shape.left, false, shape.right),
+        (shape.right, true, shape.left),
+    ] {
         if !present(weight) {
             continue;
         }
@@ -426,7 +485,11 @@ fn draw_arms(canvas: &mut Canvas, shape: Arms, light: u32) {
                 opposite: present(opposite),
             };
             let x = meeting_point(w, vertical, weight, index, neighbours, positive);
-            if positive { canvas.fill(x, y0, w, y1) } else { canvas.fill(0, y0, x, y1) }
+            if positive {
+                canvas.fill(x, y0, w, y1)
+            } else {
+                canvas.fill(0, y0, x, y1)
+            }
         }
     }
     for (weight, positive, opposite) in
@@ -443,7 +506,11 @@ fn draw_arms(canvas: &mut Canvas, shape: Arms, light: u32) {
                 opposite: present(opposite),
             };
             let y = meeting_point(h, horizontal, weight, index, neighbours, positive);
-            if positive { canvas.fill(x0, y, x1, h) } else { canvas.fill(x0, 0, x1, y) }
+            if positive {
+                canvas.fill(x0, y, x1, h)
+            } else {
+                canvas.fill(x0, 0, x1, y)
+            }
         }
     }
 }
@@ -451,7 +518,11 @@ fn draw_arms(canvas: &mut Canvas, shape: Arms, light: u32) {
 /// Dashed lines: `count` dashes per cell, each centred in an equal share of
 /// the cell so the gaps stay even across cell boundaries.
 fn dashes(canvas: &mut Canvas, horizontal: bool, count: u32, (s0, s1): (u32, u32)) {
-    let n = if horizontal { canvas.width } else { canvas.height };
+    let n = if horizontal {
+        canvas.width
+    } else {
+        canvas.height
+    };
     for index in 0..count {
         let start = n * index / count;
         let length = n * (index + 1) / count - start;
@@ -475,7 +546,11 @@ struct Bitmap {
 impl Bitmap {
     fn new(width: u32, height: u32) -> Self {
         let len = width as usize * height as usize;
-        Self { width, height, pixels: vec![false; len] }
+        Self {
+            width,
+            height,
+            pixels: vec![false; len],
+        }
     }
 
     /// Set the `size` x `size` square centred on (`x`, `y`), snapped to whole
@@ -484,8 +559,14 @@ impl Bitmap {
         let half = size as f32 / 2.0;
         let (left, top) = ((x - half).round() as i64, (y - half).round() as i64);
         let clamp = |value: i64, limit: u32| value.clamp(0, i64::from(limit)) as u32;
-        let (x0, x1) = (clamp(left, self.width), clamp(left + i64::from(size), self.width));
-        let (y0, y1) = (clamp(top, self.height), clamp(top + i64::from(size), self.height));
+        let (x0, x1) = (
+            clamp(left, self.width),
+            clamp(left + i64::from(size), self.width),
+        );
+        let (y0, y1) = (
+            clamp(top, self.height),
+            clamp(top + i64::from(size), self.height),
+        );
         for row in y0..y1 {
             let start = row as usize * self.width as usize;
             self.pixels[start + x0 as usize..start + x1 as usize].fill(true);
@@ -498,7 +579,11 @@ impl Bitmap {
         let steps = (length * 4.0).ceil().max(1.0) as u32;
         for step in 0..=steps {
             let t = step as f32 / steps as f32;
-            self.stamp(from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t, size);
+            self.stamp(
+                from.0 + (to.0 - from.0) * t,
+                from.1 + (to.1 - from.1) * t,
+                size,
+            );
         }
     }
 
@@ -531,21 +616,36 @@ fn rounded_corner(canvas: &mut Canvas, light: u32, right: bool, down: bool) {
     // orientation, so all four corners share one shape.
     let radius = x0.min(w - x1).min(y0).min(h - y1);
     if radius == 0 {
-        return draw_arms(canvas, arms(
-            if right { Weight::None } else { Weight::Light },
-            if right { Weight::Light } else { Weight::None },
-            if down { Weight::None } else { Weight::Light },
-            if down { Weight::Light } else { Weight::None },
-        ), light);
+        return draw_arms(
+            canvas,
+            arms(
+                if right { Weight::None } else { Weight::Light },
+                if right { Weight::Light } else { Weight::None },
+                if down { Weight::None } else { Weight::Light },
+                if down { Weight::Light } else { Weight::None },
+            ),
+            light,
+        );
     }
 
     // Straight arms from the arc ends to the cell edges.
-    if right { canvas.fill(x0 + radius, y0, w, y1) } else { canvas.fill(0, y0, x1 - radius, y1) }
-    if down { canvas.fill(x0, y0 + radius, x1, h) } else { canvas.fill(x0, 0, x1, y1 - radius) }
+    if right {
+        canvas.fill(x0 + radius, y0, w, y1)
+    } else {
+        canvas.fill(0, y0, x1 - radius, y1)
+    }
+    if down {
+        canvas.fill(x0, y0 + radius, x1, h)
+    } else {
+        canvas.fill(x0, 0, x1, y1 - radius)
+    }
 
     let half = light as f32 / 2.0;
     let (centre_x, centre_y) = (x0 as f32 + half, y0 as f32 + half);
-    let (sign_x, sign_y) = (if right { 1.0 } else { -1.0 }, if down { 1.0 } else { -1.0 });
+    let (sign_x, sign_y) = (
+        if right { 1.0 } else { -1.0 },
+        if down { 1.0 } else { -1.0 },
+    );
     let r = radius as f32;
     let (arc_x, arc_y) = (centre_x + sign_x * r, centre_y + sign_y * r);
     let mut bitmap = Bitmap::new(w, h);
@@ -586,8 +686,10 @@ mod tests {
         let mut counts = vec![0; (w * h) as usize];
         for rect in builtin_rects(c, w, h, scale).expect("built-in character") {
             assert!(rect.width > 0 && rect.height > 0, "{c:?}: empty {rect:?}");
-            assert!(rect.x + rect.width <= w && rect.y + rect.height <= h,
-                "{c:?}: {rect:?} leaves the {w}x{h} cell");
+            assert!(
+                rect.x + rect.width <= w && rect.y + rect.height <= h,
+                "{c:?}: {rect:?} leaves the {w}x{h} cell"
+            );
             for y in rect.y..rect.y + rect.height {
                 for x in rect.x..rect.x + rect.width {
                     counts[(y * w + x) as usize] += 1;
@@ -598,7 +700,10 @@ mod tests {
     }
 
     fn inked(c: char, w: u32, h: u32, scale: f32) -> Vec<bool> {
-        coverage(c, w, h, scale).into_iter().map(|count| count > 0).collect()
+        coverage(c, w, h, scale)
+            .into_iter()
+            .map(|count| count > 0)
+            .collect()
     }
 
     /// Rows (or columns) with any ink in column `x` (or row `y`).
@@ -617,10 +722,36 @@ mod tests {
         for (w, h, scale) in SIZES {
             let upper = builtin_rects('▀', w, h, scale).unwrap();
             let lower = builtin_rects('▄', w, h, scale).unwrap();
-            assert_eq!(upper, [CellRect { x: 0, y: 0, width: w, height: h / 2, alpha: 255 }]);
-            assert_eq!(lower, [CellRect { x: 0, y: h / 2, width: w, height: h - h / 2, alpha: 255 }]);
-            assert_eq!(builtin_rects('█', w, h, scale).unwrap(),
-                [CellRect { x: 0, y: 0, width: w, height: h, alpha: 255 }]);
+            assert_eq!(
+                upper,
+                [CellRect {
+                    x: 0,
+                    y: 0,
+                    width: w,
+                    height: h / 2,
+                    alpha: 255
+                }]
+            );
+            assert_eq!(
+                lower,
+                [CellRect {
+                    x: 0,
+                    y: h / 2,
+                    width: w,
+                    height: h - h / 2,
+                    alpha: 255
+                }]
+            );
+            assert_eq!(
+                builtin_rects('█', w, h, scale).unwrap(),
+                [CellRect {
+                    x: 0,
+                    y: 0,
+                    width: w,
+                    height: h,
+                    alpha: 255
+                }]
+            );
 
             // Upper and lower halves tile the cell exactly once.
             let upper = coverage('▀', w, h, scale);
@@ -651,12 +782,17 @@ mod tests {
             for (a, b) in pairs {
                 let a_cov = coverage(a, w, h, scale);
                 let b_cov = coverage(b, w, h, scale);
-                assert!(a_cov.iter().zip(&b_cov).all(|(x, y)| x + y == 1),
-                    "{a:?} and {b:?} do not tile a {w}x{h} cell");
+                assert!(
+                    a_cov.iter().zip(&b_cov).all(|(x, y)| x + y == 1),
+                    "{a:?} and {b:?} do not tile a {w}x{h} cell"
+                );
             }
             // Every block element stays within its cell and never overlaps itself.
             for c in '\u{2580}'..='\u{259F}' {
-                assert!(coverage(c, w, h, scale).iter().all(|&count| count <= 1), "{c:?}");
+                assert!(
+                    coverage(c, w, h, scale).iter().all(|&count| count <= 1),
+                    "{c:?}"
+                );
             }
         }
     }
@@ -678,8 +814,16 @@ mod tests {
     #[test]
     fn shades_are_uniform_partial_coverage() {
         for (c, alpha) in [('░', 64), ('▒', 128), ('▓', 191)] {
-            assert_eq!(builtin_rects(c, 9, 17, 1.0).unwrap(),
-                [CellRect { x: 0, y: 0, width: 9, height: 17, alpha }]);
+            assert_eq!(
+                builtin_rects(c, 9, 17, 1.0).unwrap(),
+                [CellRect {
+                    x: 0,
+                    y: 0,
+                    width: 9,
+                    height: 17,
+                    alpha
+                }]
+            );
         }
     }
 
@@ -692,10 +836,22 @@ mod tests {
         assert_eq!(light_thickness(f32::NAN), 1);
         for (w, h, scale) in SIZES {
             let light = light_thickness(scale);
-            assert_eq!(inked_rows_at_column('─', w, h, scale, 0).len() as u32, light);
-            assert_eq!(inked_rows_at_column('━', w, h, scale, 0).len() as u32, 3 * light);
-            assert_eq!(inked_columns_at_row('│', w, h, scale, 0).len() as u32, light);
-            assert_eq!(inked_columns_at_row('┃', w, h, scale, 0).len() as u32, 3 * light);
+            assert_eq!(
+                inked_rows_at_column('─', w, h, scale, 0).len() as u32,
+                light
+            );
+            assert_eq!(
+                inked_rows_at_column('━', w, h, scale, 0).len() as u32,
+                3 * light
+            );
+            assert_eq!(
+                inked_columns_at_row('│', w, h, scale, 0).len() as u32,
+                light
+            );
+            assert_eq!(
+                inked_columns_at_row('┃', w, h, scale, 0).len() as u32,
+                3 * light
+            );
         }
     }
 
@@ -704,11 +860,19 @@ mod tests {
         for (w, h, scale) in SIZES {
             let rows = inked_rows_at_column('─', w, h, scale, 0);
             for x in 0..w {
-                assert_eq!(inked_rows_at_column('─', w, h, scale, x), rows, "─ at x={x}");
+                assert_eq!(
+                    inked_rows_at_column('─', w, h, scale, x),
+                    rows,
+                    "─ at x={x}"
+                );
             }
             let columns = inked_columns_at_row('│', w, h, scale, 0);
             for y in 0..h {
-                assert_eq!(inked_columns_at_row('│', w, h, scale, y), columns, "│ at y={y}");
+                assert_eq!(
+                    inked_columns_at_row('│', w, h, scale, y),
+                    columns,
+                    "│ at y={y}"
+                );
             }
         }
     }
@@ -720,7 +884,9 @@ mod tests {
         let mut pixels = vec![false; (width * height) as usize];
         for (row, line) in text.iter().enumerate() {
             for (column, c) in line.chars().enumerate() {
-                let Some(rects) = builtin_rects(c, w, h, scale) else { continue };
+                let Some(rects) = builtin_rects(c, w, h, scale) else {
+                    continue;
+                };
                 for rect in rects {
                     for y in rect.y..rect.y + rect.height {
                         for x in rect.x..rect.x + rect.width {
@@ -743,8 +909,11 @@ mod tests {
             for y in 0..h {
                 let expected = (y0..y1).contains(&y);
                 for x in 0..width {
-                    assert_eq!(pixels[(y * width + x) as usize], expected,
-                        "──── at ({x}, {y}), scale {scale}");
+                    assert_eq!(
+                        pixels[(y * width + x) as usize],
+                        expected,
+                        "──── at ({x}, {y}), scale {scale}"
+                    );
                 }
             }
 
@@ -752,8 +921,11 @@ mod tests {
             let (x0, x1) = centred(w, light);
             for y in 0..height {
                 for x in 0..width {
-                    assert_eq!(pixels[(y * width + x) as usize], (x0..x1).contains(&x),
-                        "│ stack at ({x}, {y}), scale {scale}");
+                    assert_eq!(
+                        pixels[(y * width + x) as usize],
+                        (x0..x1).contains(&x),
+                        "│ stack at ({x}, {y}), scale {scale}"
+                    );
                 }
             }
         }
@@ -767,22 +939,31 @@ mod tests {
             for c in ['┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '╴', '╶'] {
                 let ink = inked(c, w, h, scale);
                 for edge_x in [0, w - 1] {
-                    let rows: Vec<u32> = (0..h).filter(|&y| ink[(y * w + edge_x) as usize]).collect();
-                    assert!(rows.is_empty() || rows == horizontal,
-                        "{c:?} meets x={edge_x} at rows {rows:?}, not {horizontal:?}");
+                    let rows: Vec<u32> =
+                        (0..h).filter(|&y| ink[(y * w + edge_x) as usize]).collect();
+                    assert!(
+                        rows.is_empty() || rows == horizontal,
+                        "{c:?} meets x={edge_x} at rows {rows:?}, not {horizontal:?}"
+                    );
                 }
                 for edge_y in [0, h - 1] {
                     let columns: Vec<u32> =
                         (0..w).filter(|&x| ink[(edge_y * w + x) as usize]).collect();
-                    assert!(columns.is_empty() || columns == vertical,
-                        "{c:?} meets y={edge_y} at columns {columns:?}, not {vertical:?}");
+                    assert!(
+                        columns.is_empty() || columns == vertical,
+                        "{c:?} meets y={edge_y} at columns {columns:?}, not {vertical:?}"
+                    );
                 }
             }
             // Heavy and double lines are centred on the light line too.
             let light_centre = horizontal[0] * 2 + horizontal.len() as u32;
             for c in ['━', '═'] {
                 let rows = inked_rows_at_column(c, w, h, scale, 0);
-                assert_eq!(rows[0] * 2 + (rows[rows.len() - 1] + 1 - rows[0]), light_centre, "{c:?}");
+                assert_eq!(
+                    rows[0] * 2 + (rows[rows.len() - 1] + 1 - rows[0]),
+                    light_centre,
+                    "{c:?}"
+                );
             }
         }
     }
@@ -802,10 +983,18 @@ mod tests {
                 reached += 1;
                 let (x, y) = (index as u32 % width, index as u32 / width);
                 let mut neighbours = Vec::new();
-                if x > 0 { neighbours.push(index - 1); }
-                if x + 1 < width { neighbours.push(index + 1); }
-                if y > 0 { neighbours.push(index - width as usize); }
-                if y + 1 < height { neighbours.push(index + width as usize); }
+                if x > 0 {
+                    neighbours.push(index - 1);
+                }
+                if x + 1 < width {
+                    neighbours.push(index + 1);
+                }
+                if y > 0 {
+                    neighbours.push(index - width as usize);
+                }
+                if y + 1 < height {
+                    neighbours.push(index + width as usize);
+                }
                 for next in neighbours {
                     if pixels[next] && !seen[next] {
                         seen[next] = true;
@@ -843,11 +1032,22 @@ mod tests {
         for (w, h, scale) in SIZES {
             let horizontal = inked_rows_at_column('─', w, h, scale, 0);
             let vertical = inked_columns_at_row('│', w, h, scale, 0);
-            for (c, edge_x, edge_y) in
-                [('╭', w - 1, h - 1), ('╮', 0, h - 1), ('╯', 0, 0), ('╰', w - 1, 0)]
-            {
-                assert_eq!(inked_rows_at_column(c, w, h, scale, edge_x), horizontal, "{c:?}");
-                assert_eq!(inked_columns_at_row(c, w, h, scale, edge_y), vertical, "{c:?}");
+            for (c, edge_x, edge_y) in [
+                ('╭', w - 1, h - 1),
+                ('╮', 0, h - 1),
+                ('╯', 0, 0),
+                ('╰', w - 1, 0),
+            ] {
+                assert_eq!(
+                    inked_rows_at_column(c, w, h, scale, edge_x),
+                    horizontal,
+                    "{c:?}"
+                );
+                assert_eq!(
+                    inked_columns_at_row(c, w, h, scale, edge_y),
+                    vertical,
+                    "{c:?}"
+                );
             }
             let (pixels, width, height) = render(&["╭╮", "╰╯"], w, h, scale);
             // A closed loop: each inked pixel has at least two 8-neighbours.
@@ -860,8 +1060,11 @@ mod tests {
                     for dy in -1i32..=1 {
                         for dx in -1i32..=1 {
                             let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                            if (dx, dy) != (0, 0) && nx >= 0 && ny >= 0
-                                && (nx as u32) < width && (ny as u32) < height
+                            if (dx, dy) != (0, 0)
+                                && nx >= 0
+                                && ny >= 0
+                                && (nx as u32) < width
+                                && (ny as u32) < height
                                 && pixels[(ny as u32 * width + nx as u32) as usize]
                             {
                                 neighbours += 1;
@@ -892,7 +1095,10 @@ mod tests {
 
     #[test]
     fn every_line_character_stays_inside_the_cell() {
-        for (w, h, scale) in SIZES.into_iter().chain([(1, 1, 1.0), (2, 3, 3.0), (5, 9, 1.5)]) {
+        for (w, h, scale) in SIZES
+            .into_iter()
+            .chain([(1, 1, 1.0), (2, 3, 3.0), (5, 9, 1.5)])
+        {
             for c in '\u{2500}'..='\u{259F}' {
                 let ink = coverage(c, w, h, scale);
                 if w >= 9 {

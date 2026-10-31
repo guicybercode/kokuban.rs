@@ -174,7 +174,9 @@ impl SearchState {
             let mut last = if row == last_row {
                 last_col
             } else {
-                grid.retained_row_len(row).min(grid.cols()).saturating_sub(1)
+                grid.retained_row_len(row)
+                    .min(grid.cols())
+                    .saturating_sub(1)
             };
             // Inclui a segunda metade de um glifo largo no fim do resultado.
             if grid
@@ -295,7 +297,14 @@ mod tests {
     fn finds_simple_match() {
         let grid = grid_with(20, 5, "hello world\r\nfoo bar\r\n");
         let state = search(&grid, "world");
-        assert_eq!(state.matches, vec![SearchMatch { row: 0, col: 6, len: 5 }]);
+        assert_eq!(
+            state.matches,
+            vec![SearchMatch {
+                row: 0,
+                col: 6,
+                len: 5
+            }]
+        );
         assert_eq!(state.current, Some(0));
     }
 
@@ -318,8 +327,16 @@ mod tests {
         assert_eq!(
             state.matches,
             vec![
-                SearchMatch { row: 0, col: 6, len: 2 },
-                SearchMatch { row: 1, col: 0, len: 2 },
+                SearchMatch {
+                    row: 0,
+                    col: 6,
+                    len: 2
+                },
+                SearchMatch {
+                    row: 1,
+                    col: 0,
+                    len: 2
+                },
             ]
         );
         // Sem soft wrap (quebra explícita) não há união.
@@ -370,7 +387,14 @@ mod tests {
         assert!(state.needs_recompute(&grid));
         state.recompute(&grid);
         assert_eq!(state.matches.len(), 4);
-        assert_eq!(state.current_match(), Some(SearchMatch { row: 0, col: 0, len: 3 }));
+        assert_eq!(
+            state.current_match(),
+            Some(SearchMatch {
+                row: 0,
+                col: 0,
+                len: 3
+            })
+        );
     }
 
     #[test]
@@ -378,7 +402,14 @@ mod tests {
         let grid = grid_with(20, 4, "x日本y\r\n");
         let state = search(&grid, "日本y");
         // 日(2) 本(2) y(1) = 5 células a partir da coluna 1.
-        assert_eq!(state.matches, vec![SearchMatch { row: 0, col: 1, len: 5 }]);
+        assert_eq!(
+            state.matches,
+            vec![SearchMatch {
+                row: 0,
+                col: 1,
+                len: 5
+            }]
+        );
         assert_eq!(state.contains_cell(&grid, 0, 0), None);
         assert_eq!(state.contains_cell(&grid, 0, 2), Some(MatchKind::Current));
         assert_eq!(state.contains_cell(&grid, 0, 5), Some(MatchKind::Current));

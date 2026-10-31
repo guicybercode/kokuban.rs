@@ -80,7 +80,10 @@ impl RenderScheduler {
     fn run_on_main_thread(self: Arc<Self>) {
         let now = Instant::now();
         let delay = {
-            let last_frame = self.last_frame.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let last_frame = self
+                .last_frame
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             frame_delay(*last_frame, now)
         };
         if !delay.is_zero() {
@@ -98,7 +101,10 @@ impl RenderScheduler {
             return;
         }
 
-        *self.last_frame.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(now);
+        *self
+            .last_frame
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(now);
         // Release before the frame so requests made while rendering schedule again.
         self.scheduled.store(false, Ordering::Release);
         (self.frame)();
@@ -140,7 +146,10 @@ mod tests {
             FRAME_INTERVAL - Duration::from_millis(10)
         );
         assert_eq!(frame_delay(Some(now), now + FRAME_INTERVAL), Duration::ZERO);
-        assert_eq!(frame_delay(Some(now), now + Duration::from_secs(1)), Duration::ZERO);
+        assert_eq!(
+            frame_delay(Some(now), now + Duration::from_secs(1)),
+            Duration::ZERO
+        );
     }
 
     #[test]
@@ -148,9 +157,14 @@ mod tests {
         let scheduler = RenderScheduler::new(Arc::new(AtomicBool::new(false)), Box::new(|| {}));
         let claims: usize = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..8)
-                .map(|_| scope.spawn(|| (0..1000).filter(|_| scheduler.try_claim_schedule()).count()))
+                .map(|_| {
+                    scope.spawn(|| (0..1000).filter(|_| scheduler.try_claim_schedule()).count())
+                })
                 .collect();
-            handles.into_iter().map(|handle| handle.join().unwrap()).sum()
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .sum()
         });
         assert_eq!(claims, 1);
 

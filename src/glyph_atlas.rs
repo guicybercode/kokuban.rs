@@ -70,7 +70,15 @@ pub struct GlyphEntry {
 
 impl GlyphEntry {
     fn empty() -> Self {
-        Self { atlas_x: 0, atlas_y: 0, pixel_w: 0, pixel_h: 0, bearing_x: 0, bearing_y: 0, color: false }
+        Self {
+            atlas_x: 0,
+            atlas_y: 0,
+            pixel_w: 0,
+            pixel_h: 0,
+            bearing_x: 0,
+            bearing_y: 0,
+            color: false,
+        }
     }
 }
 
@@ -84,7 +92,10 @@ pub struct ScalarGlyphCache {
 
 impl ScalarGlyphCache {
     fn new() -> Self {
-        Self { ascii: [None; 128 * 4], unicode: HashMap::new() }
+        Self {
+            ascii: [None; 128 * 4],
+            unicode: HashMap::new(),
+        }
     }
 
     fn ascii_index(key: &GlyphKey) -> Option<usize> {
@@ -127,7 +138,10 @@ impl ScalarGlyphCache {
 
     #[cfg(test)]
     pub(crate) fn values(&self) -> impl Iterator<Item = &GlyphEntry> {
-        self.ascii.iter().filter_map(Option::as_ref).chain(self.unicode.values())
+        self.ascii
+            .iter()
+            .filter_map(Option::as_ref)
+            .chain(self.unicode.values())
     }
 }
 
@@ -202,12 +216,13 @@ impl GlyphAtlas {
                         source,
                     })?;
 
-                let font = ShapingFont::load(&fallback_handle)
-                    .map_err(|source| GlyphAtlasError::FallbackLoad {
+                let font = ShapingFont::load(&fallback_handle).map_err(|source| {
+                    GlyphAtlasError::FallbackLoad {
                         requested_family: font_family.to_string(),
                         requested_error,
                         source,
-                    })?;
+                    }
+                })?;
                 (font, FamilyName::Monospace)
             }
         };
@@ -341,7 +356,11 @@ impl GlyphAtlas {
         let italic = cell.flags.contains(CellFlags::ITALIC);
         match &cell.grapheme {
             Some(text) => self.get_or_insert_text(text, bold, italic),
-            None => self.get_or_insert(GlyphKey { c: cell.c, bold, italic }),
+            None => self.get_or_insert(GlyphKey {
+                c: cell.c,
+                bold,
+                italic,
+            }),
         }
     }
 
@@ -374,7 +393,8 @@ impl GlyphAtlas {
         let width = UnicodeWidthStr::width(text).max(1) as f32 * self.cell_width;
         let style = style_index(bold, italic);
         let bitmap =
-            self.rasterizer.rasterize(text, style, self.font_size * self.scale_factor, width);
+            self.rasterizer
+                .rasterize(text, style, self.font_size * self.scale_factor, width);
         match bitmap {
             Some(bitmap) => self.insert_bitmap(text, bitmap),
             None => GlyphEntry::empty(),
@@ -420,7 +440,6 @@ impl GlyphAtlas {
         self.dirty = true;
         entry
     }
-
 }
 
 /// Index into the per-style face and cache tables: bit 0 bold, bit 1 italic.
@@ -446,7 +465,11 @@ fn closest_face(faces: &[Properties], bold: bool, italic: bool) -> Option<usize>
         .iter()
         .enumerate()
         .filter(|(_, face)| slant_matches(face.style, italic))
-        .min_by(|(_, a), (_, b)| (a.weight.0 - wanted).abs().total_cmp(&(b.weight.0 - wanted).abs()))
+        .min_by(|(_, a), (_, b)| {
+            (a.weight.0 - wanted)
+                .abs()
+                .total_cmp(&(b.weight.0 - wanted).abs())
+        })
         .map(|(index, _)| index)
 }
 
@@ -461,7 +484,10 @@ fn load_face(
     italic: bool,
 ) -> Result<ShapingFont, String> {
     let handle = source
-        .select_best_match(std::slice::from_ref(family), &style_properties(bold, italic))
+        .select_best_match(
+            std::slice::from_ref(family),
+            &style_properties(bold, italic),
+        )
         .map_err(|error| format!("selection failed: {error}"))?;
     let font = ShapingFont::load(&handle).map_err(|error| format!("loading failed: {error}"))?;
     if slant_matches(font.font.properties().style, italic) {
@@ -479,7 +505,10 @@ fn load_face(
         .iter()
         .filter_map(|handle| ShapingFont::load(handle).ok())
         .collect();
-    let properties: Vec<_> = candidates.iter().map(|face| face.font.properties()).collect();
+    let properties: Vec<_> = candidates
+        .iter()
+        .map(|face| face.font.properties())
+        .collect();
     closest_face(&properties, bold, italic)
         .map(|index| candidates[index].clone())
         .ok_or_else(|| "no face with the requested slant".to_owned())
@@ -661,14 +690,22 @@ mod tests {
             .expect("system monospace should be available");
         let requests = source.requests.lock().unwrap();
         let wanted = |bold: bool, italic: bool| {
-            requests.iter().any(|p| {
-                (p.weight == Weight::BOLD) == bold
-                    && (p.style == Style::Italic) == italic
-            })
+            requests
+                .iter()
+                .any(|p| (p.weight == Weight::BOLD) == bold && (p.style == Style::Italic) == italic)
         };
-        assert!(wanted(true, false), "no upright bold face requested: {requests:?}");
-        assert!(wanted(false, true), "no italic face requested: {requests:?}");
-        assert!(wanted(true, true), "no bold italic face requested: {requests:?}");
+        assert!(
+            wanted(true, false),
+            "no upright bold face requested: {requests:?}"
+        );
+        assert!(
+            wanted(false, true),
+            "no italic face requested: {requests:?}"
+        );
+        assert!(
+            wanted(true, true),
+            "no bold italic face requested: {requests:?}"
+        );
     }
 
     #[test]
@@ -794,8 +831,7 @@ mod tests {
         }
         let has_coverage = (0..glyph.pixel_h).any(|y| {
             (0..glyph.pixel_w).any(|x| {
-                let index =
-                    ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize;
+                let index = ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize;
                 atlas.pixels[index] != 0
             })
         });
@@ -805,24 +841,41 @@ mod tests {
     #[test]
     fn scalar_cache_keeps_every_ascii_style_distinct_from_unicode_and_empty_entries() {
         let mut cache = ScalarGlyphCache::new();
-        let characters: Vec<_> = (0..=128).map(|c| char::from_u32(c).unwrap())
-            .chain(['é', '界', '👩']).collect();
-        let keys: Vec<_> = characters.iter().flat_map(|&c| {
-            [(false, false), (true, false), (false, true), (true, true)]
-                .map(|(bold, italic)| GlyphKey { c, bold, italic })
-        }).collect();
+        let characters: Vec<_> = (0..=128)
+            .map(|c| char::from_u32(c).unwrap())
+            .chain(['é', '界', '👩'])
+            .collect();
+        let keys: Vec<_> = characters
+            .iter()
+            .flat_map(|&c| {
+                [(false, false), (true, false), (false, true), (true, true)]
+                    .map(|(bold, italic)| GlyphKey { c, bold, italic })
+            })
+            .collect();
         for (index, &key) in keys.iter().enumerate() {
-            let entry = GlyphEntry { atlas_x: index as u32 + 1, color: key.italic, ..GlyphEntry::empty() };
+            let entry = GlyphEntry {
+                atlas_x: index as u32 + 1,
+                color: key.italic,
+                ..GlyphEntry::empty()
+            };
             assert!(cache.get(&key).is_none());
             assert!(cache.insert(key, entry).is_none());
         }
         assert_eq!(cache.ascii.iter().flatten().count(), 128 * 4);
-        assert_eq!(cache.unicode.len(), 4 * 4, "ASCII must not also occupy the hash map");
+        assert_eq!(
+            cache.unicode.len(),
+            4 * 4,
+            "ASCII must not also occupy the hash map"
+        );
         assert_eq!(cache.len(), keys.len());
         assert_eq!(cache.values().count(), keys.len());
         for (index, &key) in keys.iter().enumerate() {
             let cached = cache.get(&key).unwrap();
-            assert_eq!(cached.atlas_x, index as u32 + 1, "wrong scalar/style: {key:?}");
+            assert_eq!(
+                cached.atlas_x,
+                index as u32 + 1,
+                "wrong scalar/style: {key:?}"
+            );
             assert_eq!(cached.color, key.italic);
             // Replacement by an empty glyph preserves presence, including the
             // 127/128 boundary, all controls, and each Unicode style.
@@ -839,8 +892,11 @@ mod tests {
         for key in keys {
             assert!(cache.get(&key).is_none(), "clear retained {key:?}");
         }
-        eprintln!("scalar-cache inline_bytes={} entry_bytes={} ascii_slots=512",
-            std::mem::size_of::<ScalarGlyphCache>(), std::mem::size_of::<GlyphEntry>());
+        eprintln!(
+            "scalar-cache inline_bytes={} entry_bytes={} ascii_slots=512",
+            std::mem::size_of::<ScalarGlyphCache>(),
+            std::mem::size_of::<GlyphEntry>()
+        );
     }
 
     #[test]
@@ -860,14 +916,29 @@ mod tests {
                 let entries = [
                     atlas.get_or_insert(key),
                     atlas.get_or_insert_text(&text, bold, italic),
-                    atlas.get_or_insert_cell(&Cell { c, flags, ..Cell::default() }),
                     atlas.get_or_insert_cell(&Cell {
-                        c, grapheme: Some(Arc::from(text.as_str())), flags, ..Cell::default()
+                        c,
+                        flags,
+                        ..Cell::default()
+                    }),
+                    atlas.get_or_insert_cell(&Cell {
+                        c,
+                        grapheme: Some(Arc::from(text.as_str())),
+                        flags,
+                        ..Cell::default()
                     }),
                 ];
-                assert!(entries.iter().all(|entry| entry.pixel_w == 0 && entry.pixel_h == 0 && !entry.color));
-                assert!(!atlas.dirty, "empty cache entry was rasterized again: {key:?}");
-                assert_eq!((atlas.cursor_x, atlas.cursor_y, atlas.row_height), original_position);
+                assert!(entries
+                    .iter()
+                    .all(|entry| entry.pixel_w == 0 && entry.pixel_h == 0 && !entry.color));
+                assert!(
+                    !atlas.dirty,
+                    "empty cache entry was rasterized again: {key:?}"
+                );
+                assert_eq!(
+                    (atlas.cursor_x, atlas.cursor_y, atlas.row_height),
+                    original_position
+                );
             }
         }
         assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
@@ -876,12 +947,22 @@ mod tests {
     #[test]
     fn resize_invalidates_all_scalar_slots_only_after_sizing_succeeds() {
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 14.0, 1.0).unwrap();
-        let keys: Vec<_> = ['\0', ' ', 'A', '\u{7f}', '\u{80}', '界'].into_iter().flat_map(|c| {
-            [(false, false), (true, false), (false, true), (true, true)]
-                .map(|(bold, italic)| GlyphKey { c, bold, italic })
-        }).collect();
+        let keys: Vec<_> = ['\0', ' ', 'A', '\u{7f}', '\u{80}', '界']
+            .into_iter()
+            .flat_map(|c| {
+                [(false, false), (true, false), (false, true), (true, true)]
+                    .map(|(bold, italic)| GlyphKey { c, bold, italic })
+            })
+            .collect();
         for &key in &keys {
-            atlas.glyphs.insert(key, GlyphEntry { atlas_x: u32::MAX, color: true, ..GlyphEntry::empty() });
+            atlas.glyphs.insert(
+                key,
+                GlyphEntry {
+                    atlas_x: u32::MAX,
+                    color: true,
+                    ..GlyphEntry::empty()
+                },
+            );
         }
         atlas.dirty = false;
         for invalid_size in [f32::NAN, 0.0, -1.0, f32::INFINITY] {
@@ -895,13 +976,24 @@ mod tests {
         }
         atlas.clear_and_resize(18.0).unwrap();
         assert!(atlas.dirty);
-        assert_eq!(atlas.glyphs.len(), 95, "only regular printable ASCII is prewarmed");
+        assert_eq!(
+            atlas.glyphs.len(),
+            95,
+            "only regular printable ASCII is prewarmed"
+        );
         assert!(atlas.glyphs.unicode.is_empty());
         for c in 0..128 {
             for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
-                let key = GlyphKey { c: char::from_u32(c).unwrap(), bold, italic };
+                let key = GlyphKey {
+                    c: char::from_u32(c).unwrap(),
+                    bold,
+                    italic,
+                };
                 let cached = atlas.glyphs.get(&key);
-                assert_eq!(cached.is_some(), !bold && !italic && (32..=126).contains(&c));
+                assert_eq!(
+                    cached.is_some(),
+                    !bold && !italic && (32..=126).contains(&c)
+                );
                 if let Some(entry) = cached {
                     assert_ne!(entry.atlas_x, u32::MAX);
                     assert!(!entry.color);
@@ -939,17 +1031,35 @@ mod tests {
         use crate::grid::cell::{Cell, CellFlags};
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
         for color in [false, true] {
-            let rgba = if color { [17, 83, 149, 127] } else { [255, 255, 255, 127] };
-            let entry = atlas.insert_bitmap("fixture", Bitmap {
-                width: 1, height: 1, x: -1, y: 2, rgba: rgba.to_vec(), color,
-            });
+            let rgba = if color {
+                [17, 83, 149, 127]
+            } else {
+                [255, 255, 255, 127]
+            };
+            let entry = atlas.insert_bitmap(
+                "fixture",
+                Bitmap {
+                    width: 1,
+                    height: 1,
+                    x: -1,
+                    y: 2,
+                    rgba: rgba.to_vec(),
+                    color,
+                },
+            );
             let offset = (entry.atlas_y * atlas.width + entry.atlas_x) as usize;
             assert_eq!(atlas.pixels[offset], rgba[3]);
             assert_eq!(atlas.rgba_pixels[offset * 4..offset * 4 + 4], rgba);
             for (style, (bold, italic)) in
-                [(false, false), (true, false), (false, true), (true, true)].into_iter().enumerate()
+                [(false, false), (true, false), (false, true), (true, true)]
+                    .into_iter()
+                    .enumerate()
             {
-                let key = GlyphKey { c: 'é', bold, italic };
+                let key = GlyphKey {
+                    c: 'é',
+                    bold,
+                    italic,
+                };
                 atlas.glyphs.insert(key, entry);
                 atlas.text_glyphs[style].insert("e\u{301}".to_owned(), entry);
                 let mut flags = CellFlags::empty();
@@ -957,15 +1067,30 @@ mod tests {
                 flags.set(CellFlags::ITALIC, italic);
                 atlas.dirty = false;
                 for cell in [
-                    Cell { c: 'é', flags, ..Cell::default() },
-                    Cell { c: 'e', grapheme: Some(Arc::from("e\u{301}")), flags, ..Cell::default() },
+                    Cell {
+                        c: 'é',
+                        flags,
+                        ..Cell::default()
+                    },
+                    Cell {
+                        c: 'e',
+                        grapheme: Some(Arc::from("e\u{301}")),
+                        flags,
+                        ..Cell::default()
+                    },
                 ] {
                     let cached = atlas.get_or_insert_cell(&cell);
                     assert_eq!(atlas.is_color(cached), color);
-                    assert_eq!((cached.atlas_x, cached.atlas_y), (entry.atlas_x, entry.atlas_y));
+                    assert_eq!(
+                        (cached.atlas_x, cached.atlas_y),
+                        (entry.atlas_x, entry.atlas_y)
+                    );
                     assert_eq!((cached.bearing_x, cached.bearing_y), (-1, 2));
                 }
-                assert!(!atlas.dirty, "both cache paths must preserve the inserted bitmap");
+                assert!(
+                    !atlas.dirty,
+                    "both cache paths must preserve the inserted bitmap"
+                );
             }
         }
     }
@@ -973,14 +1098,30 @@ mod tests {
     #[test]
     fn resize_reuses_coordinates_without_retaining_previous_color_format() {
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
-        let color = atlas.insert_bitmap("color", Bitmap {
-            width: 1, height: 1, x: 0, y: 0, rgba: vec![17, 83, 149, 255], color: true,
-        });
+        let color = atlas.insert_bitmap(
+            "color",
+            Bitmap {
+                width: 1,
+                height: 1,
+                x: 0,
+                y: 0,
+                rgba: vec![17, 83, 149, 255],
+                color: true,
+            },
+        );
         assert!(atlas.is_color(color));
         atlas.clear_and_resize(18.0).unwrap();
-        let mono = atlas.insert_bitmap("mono", Bitmap {
-            width: 1, height: 1, x: 0, y: 0, rgba: vec![255; 4], color: false,
-        });
+        let mono = atlas.insert_bitmap(
+            "mono",
+            Bitmap {
+                width: 1,
+                height: 1,
+                x: 0,
+                y: 0,
+                rgba: vec![255; 4],
+                color: false,
+            },
+        );
         assert_eq!((mono.atlas_x, mono.atlas_y), (color.atlas_x, color.atlas_y));
         assert!(!atlas.is_color(mono));
         assert!(!atlas.is_color(GlyphEntry::empty()));
@@ -988,9 +1129,17 @@ mod tests {
         // the rasterizer supplied a color bitmap.
         atlas.cursor_y = atlas.height;
         for (width, height) in [(0, 1), (atlas.width + 1, 1), (1, atlas.height)] {
-            let empty = atlas.insert_bitmap("cannot fit", Bitmap {
-                width, height, x: 0, y: 0, rgba: Vec::new(), color: true,
-            });
+            let empty = atlas.insert_bitmap(
+                "cannot fit",
+                Bitmap {
+                    width,
+                    height,
+                    x: 0,
+                    y: 0,
+                    rgba: Vec::new(),
+                    color: true,
+                },
+            );
             assert_eq!((empty.pixel_w, empty.pixel_h), (0, 0));
             assert!(!atlas.is_color(empty));
         }
@@ -1002,12 +1151,21 @@ mod tests {
         let plain = atlas.get_or_insert_text("e", false, false);
         let composed = atlas.get_or_insert_text("e\u{301}", false, false);
         assert!(composed.pixel_w > 0 && composed.pixel_h > 0);
-        assert_ne!((plain.atlas_x, plain.atlas_y), (composed.atlas_x, composed.atlas_y));
-        assert!(composed.pixel_h > plain.pixel_h, "the accent must appear above the e");
+        assert_ne!(
+            (plain.atlas_x, plain.atlas_y),
+            (composed.atlas_x, composed.atlas_y)
+        );
+        assert!(
+            composed.pixel_h > plain.pixel_h,
+            "the accent must appear above the e"
+        );
         atlas.dirty = false;
         let cached = atlas.get_or_insert_text("e\u{301}", false, false);
         assert!(!atlas.dirty);
-        assert_eq!((composed.atlas_x, composed.atlas_y), (cached.atlas_x, cached.atlas_y));
+        assert_eq!(
+            (composed.atlas_x, composed.atlas_y),
+            (cached.atlas_x, cached.atlas_y)
+        );
         assert!(atlas.text_glyphs[0].contains_key("e\u{301}"));
     }
 
@@ -1016,9 +1174,10 @@ mod tests {
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
         let text = "e\u{301}";
         let styles = [(false, false), (true, false), (false, true), (true, true)];
-        let entries: Vec<_> = styles.iter().map(|&(bold, italic)| {
-            atlas.get_or_insert_text(text, bold, italic)
-        }).collect();
+        let entries: Vec<_> = styles
+            .iter()
+            .map(|&(bold, italic)| atlas.get_or_insert_text(text, bold, italic))
+            .collect();
         assert!(atlas.text_glyphs.iter().all(|glyphs| glyphs.len() == 1));
         let original_position = (atlas.cursor_x, atlas.cursor_y, atlas.row_height);
         atlas.dirty = false;
@@ -1027,14 +1186,29 @@ mod tests {
         for (&(bold, italic), expected) in styles.iter().zip(&entries) {
             let cached = atlas.get_or_insert_text(&borrowed_text, bold, italic);
             assert_eq!(
-                (cached.atlas_x, cached.atlas_y, cached.pixel_w, cached.pixel_h,
-                    cached.bearing_x, cached.bearing_y),
-                (expected.atlas_x, expected.atlas_y, expected.pixel_w, expected.pixel_h,
-                    expected.bearing_x, expected.bearing_y),
+                (
+                    cached.atlas_x,
+                    cached.atlas_y,
+                    cached.pixel_w,
+                    cached.pixel_h,
+                    cached.bearing_x,
+                    cached.bearing_y
+                ),
+                (
+                    expected.atlas_x,
+                    expected.atlas_y,
+                    expected.pixel_w,
+                    expected.pixel_h,
+                    expected.bearing_x,
+                    expected.bearing_y
+                ),
             );
         }
         assert!(!atlas.dirty);
-        assert_eq!((atlas.cursor_x, atlas.cursor_y, atlas.row_height), original_position);
+        assert_eq!(
+            (atlas.cursor_x, atlas.cursor_y, atlas.row_height),
+            original_position
+        );
 
         atlas.clear_and_resize(24.0).unwrap();
         assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
@@ -1051,7 +1225,11 @@ mod tests {
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
         for (bold, italic) in [(false, false), (true, false), (false, true), (true, true)] {
             atlas.get_or_insert_text("é", bold, italic);
-            assert!(atlas.glyphs.contains_key(&GlyphKey { c: 'é', bold, italic }));
+            assert!(atlas.glyphs.contains_key(&GlyphKey {
+                c: 'é',
+                bold,
+                italic
+            }));
         }
         assert!(atlas.text_glyphs.iter().all(HashMap::is_empty));
     }
@@ -1059,12 +1237,24 @@ mod tests {
     #[test]
     fn compound_samples_reach_rasterization_and_have_visible_coverage() {
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
-        for text in ["e\u{301}", "q\u{302}\u{307}", "👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
+        for text in [
+            "e\u{301}",
+            "q\u{302}\u{307}",
+            "👩🏽\u{200d}💻",
+            "🇧🇷",
+            "1\u{fe0f}\u{20e3}",
+        ] {
             let glyph = atlas.get_or_insert_text(text, false, false);
-            assert!(glyph.pixel_w > 0 && glyph.pixel_h > 0, "blank grapheme: {text}");
-            let visible = (0..glyph.pixel_h).any(|y| (0..glyph.pixel_w).any(|x| {
-                atlas.pixels[((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize] > 0
-            }));
+            assert!(
+                glyph.pixel_w > 0 && glyph.pixel_h > 0,
+                "blank grapheme: {text}"
+            );
+            let visible = (0..glyph.pixel_h).any(|y| {
+                (0..glyph.pixel_w).any(|x| {
+                    atlas.pixels[((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize]
+                        > 0
+                })
+            });
             assert!(visible, "grapheme has no coverage: {text}");
         }
     }
@@ -1075,21 +1265,33 @@ mod tests {
         let family = "Apple Color Emoji";
         #[cfg(target_os = "linux")]
         let family = "Noto Color Emoji";
-        if SystemSource::new().select_best_match(&[FamilyName::Title(family.to_owned())], &Properties::new()).is_err() {
+        if SystemSource::new()
+            .select_best_match(&[FamilyName::Title(family.to_owned())], &Properties::new())
+            .is_err()
+        {
             eprintln!("{family} is unavailable; install it to exercise bitmap emoji rasterization");
             return;
         }
         let mut atlas = GlyphAtlas::new(MISSING_FONT_FAMILY, 18.0, 1.0).unwrap();
         for text in ["👩🏽\u{200d}💻", "🇧🇷", "1\u{fe0f}\u{20e3}"] {
             let glyph = atlas.get_or_insert_text(text, false, false);
-            assert!(atlas.is_color(glyph), "system emoji fallback missing for {text}");
+            assert!(
+                atlas.is_color(glyph),
+                "system emoji fallback missing for {text}"
+            );
             let cached = atlas.get_or_insert_text(text, false, false);
-            assert!(atlas.is_color(cached), "cache lost the color format for {text}");
-            let colorful = (0..glyph.pixel_h).any(|y| (0..glyph.pixel_w).any(|x| {
-                let index = ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize * 4;
-                let color = &atlas.rgba_pixels[index..index + 4];
-                color[3] > 0 && (color[0] != color[1] || color[1] != color[2])
-            }));
+            assert!(
+                atlas.is_color(cached),
+                "cache lost the color format for {text}"
+            );
+            let colorful = (0..glyph.pixel_h).any(|y| {
+                (0..glyph.pixel_w).any(|x| {
+                    let index =
+                        ((glyph.atlas_y + y) * atlas.width + glyph.atlas_x + x) as usize * 4;
+                    let color = &atlas.rgba_pixels[index..index + 4];
+                    color[3] > 0 && (color[0] != color[1] || color[1] != color[2])
+                })
+            });
             assert!(colorful, "emoji color was reduced to a silhouette: {text}");
         }
         atlas.clear_and_resize(24.0).unwrap();

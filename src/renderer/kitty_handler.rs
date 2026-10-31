@@ -1,9 +1,8 @@
 use super::image_decode::{probe_image_data, ImageFormat};
 use super::image_store::ImageStore;
 use crate::graphics::{
-    resolve_kitty_placement_layout, ClientImageRegistry, ImageId,
-    ImageNumberRegistry, ImagePlacement, InlineRenderSize, KittyImageId,
-    PlacementMode,
+    resolve_kitty_placement_layout, ClientImageRegistry, ImageId, ImageNumberRegistry,
+    ImagePlacement, InlineRenderSize, KittyImageId, PlacementMode,
 };
 use crate::parser::kitty_graphics::*;
 use nix::libc;
@@ -110,10 +109,7 @@ impl ChunkAssembler {
             {
                 let error = ChunkAssemblyError {
                     image_id: pending.image_id,
-                    image_number: pending
-                        .metadata
-                        .image_number
-                        .filter(|number| *number != 0),
+                    image_number: pending.metadata.image_number.filter(|number| *number != 0),
                     quiet: pending.metadata.quiet,
                     kind: ChunkAssemblyErrorKind::UnexpectedStart,
                 };
@@ -124,10 +120,7 @@ impl ChunkAssembler {
                 if pending.metadata.image_id.filter(|id| *id != 0) != Some(received_id) {
                     let error = ChunkAssemblyError {
                         image_id: pending.image_id,
-                        image_number: pending
-                            .metadata
-                            .image_number
-                            .filter(|number| *number != 0),
+                        image_number: pending.metadata.image_number.filter(|number| *number != 0),
                         quiet: pending.metadata.quiet,
                         kind: ChunkAssemblyErrorKind::Interleaved { received_id },
                     };
@@ -136,22 +129,14 @@ impl ChunkAssembler {
                 }
             }
             if let Some(received_number) = cmd.image_number.filter(|number| *number != 0) {
-                if pending
-                    .metadata
-                    .image_number
-                    .filter(|number| *number != 0)
+                if pending.metadata.image_number.filter(|number| *number != 0)
                     != Some(received_number)
                 {
                     let error = ChunkAssemblyError {
                         image_id: pending.image_id,
-                        image_number: pending
-                            .metadata
-                            .image_number
-                            .filter(|number| *number != 0),
+                        image_number: pending.metadata.image_number.filter(|number| *number != 0),
                         quiet: pending.metadata.quiet,
-                        kind: ChunkAssemblyErrorKind::InterleavedNumber {
-                            received_number,
-                        },
+                        kind: ChunkAssemblyErrorKind::InterleavedNumber { received_number },
                     };
                     self.pending = None;
                     return Err(error);
@@ -163,10 +148,7 @@ impl ChunkAssembler {
             if let Err(kind) = append_bounded(&mut pending.data, &payload, self.max_bytes) {
                 let error = ChunkAssemblyError {
                     image_id: pending.image_id,
-                    image_number: pending
-                        .metadata
-                        .image_number
-                        .filter(|number| *number != 0),
+                    image_number: pending.metadata.image_number.filter(|number| *number != 0),
                     quiet: pending.metadata.quiet,
                     kind,
                 };
@@ -358,9 +340,11 @@ impl KittyHandler {
         // a=t is a new transfer and must not be appended to a pending frame.
         if cmd.action == KittyAction::Transmit
             && !cmd.action_explicit
-            && self.chunks.pending.as_ref().is_some_and(|pending| {
-                pending.metadata.action == KittyAction::Frame
-            })
+            && self
+                .chunks
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.metadata.action == KittyAction::Frame)
         {
             cmd.action = KittyAction::Frame;
         }
@@ -375,18 +359,17 @@ impl KittyHandler {
             };
             let mut identity = (cmd.image_id, cmd.image_number, cmd.quiet);
             if let Some(pending) = self.chunks.pending.take() {
-                if cmd.action == KittyAction::Frame && pending.metadata.action == KittyAction::Frame {
-                    identity = (Some(pending.image_id), pending.metadata.image_number, pending.metadata.quiet);
+                if cmd.action == KittyAction::Frame && pending.metadata.action == KittyAction::Frame
+                {
+                    identity = (
+                        Some(pending.image_id),
+                        pending.metadata.image_number,
+                        pending.metadata.quiet,
+                    );
                 }
             }
             return KittyProcessOutcome::new(
-                kitty_response(
-                    identity.0,
-                    identity.1,
-                    identity.2,
-                    true,
-                    reason,
-                ),
+                kitty_response(identity.0, identity.1, identity.2, true, reason),
                 None,
             );
         }
@@ -455,11 +438,10 @@ impl KittyHandler {
                     self.resolve_client_image(client_id, store)
                         .map(|image_id| (client_id, image_id))
                 } else {
-                    image_number
-                        .and_then(|number| self.resolve_image_number(number, store))
+                    image_number.and_then(|number| self.resolve_image_number(number, store))
                 };
-                let (client_image_id, stored_image_id) = resolved_image
-                    .unwrap_or((explicit_client_id.unwrap_or(0), 0));
+                let (client_image_id, stored_image_id) =
+                    resolved_image.unwrap_or((explicit_client_id.unwrap_or(0), 0));
                 let response_image_id = if image_number.is_some() {
                     (client_image_id != 0).then_some(client_image_id)
                 } else {
@@ -478,13 +460,8 @@ impl KittyHandler {
                     placements,
                 ) {
                     Ok(advance) => {
-                        let response = kitty_response(
-                            response_image_id,
-                            image_number,
-                            cmd.quiet,
-                            false,
-                            "OK",
-                        );
+                        let response =
+                            kitty_response(response_image_id, image_number, cmd.quiet, false, "OK");
                         (response, advance)
                     }
                     Err(error) => (
@@ -501,8 +478,18 @@ impl KittyHandler {
                 KittyProcessOutcome::new(result.0, result.1)
             }
             KittyAction::Delete => {
-                if let Some(KittyDeleteSpec::Frame { frame, delete_last_image }) = cmd.delete_specifier {
-                    return self.handle_frame_delete(&cmd, store, placements, frame, delete_last_image);
+                if let Some(KittyDeleteSpec::Frame {
+                    frame,
+                    delete_last_image,
+                }) = cmd.delete_specifier
+                {
+                    return self.handle_frame_delete(
+                        &cmd,
+                        store,
+                        placements,
+                        frame,
+                        delete_last_image,
+                    );
                 }
                 let hard_delete_candidates = self.handle_delete(
                     &cmd,
@@ -525,8 +512,9 @@ impl KittyHandler {
                 self.prune_image_registries(store, placements);
                 KittyProcessOutcome::new(response, None)
             }
-            KittyAction::Animate | KittyAction::Compose =>
-                KittyProcessOutcome::new(self.handle_animation_control(&cmd, store), None),
+            KittyAction::Animate | KittyAction::Compose => {
+                KittyProcessOutcome::new(self.handle_animation_control(&cmd, store), None)
+            }
         }
     }
 
@@ -755,13 +743,7 @@ impl KittyHandler {
                 "EINVAL:invalid image selector"
             };
             return (
-                kitty_response(
-                    cmd.image_id,
-                    cmd.image_number,
-                    cmd.quiet,
-                    true,
-                    reason,
-                ),
+                kitty_response(cmd.image_id, cmd.image_number, cmd.quiet, true, reason),
                 None,
             );
         }
@@ -1046,13 +1028,7 @@ impl KittyHandler {
         let replaced_image_id = self.client_images.get(image_id);
         let stored_image_id = replaced_image_id.unwrap_or_else(|| store.next_id());
         let replacing_existing = store.get(stored_image_id).is_some();
-        match store.store(
-            image_data.as_ref(),
-            w,
-            h,
-            img_format,
-            Some(stored_image_id),
-        ) {
+        match store.store(image_data.as_ref(), w, h, img_format, Some(stored_image_id)) {
             Some(stored_image_id) => {
                 self.client_images.record(image_id, stored_image_id);
                 update_image_number_association(
@@ -1061,13 +1037,7 @@ impl KittyHandler {
                     image_number,
                     replacing_existing,
                 );
-                let resp = kitty_response(
-                    Some(image_id),
-                    image_number,
-                    quiet,
-                    false,
-                    "OK",
-                );
+                let resp = kitty_response(Some(image_id), image_number, quiet, false, "OK");
                 TransmitOutcome {
                     response: resp,
                     stored: Some(StoredTransmission {
@@ -1102,20 +1072,18 @@ impl KittyHandler {
         store: &ImageStore,
     ) -> Option<(KittyImageId, ImageId)> {
         let client_images = &self.client_images;
-        let client_id = self.image_numbers.newest_matching(image_number, |client_id| {
-            client_images
-                .resolve_live(client_id, |image_id| store.get(image_id).is_some())
-                .is_some()
-        })?;
+        let client_id = self
+            .image_numbers
+            .newest_matching(image_number, |client_id| {
+                client_images
+                    .resolve_live(client_id, |image_id| store.get(image_id).is_some())
+                    .is_some()
+            })?;
         self.resolve_client_image(client_id, store)
             .map(|image_id| (client_id, image_id))
     }
 
-    fn resolve_client_image(
-        &self,
-        client_id: KittyImageId,
-        store: &ImageStore,
-    ) -> Option<ImageId> {
+    fn resolve_client_image(&self, client_id: KittyImageId, store: &ImageStore) -> Option<ImageId> {
         self.client_images
             .resolve_live(client_id, |image_id| store.get(image_id).is_some())
     }
@@ -1132,23 +1100,20 @@ impl KittyHandler {
             .map(|placement| placement.image_id)
             .collect();
         let client_images = &self.client_images;
-        let client_id = self.image_numbers.newest_matching(image_number, |client_id| {
-            let Some(image_id) = client_images.get(client_id) else {
-                return false;
-            };
-            store.get(image_id).is_some()
-                || placed_images.contains(&image_id)
-        })?;
+        let client_id = self
+            .image_numbers
+            .newest_matching(image_number, |client_id| {
+                let Some(image_id) = client_images.get(client_id) else {
+                    return false;
+                };
+                store.get(image_id).is_some() || placed_images.contains(&image_id)
+            })?;
         client_images
             .get(client_id)
             .map(|image_id| (client_id, image_id))
     }
 
-    fn prune_image_registries(
-        &mut self,
-        store: &ImageStore,
-        placements: &[ImagePlacement],
-    ) {
+    fn prune_image_registries(&mut self, store: &ImageStore, placements: &[ImagePlacement]) {
         let kitty_placement_count = placements
             .iter()
             .filter(|placement| placement.placement_id != 0)
@@ -1201,9 +1166,7 @@ impl KittyHandler {
         grid_rows: usize,
         placements: &mut Vec<ImagePlacement>,
     ) -> Result<Option<CursorAdvance>, PlacementError> {
-        let img = store
-            .get(image_id)
-            .ok_or(PlacementError::ImageNotFound)?;
+        let img = store.get(image_id).ok_or(PlacementError::ImageNotFound)?;
         let (x_offset, y_offset) = placement_offsets(cmd, cell_width, cell_height)?;
 
         let placement_id = self.next_placement_id;
@@ -1292,12 +1255,8 @@ fn update_image_number_association(
     }
 }
 
-fn image_number_registry_needs_pruning(
-    registry_entries: usize,
-    stored_images: usize,
-) -> bool {
-    registry_entries
-        > stored_images.saturating_add(MAX_STALE_IMAGE_REGISTRY_ENTRIES)
+fn image_number_registry_needs_pruning(registry_entries: usize, stored_images: usize) -> bool {
+    registry_entries > stored_images.saturating_add(MAX_STALE_IMAGE_REGISTRY_ENTRIES)
 }
 
 fn client_image_registry_needs_pruning(
@@ -1371,13 +1330,7 @@ fn apply_resolved_delete_to_placements(
         }
         KittyDeleteSpec::AtCursor { .. } => {
             remove_matching_kitty_placements(placements, |placement| {
-                placement_intersects_cell(
-                    placement,
-                    cursor.0,
-                    cursor.1,
-                    cell_size.0,
-                    cell_size.1,
-                )
+                placement_intersects_cell(placement, cursor.0, cursor.1, cell_size.0, cell_size.1)
             })
         }
         KittyDeleteSpec::ByColumn { column, .. } => {
@@ -1466,13 +1419,9 @@ fn remove_matching_kitty_placements(
     removed_image_ids
 }
 
-fn remove_retransmitted_placements(
-    placements: &mut Vec<ImagePlacement>,
-    image_id: ImageId,
-) {
-    let _ = remove_matching_kitty_placements(placements, |placement| {
-        placement.image_id == image_id
-    });
+fn remove_retransmitted_placements(placements: &mut Vec<ImagePlacement>, image_id: ImageId) {
+    let _ =
+        remove_matching_kitty_placements(placements, |placement| placement.image_id == image_id);
 }
 
 fn placement_intersects_cell(
@@ -1493,8 +1442,7 @@ fn placement_intersects_grid(
     cell_width: f32,
     cell_height: f32,
 ) -> bool {
-    let (row, column, columns, rows) =
-        placement.mode.effective_cell_rect(cell_width, cell_height);
+    let (row, column, columns, rows) = placement.mode.effective_cell_rect(cell_width, cell_height);
     columns != 0 && rows != 0 && column < grid_cols && row < grid_rows
 }
 
@@ -1504,8 +1452,7 @@ fn placement_intersects_column(
     cell_width: f32,
     cell_height: f32,
 ) -> bool {
-    let (_, start_column, columns, _) =
-        placement.mode.effective_cell_rect(cell_width, cell_height);
+    let (_, start_column, columns, _) = placement.mode.effective_cell_rect(cell_width, cell_height);
     cell_span_intersects(start_column, columns, column)
 }
 
@@ -1515,8 +1462,7 @@ fn placement_intersects_row(
     cell_width: f32,
     cell_height: f32,
 ) -> bool {
-    let (start_row, _, _, rows) =
-        placement.mode.effective_cell_rect(cell_width, cell_height);
+    let (start_row, _, _, rows) = placement.mode.effective_cell_rect(cell_width, cell_height);
     cell_span_intersects(start_row, rows, row)
 }
 
@@ -1534,10 +1480,7 @@ pub struct CursorAdvance {
     pub cols: usize,
 }
 
-fn cursor_advance_for_policy(
-    cursor_movement: u8,
-    advance: CursorAdvance,
-) -> Option<CursorAdvance> {
+fn cursor_advance_for_policy(cursor_movement: u8, advance: CursorAdvance) -> Option<CursorAdvance> {
     // Kitty C=1 suppresses cursor movement without changing placement geometry.
     (cursor_movement != 1).then_some(advance)
 }
@@ -1786,9 +1729,7 @@ fn query_error_response(image_id: KittyImageId, quiet: u8, reason: &str) -> Opti
 }
 
 fn valid_cell_offset(offset: u32, cell_extent: f32) -> bool {
-    cell_extent.is_finite()
-        && cell_extent > 0.0
-        && f64::from(offset) < f64::from(cell_extent)
+    cell_extent.is_finite() && cell_extent > 0.0 && f64::from(offset) < f64::from(cell_extent)
 }
 
 fn placement_offsets(
@@ -1798,9 +1739,7 @@ fn placement_offsets(
 ) -> Result<(u32, u32), PlacementError> {
     let x_offset = cmd.x_offset.unwrap_or(0);
     let y_offset = cmd.y_offset.unwrap_or(0);
-    if valid_cell_offset(x_offset, cell_width)
-        && valid_cell_offset(y_offset, cell_height)
-    {
+    if valid_cell_offset(x_offset, cell_width) && valid_cell_offset(y_offset, cell_height) {
         Ok((x_offset, y_offset))
     } else {
         Err(PlacementError::InvalidCellOffset)
@@ -2234,25 +2173,21 @@ fn file_load_error_response_with_number(
 #[cfg(test)]
 mod tests {
     use super::{
-        append_bounded, apply_delete_to_placements,
-        apply_resolved_delete_to_placements, decompression_error_response,
-        client_image_registry_needs_pruning,
-        cursor_advance_for_policy, file_load_error_response, inline_placement_and_advance,
-        image_number_registry_needs_pruning,
-        is_safe_read_path, is_safe_temp_delete_path, load_file_data,
-        kitty_response, maybe_decompress_with_limit, normalized_path_entry,
-        path_is_within_roots, placement_error_response,
+        append_bounded, apply_delete_to_placements, apply_resolved_delete_to_placements,
+        client_image_registry_needs_pruning, cursor_advance_for_policy,
+        decompression_error_response, file_load_error_response,
+        image_number_registry_needs_pruning, inline_placement_and_advance, is_safe_read_path,
+        is_safe_temp_delete_path, kitty_response, load_file_data, maybe_decompress_with_limit,
+        normalized_path_entry, path_is_within_roots, placement_error_response,
         placement_error_response_with_number, placement_offsets, read_regular_file,
-        remove_retransmitted_placements,
-        ChunkAssembler, ChunkAssemblyErrorKind, CompletedImage,
-        DecompressionError, FileLoadError, ImageFormat, ImageStore, KittyHandler,
-        KittyHandlerOptions, PlacementError, TempFileDeletion,
-        update_image_number_association, DECOMPRESSION_CHUNK_BYTES,
-        MAX_PENDING_IMAGE_BYTES,
+        remove_retransmitted_placements, update_image_number_association, ChunkAssembler,
+        ChunkAssemblyErrorKind, CompletedImage, DecompressionError, FileLoadError, ImageFormat,
+        ImageStore, KittyHandler, KittyHandlerOptions, PlacementError, TempFileDeletion,
+        DECOMPRESSION_CHUNK_BYTES, MAX_PENDING_IMAGE_BYTES,
     };
     use crate::graphics::{
-        resolve_kitty_placement_layout, retain_unreferenced_image_ids, ImageId,
-        ImagePlacement, InlineRenderSize, PlacementMode,
+        resolve_kitty_placement_layout, retain_unreferenced_image_ids, ImageId, ImagePlacement,
+        InlineRenderSize, PlacementMode,
     };
     use crate::grid::Grid;
     use crate::parser::kitty_graphics::{
@@ -2335,17 +2270,7 @@ mod tests {
         store: &mut ImageStore,
         placements: &mut Vec<ImagePlacement>,
     ) -> super::KittyProcessOutcome {
-        handler.process(
-            command,
-            store,
-            0,
-            0,
-            10.0,
-            20.0,
-            80,
-            24,
-            placements,
-        )
+        handler.process(command, store, 0, 0, 10.0, 20.0, 80, 24, placements)
     }
 
     fn process_graphics(
@@ -2394,11 +2319,7 @@ mod tests {
         }
     }
 
-    fn offset_inline_image(
-        image_id: ImageId,
-        x_offset: u32,
-        y_offset: u32,
-    ) -> ImagePlacement {
+    fn offset_inline_image(image_id: ImageId, x_offset: u32, y_offset: u32) -> ImagePlacement {
         let mut placement = inline_image(image_id, 1, 0, 0, 1, 1);
         let PlacementMode::Inline {
             x_offset: placement_x_offset,
@@ -2566,9 +2487,7 @@ mod tests {
                 Some(error.clone())
             );
         }
-        assert!(
-            kitty_response(Some(41), Some(7), 2, true, "EINVAL:rejected").is_none()
-        );
+        assert!(kitty_response(Some(41), Some(7), 2, true, "EINVAL:rejected").is_none());
         assert_eq!(
             kitty_response(None, Some(7), 0, true, "ENOENT:image not found"),
             Some(b"\x1b_GI=7;ENOENT:image not found\x1b\\".to_vec())
@@ -2582,12 +2501,7 @@ mod tests {
             Some(b"\x1b_Gi=41;EINVAL:rejected\x1b\\".to_vec())
         );
         assert_eq!(
-            placement_error_response_with_number(
-                0,
-                Some(7),
-                0,
-                PlacementError::ImageNotFound,
-            ),
+            placement_error_response_with_number(0, Some(7), 0, PlacementError::ImageNotFound,),
             Some(b"\x1b_GI=7;ENOENT:image not found\x1b\\".to_vec())
         );
     }
@@ -2602,10 +2516,7 @@ mod tests {
 
         assert_eq!(first.client_images.get(7), Some(41));
         assert_eq!(second.client_images.get(7), Some(42));
-        assert_eq!(
-            first.image_numbers.newest_existing(7, |_| true),
-            Some(7)
-        );
+        assert_eq!(first.image_numbers.newest_existing(7, |_| true), Some(7));
         assert_eq!(second.image_numbers.newest_existing(7, |_| true), None);
     }
 
@@ -2691,12 +2602,8 @@ mod tests {
             payload: vec![0, 255, 0, 255],
             ..KittyCommand::default()
         };
-        let failed_outcome = process_graphics_outcome(
-            &mut handler,
-            failed,
-            &mut store,
-            &mut grid.image_placements,
-        );
+        let failed_outcome =
+            process_graphics_outcome(&mut handler, failed, &mut store, &mut grid.image_placements);
         assert_eq!(failed_outcome.retransmitted_image_id, None);
         assert_eq!(grid.all_image_placements().count(), 4);
 
@@ -2832,11 +2739,15 @@ mod tests {
             Some((3, 1))
         );
         assert_eq!(
-            store.get(first_stored_id).map(|image| (image.width, image.height)),
+            store
+                .get(first_stored_id)
+                .map(|image| (image.width, image.height)),
             Some((1, 1))
         );
         assert_eq!(
-            store.get(second_stored_id).map(|image| (image.width, image.height)),
+            store
+                .get(second_stored_id)
+                .map(|image| (image.width, image.height)),
             Some((2, 1))
         );
 
@@ -2853,12 +2764,7 @@ mod tests {
             &mut store,
             &mut first_placements,
         );
-        process_graphics(
-            &mut second,
-            placement,
-            &mut store,
-            &mut second_placements,
-        );
+        process_graphics(&mut second, placement, &mut store, &mut second_placements);
         assert_eq!(
             first_placements.last().map(|placement| placement.image_id),
             Some(first_stored_id)
@@ -2886,7 +2792,9 @@ mod tests {
         assert_eq!(failed_outcome.retransmitted_image_id, None);
         assert_eq!(first_placements.len(), 1);
         assert_eq!(
-            store.get(first_stored_id).map(|image| (image.width, image.height)),
+            store
+                .get(first_stored_id)
+                .map(|image| (image.width, image.height)),
             Some((1, 1))
         );
 
@@ -2937,11 +2845,15 @@ mod tests {
             }
         ));
         assert_eq!(
-            store.get(first_stored_id).map(|image| (image.width, image.height)),
+            store
+                .get(first_stored_id)
+                .map(|image| (image.width, image.height)),
             Some((1, 2))
         );
         assert_eq!(
-            store.get(second_stored_id).map(|image| (image.width, image.height)),
+            store
+                .get(second_stored_id)
+                .map(|image| (image.width, image.height)),
             Some((2, 1))
         );
 
@@ -2955,12 +2867,7 @@ mod tests {
             ..KittyCommand::default()
         };
         store.remove(first_stored_id);
-        process_graphics(
-            &mut first,
-            delete_first,
-            &mut store,
-            &mut first_placements,
-        );
+        process_graphics(&mut first, delete_first, &mut store, &mut first_placements);
         assert!(first_placements.is_empty());
         assert_eq!(second_placements.len(), 1);
         assert_eq!(store.image_count(), 2);
@@ -2977,13 +2884,7 @@ mod tests {
             return;
         };
         let foreign_id = store
-            .store(
-                &[255, 255, 0, 255],
-                1,
-                1,
-                ImageFormat::Rgba,
-                Some(7),
-            )
+            .store(&[255, 255, 0, 255], 1, 1, ImageFormat::Rgba, Some(7))
             .unwrap();
         let mut handler = KittyHandler::new(file_options(64, true));
         let mut placements = Vec::new();
@@ -2996,13 +2897,7 @@ mod tests {
             ..KittyCommand::default()
         };
         assert_eq!(
-            process_graphics(
-                &mut handler,
-                transmission,
-                &mut store,
-                &mut placements,
-            )
-            .0,
+            process_graphics(&mut handler, transmission, &mut store, &mut placements,).0,
             Some(b"\x1b_Gi=1,I=9;OK\x1b\\".to_vec())
         );
 
@@ -3014,13 +2909,7 @@ mod tests {
             ..KittyCommand::default()
         };
         assert_eq!(
-            process_graphics(
-                &mut handler,
-                place.clone(),
-                &mut store,
-                &mut placements,
-            )
-            .0,
+            process_graphics(&mut handler, place.clone(), &mut store, &mut placements,).0,
             Some(b"\x1b_Gi=1,I=9;OK\x1b\\".to_vec())
         );
         let stored_image_id = placements.last().unwrap().image_id;
@@ -3029,13 +2918,7 @@ mod tests {
 
         store.remove(stored_image_id);
         assert_eq!(
-            process_graphics(
-                &mut handler,
-                place,
-                &mut store,
-                &mut placements,
-            )
-            .0,
+            process_graphics(&mut handler, place, &mut store, &mut placements,).0,
             Some(b"\x1b_GI=9;ENOENT:image not found\x1b\\".to_vec())
         );
         assert_eq!(placements.len(), 1);
@@ -3049,12 +2932,7 @@ mod tests {
             }),
             ..KittyCommand::default()
         };
-        process_graphics(
-            &mut handler,
-            delete,
-            &mut store,
-            &mut placements,
-        );
+        process_graphics(&mut handler, delete, &mut store, &mut placements);
         assert!(placements.is_empty());
         assert!(store.get(foreign_id).is_some());
     }
@@ -3100,7 +2978,10 @@ mod tests {
             .0,
             Some(b"\x1b_Gi=2,I=7;OK\x1b\\".to_vec())
         );
-        assert_eq!(placements.last().map(|placement| placement.image_id), Some(2));
+        assert_eq!(
+            placements.last().map(|placement| placement.image_id),
+            Some(2)
+        );
 
         let place_oldest = KittyCommand {
             action: KittyAction::Place,
@@ -3109,13 +2990,11 @@ mod tests {
             rows: Some(1),
             ..KittyCommand::default()
         };
-        process_graphics(
-            &mut handler,
-            place_oldest,
-            &mut store,
-            &mut placements,
+        process_graphics(&mut handler, place_oldest, &mut store, &mut placements);
+        assert_eq!(
+            placements.last().map(|placement| placement.image_id),
+            Some(1)
         );
-        assert_eq!(placements.last().map(|placement| placement.image_id), Some(1));
 
         let mut other_handler = KittyHandler::new(file_options(64, true));
         let mut other_placements = Vec::new();
@@ -3140,12 +3019,8 @@ mod tests {
             }),
             ..KittyCommand::default()
         };
-        let outcome = process_graphics_outcome(
-            &mut handler,
-            delete_newest,
-            &mut store,
-            &mut placements,
-        );
+        let outcome =
+            process_graphics_outcome(&mut handler, delete_newest, &mut store, &mut placements);
         assert_eq!(outcome.hard_delete_candidates, HashSet::from([2]));
         assert_eq!(
             placements
@@ -3168,16 +3043,13 @@ mod tests {
         assert!(store.get(2).is_none());
 
         assert_eq!(
-            process_graphics(
-                &mut handler,
-                place_newest,
-                &mut store,
-                &mut placements,
-            )
-            .0,
+            process_graphics(&mut handler, place_newest, &mut store, &mut placements,).0,
             Some(b"\x1b_Gi=1,I=7;OK\x1b\\".to_vec())
         );
-        assert_eq!(placements.last().map(|placement| placement.image_id), Some(1));
+        assert_eq!(
+            placements.last().map(|placement| placement.image_id),
+            Some(1)
+        );
 
         let failed_transmission = KittyCommand {
             image_number: Some(8),
@@ -3200,13 +3072,7 @@ mod tests {
             ..KittyCommand::default()
         };
         assert_eq!(
-            process_graphics(
-                &mut handler,
-                missing_number,
-                &mut store,
-                &mut placements,
-            )
-            .0,
+            process_graphics(&mut handler, missing_number, &mut store, &mut placements,).0,
             Some(b"\x1b_GI=8;ENOENT:image not found\x1b\\".to_vec())
         );
     }
@@ -3688,9 +3554,7 @@ mod tests {
         assert_eq!(error.image_number, Some(7));
         assert_eq!(
             error.kind,
-            ChunkAssemblyErrorKind::InterleavedNumber {
-                received_number: 8,
-            }
+            ChunkAssemblyErrorKind::InterleavedNumber { received_number: 8 }
         );
         assert!(assembler.pending.is_none());
 
@@ -3994,8 +3858,7 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
         assert!(candidates.is_empty());
         assert_eq!(
@@ -4039,8 +3902,7 @@ mod tests {
         });
         cmd.placement_id = Some(1);
 
-        let mut candidates =
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let mut candidates = apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
         assert_eq!(candidates, HashSet::from([7]));
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].placement_id, 2);
@@ -4048,14 +3910,12 @@ mod tests {
         assert!(candidates.is_empty());
 
         cmd.placement_id = Some(99);
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
         assert!(candidates.is_empty());
         assert_eq!(placements.len(), 1);
 
         cmd.placement_id = Some(2);
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
         assert_eq!(candidates, HashSet::from([7]));
         assert!(placements.is_empty());
     }
@@ -4112,8 +3972,7 @@ mod tests {
         ] {
             let mut placements = original.clone();
             let cmd = delete_command(specifier);
-            let candidates =
-                apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+            let candidates = apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
             assert!(candidates.is_empty());
             assert_eq!(placements.len(), 1);
             assert_eq!(placements[0].image_id, 7);
@@ -4130,8 +3989,7 @@ mod tests {
             column: 2,
             delete_data: true,
         });
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut columns, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut columns, 0, 0, 10.0, 20.0);
         assert_eq!(candidates, HashSet::from([1]));
         assert_eq!(
             columns
@@ -4149,8 +4007,7 @@ mod tests {
             row: 2,
             delete_data: true,
         });
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut rows, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut rows, 0, 0, 10.0, 20.0);
         assert_eq!(candidates, HashSet::from([5]));
         assert_eq!(
             rows.iter()
@@ -4168,19 +4025,13 @@ mod tests {
         duplicate.z_index = -3;
         let mut sixel = inline_image(32, 0, 0, 0, 1, 1);
         sixel.z_index = -3;
-        let mut placements = vec![
-            first,
-            duplicate,
-            inline_image(31, 3, 0, 0, 1, 1),
-            sixel,
-        ];
+        let mut placements = vec![first, duplicate, inline_image(31, 3, 0, 0, 1, 1), sixel];
         let command = delete_command(KittyDeleteSpec::ByZIndex {
             z_index: -3,
             delete_data: true,
         });
 
-        let candidates =
-            apply_delete_to_placements(&command, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&command, &mut placements, 0, 0, 10.0, 20.0);
 
         assert_eq!(candidates, HashSet::from([30]));
         assert_eq!(
@@ -4200,14 +4051,7 @@ mod tests {
             delete_data: false,
         });
 
-        apply_delete_to_placements(
-            &adjacent_column_delete,
-            &mut columns,
-            0,
-            0,
-            10.0,
-            20.0,
-        );
+        apply_delete_to_placements(&adjacent_column_delete, &mut columns, 0, 0, 10.0, 20.0);
 
         assert_eq!(columns.len(), 1);
 
@@ -4215,14 +4059,7 @@ mod tests {
             column: 1,
             delete_data: false,
         });
-        apply_delete_to_placements(
-            &anchor_column_delete,
-            &mut columns,
-            0,
-            0,
-            10.0,
-            20.0,
-        );
+        apply_delete_to_placements(&anchor_column_delete, &mut columns, 0, 0, 10.0, 20.0);
 
         assert!(columns.is_empty());
 
@@ -4232,14 +4069,7 @@ mod tests {
             delete_data: false,
         });
 
-        apply_delete_to_placements(
-            &adjacent_row_delete,
-            &mut rows,
-            0,
-            0,
-            10.0,
-            20.0,
-        );
+        apply_delete_to_placements(&adjacent_row_delete, &mut rows, 0, 0, 10.0, 20.0);
 
         assert_eq!(rows.len(), 1);
 
@@ -4247,14 +4077,7 @@ mod tests {
             row: 1,
             delete_data: false,
         });
-        apply_delete_to_placements(
-            &anchor_row_delete,
-            &mut rows,
-            0,
-            0,
-            10.0,
-            20.0,
-        );
+        apply_delete_to_placements(&anchor_row_delete, &mut rows, 0, 0, 10.0, 20.0);
 
         assert!(rows.is_empty());
     }
@@ -4285,14 +4108,7 @@ mod tests {
             delete_data: false,
         });
 
-        apply_delete_to_placements(
-            &third_column_delete,
-            &mut placements,
-            0,
-            0,
-            8.0,
-            16.0,
-        );
+        apply_delete_to_placements(&third_column_delete, &mut placements, 0, 0, 8.0, 16.0);
 
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].image_id, 23);
@@ -4391,8 +4207,7 @@ mod tests {
         ];
         let cmd = delete_command(KittyDeleteSpec::AtCursor { delete_data: true });
 
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut placements, 1, 1, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut placements, 1, 1, 10.0, 20.0);
         assert_eq!(candidates, HashSet::from([9]));
         assert_eq!(
             placements
@@ -4476,8 +4291,7 @@ mod tests {
             delete_data: false,
         });
 
-        let candidates =
-            apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
+        let candidates = apply_delete_to_placements(&cmd, &mut placements, 0, 0, 10.0, 20.0);
 
         assert!(candidates.is_empty());
         assert_eq!(placements.len(), 1);
@@ -4548,13 +4362,8 @@ mod tests {
 
     #[test]
     fn single_axis_render_size_keeps_the_requested_cells_after_grid_clamp() {
-        let layout = resolve_kitty_placement_layout(
-            Some(100),
-            None,
-            (10, 10),
-            (0, 0),
-            (10.0, 10.0),
-        );
+        let layout =
+            resolve_kitty_placement_layout(Some(100), None, (10, 10), (0, 0), (10.0, 10.0));
         let (mode, advance) = inline_placement_and_advance(
             0,
             0,
@@ -4570,10 +4379,7 @@ mod tests {
             PlacementMode::Inline {
                 cols: 80,
                 rows: 24,
-                render_size: InlineRenderSize::AspectFromColumns {
-                    columns: 100,
-                    ..
-                },
+                render_size: InlineRenderSize::AspectFromColumns { columns: 100, .. },
                 ..
             }
         ));

@@ -379,10 +379,7 @@ mod tests {
             )
             .expect("valid PTY dimensions should resize"));
 
-            assert_eq!(
-                observed_pty.get(),
-                Some((target.0 as u16, target.1 as u16))
-            );
+            assert_eq!(observed_pty.get(), Some((target.0 as u16, target.1 as u16)));
             assert_eq!(observed_grid.get(), Some(target));
         }
     }

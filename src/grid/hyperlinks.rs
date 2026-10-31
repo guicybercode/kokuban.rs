@@ -27,9 +27,15 @@ pub struct HyperlinkIndex {
 
 #[cfg_attr(not(test), allow(dead_code))]
 impl HyperlinkIndex {
-    pub fn len(&self) -> usize { self.spans.len() }
-    pub fn is_empty(&self) -> bool { self.spans.is_empty() }
-    pub fn spans(&self) -> impl Iterator<Item = &HyperlinkSpan> { self.spans.iter() }
+    pub fn len(&self) -> usize {
+        self.spans.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.spans.is_empty()
+    }
+    pub fn spans(&self) -> impl Iterator<Item = &HyperlinkSpan> {
+        self.spans.iter()
+    }
 
     /// Record `width` cells written at (`abs_row`, `col`) under `url`,
     /// extending the previous span when the write is contiguous.
@@ -66,7 +72,10 @@ impl HyperlinkIndex {
                 return true;
             }
             if span.start_col < start && span.end_col > end {
-                split.push(HyperlinkSpan { start_col: end, ..span.clone() });
+                split.push(HyperlinkSpan {
+                    start_col: end,
+                    ..span.clone()
+                });
                 span.end_col = start;
                 return true;
             }
@@ -93,10 +102,15 @@ impl HyperlinkIndex {
 
     /// Drop spans on rows that left the scrollback.
     pub fn evict_before(&mut self, first_retained_abs_row: usize) {
-        while self.spans.front().is_some_and(|span| span.abs_row < first_retained_abs_row) {
+        while self
+            .spans
+            .front()
+            .is_some_and(|span| span.abs_row < first_retained_abs_row)
+        {
             self.spans.pop_front();
         }
-        self.spans.retain(|span| span.abs_row >= first_retained_abs_row);
+        self.spans
+            .retain(|span| span.abs_row >= first_retained_abs_row);
         if self.spans.is_empty() {
             self.max_abs_row = None;
         }
@@ -108,7 +122,9 @@ impl HyperlinkIndex {
         for span in &mut self.spans {
             span.abs_row -= screen_start_absolute_row;
         }
-        self.max_abs_row = self.max_abs_row.map(|max| max.saturating_sub(screen_start_absolute_row));
+        self.max_abs_row = self
+            .max_abs_row
+            .map(|max| max.saturating_sub(screen_start_absolute_row));
     }
 
     pub fn clear(&mut self) {
@@ -133,7 +149,9 @@ pub fn parse_osc8(pt: &str) -> Option<Option<Arc<str>>> {
 
 /// Schemes a click may hand to the system opener.
 pub fn is_openable_hyperlink(url: &str) -> bool {
-    let Some((scheme, _)) = url.split_once(':') else { return false };
+    let Some((scheme, _)) = url.split_once(':') else {
+        return false;
+    };
     ["http", "https", "file", "mailto"]
         .iter()
         .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
@@ -145,8 +163,14 @@ mod tests {
 
     #[test]
     fn parse_osc8_distinguishes_open_close_and_rejects_long_uris() {
-        assert_eq!(parse_osc8(";https://a.example").unwrap().as_deref(), Some("https://a.example"));
-        assert_eq!(parse_osc8("id=x;mailto:a@b").unwrap().as_deref(), Some("mailto:a@b"));
+        assert_eq!(
+            parse_osc8(";https://a.example").unwrap().as_deref(),
+            Some("https://a.example")
+        );
+        assert_eq!(
+            parse_osc8("id=x;mailto:a@b").unwrap().as_deref(),
+            Some("mailto:a@b")
+        );
         assert_eq!(parse_osc8(";"), Some(None));
         assert_eq!(parse_osc8("id=x;"), Some(None));
         assert_eq!(parse_osc8("no-separator"), None);
@@ -166,7 +190,9 @@ mod tests {
     fn clear_cells_splits_and_trims_spans() {
         let mut index = HyperlinkIndex::default();
         let url: Arc<str> = Arc::from("https://x");
-        for col in 0..10 { index.record(3, col, 1, &url); }
+        for col in 0..10 {
+            index.record(3, col, 1, &url);
+        }
         assert_eq!(index.len(), 1);
         index.clear_cells(3, 4, 6);
         assert_eq!(index.hyperlink_at(3, 3), Some("https://x"));
@@ -180,9 +206,14 @@ mod tests {
     fn span_cap_drops_oldest() {
         let mut index = HyperlinkIndex::default();
         let url: Arc<str> = Arc::from("https://x");
-        for row in 0..(MAX_HYPERLINK_SPANS + 5) { index.record(row, 0, 1, &url); }
+        for row in 0..(MAX_HYPERLINK_SPANS + 5) {
+            index.record(row, 0, 1, &url);
+        }
         assert_eq!(index.len(), MAX_HYPERLINK_SPANS);
         assert_eq!(index.hyperlink_at(0, 0), None);
-        assert_eq!(index.hyperlink_at(MAX_HYPERLINK_SPANS + 4, 0), Some("https://x"));
+        assert_eq!(
+            index.hyperlink_at(MAX_HYPERLINK_SPANS + 4, 0),
+            Some("https://x")
+        );
     }
 }

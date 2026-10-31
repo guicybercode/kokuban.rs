@@ -4,8 +4,8 @@ mod render_scheduler;
 pub mod window;
 
 use crate::config::{ColorConfig, Config};
-use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
+use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::grid::Grid;
 use crate::input::keybind::KeybindMap;
 use crate::layout::PixelRect;
@@ -53,10 +53,7 @@ impl PaneCleanup {
     }
 
     pub(super) fn retire(&self, pane: Pane) {
-        if let Err(error) = self
-            .sender
-            .send(CleanupCommand::Retire(Box::new(pane)))
-        {
+        if let Err(error) = self.sender.send(CleanupCommand::Retire(Box::new(pane))) {
             let CleanupCommand::Retire(pane) = error.0 else {
                 unreachable!("retire sends only retire commands");
             };
@@ -116,8 +113,7 @@ fn process_sixel_event<F>(
     cursor: (usize, usize),
     cell_size: (f32, f32),
     store_image: F,
-)
-where
+) where
     F: FnOnce(&SixelImage) -> Option<ImageId>,
 {
     let display_cols = ((image.width as f32) / cell_size.0).ceil() as u32;
@@ -339,11 +335,12 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let update_status: crate::update::SharedUpdateStatus =
         Arc::new(Mutex::new(crate::update::UpdateStatus::Idle));
 
-    let prompt_indicator_color = if config.prompt_marks.enabled && config.prompt_marks.show_indicator {
-        Some(ColorConfig::parse_hex(&config.prompt_marks.indicator_color))
-    } else {
-        None
-    };
+    let prompt_indicator_color =
+        if config.prompt_marks.enabled && config.prompt_marks.show_indicator {
+            Some(ColorConfig::parse_hex(&config.prompt_marks.indicator_color))
+        } else {
+            None
+        };
 
     let view = create_terminal_view(
         mtm,
@@ -674,9 +671,15 @@ mod tests {
 
         assert_eq!((grid.cursor_row, grid.cursor_col), (3, 1));
         assert_eq!(grid.scrollback_len(), 1);
-        assert_eq!(grid.image_placements[0].mode.pixel_rect(8.0, 16.0), (8.0, 16.0, 8.0, 32.0));
+        assert_eq!(
+            grid.image_placements[0].mode.pixel_rect(8.0, 16.0),
+            (8.0, 16.0, 8.0, 32.0)
+        );
         grid.newline();
-        assert_eq!(grid.image_placements[0].mode.pixel_rect(8.0, 16.0), (8.0, 0.0, 8.0, 32.0));
+        assert_eq!(
+            grid.image_placements[0].mode.pixel_rect(8.0, 16.0),
+            (8.0, 0.0, 8.0, 32.0)
+        );
     }
 
     #[test]
@@ -725,6 +728,8 @@ mod tests {
         finished_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("retirement should finish after the caller releases its lock");
-        worker.join().expect("cleanup worker should process shutdown");
+        worker
+            .join()
+            .expect("cleanup worker should process shutdown");
     }
 }

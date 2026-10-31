@@ -31,16 +31,18 @@ impl BrushRenderer {
 
         // The shared glyph shader samples RGBA: white RGB supplies the tint,
         // while alpha retains the generated brush coverage.
-        let rgba_pixels: Vec<u8> = pixels.iter().flat_map(|&alpha| [255, 255, 255, alpha]).collect();
-        let tex_desc =
-            unsafe {
-                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                    MTLPixelFormat::RGBA8Unorm,
-                    BRUSH_TEX_WIDTH as usize,
-                    total_height as usize,
-                    false,
-                )
-            };
+        let rgba_pixels: Vec<u8> = pixels
+            .iter()
+            .flat_map(|&alpha| [255, 255, 255, alpha])
+            .collect();
+        let tex_desc = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::RGBA8Unorm,
+                BRUSH_TEX_WIDTH as usize,
+                total_height as usize,
+                false,
+            )
+        };
         tex_desc.setUsage(MTLTextureUsage::ShaderRead);
 
         let texture = device

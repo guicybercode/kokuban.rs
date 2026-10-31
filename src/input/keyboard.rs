@@ -50,7 +50,10 @@ impl TerminalKeyModifiers {
     }
 
     const fn with_shift(self) -> Self {
-        Self { shift: true, ..self }
+        Self {
+            shift: true,
+            ..self
+        }
     }
 }
 
@@ -92,7 +95,9 @@ pub fn encode_key_kitty_disambiguate(
     match key {
         KittyKey::Named(TerminalKey::Escape) => Some(csi_u(27, modifiers)),
         KittyKey::Named(TerminalKey::BackTab) => Some(csi_u(9, modifiers.with_shift())),
-        KittyKey::Named(named @ (TerminalKey::Enter | TerminalKey::Tab | TerminalKey::Backspace)) => {
+        KittyKey::Named(
+            named @ (TerminalKey::Enter | TerminalKey::Tab | TerminalKey::Backspace),
+        ) => {
             if modifiers.any() {
                 let codepoint = match named {
                     TerminalKey::Enter => 13,
@@ -275,7 +280,8 @@ mod tests {
             Some(b"\x1bOA".as_slice())
         );
         assert_eq!(
-            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::Left), false, SHIFT).as_deref(),
+            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::Left), false, SHIFT)
+                .as_deref(),
             Some(b"\x1b[1;2D".as_slice())
         );
         assert_eq!(

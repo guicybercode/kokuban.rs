@@ -70,7 +70,10 @@ pub(crate) enum Osc99Action {
     Ignore,
     Notify(NotificationRequest),
     /// Hold chunks until a later `d=1` (or default done) for this id.
-    Hold { id: String, draft: Osc99Draft },
+    Hold {
+        id: String,
+        draft: Osc99Draft,
+    },
 }
 
 pub(crate) fn parse_osc99(payload: &str, prior: Option<Osc99Draft>) -> Osc99Action {
@@ -220,7 +223,10 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         };
-        match parse_osc99(&format!("i=cap:p=body;{}","Y".repeat(MAX_BODY_CHARS + 20)), Some(hold)) {
+        match parse_osc99(
+            &format!("i=cap:p=body;{}", "Y".repeat(MAX_BODY_CHARS + 20)),
+            Some(hold),
+        ) {
             Osc99Action::Notify(request) => {
                 assert_eq!(request.title.chars().count(), MAX_TITLE_CHARS);
                 assert_eq!(request.body.chars().count(), MAX_BODY_CHARS);

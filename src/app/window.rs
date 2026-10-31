@@ -13,6 +13,7 @@ use crate::input::mouse::{
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
 };
 use crate::layout::{PaneId, PixelRect, SplitDirection};
+use crate::notifications::NotificationController;
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
@@ -22,7 +23,6 @@ use crate::search::SearchState;
 use crate::selection::GridPoint;
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
-use crate::notifications::NotificationController;
 use crate::update::{self, SharedUpdateStatus, UpdateStatus};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
@@ -45,8 +45,13 @@ const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClipboardPasteError {
-    TooLarge { byte_count: usize, limit: usize },
-    AllocationFailed { byte_count: usize },
+    TooLarge {
+        byte_count: usize,
+        limit: usize,
+    },
+    AllocationFailed {
+        byte_count: usize,
+    },
     ConversionFailed {
         expected_bytes: usize,
         converted_bytes: usize,
@@ -63,10 +68,7 @@ enum MacKeyEquivalentRoute {
     Keybind,
 }
 
-fn mac_key_equivalent_route(
-    key_code: u16,
-    modifiers: KeyModifiers,
-) -> MacKeyEquivalentRoute {
+fn mac_key_equivalent_route(key_code: u16, modifiers: KeyModifiers) -> MacKeyEquivalentRoute {
     if !modifiers.contains(KeyModifiers::CMD) {
         return MacKeyEquivalentRoute::PassThrough;
     }
@@ -95,10 +97,7 @@ enum MacScrollbackAction {
     End,
 }
 
-fn mac_scrollback_action(
-    key_code: u16,
-    modifiers: KeyModifiers,
-) -> Option<MacScrollbackAction> {
+fn mac_scrollback_action(key_code: u16, modifiers: KeyModifiers) -> Option<MacScrollbackAction> {
     if modifiers != KeyModifiers::SHIFT {
         return None;
     }
@@ -175,8 +174,8 @@ impl MacScrollState {
                 self.reset();
                 return 0;
             }
-            let line_delta = sample.delta_y * f64::from(sample.scale_factor)
-                / f64::from(sample.cell_height);
+            let line_delta =
+                sample.delta_y * f64::from(sample.scale_factor) / f64::from(sample.cell_height);
             if !line_delta.is_finite() {
                 self.reset();
                 return 0;
@@ -217,11 +216,9 @@ impl MacScrollState {
         let steps = if whole_steps.abs() > limit {
             self.line_remainder = 0.0;
             if whole_steps.is_sign_positive() {
-                i32::try_from(MAX_WHEEL_STEPS_PER_EVENT)
-                    .expect("wheel step limit should fit i32")
+                i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
             } else {
-                -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT)
-                    .expect("wheel step limit should fit i32")
+                -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
             }
         } else {
             self.line_remainder = total - whole_steps;
@@ -235,10 +232,7 @@ impl MacScrollState {
     }
 }
 
-fn mac_scroll_phase(
-    event_phase: NSEventPhase,
-    momentum_phase: NSEventPhase,
-) -> MacScrollPhase {
+fn mac_scroll_phase(event_phase: NSEventPhase, momentum_phase: NSEventPhase) -> MacScrollPhase {
     let started = NSEventPhase::MayBegin | NSEventPhase::Began;
     let finished = NSEventPhase::Ended | NSEventPhase::Cancelled;
     if momentum_phase.intersects(started) {
@@ -262,24 +256,16 @@ fn encode_macos_forwarded_wheel(
 ) -> Option<Vec<u8>> {
     match route {
         MouseWheelRoute::Terminal(mouse_encoding) => {
-            let (column, row) = terminal_cell
-                .expect("terminal mouse route should have a validated cell");
+            let (column, row) =
+                terminal_cell.expect("terminal mouse route should have a validated cell");
             let button = if steps.is_positive() {
                 MOUSE_WHEEL_UP
             } else {
                 MOUSE_WHEEL_DOWN
             };
             let button = mouse_button_with_appkit_modifiers(button, modifiers);
-            let report = encode_mouse_event(
-                button,
-                column + 1,
-                row + 1,
-                true,
-                mouse_encoding,
-            );
-            let report_count = usize::try_from(
-                steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT),
-            )
+            let report = encode_mouse_event(button, column + 1, row + 1, true, mouse_encoding);
+            let report_count = usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
                 .expect("bounded wheel report count should fit usize");
             Some(report.repeat(report_count))
         }
@@ -549,7 +535,6 @@ pub(super) fn apply_pending_user_attention(notifications: &NotificationControlle
     let app = NSApplication::sharedApplication(mtm);
     let _: usize = unsafe { msg_send![&app, requestUserAttention: 0usize] };
 }
-
 
 define_class!(
     #[unsafe(super(NSView))]
@@ -1342,14 +1327,12 @@ fn handle_pane_action(action: PaneAction) {
                 if state.confirm_on_close_pane {
                     let id = tree.focused;
                     // Get foreground process name for the dialog
-                    let proc_name = tree.pane(id).and_then(|p| {
-                        confirm::foreground_process_name(p.pty.master_fd())
-                    });
+                    let proc_name = tree
+                        .pane(id)
+                        .and_then(|p| confirm::foreground_process_name(p.pty.master_fd()));
                     drop(tree);
-                    state.confirm_dialog = Some(ConfirmDialog::new(
-                        ConfirmAction::ClosePane(id),
-                        proc_name,
-                    ));
+                    state.confirm_dialog =
+                        Some(ConfirmDialog::new(ConfirmAction::ClosePane(id), proc_name));
                     state.request_render();
                     return;
                 }
@@ -1401,28 +1384,48 @@ fn handle_pane_action(action: PaneAction) {
                 let delta = -(state.resize_step / cell_w) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ResizeRight => {
                 let delta = (state.resize_step / cell_w) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ResizeUp => {
                 let delta = -(state.resize_step / cell_h) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ResizeDown => {
                 let delta = (state.resize_step / cell_h) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ZoomIn => {
@@ -1629,13 +1632,7 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
         0.0
     };
     let mut tree = state.pane_tree.lock().unwrap();
-    update_pane_geometry(
-        &mut tree,
-        cell_w,
-        cell_h,
-        status_bar_height,
-        drawable_size,
-    );
+    update_pane_geometry(&mut tree, cell_w, cell_h, status_bar_height, drawable_size);
     drop(tree);
     drop(atlas);
 
@@ -1686,7 +1683,11 @@ fn pixel_to_cell(
     let pane = tree.pane(pane_id)?;
     let col = ((px - pane.rect.x) / cell_w).max(0.0) as usize;
     let row = ((py - pane.rect.y) / cell_h).max(0.0) as usize;
-    Some((pane_id, col.min(pane.grid.cols().saturating_sub(1)), row.min(pane.grid.rows().saturating_sub(1))))
+    Some((
+        pane_id,
+        col.min(pane.grid.cols().saturating_sub(1)),
+        row.min(pane.grid.rows().saturating_sub(1)),
+    ))
 }
 
 /// OSC 8 target under a retained-grid point, if the pane recorded one there.
@@ -1843,8 +1844,7 @@ fn encode_clipboard_paste(
 
     if bracketed {
         bytes[..BRACKETED_PASTE_START.len()].copy_from_slice(BRACKETED_PASTE_START);
-        bytes[framed_len - BRACKETED_PASTE_END.len()..]
-            .copy_from_slice(BRACKETED_PASTE_END);
+        bytes[framed_len - BRACKETED_PASTE_END.len()..].copy_from_slice(BRACKETED_PASTE_END);
     }
     Ok(bytes)
 }
@@ -1939,7 +1939,8 @@ fn render_frame() {
             let region = match &dialog.action {
                 ConfirmAction::ClosePane(pane_id) => {
                     // Find the pane rect for this pane
-                    layouts.iter()
+                    layouts
+                        .iter()
                         .find(|(id, _)| id == pane_id)
                         .map(|(_, r)| *r)
                         .unwrap_or(viewport)
@@ -1978,7 +1979,10 @@ fn render_frame() {
         drop(tree);
 
         // Keep rendering during fade-in animation
-        let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
+        let still_animating = state
+            .confirm_dialog
+            .as_ref()
+            .map_or(false, |d| d.is_animating());
         if still_animating {
             state.request_render();
         }
@@ -2162,13 +2166,13 @@ pub(super) fn create_terminal_view(
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
-        dispatch_pane_focus_transition_with, dispatch_window_focus_transition_with,
-        focus_report_bytes,
-        mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
-        sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
-        MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
-        WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START, WINDOW_TITLE,
+        bracketed_paste_len, dispatch_pane_focus_transition_with,
+        dispatch_window_focus_transition_with, encode_clipboard_paste,
+        encode_macos_forwarded_wheel, focus_report_bytes, mac_key_equivalent_route,
+        mac_scroll_phase, mac_scrollback_action, sync_pending_window_title_with,
+        ClipboardPasteError, MacKeyEquivalentRoute, MacScrollPhase, MacScrollSample,
+        MacScrollState, MacScrollbackAction, WindowTitleMailbox, BRACKETED_PASTE_END,
+        BRACKETED_PASTE_START, WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
     use crate::input::keybind::KeyModifiers;
@@ -2384,12 +2388,9 @@ mod tests {
 
     #[test]
     fn internal_focus_reports_old_then_new_for_all_mode_gate_combinations() {
-        for (old_enabled, new_enabled) in [
-            (false, false),
-            (false, true),
-            (true, false),
-            (true, true),
-        ] {
+        for (old_enabled, new_enabled) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
             let old = FocusTarget {
                 id: 1,
                 enabled: old_enabled,
@@ -2566,10 +2567,7 @@ mod tests {
     #[test]
     fn macos_window_and_pane_focus_races_have_one_serialized_order() {
         assert_eq!(
-            run_focus_steps(
-                true,
-                &[FocusStep::Pane(2), FocusStep::Window(false)],
-            ),
+            run_focus_steps(true, &[FocusStep::Pane(2), FocusStep::Window(false)],),
             [
                 (1, focus_report_bytes(false).to_vec()),
                 (2, focus_report_bytes(true).to_vec()),
@@ -2577,24 +2575,15 @@ mod tests {
             ]
         );
         assert_eq!(
-            run_focus_steps(
-                true,
-                &[FocusStep::Window(false), FocusStep::Pane(2)],
-            ),
+            run_focus_steps(true, &[FocusStep::Window(false), FocusStep::Pane(2)],),
             [(1, focus_report_bytes(false).to_vec())]
         );
         assert_eq!(
-            run_focus_steps(
-                false,
-                &[FocusStep::Pane(2), FocusStep::Window(true)],
-            ),
+            run_focus_steps(false, &[FocusStep::Pane(2), FocusStep::Window(true)],),
             [(2, focus_report_bytes(true).to_vec())]
         );
         assert_eq!(
-            run_focus_steps(
-                false,
-                &[FocusStep::Window(true), FocusStep::Pane(2)],
-            ),
+            run_focus_steps(false, &[FocusStep::Window(true), FocusStep::Pane(2)],),
             [
                 (1, focus_report_bytes(true).to_vec()),
                 (1, focus_report_bytes(false).to_vec()),
@@ -2613,7 +2602,11 @@ mod tests {
             (8, cmd, MacKeyEquivalentRoute::Copy),
             (9, cmd, MacKeyEquivalentRoute::Paste),
             (24, cmd_shift, MacKeyEquivalentRoute::ZoomIn),
-            (12, KeyModifiers::empty(), MacKeyEquivalentRoute::PassThrough),
+            (
+                12,
+                KeyModifiers::empty(),
+                MacKeyEquivalentRoute::PassThrough,
+            ),
             (8, KeyModifiers::SHIFT, MacKeyEquivalentRoute::PassThrough),
             (
                 9,
@@ -2622,16 +2615,8 @@ mod tests {
             ),
             (24, KeyModifiers::SHIFT, MacKeyEquivalentRoute::PassThrough),
             (12, cmd_shift, MacKeyEquivalentRoute::Keybind),
-            (
-                8,
-                cmd | KeyModifiers::CTRL,
-                MacKeyEquivalentRoute::Keybind,
-            ),
-            (
-                9,
-                cmd | KeyModifiers::ALT,
-                MacKeyEquivalentRoute::Keybind,
-            ),
+            (8, cmd | KeyModifiers::CTRL, MacKeyEquivalentRoute::Keybind),
+            (9, cmd | KeyModifiers::ALT, MacKeyEquivalentRoute::Keybind),
             (24, cmd, MacKeyEquivalentRoute::Keybind),
             (
                 24,
@@ -2669,10 +2654,7 @@ mod tests {
             }
         }
 
-        assert_eq!(
-            mac_scrollback_action(123, KeyModifiers::SHIFT),
-            None,
-        );
+        assert_eq!(mac_scrollback_action(123, KeyModifiers::SHIFT), None,);
     }
 
     #[test]
@@ -2691,12 +2673,8 @@ mod tests {
         ] {
             assert_eq!(mac_scrollback_action(116, modifiers), None);
             assert_eq!(
-                encode_terminal_key_with_modifiers(
-                    TerminalKey::PageUp,
-                    false,
-                    terminal_modifiers,
-                )
-                .as_deref(),
+                encode_terminal_key_with_modifiers(TerminalKey::PageUp, false, terminal_modifiers,)
+                    .as_deref(),
                 Some(expected),
             );
         }
@@ -2764,10 +2742,7 @@ mod tests {
             bracketed_paste_len(usize::MAX - framing_bytes),
             Some(usize::MAX)
         );
-        assert_eq!(
-            bracketed_paste_len(usize::MAX - framing_bytes + 1),
-            None
-        );
+        assert_eq!(bracketed_paste_len(usize::MAX - framing_bytes + 1), None);
         assert_eq!(bracketed_paste_len(usize::MAX), None);
     }
 
@@ -2841,7 +2816,11 @@ mod tests {
     #[test]
     fn gesture_and_momentum_boundaries_reset_even_when_delta_is_zero() {
         let none = NSEventPhase::None;
-        for phase in [NSEventPhase::None, NSEventPhase::Changed, NSEventPhase::Stationary] {
+        for phase in [
+            NSEventPhase::None,
+            NSEventPhase::Changed,
+            NSEventPhase::Stationary,
+        ] {
             assert_eq!(mac_scroll_phase(phase, none), MacScrollPhase::Continued);
             assert_eq!(mac_scroll_phase(none, phase), MacScrollPhase::Continued);
         }

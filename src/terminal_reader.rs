@@ -98,14 +98,7 @@ impl TerminalReader {
         U: FnMut() + Send + 'static,
         X: FnOnce(&ReaderExit) + Send + 'static,
     {
-        Self::spawn_with_graphics_io(
-            pty,
-            grid,
-            graphics_support,
-            on_graphics,
-            on_update,
-            on_exit,
-        )
+        Self::spawn_with_graphics_io(pty, grid, graphics_support, on_graphics, on_update, on_exit)
     }
 
     fn spawn_with_io<I, U, X>(
@@ -624,9 +617,7 @@ mod tests {
         let fake = FakeIo::new(
             vec![WaitAction::Ready],
             vec![
-                ReadAction::Data(
-                    b"\x1b[2;3H\x1bPq~\x1b\\\x1b_Ga=p,i=7\x1b\\\x1b[6nX".to_vec(),
-                ),
+                ReadAction::Data(b"\x1b[2;3H\x1bPq~\x1b\\\x1b_Ga=p,i=7\x1b\\\x1b[6nX".to_vec()),
                 ReadAction::Eof,
             ],
         )

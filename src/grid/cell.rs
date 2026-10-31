@@ -57,7 +57,8 @@ impl Cell {
         match self.grapheme.as_deref() {
             Some(text) => text.width(),
             None => self.c.width().unwrap_or(1),
-        }.clamp(1, 2)
+        }
+        .clamp(1, 2)
     }
 }
 

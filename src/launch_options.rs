@@ -204,7 +204,10 @@ mod tests {
         assert_eq!(run(&[]), LaunchOptions::default());
         assert_eq!(parse(["--help".into()]).unwrap(), LaunchAction::Help);
         assert_eq!(parse(["--version".into()]).unwrap(), LaunchAction::Version);
-        assert_eq!(parse(["--check-update".into()]).unwrap(), LaunchAction::CheckUpdate);
+        assert_eq!(
+            parse(["--check-update".into()]).unwrap(),
+            LaunchAction::CheckUpdate
+        );
         assert_eq!(parse(["--update".into()]).unwrap(), LaunchAction::Update);
         assert_eq!(
             run(&["--execute", "printf", "--help"]).command,

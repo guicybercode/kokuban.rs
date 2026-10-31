@@ -185,7 +185,11 @@ fn encode_key_press_kitty(
         .or_else(|| press.text.and_then(|text| text.chars().next()))?
         .to_lowercase()
         .next()?;
-    encode_key_kitty_disambiguate(KittyKey::Text(codepoint), application_cursor_keys, modifiers)
+    encode_key_kitty_disambiguate(
+        KittyKey::Text(codepoint),
+        application_cursor_keys,
+        modifiers,
+    )
 }
 
 fn named_key_from_logical(logical_key: Key<&str>) -> Option<NamedKey> {
@@ -291,18 +295,31 @@ mod tests {
     fn kitty_disambiguate_routes_linux_keys_through_csi_u() {
         let none = ModifiersState::empty();
         assert_eq!(
-            encode_key_press(press(Some(NamedKey::Escape), Some("\x1b"), None, none), false, true)
-                .as_deref(),
+            encode_key_press(
+                press(Some(NamedKey::Escape), Some("\x1b"), None, none),
+                false,
+                true
+            )
+            .as_deref(),
             Some(b"\x1b[27u".as_slice())
         );
         assert_eq!(
-            encode_key_press(press(Some(NamedKey::Enter), Some("\r"), None, none), false, true)
-                .as_deref(),
+            encode_key_press(
+                press(Some(NamedKey::Enter), Some("\r"), None, none),
+                false,
+                true
+            )
+            .as_deref(),
             Some(b"\r".as_slice())
         );
         assert_eq!(
             encode_key_press(
-                press(Some(NamedKey::Enter), Some("\r"), None, ModifiersState::SHIFT),
+                press(
+                    Some(NamedKey::Enter),
+                    Some("\r"),
+                    None,
+                    ModifiersState::SHIFT
+                ),
                 false,
                 true,
             )
@@ -318,7 +335,12 @@ mod tests {
         );
         assert_eq!(
             encode_key_press(
-                press(None, Some("A"), None, ModifiersState::CONTROL | ModifiersState::SHIFT),
+                press(
+                    None,
+                    Some("A"),
+                    None,
+                    ModifiersState::CONTROL | ModifiersState::SHIFT
+                ),
                 false,
                 true,
             )
@@ -326,8 +348,12 @@ mod tests {
             Some(b"\x1b[97;6u".as_slice())
         );
         assert_eq!(
-            encode_key_press(press(None, Some("x"), None, ModifiersState::ALT), false, true)
-                .as_deref(),
+            encode_key_press(
+                press(None, Some("x"), None, ModifiersState::ALT),
+                false,
+                true
+            )
+            .as_deref(),
             Some(b"\x1b[120;3u".as_slice())
         );
         // Plain text and arrows are unchanged.
@@ -547,8 +573,12 @@ mod tests {
                 "{modifiers:?} PageUp must stay on the terminal input path"
             );
             assert_eq!(
-                encode_key_press(press(Some(NamedKey::PageUp), None, None, modifiers), false, false)
-                    .as_deref(),
+                encode_key_press(
+                    press(Some(NamedKey::PageUp), None, None, modifiers),
+                    false,
+                    false
+                )
+                .as_deref(),
                 Some(expected),
                 "unexpected terminal sequence for {modifiers:?} PageUp"
             );
@@ -734,7 +764,11 @@ mod tests {
             Some(vec![0x00])
         );
         assert_eq!(
-            encode_key_press(press(None, Some("a"), None, ModifiersState::CONTROL), false, false),
+            encode_key_press(
+                press(None, Some("a"), None, ModifiersState::CONTROL),
+                false,
+                false
+            ),
             None,
             "missing all-modifier text must not leak printable input"
         );

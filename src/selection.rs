@@ -284,11 +284,20 @@ mod tests {
         let last = grid.scrollback_len() + grid.cursor_row;
         let selection = selected(
             GridPoint { row: 0, col: 0 },
-            GridPoint { row: last as i64, col: 7 },
+            GridPoint {
+                row: last as i64,
+                col: 7,
+            },
         );
         assert_eq!(selection.get_text(&grid), url);
-        assert_eq!(selection.get_text_with_limit(&grid, url.len()), Ok(url.to_owned()));
-        assert_eq!(selection.get_text_with_limit(&grid, url.len() - 1), Err(SelectionTextError::TooLarge));
+        assert_eq!(
+            selection.get_text_with_limit(&grid, url.len()),
+            Ok(url.to_owned())
+        );
+        assert_eq!(
+            selection.get_text_with_limit(&grid, url.len() - 1),
+            Err(SelectionTextError::TooLarge)
+        );
         let reverse = selected(selection.end.unwrap(), selection.anchor.unwrap());
         assert_eq!(reverse.get_text(&grid), url);
     }
@@ -300,10 +309,7 @@ mod tests {
         grid.carriage_return();
         grid.newline();
         grid.put_ascii(b"next ");
-        let selection = selected(
-            GridPoint { row: 0, col: 0 },
-            GridPoint { row: 3, col: 4 },
-        );
+        let selection = selected(GridPoint { row: 0, col: 0 }, GridPoint { row: 3, col: 4 });
         assert_eq!(selection.get_text(&grid), "echo  hello  \nnext ");
     }
 
@@ -313,10 +319,7 @@ mod tests {
         grid.put_ascii(b"abc");
         grid.put_char('日');
         grid.put_ascii(b"end");
-        let selection = selected(
-            GridPoint { row: 0, col: 1 },
-            GridPoint { row: 2, col: 0 },
-        );
+        let selection = selected(GridPoint { row: 0, col: 1 }, GridPoint { row: 2, col: 0 });
         assert_eq!(selection.get_text(&grid), "bc日end");
     }
 
@@ -330,7 +333,10 @@ mod tests {
             grid.resize(cols, 1);
             let selection = selected(
                 GridPoint { row: 0, col: 0 },
-                GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+                GridPoint {
+                    row: (grid.retained_rows() - 1) as i64,
+                    col: cols - 1,
+                },
             );
             assert_eq!(selection.get_text(&grid), "ab日c", "width={cols}");
         }
@@ -347,7 +353,10 @@ mod tests {
             grid.resize(cols, 1);
             let selection = selected(
                 GridPoint { row: 0, col: 0 },
-                GridPoint { row: (grid.retained_rows() - 1) as i64, col: cols - 1 },
+                GridPoint {
+                    row: (grid.retained_rows() - 1) as i64,
+                    col: cols - 1,
+                },
             );
             assert_eq!(selection.get_text(&grid), "ok   \nnext", "width={cols}");
         }
@@ -534,7 +543,8 @@ mod tests {
 
     #[test]
     fn copy_never_splits_a_compound_emoji_or_combining_cluster() {
-        for grapheme in ["e\u{301}", "👩🏽‍💻", "🇧🇷", "1\u{fe0f}\u{20e3}", " \u{301}"] {
+        for grapheme in ["e\u{301}", "👩🏽‍💻", "🇧🇷", "1\u{fe0f}\u{20e3}", " \u{301}"]
+        {
             let mut grid = Grid::new(8, 2, 10);
             for character in grapheme.chars() {
                 grid.put_char(character);
@@ -542,8 +552,14 @@ mod tests {
             for col in 0..grid.cursor_col {
                 let selection = selected(GridPoint { row: 0, col }, GridPoint { row: 0, col });
                 assert_eq!(selection.get_text(&grid), grapheme);
-                assert_eq!(selection.get_text_with_limit(&grid, grapheme.len()), Ok(grapheme.to_owned()));
-                assert_eq!(selection.get_text_with_limit(&grid, grapheme.len() - 1), Err(SelectionTextError::TooLarge));
+                assert_eq!(
+                    selection.get_text_with_limit(&grid, grapheme.len()),
+                    Ok(grapheme.to_owned())
+                );
+                assert_eq!(
+                    selection.get_text_with_limit(&grid, grapheme.len() - 1),
+                    Err(SelectionTextError::TooLarge)
+                );
             }
         }
     }

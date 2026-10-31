@@ -2,20 +2,20 @@
 mod app;
 mod app_icon;
 mod config;
-mod notifications;
 #[cfg(test)]
 mod content_preservation_tests;
-mod graphics;
 mod glyph_atlas;
+mod graphics;
 mod grid;
 mod input;
-mod layout;
 #[cfg(any(target_os = "linux", test))]
 mod launch_options;
-#[cfg(target_os = "linux")]
-mod linux_window;
+mod layout;
 #[cfg(target_os = "linux")]
 mod linux_clipboard;
+#[cfg(target_os = "linux")]
+mod linux_window;
+mod notifications;
 #[cfg(target_os = "linux")]
 mod omarchy_theme;
 mod palette;
@@ -24,19 +24,19 @@ mod pane;
 mod parser;
 mod pty;
 mod render_scene;
+mod renderer;
 mod search;
 mod selection;
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-mod software_raster;
 #[cfg(target_os = "linux")]
 mod software_graphics;
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+mod software_raster;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+mod terminal_colors;
 mod terminal_decoder;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod terminal_reader;
 mod terminal_writer;
-#[cfg_attr(target_os = "linux", allow(dead_code))]
-mod terminal_colors;
-mod renderer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod update;
 mod window_title;
@@ -57,7 +57,11 @@ fn main() -> std::process::ExitCode {
     env_logger::init();
 
     // Finder may pass its own arguments, so only these exact flags are handled.
-    match std::env::args_os().nth(1).as_deref().and_then(std::ffi::OsStr::to_str) {
+    match std::env::args_os()
+        .nth(1)
+        .as_deref()
+        .and_then(std::ffi::OsStr::to_str)
+    {
         Some("--update") => return update::run_update_command(),
         Some("--check-update") => return update::run_check_command(),
         Some("-V" | "--version") => {
@@ -78,7 +82,11 @@ fn main() -> std::process::ExitCode {
     }
 
     let config = config::Config::load();
-    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
+    log::info!(
+        "黒板kokuban starting: {}x{} terminal",
+        config.window.columns,
+        config.window.rows
+    );
 
     match app::launch(config) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -129,7 +137,11 @@ fn main() -> std::process::ExitCode {
             std::env::set_var("PWD", directory);
         }
     }
-    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
+    log::info!(
+        "黒板kokuban starting: {}x{} terminal",
+        config.window.columns,
+        config.window.rows
+    );
 
     match linux_window::launch(config, options) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -162,7 +174,13 @@ mod tests {
         let home = || Some(OsString::from("/Users/kokuban"));
         assert_eq!(launch_directory(Path::new("/tmp/project"), home()), None);
         assert_eq!(launch_directory(Path::new("/"), None), None);
-        assert_eq!(launch_directory(Path::new("/"), Some(OsString::from("relative"))), None);
-        assert_eq!(launch_directory(Path::new("/"), Some(OsString::from("/"))), None);
+        assert_eq!(
+            launch_directory(Path::new("/"), Some(OsString::from("relative"))),
+            None
+        );
+        assert_eq!(
+            launch_directory(Path::new("/"), Some(OsString::from("/"))),
+            None
+        );
     }
 }
