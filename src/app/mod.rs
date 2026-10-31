@@ -192,7 +192,12 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         .expect("Failed to create initial pane"),
     ));
 
-    let scale_factor = 2.0f32;
+    // Size the glyph atlas and the first window for the screen the app opens on;
+    // `viewDidChangeBackingProperties` handles later moves between displays.
+    let scale_factor = NSScreen::mainScreen(mtm)
+        .map(|screen| screen.backingScaleFactor() as f32)
+        .filter(|scale| scale.is_finite() && *scale > 0.0)
+        .unwrap_or(2.0);
     let atlas = Arc::new(Mutex::new(GlyphAtlas::new(
         &config.font.family,
         config.font.size,
