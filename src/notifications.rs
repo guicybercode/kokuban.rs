@@ -142,9 +142,32 @@ pub fn escape_notify_send_markup(text: &str) -> String {
     escaped
 }
 
+/// Hand an OSC 8 target to the desktop opener. Only allowlisted schemes are
+/// passed on, as a single argv entry — never through a shell.
+pub(crate) fn open_hyperlink(url: &str) -> std::io::Result<()> {
+    if !crate::grid::hyperlinks::is_openable_hyperlink(url) {
+        log::info!("Ignoring hyperlink with unsupported scheme");
+        return Ok(());
+    }
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "linux") {
+        "xdg-open"
+    } else {
+        return Ok(());
+    };
+    let mut command = Command::new(opener);
+    command
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    spawn_and_reap(command)
+}
+
 /// Spawn a helper and reap it on a background thread so short-lived notify
 /// processes do not accumulate as zombies.
-fn spawn_and_reap(mut command: Command) -> std::io::Result<()> {
+pub(crate) fn spawn_and_reap(mut command: Command) -> std::io::Result<()> {
     let child = command.spawn()?;
     let _ = reap_in_background(child);
     Ok(())

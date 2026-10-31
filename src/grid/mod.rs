@@ -1,5 +1,6 @@
 pub mod buffer;
 pub mod cell;
+pub mod hyperlinks;
 pub mod marks;
 mod reflow;
 mod boundary_pages;
@@ -8,6 +9,7 @@ mod history;
 use buffer::{Buffer, RowMetadata};
 use cell::{Cell, CellFlags, Color, UnderlineStyle};
 use history::HistoryRow;
+use hyperlinks::HyperlinkIndex;
 use marks::MarkIndex;
 use reflow::{Cursor as ReflowCursor, RetainedRow};
 use std::{collections::{HashMap, VecDeque}, sync::Arc};
@@ -41,6 +43,8 @@ pub(crate) enum TerminalEvent {
     },
     /// ASCII BEL (0x07) outside a control string.
     Bell,
+    /// OSC 52 request to place decoded text on the system clipboard.
+    ClipboardWrite(String),
 }
 
 const DEFAULT_CELL: Cell = Cell {
@@ -215,6 +219,10 @@ pub struct Grid {
     // Prompt marks
     pub marks: MarkIndex,
     pub total_lines_pushed: usize,
+    // OSC 8 hyperlinks keyed by absolute row (primary screen only).
+    pub hyperlinks: HyperlinkIndex,
+    saved_primary_hyperlinks: Option<HyperlinkIndex>,
+    pub active_hyperlink: Option<std::sync::Arc<str>>,
     // Coordinate changes that cannot be tracked by primary-screen scrollback.
     selection_revision: u64,
     screen_revision: u64,
@@ -288,6 +296,9 @@ impl Grid {
             cwd: String::new(),
             marks: MarkIndex::default(),
             total_lines_pushed: 0,
+            hyperlinks: HyperlinkIndex::default(),
+            saved_primary_hyperlinks: None,
+            active_hyperlink: None,
             selection_revision: 0,
             screen_revision: 0,
             pending_terminal_events: Vec::new(),
@@ -458,6 +469,11 @@ impl Grid {
 
     pub(crate) fn queue_bell(&mut self) {
         self.pending_terminal_events.push(TerminalEvent::Bell);
+    }
+
+    pub(crate) fn queue_clipboard_write(&mut self, text: String) {
+        self.pending_terminal_events
+            .push(TerminalEvent::ClipboardWrite(text));
     }
 
     pub(crate) fn take_osc99_draft(&mut self, id: &str) -> Option<Osc99Draft> {
@@ -784,6 +800,11 @@ impl Grid {
         if self.insert_mode {
             self.repair_wide_row(row);
         }
+        let abs_row = self.total_lines_pushed + row;
+        match self.active_hyperlink.as_ref() {
+            Some(url) => self.hyperlinks.record(abs_row, col, char_width, url),
+            None => self.hyperlinks.clear_cells(abs_row, col, col + char_width.max(1)),
+        }
         self.buffer.mark_written(row, col + char_width.max(1));
         self.cursor_col += char_width;
         self.wrap_pending = self.cursor_col >= cols;
@@ -967,12 +988,28 @@ impl Grid {
         self.total_lines_pushed + self.cursor_row
     }
 
+    /// Absolute row of the oldest retained scrollback row (or the top screen row).
+    pub fn first_retained_absolute_row(&self) -> usize {
+        self.total_lines_pushed.saturating_sub(self.scrollback.len())
+    }
+
+    /// Absolute row for a retained-history row index (0 = oldest scrollback row).
+    pub fn absolute_row_for_retained(&self, retained_row: usize) -> usize {
+        self.first_retained_absolute_row() + retained_row
+    }
+
+    /// Hyperlink covering the cell at a retained-history coordinate, if any.
+    pub fn hyperlink_at_retained(&self, retained_row: usize, col: usize) -> Option<&str> {
+        self.hyperlinks.hyperlink_at(self.absolute_row_for_retained(retained_row), col)
+    }
+
     pub fn scroll_up(&mut self, count: usize) {
         let count = count.min(self.scroll_bottom - self.scroll_top + 1);
         let save_scrollback = !self.using_alt_screen
             && self.scroll_top == 0
             && self.scroll_bottom == self.rows() - 1;
         if save_scrollback {
+            let mut evicted_rows = false;
             for i in 0..count {
                 let row_data = self.buffer.extract_history_row(i);
                 let metadata = self.buffer.row_metadata(i);
@@ -986,6 +1023,7 @@ impl Grid {
                     || self.scrollback_cells > self.scrollback_cell_budget
                 {
                     if let Some(evicted) = self.scrollback.pop_front() {
+                        evicted_rows = true;
                         self.saved_cursor_retained_row = self.saved_cursor_retained_row.and_then(|row| row.checked_sub(1));
                         self.scrollback_cells -= evicted.len();
                         if self.scrollback_metadata.pop_front().is_some_and(|row| !row.wrapped) {
@@ -995,6 +1033,9 @@ impl Grid {
                 }
             }
             self.total_lines_pushed += count;
+            if evicted_rows {
+                self.hyperlinks.evict_before(self.first_retained_absolute_row());
+            }
         } else if count != 0 {
             self.selection_revision = self.selection_revision.wrapping_add(1);
         }
@@ -1125,6 +1166,7 @@ impl Grid {
         self.scrollback_cell_budget = self.scrollback_max.saturating_mul(cols);
         self.total_lines_pushed = 0;
         self.saved_primary_image_placements = Some(std::mem::take(&mut self.image_placements));
+        self.saved_primary_hyperlinks = Some(std::mem::take(&mut self.hyperlinks));
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.wrap_pending = false;
@@ -1154,6 +1196,7 @@ impl Grid {
             self.saved_cursor_retained_row = cursor.retained_row;
         }
         self.using_alt_screen = false;
+        self.hyperlinks = self.saved_primary_hyperlinks.take().unwrap_or_default();
         self.cursor_row = self.alt_cursor.0.min(self.rows().saturating_sub(1));
         self.cursor_col = self.alt_cursor.1.min(self.cols() - 1);
         self.wrap_pending = self.alt_wrap_pending;
@@ -1299,6 +1342,7 @@ impl Grid {
                 });
                 self.scroll_offset = 0;
                 self.marks.erase_saved_lines(self.total_lines_pushed);
+                self.hyperlinks.erase_saved_lines(self.total_lines_pushed);
                 self.total_lines_pushed = 0;
             }
             _ => {}
@@ -1423,6 +1467,11 @@ impl Grid {
         if (cols, rows) == (self.cols(), self.rows()) { return; }
         self.selection_revision = self.selection_revision.wrapping_add(1);
         let old_cols = self.cols();
+        if cols != old_cols {
+            // Reflow moves text between columns; the span table cannot follow it.
+            self.hyperlinks.clear();
+            if let Some(saved) = self.saved_primary_hyperlinks.as_mut() { saved.clear(); }
+        }
         let mut cursors = [
             ReflowCursor { row: self.cursor_row, col: self.cursor_col.min(old_cols - 1), pending: self.is_wrap_pending(), retained_row: None },
             ReflowCursor { row: self.saved_cursor_row.min(self.rows() - 1), col: self.saved_cursor_col.min(old_cols - 1), pending: self.saved_wrap_pending, retained_row: self.saved_cursor_retained_row },

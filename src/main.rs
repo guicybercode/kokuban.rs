@@ -18,6 +18,7 @@ mod linux_window;
 mod linux_clipboard;
 #[cfg(target_os = "linux")]
 mod omarchy_theme;
+mod palette;
 #[cfg(target_os = "macos")]
 mod pane;
 mod parser;

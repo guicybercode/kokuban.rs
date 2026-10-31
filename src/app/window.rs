@@ -20,6 +20,7 @@ use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
 use crate::search::SearchState;
 use crate::selection::GridPoint;
+use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::notifications::NotificationController;
 use crate::update::{self, SharedUpdateStatus, UpdateStatus};
@@ -850,6 +851,7 @@ define_class!(
             let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
+            let has_cmd = event.modifierFlags().contains(NSEventModifierFlags::Command);
             VIEW_STATE.with(|state| {
                 let mut state = state.borrow_mut();
                 if let Some(state) = state.as_mut() {
@@ -870,6 +872,20 @@ define_class!(
                                 None,
                             );
                             publish_focused_window_title(&tree, state.window_title.as_ref());
+                            tree.clear_focused_attention();
+                        }
+                        // Cmd+click opens an OSC 8 hyperlink under the pointer
+                        // instead of reporting the press or starting a selection.
+                        if has_cmd && !has_shift {
+                            let url = pixel_to_grid_point(event, state, &tree, cell_w, cell_h)
+                                .and_then(|(_id, point)| hyperlink_at_point(tree.pane(pane_id)?, point));
+                            if let Some(url) = url {
+                                if let Err(error) = crate::notifications::open_hyperlink(&url) {
+                                    log::warn!("Failed to open hyperlink: {error}");
+                                }
+                                drop(tree);
+                                return;
+                            }
                         }
                         let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
                         if let Some((mt, encoding)) = tracking {
@@ -1018,6 +1034,10 @@ define_class!(
                     let mut tree = state.pane_tree.lock().unwrap();
                     if let Some(pane) = tree.focused_pane_mut() {
                         pane.grid.scroll_to_bottom();
+                        if pane.attention {
+                            pane.attention = false;
+                            state.request_render();
+                        }
                         if pane.selection.is_active() {
                             pane.selection.clear();
                             state.request_render();
@@ -1364,6 +1384,11 @@ fn handle_pane_action(action: PaneAction) {
             PaneAction::FocusRight => {
                 tree.focus_neighbor(SplitDirection::Vertical, true);
             }
+            PaneAction::FocusAttention => {
+                if let Some(target) = tree.next_attention_pane() {
+                    tree.focused = target;
+                }
+            }
             PaneAction::FocusUp => {
                 tree.focus_neighbor(SplitDirection::Horizontal, false);
             }
@@ -1486,6 +1511,7 @@ fn handle_pane_action(action: PaneAction) {
             );
             publish_focused_window_title(&tree, state.window_title.as_ref());
         }
+        tree.clear_focused_attention();
         drop(tree);
         if let Some(pane) = closed_pane {
             state.pane_cleanup.retire(pane);
@@ -1661,6 +1687,14 @@ fn pixel_to_cell(
     Some((pane_id, col.min(pane.grid.cols().saturating_sub(1)), row.min(pane.grid.rows().saturating_sub(1))))
 }
 
+/// OSC 8 target under a retained-grid point, if the pane recorded one there.
+fn hyperlink_at_point(pane: &Pane, point: GridPoint) -> Option<String> {
+    let retained_row = usize::try_from(point.row).ok()?;
+    pane.grid
+        .hyperlink_at_retained(retained_row, point.col)
+        .map(str::to_owned)
+}
+
 fn pixel_to_grid_point(
     event: &NSEvent,
     state: &ViewState,
@@ -1693,7 +1727,18 @@ fn pixel_to_grid_point(
     ))
 }
 
-fn copy_to_clipboard(text: &str) {
+/// Place text queued by OSC 52 on the pasteboard (main thread only).
+pub(super) fn apply_pending_clipboard_write(pending: &Mutex<Option<String>>) {
+    let text = match pending.lock() {
+        Ok(mut slot) => slot.take(),
+        Err(_) => None,
+    };
+    if let Some(text) = text {
+        copy_to_clipboard(&text);
+    }
+}
+
+pub(crate) fn copy_to_clipboard(text: &str) {
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.clearContents();
@@ -1876,6 +1921,7 @@ fn render_frame() {
                     rect: *rect,
                     selection: sel,
                     is_focused: *id == focused_id,
+                    attention: pane.attention,
                     pane_index: i,
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
@@ -2010,8 +2056,7 @@ pub(super) fn create_terminal_view(
     should_close: Arc<AtomicBool>,
     reader_wake: Arc<ReaderWake>,
     window_is_key: Arc<AtomicBool>,
-    default_fg: (u8, u8, u8),
-    default_bg: (u8, u8, u8),
+    terminal_colors: TerminalColors,
     scale_factor: f32,
     font_family: String,
     font_size: f32,
@@ -2067,7 +2112,7 @@ pub(super) fn create_terminal_view(
     }
 
     let retained_device: Retained<ProtocolObject<dyn MTLDevice>> = device.retain();
-    let renderer = MetalRenderer::new(retained_device, default_fg, default_bg);
+    let renderer = MetalRenderer::new(retained_device, terminal_colors);
 
     VIEW_STATE.with(|state| {
         *state.borrow_mut() = Some(ViewState {

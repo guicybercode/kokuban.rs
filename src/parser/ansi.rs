@@ -5,6 +5,48 @@ use crate::grid::{CharSet, CursorShape, CursorStyle, Grid, MouseEncoding, MouseT
 use crate::parser::kitty_graphics;
 use crate::parser::sixel;
 
+/// Decoded OSC 52 payloads larger than this are dropped.
+pub(crate) const MAX_OSC52_TEXT_BYTES: usize = 1024 * 1024;
+
+/// Decode the `Pc;Pd` payload of OSC 52 into clipboard text.
+///
+/// Only writes are honoured: `?` (a read request) and anything that is not
+/// valid base64/UTF-8, or that decodes to more than 1 MiB, yields `None`.
+/// Control characters other than `\n` and `\t` are removed so a remote
+/// program cannot plant escape sequences in the clipboard.
+pub(crate) fn decode_osc52_write(payload: &str) -> Option<String> {
+    use base64::engine::general_purpose::GeneralPurpose;
+    use base64::engine::{DecodePaddingMode, GeneralPurposeConfig};
+    use base64::Engine;
+
+    const LENIENT_STANDARD: GeneralPurpose = GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
+
+    let (_selection, data) = payload.split_once(';')?;
+    if data == "?" || data.is_empty() {
+        return None;
+    }
+    // Base64 expands 3 bytes to 4 characters; reject before decoding.
+    if data.len() > MAX_OSC52_TEXT_BYTES / 3 * 4 + 4 {
+        return None;
+    }
+    let bytes = LENIENT_STANDARD.decode(data).ok()?;
+    if bytes.len() > MAX_OSC52_TEXT_BYTES {
+        return None;
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    let cleaned: String = text
+        .chars()
+        .filter(|&c| c == '\n' || c == '\t' || !c.is_control())
+        .collect();
+    if cleaned.is_empty() {
+        return None;
+    }
+    Some(cleaned)
+}
+
 const MAX_CSI_PARAMS: usize = 32;
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_BYTES: usize = 64 * 1024;
@@ -616,6 +658,11 @@ impl Parser {
                         _ => {}
                     }
                 }
+                "8" => {
+                    if let Some(link) = crate::grid::hyperlinks::parse_osc8(pt) {
+                        grid.active_hyperlink = link;
+                    }
+                }
                 "9" => {
                     // OSC 9;4 is the ConEmu/iTerm2 progress bar — not a notification.
                     if crate::parser::osc_notify::is_osc9_progress(pt) {
@@ -654,6 +701,11 @@ impl Parser {
                             grid.store_osc99_draft(hold_id, draft);
                         }
                         Osc99Action::Ignore => {}
+                    }
+                }
+                "52" => {
+                    if let Some(text) = decode_osc52_write(pt) {
+                        grid.queue_clipboard_write(text);
                     }
                 }
                 _ => { log::trace!("Ignoring OSC {ps}"); }
@@ -1181,6 +1233,7 @@ impl Utf8Parser {
 
 #[cfg(test)]
 mod tests {
+    use super::{decode_osc52_write, MAX_OSC52_TEXT_BYTES};
     use super::{
         terminal_pixel_extent, ControlStringLimits, GraphicsSupport, Utf8Parser, MAX_CSI_PARAMS,
         MAX_INTERMEDIATES,
@@ -1499,7 +1552,8 @@ mod tests {
                 TerminalEvent::Response(_)
                 | TerminalEvent::SixelGraphics { .. }
                 | TerminalEvent::Notification { .. }
-                | TerminalEvent::Bell => None,
+                | TerminalEvent::Bell
+                | TerminalEvent::ClipboardWrite(_) => None,
             })
             .collect()
     }
@@ -1512,7 +1566,8 @@ mod tests {
                 TerminalEvent::Response(_)
                 | TerminalEvent::KittyGraphics { .. }
                 | TerminalEvent::Notification { .. }
-                | TerminalEvent::Bell => None,
+                | TerminalEvent::Bell
+                | TerminalEvent::ClipboardWrite(_) => None,
             })
             .collect()
     }
@@ -2593,6 +2648,72 @@ mod tests {
         assert_eq!(grid.buffer.cell(0, 0).c, 'z');
     }
 
+
+    #[test]
+    fn osc52_write_queues_decoded_clipboard_text() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        // "hello\tworld\n" in base64.
+        parser.feed(b"\x1b]52;c;aGVsbG8Jd29ybGQK\x07", &mut screen);
+        let events = screen.drain_terminal_events();
+        assert!(matches!(
+            &events[..],
+            [TerminalEvent::ClipboardWrite(text)] if text == "hello\tworld\n"
+        ));
+    }
+
+    #[test]
+    fn osc52_accepts_unpadded_base64_and_st_terminator() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]52;;aGk\x1b\\", &mut screen);
+        let events = screen.drain_terminal_events();
+        assert!(matches!(
+            &events[..],
+            [TerminalEvent::ClipboardWrite(text)] if text == "hi"
+        ));
+    }
+
+    #[test]
+    fn osc52_read_request_is_ignored() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]52;c;?\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty(), "OSC 52 reads must not answer");
+    }
+
+    #[test]
+    fn osc52_rejects_invalid_base64_and_invalid_utf8() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]52;c;not*base64!\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+        // 0xff 0xfe is not UTF-8.
+        parser.feed(b"\x1b]52;c;//4=\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+    }
+
+    #[test]
+    fn osc52_rejects_oversized_payloads() {
+        let oversized = vec![b'A'; (MAX_OSC52_TEXT_BYTES / 3 + 1) * 4];
+        let mut sequence = b"\x1b]52;c;".to_vec();
+        sequence.extend_from_slice(&oversized);
+        sequence.push(0x07);
+        let mut parser = limited_parser(sequence.len() + 16, 1024, 1024);
+        let mut screen = grid();
+        parser.feed(&sequence, &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+        assert!(decode_osc52_write(std::str::from_utf8(&sequence[5..sequence.len() - 1]).unwrap()).is_none());
+    }
+
+    #[test]
+    fn osc52_strips_control_characters() {
+        // "a\x1bb\r\nc\x07" -> "ab\nc"
+        let decoded = decode_osc52_write("c;YRtiDQpjBw==").unwrap();
+        assert_eq!(decoded, "ab\nc");
+        assert!(decode_osc52_write("c;Gxs=").is_none(), "control-only text is dropped");
+    }
+
     #[test]
     fn osc9_queues_notification_but_ignores_progress_bar() {
         let mut parser = Utf8Parser::new();
@@ -2753,7 +2874,8 @@ mod tests {
             TerminalEvent::Response(_)
             | TerminalEvent::SixelGraphics { .. }
             | TerminalEvent::Notification { .. }
-            | TerminalEvent::Bell => {
+            | TerminalEvent::Bell
+            | TerminalEvent::ClipboardWrite(_) => {
                 panic!("expected a Kitty delete event")
             }
         }
@@ -2769,7 +2891,8 @@ mod tests {
             TerminalEvent::Response(_)
             | TerminalEvent::SixelGraphics { .. }
             | TerminalEvent::Notification { .. }
-            | TerminalEvent::Bell => {
+            | TerminalEvent::Bell
+            | TerminalEvent::ClipboardWrite(_) => {
                 panic!("expected a Kitty query event")
             }
         }
@@ -2890,5 +3013,114 @@ mod tests {
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].image_id, Some(7));
         assert!(parser.parser.active_control_string.is_none());
+    }
+
+    fn osc8_spans(grid: &Grid) -> Vec<(usize, usize, usize, String)> {
+        grid.hyperlinks
+            .spans()
+            .map(|span| (span.abs_row, span.start_col, span.end_col, span.url.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn osc8_open_text_close_records_one_span() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"ab\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\tail", &mut grid);
+        assert_eq!(osc8_spans(&grid), vec![(0, 2, 6, "https://example.com".to_string())]);
+        assert!(grid.active_hyperlink.is_none());
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 2), Some("https://example.com"));
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 5), Some("https://example.com"));
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 6), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 1), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(1, 2), None);
+        assert_eq!(grid.hyperlink_at_retained(0, 3), Some("https://example.com"));
+    }
+
+    #[test]
+    fn osc8_two_links_on_one_row_and_id_params() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(
+            b"\x1b]8;id=a;https://a.example\x07aa\x1b]8;;\x07 \x1b]8;id=b;https://b.example\x07bb\x1b]8;;\x07",
+            &mut grid,
+        );
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![
+                (0, 0, 2, "https://a.example".to_string()),
+                (0, 3, 5, "https://b.example".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc8_link_across_soft_wrap_spans_two_rows() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(6, 3, 10);
+        parser.feed(b"xxxx\x1b]8;;https://w.example\x1b\\abcd\x1b]8;;\x1b\\", &mut grid);
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![
+                (0, 4, 6, "https://w.example".to_string()),
+                (1, 0, 2, "https://w.example".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc8_wide_char_covers_two_columns() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed("\x1b]8;;https://w.example\x1b\\漢\x1b]8;;\x1b\\".as_bytes(), &mut grid);
+        assert_eq!(osc8_spans(&grid), vec![(0, 0, 2, "https://w.example".to_string())]);
+    }
+
+    #[test]
+    fn osc8_overwrite_without_link_forgets_the_cells() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b]8;;https://o.example\x1b\\abcdef\x1b]8;;\x1b\\\r  ", &mut grid);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 0), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 1), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 2), Some("https://o.example"));
+    }
+
+    #[test]
+    fn osc8_spans_follow_scrollback_eviction_and_absolute_rows() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(8, 2, 2);
+        parser.feed(b"\x1b]8;;https://e.example\x1b\\L0\x1b]8;;\x1b\\\r\n", &mut grid);
+        for _ in 0..6 { parser.feed(b"x\r\n", &mut grid); }
+        // Row 0 scrolled past the two-line history; its span is gone.
+        assert!(grid.hyperlinks.is_empty(), "{:?}", osc8_spans(&grid));
+        parser.feed(b"\x1b]8;;https://k.example\x1b\\K\x1b]8;;\x1b\\\r\n", &mut grid);
+        let abs_row = grid.current_absolute_row() - 1;
+        assert_eq!(osc8_spans(&grid), vec![(abs_row, 0, 1, "https://k.example".to_string())]);
+        let retained = grid.scrollback_len() + grid.cursor_row - 1;
+        assert_eq!(grid.hyperlink_at_retained(retained, 0), Some("https://k.example"));
+        parser.feed(b"a\r\nb\r\nc\r\n", &mut grid);
+        assert!(grid.hyperlinks.is_empty());
+    }
+
+    #[test]
+    fn osc8_alt_screen_links_do_not_leak_into_primary() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b]8;;https://p.example\x1b\\P\x1b]8;;\x1b\\", &mut grid);
+        parser.feed(b"\x1b[?1049h\x1b]8;;https://alt.example\x1b\\A\x1b]8;;\x1b\\", &mut grid);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 0), Some("https://alt.example"));
+        parser.feed(b"\x1b[?1049l", &mut grid);
+        assert_eq!(osc8_spans(&grid), vec![(0, 0, 1, "https://p.example".to_string())]);
+    }
+
+    #[test]
+    fn osc8_ignores_oversized_uri_and_keeps_state() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let long = format!("\x1b]8;;https://{}\x1b\\x", "a".repeat(3000));
+        parser.feed(long.as_bytes(), &mut grid);
+        assert!(grid.active_hyperlink.is_none());
+        assert!(grid.hyperlinks.is_empty());
     }
 }

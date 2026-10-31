@@ -29,6 +29,8 @@ pub struct Pane {
     pub last_search_query: String,
     pub rect: PixelRect,
     pub kitty_handler: KittyHandler,
+    /// BEL or a notification arrived while this pane was not being watched.
+    pub attention: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -75,6 +77,7 @@ impl Pane {
             last_search_query: String::new(),
             rect: PixelRect::ZERO,
             kitty_handler: KittyHandler::new(kitty_options),
+            attention: false,
         })
     }
 
