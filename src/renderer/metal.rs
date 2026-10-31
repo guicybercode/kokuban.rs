@@ -319,23 +319,18 @@ impl MetalRenderer {
 
                 if cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0') {
                     let cw = cell_w * render_width;
-                    // Box drawing: geometric lines
-                    if let Some(segs) = box_drawing::box_drawing_lines(cell.c, cw, cell_h).filter(|_| cell.grapheme.is_none()) {
-                        for (lx0, ly0, lx1, ly1) in segs {
-                            let is_horiz = (ly0 - ly1).abs() < 0.01;
-                            let half = line_thickness / 2.0;
-                            let (rx0, ry0, rx1, ry1) = if is_horiz {
-                                (x0 + lx0, y0 + ly0 - half, x0 + lx1, y0 + ly1 + half)
-                            } else {
-                                (x0 + lx0 - half, y0 + ly0, x0 + lx1 + half, y0 + ly1)
-                            };
-                            vertices.push(Vertex::new(rx0, ry0, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(rx1, ry0, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(rx1, ry0, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(rx1, ry1, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(rx0, ry1, white_u, white_v, fg_packed, fg_packed));
-                        }
+                    // Block elements and box drawing: whole-pixel rectangles
+                    // in the foreground colour, so adjacent cells join
+                    // without blended seams.
+                    let builtin = if cell.grapheme.is_none() {
+                        box_drawing::builtin_rects(
+                            cell.c, cw.round() as u32, cell_h.round() as u32, atlas.scale_factor(),
+                        )
+                    } else {
+                        None
+                    };
+                    if let Some(rects) = builtin {
+                        Self::add_builtin_rects(vertices, &rects, x0, y0, white_u, white_v, fg_packed);
                     } else if cell.grapheme.is_none() && braille::is_braille(cell.c) {
                         // Braille: render dots
                         let dots = braille::braille_dots(cell.c);
@@ -473,6 +468,30 @@ impl MetalRenderer {
         vertices.push(Vertex::new(x1, y0, u, v, color, color));
         vertices.push(Vertex::new(x1, y1, u, v, color, color));
         vertices.push(Vertex::new(x0, y1, u, v, color, color));
+    }
+
+    /// Emit built-in shape rectangles for a cell at (`x`, `y`). The origin is
+    /// snapped to a whole pixel so every edge lands on a pixel boundary; the
+    /// atlas's white texel makes the quads solid colour, scaled by each
+    /// rectangle's coverage.
+    fn add_builtin_rects(
+        vertices: &mut Vec<Vertex>,
+        rects: &[box_drawing::CellRect],
+        x: f32,
+        y: f32,
+        u: f32,
+        v: f32,
+        foreground: u32,
+    ) {
+        let (x, y) = (x.round(), y.round());
+        let foreground_alpha = foreground & 0xff;
+        for rect in rects {
+            let alpha = foreground_alpha * u32::from(rect.alpha) / 255;
+            let color = (foreground & !0xff) | alpha;
+            let (x0, y0) = (x + rect.x as f32, y + rect.y as f32);
+            let (x1, y1) = (x0 + rect.width as f32, y0 + rect.height as f32);
+            Self::add_rect(vertices, x0, y0, x1, y1, u, v, color);
+        }
     }
 
     fn build_status_bar_vertices(
