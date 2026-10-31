@@ -75,10 +75,6 @@ impl MarkIndex {
         }
         rows
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.marks.is_empty()
-    }
 }
 
 #[cfg(test)]

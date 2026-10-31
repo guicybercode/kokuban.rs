@@ -1902,7 +1902,7 @@ fn render_frame() {
         let update_notice = update::read_status(&state.update_status).notice();
         let mut pane_render_data: Vec<PaneRenderData> = Vec::new();
 
-        for (i, (id, rect)) in layouts.iter().enumerate() {
+        for (id, rect) in layouts.iter() {
             if let Some(pane) = tree.pane(*id) {
                 let sel = if pane.selection.is_active() {
                     Some(&pane.selection)
@@ -1924,7 +1924,6 @@ fn render_frame() {
                     selection: sel,
                     is_focused: *id == focused_id,
                     attention: pane.attention,
-                    pane_index: i,
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,

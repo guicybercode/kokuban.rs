@@ -3,6 +3,9 @@ pub mod braille;
 #[cfg(target_os = "macos")]
 pub mod brush;
 pub(crate) mod image_decode;
+// Kitty animation state machine driven by `software_image_store` (Linux);
+// the Metal store only borrows `AnimationError`.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
 pub(crate) mod image_animation;
 #[cfg(target_os = "macos")]
 pub mod image_store;

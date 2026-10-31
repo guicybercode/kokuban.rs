@@ -10,7 +10,6 @@ pub struct PaneRenderData<'a> {
     pub is_focused: bool,
     /// Unwatched BEL / notification: draws a red dot next to the focus marker.
     pub attention: bool,
-    pub pane_index: usize,
     pub cwd: &'a str,
     pub prompt_mark_rows: Vec<usize>,
     pub show_cursor: bool,
@@ -34,5 +33,4 @@ pub struct ChromeColors {
     pub sumi_light: (u8, u8, u8),
     pub sumi_ghost: (u8, u8, u8),
     pub hanko_red: (u8, u8, u8),
-    pub hanko_dim: (u8, u8, u8),
 }

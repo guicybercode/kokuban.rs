@@ -220,7 +220,6 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         sumi_light: ColorConfig::parse_hex(&config.theme.chrome.sumi_light),
         sumi_ghost: ColorConfig::parse_hex(&config.theme.chrome.sumi_ghost),
         hanko_red: ColorConfig::parse_hex(&config.theme.chrome.hanko_red),
-        hanko_dim: ColorConfig::parse_hex(&config.theme.chrome.hanko_dim),
     };
 
     let keybinds = KeybindMap::from_config(&config.keybind);
