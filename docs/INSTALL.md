@@ -109,22 +109,32 @@ size = 14.0
 allow_file_transfer = false
 ```
 
-## Omarchy and Linux commands
+## Command-line options
 
-Kokuban v0.4 supports Omarchy's terminal launcher, working-directory inheritance,
-and commands opened directly in the terminal:
+On macOS and Linux the executable accepts a working directory, an initial title
+and a command to run instead of the login shell:
 
 ```sh
 kokuban --working-directory="$HOME" -e nvim
-kokuban --app-id=org.omarchy.btop -e btop
+kokuban --title "logs" -e tail -f /var/log/system.log
+kokuban --app-id=org.omarchy.btop -e btop   # --app-id is Linux only
 kokuban --help
 ```
 
-See [Omarchy installation and bindings](OMARCHY.md) to register Kokuban with
-`xdg-terminal-exec`. Command arguments after `-e` are passed unchanged; use
-`sh -c` explicitly for pipelines or shell expansion. CI checks command launching
-under X11 and headless Weston/Wayland; Hyprland integration still needs an
-on-device run.
+Command arguments after `-e` are passed unchanged; use `sh -c` explicitly for
+pipelines or shell expansion. The command runs in the first pane; splits on
+macOS open the login shell. On macOS the status bar shows the program's name
+(`status_bar.show_shell`), and `Kokuban.app` ignores the `-psn_` argument that
+Finder adds. See [Omarchy installation and bindings](OMARCHY.md) to register
+Kokuban with `xdg-terminal-exec`. CI checks command launching under X11 and
+headless Weston/Wayland; Hyprland integration still needs an on-device run.
+
+### Option key on macOS
+
+By default both Option keys send Meta sequences (`ESC` + key), which Emacs,
+readline and tmux expect. To type accented or symbol characters with one side,
+set `[input] option_as_alt` in `kokuban.toml` to `"left"` or `"right"`, or
+`"none"` to let macOS compose text with both keys.
 
 On Linux, Omarchy palette changes update existing windows while preserving the
 shell session. Explicit Kokuban colors take priority. The default font follows

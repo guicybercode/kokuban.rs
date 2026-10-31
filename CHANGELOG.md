@@ -10,13 +10,16 @@
 - kitty keyboard protocol, progressive-enhancement level 1 (disambiguate escape codes): push/pop/set/query of the flag stack per screen, and `CSI u` encodings for Escape, modified Enter/Tab/Backspace and Ctrl/Alt letters.
 - Per-pane attention on macOS: a BEL or desktop notification in an unfocused pane marks it with ● in the status bar and turns its dividers hanko red; `Cmd+Shift+A` jumps to the next marked pane.
 - Chalkboard factory theme: `#1f3a2a` board, `#f4f6f0` chalk text and cursor, chalk-inverted selection, window chrome in the same green family and hanko red as the only accent.
+- macOS accepts the same command line as Linux: `-e COMMAND`, `--working-directory`, `--title` and `--help`; Finder's `-psn_` argument is ignored.
+- `[input] option_as_alt = "both" | "left" | "right" | "none"` chooses which Option key acts as Meta on macOS; the other side composes accents and symbols.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
 
 ### Changed
 
 - README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
-- macOS applies the configured ANSI palette and the configured cursor color follows the text color.
+- macOS applies the configured ANSI palette and `colors.cursor`; without a cursor color the cursor follows the text color.
+- macOS honors `window.opacity` for the default cell background, sizes the first window with the screen's real backing scale instead of a fixed 2×, shows the program running in each pane in the status bar and respects `status_bar.show_shell`, `show_cwd` and `show_pane_index`.
 
 ## v0.4 — 2026-09-28
 
