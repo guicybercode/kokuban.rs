@@ -93,6 +93,9 @@ impl MetalRenderer {
         device: Retained<ProtocolObject<dyn MTLDevice>>,
         colors: TerminalColors,
     ) -> Self {
+        // SAFETY: Metal object creation on a valid device; the shader source is
+        // a static string, every descriptor is fully populated before it is
+        // handed to the device, and failures panic instead of yielding null.
         unsafe {
             let command_queue = device.newCommandQueue().expect("Failed to create command queue");
 
@@ -858,6 +861,12 @@ impl MetalRenderer {
             return;
         }
 
+        // SAFETY: both buffers are StorageModeShared, so `contents()` is a
+        // CPU-visible mapping of the whole buffer: `needed <= length()` after
+        // the resize check and the uniform buffer holds at least two f32. The
+        // atlas region matches `rgba_pixels` (width * height * 4 bytes) and
+        // `replaceRegion` copies synchronously. Nothing fences this CPU write
+        // against the previous frame's GPU reads of the same buffers.
         unsafe {
             let needed = all_vertices.len() * std::mem::size_of::<Vertex>();
             if needed > self.vertex_buffer.length() {

@@ -1904,6 +1904,9 @@ impl TempFileDeletion {
             return Err(FileLoadError::DeleteFailed);
         }
 
+        // SAFETY: `parent_fd` is an open directory descriptor owned by this
+        // struct and `file_name` is a NUL-terminated CString; flag 0 only
+        // unlinks a file entry, never a directory.
         let result =
             unsafe { libc::unlinkat(self.parent_fd.as_raw_fd(), self.file_name.as_ptr(), 0) };
         if result < 0 {
@@ -2007,6 +2010,9 @@ fn open_canonical_regular_file(
         return Err(FileLoadError::TooLarge);
     }
 
+    // SAFETY: `parent_fd` is an open directory descriptor and `final_name` a
+    // NUL-terminated CString; O_NOFOLLOW|O_CLOEXEC keep the open inside the
+    // validated path and out of child processes.
     let file_fd = unsafe {
         libc::openat(
             parent_fd.as_raw_fd(),
@@ -2017,6 +2023,8 @@ fn open_canonical_regular_file(
     if file_fd < 0 {
         return Err(classify_path_error(io::Error::last_os_error()));
     }
+    // SAFETY: `file_fd` is a non-negative descriptor just returned by openat
+    // and nothing else owns it.
     let file_fd = unsafe { OwnedFd::from_raw_fd(file_fd) };
     let file = File::from(file_fd);
     let opened_metadata = file.metadata().map_err(|_| FileLoadError::Io)?;
@@ -2047,6 +2055,8 @@ fn open_canonical_parent(path: &Path) -> Result<(OwnedFd, CString), FileLoadErro
     }
     let final_name = names.pop().ok_or(FileLoadError::InvalidPath)?;
 
+    // SAFETY: `c"/"` is a static NUL-terminated path and the flags request a
+    // read-only directory descriptor; the result is checked before use.
     let root_fd = unsafe {
         libc::open(
             c"/".as_ptr(),
@@ -2056,10 +2066,14 @@ fn open_canonical_parent(path: &Path) -> Result<(OwnedFd, CString), FileLoadErro
     if root_fd < 0 {
         return Err(classify_path_error(io::Error::last_os_error()));
     }
+    // SAFETY: `root_fd` is a non-negative descriptor just returned by open
+    // and is owned only here.
     let mut parent_fd = unsafe { OwnedFd::from_raw_fd(root_fd) };
 
     for name in names {
         let name = CString::new(name.as_bytes()).map_err(|_| FileLoadError::InvalidPath)?;
+        // SAFETY: `parent_fd` is open and `name` is a NUL-terminated CString;
+        // O_DIRECTORY|O_NOFOLLOW make the kernel refuse symlinks and files.
         let directory_fd = unsafe {
             libc::openat(
                 parent_fd.as_raw_fd(),
@@ -2070,6 +2084,8 @@ fn open_canonical_parent(path: &Path) -> Result<(OwnedFd, CString), FileLoadErro
         if directory_fd < 0 {
             return Err(classify_path_error(io::Error::last_os_error()));
         }
+        // SAFETY: `directory_fd` is a fresh descriptor from openat; the
+        // previous parent is closed by the assignment's drop.
         parent_fd = unsafe { OwnedFd::from_raw_fd(directory_fd) };
     }
 
@@ -2083,6 +2099,8 @@ fn stat_at(
     flags: i32,
 ) -> Result<libc::stat, FileLoadError> {
     let mut before_open = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `before_open` is a correctly sized `stat` out-pointer, the
+    // directory descriptor is open and `file_name` is NUL-terminated.
     let stat_result = unsafe {
         libc::fstatat(
             parent_fd.as_raw_fd(),
@@ -2094,6 +2112,7 @@ fn stat_at(
     if stat_result < 0 {
         return Err(classify_path_error(io::Error::last_os_error()));
     }
+    // SAFETY: fstatat returned 0, so it fully initialized `before_open`.
     Ok(unsafe { before_open.assume_init() })
 }
 

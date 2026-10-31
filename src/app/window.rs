@@ -547,10 +547,19 @@ pub(super) fn apply_pending_user_attention(notifications: &NotificationControlle
     };
     // InformationalRequest == 0; avoid depending on an extra AppKit feature flag.
     let app = NSApplication::sharedApplication(mtm);
+    // SAFETY: `requestUserAttention:` takes an NSRequestUserAttentionType
+    // (NSInteger; 0 is NSInformationalRequest) and returns NSInteger. The
+    // shared NSApplication is messaged on the main thread (`mtm`).
     let _: usize = unsafe { msg_send![&app, requestUserAttention: 0usize] };
 }
 
 
+// SAFETY: TerminalView subclasses NSView without custom ivars and is
+// MainThreadOnly, so AppKit only calls into it from the main thread. Every
+// `#[unsafe(method(...))]` below uses the selector's declared AppKit signature
+// (NSEvent, NSNotification, NSSize, BOOL, NSMenuItem) and the overrides keep
+// NSView's invariants (super is called where the override replaces a
+// superclass behavior that must still run, e.g. `setFrameSize:`).
 define_class!(
     #[unsafe(super(NSView))]
     #[name = "TerminalView"]
@@ -1112,6 +1121,8 @@ define_class!(
 
         #[unsafe(method(setFrameSize:))]
         fn set_frame_size(&self, new_size: NSSize) {
+            // SAFETY: forwards the same NSSize to NSView's implementation;
+            // `self` is a live main-thread view and the selector returns void.
             let _: () = unsafe { msg_send![super(self), setFrameSize: new_size] };
 
             VIEW_STATE.with(|state| {
@@ -1741,6 +1752,9 @@ pub(super) fn apply_pending_clipboard_write(pending: &Mutex<Option<String>>) {
 }
 
 pub(crate) fn copy_to_clipboard(text: &str) {
+    // SAFETY: plain AppKit message sends on the general pasteboard with a
+    // valid, retained NSString and the framework-provided type constant;
+    // called from the view's event handlers on the main thread.
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.clearContents();
@@ -1750,6 +1764,8 @@ pub(crate) fn copy_to_clipboard(text: &str) {
 }
 
 fn paste_from_clipboard() -> Option<Retained<NSString>> {
+    // SAFETY: `stringForType:` on the general pasteboard with a valid type
+    // constant returns a retained, possibly nil NSString; main thread only.
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.stringForType(NSPasteboardTypeString)
@@ -1820,6 +1836,11 @@ fn encode_clipboard_paste(
         let mut converted_bytes = 0;
         let mut remaining_range = NSRange::default();
         let source_range = NSRange::new(0, utf16_len);
+        // SAFETY: the destination is exactly `payload_len` writable bytes of
+        // `bytes`, which was sized to `framed_len >= payload_start +
+        // payload_len`; `maxLength` equals that slice length, `source_range`
+        // covers the `utf16_len` UTF-16 units of `text`, and the two
+        // out-pointers reference live locals.
         let converted = unsafe {
             text.getBytes_maxLength_usedLength_encoding_options_range_remainingRange(
                 bytes[payload_start..payload_start + payload_len]
@@ -2082,6 +2103,8 @@ pub(super) fn create_terminal_view(
     update_status: SharedUpdateStatus,
 ) -> Retained<TerminalView> {
     let view = mtm.alloc::<TerminalView>().set_ivars(());
+    // SAFETY: `view` is a fresh allocation with its (unit) ivars set; NSView's
+    // designated `init` runs exactly once, on the main thread (`mtm`).
     let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
 
     view.setWantsLayer(true);
@@ -2775,6 +2798,9 @@ mod tests {
     #[test]
     fn clipboard_paste_rejects_unconvertible_utf16() {
         let unpaired_surrogate = [0xd800_u16];
+        // SAFETY: the pointer references `unpaired_surrogate`, which outlives
+        // the call, and `length` is its exact element count; NSString copies
+        // the characters.
         let text = unsafe {
             NSString::initWithCharacters_length(
                 NSString::alloc(),
