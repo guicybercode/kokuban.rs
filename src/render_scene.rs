@@ -7,6 +7,8 @@ pub struct PaneRenderData<'a> {
     pub rect: PixelRect,
     pub selection: Option<&'a SelectionState>,
     pub is_focused: bool,
+    /// Unwatched BEL / notification: draws a red dot next to the focus marker.
+    pub attention: bool,
     pub pane_index: usize,
     pub cwd: &'a str,
     pub prompt_mark_rows: Vec<usize>,

@@ -869,6 +869,7 @@ define_class!(
                                 None,
                             );
                             publish_focused_window_title(&tree, state.window_title.as_ref());
+                            tree.clear_focused_attention();
                         }
                         let tracking = tree.pane(pane_id).map(|p| (p.grid.mouse_tracking, p.grid.mouse_encoding));
                         if let Some((mt, encoding)) = tracking {
@@ -1012,6 +1013,10 @@ define_class!(
                     let mut tree = state.pane_tree.lock().unwrap();
                     if let Some(pane) = tree.focused_pane_mut() {
                         pane.grid.scroll_to_bottom();
+                        if pane.attention {
+                            pane.attention = false;
+                            state.request_render();
+                        }
                         if pane.selection.is_active() {
                             pane.selection.clear();
                             state.request_render();
@@ -1393,6 +1398,7 @@ fn handle_pane_action(action: PaneAction) {
             );
             publish_focused_window_title(&tree, state.window_title.as_ref());
         }
+        tree.clear_focused_attention();
         drop(tree);
         if let Some(pane) = closed_pane {
             state.pane_cleanup.retire(pane);
@@ -1782,6 +1788,7 @@ fn render_frame() {
                     rect: *rect,
                     selection: sel,
                     is_focused: *id == focused_id,
+                    attention: pane.attention,
                     pane_index: i,
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,

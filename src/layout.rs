@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 mod tree;
 
 pub use tree::PaneNode;
@@ -79,6 +80,8 @@ pub struct DividerInfo {
     pub y1: f32,
     pub direction: SplitDirection,
     pub touches_focused: bool,
+    /// Either side holds a pane flagged with attention (BEL / notification).
+    pub touches_attention: bool,
 }
 
 pub fn compute_layout(
@@ -87,6 +90,7 @@ pub fn compute_layout(
     results: &mut Vec<(PaneId, PixelRect)>,
     dividers: &mut Vec<DividerInfo>,
     focused: PaneId,
+    attention: &HashSet<PaneId>,
 ) {
     match node {
         PaneNode::Leaf(id) => {
@@ -113,6 +117,8 @@ pub fn compute_layout(
             };
             let left_has_focused = node_contains(left, focused);
             let right_has_focused = node_contains(right, focused);
+            let touches_attention = !attention.is_empty()
+                && (node_contains_any(left, attention) || node_contains_any(right, attention));
             dividers.push(DividerInfo {
                 x0,
                 y0,
@@ -120,10 +126,20 @@ pub fn compute_layout(
                 y1,
                 direction: *direction,
                 touches_focused: left_has_focused || right_has_focused,
+                touches_attention,
             });
 
-            compute_layout(left, left_rect, results, dividers, focused);
-            compute_layout(right, right_rect, results, dividers, focused);
+            compute_layout(left, left_rect, results, dividers, focused, attention);
+            compute_layout(right, right_rect, results, dividers, focused, attention);
+        }
+    }
+}
+
+fn node_contains_any(node: &PaneNode, ids: &HashSet<PaneId>) -> bool {
+    match node {
+        PaneNode::Leaf(leaf_id) => ids.contains(leaf_id),
+        PaneNode::Split { left, right, .. } => {
+            node_contains_any(left, ids) || node_contains_any(right, ids)
         }
     }
 }
@@ -239,6 +255,7 @@ mod tests {
             &mut panes,
             &mut dividers,
             2,
+            &HashSet::new(),
         );
 
         assert_eq!(
@@ -292,6 +309,7 @@ mod tests {
                     y1: 100.0,
                     direction: SplitDirection::Vertical,
                     touches_focused: true,
+                    touches_attention: false,
                 },
                 DividerInfo {
                     x0: 0.0,
@@ -300,6 +318,7 @@ mod tests {
                     y1: 50.0,
                     direction: SplitDirection::Horizontal,
                     touches_focused: true,
+                    touches_attention: false,
                 },
                 DividerInfo {
                     x0: 103.0,
@@ -308,6 +327,7 @@ mod tests {
                     y1: 50.0,
                     direction: SplitDirection::Horizontal,
                     touches_focused: false,
+                    touches_attention: false,
                 },
             ]
         );
@@ -325,6 +345,7 @@ mod tests {
             &mut panes,
             &mut dividers,
             4,
+            &HashSet::new(),
         );
         assert_eq!(
             dividers
@@ -332,6 +353,30 @@ mod tests {
                 .map(|divider| divider.touches_focused)
                 .collect::<Vec<_>>(),
             vec![true, false, true]
+        );
+
+        panes.clear();
+        dividers.clear();
+        compute_layout(
+            &root,
+            PixelRect {
+                x: 0.0,
+                y: 0.0,
+                width: 200.0,
+                height: 100.0,
+            },
+            &mut panes,
+            &mut dividers,
+            1,
+            &HashSet::from([4]),
+        );
+        assert_eq!(
+            dividers
+                .iter()
+                .map(|divider| divider.touches_attention)
+                .collect::<Vec<_>>(),
+            vec![true, false, true],
+            "dividers next to a pane with attention are flagged"
         );
     }
 
