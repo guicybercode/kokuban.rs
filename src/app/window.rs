@@ -5,7 +5,7 @@ use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
-use crate::input::macos::{
+use crate::input::macos::{option_acts_as_meta, terminal_key_from_key_code, 
     key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, translate_key_event,
 };
 use crate::input::mouse::{
@@ -294,6 +294,20 @@ fn encode_macos_forwarded_wheel(
     }
 }
 
+/// Marked (pre-edit) text supplied by the macOS input method.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MarkedText {
+    text: String,
+    /// Selection inside the marked text, in UTF-16 units as AppKit reports it.
+    selected: (usize, usize),
+}
+
+thread_local! {
+    /// Key event handed to `interpretKeyEvents:`; `doCommandBySelector:` and
+    /// the fallback after interpretation take it so the key is sent at most once.
+    static PENDING_KEY_EVENT: RefCell<Option<Retained<NSEvent>>> = const { RefCell::new(None) };
+}
+
 struct ViewState {
     pane_tree: Arc<Mutex<PaneTree>>,
     pane_cleanup: PaneCleanup,
@@ -322,6 +336,8 @@ struct ViewState {
     status_bar_enabled: bool,
     status_bar_layout: StatusBarLayout,
     option_as_alt: OptionAsAlt,
+    /// Text the input method is composing (marked text) for the focused pane.
+    marked_text: Option<MarkedText>,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
@@ -1035,32 +1051,34 @@ define_class!(
                 }
             }
 
-            // Forward to the focused pane using that pane's current input mode.
-            VIEW_STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    let mut tree = state.pane_tree.lock().unwrap();
-                    if let Some(pane) = tree.focused_pane_mut() {
-                        pane.grid.scroll_to_bottom();
-                        if pane.attention {
-                            pane.attention = false;
-                            state.request_render();
-                        }
-                        if pane.selection.is_active() {
-                            pane.selection.clear();
-                            state.request_render();
-                        }
-                        if let Some(bytes) = translate_key_event(
-                            event,
-                            pane.grid.application_cursor_keys,
-                            pane.grid.kitty_disambiguate(),
-                            state.option_as_alt,
-                        ) {
-                            pane.queue_input(bytes);
-                        }
-                    }
-                }
+            // Text keys go through the input method first so dead keys, CJK
+            // composition and the emoji picker work; `insertText:` commits the
+            // result, `setMarkedText:` shows the pre-edit and
+            // `doCommandBySelector:` returns control keys to the terminal path.
+            // Ctrl, Meta and named keys skip the IME unless text is being composed.
+            let (composing, option_meta) = VIEW_STATE.with(|state| {
+                let state = state.borrow();
+                let state = state.as_ref();
+                (
+                    state.map_or(false, |s| s.marked_text.is_some()),
+                    state.map_or(true, |s| option_acts_as_meta(modifiers, s.option_as_alt)),
+                )
             });
+            let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
+            let named_key =
+                terminal_key_from_key_code(key_code, modifiers.contains(NSEventModifierFlags::Shift)).is_some();
+            if composing || (!has_ctrl && !option_meta && !named_key) {
+                PENDING_KEY_EVENT.with(|pending| *pending.borrow_mut() = Some(event.retain()));
+                let events = NSArray::from_slice(&[event]);
+                self.interpretKeyEvents(&events);
+                // Nothing claimed the event (no text, no command): send it as before.
+                if let Some(event) = PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take()) {
+                    forward_key_event_to_pane(&event);
+                }
+                return;
+            }
+
+            forward_key_event_to_pane(event);
         }
 
         #[unsafe(method(viewDidChangeBackingProperties))]
@@ -1208,10 +1226,217 @@ define_class!(
 
         #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _notification: &NSNotification) {
+            // A pre-edit cannot survive losing the key window: drop it on both sides.
+            if ime_marked_text().is_some() {
+                ime_set_marked_text(String::new(), (0, 0));
+                if let Some(context) = self.inputContext() {
+                    context.discardMarkedText();
+                }
+            }
             dispatch_window_focus_transition(false);
         }
     }
+
+    // SAFETY: every method below matches the NSTextInputClient protocol
+    // signatures generated by objc2-app-kit; all run on the main thread via
+    // AppKit's key event dispatch.
+    unsafe impl NSTextInputClient for TerminalView {
+        #[unsafe(method(insertText:replacementRange:))]
+        fn insert_text_replacement_range(&self, string: &AnyObject, _replacement_range: NSRange) {
+            PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take());
+            if let Some(text) = text_from_input_object(string) {
+                ime_commit_text(&text);
+            }
+        }
+
+        #[unsafe(method(doCommandBySelector:))]
+        fn do_command_by_selector(&self, _selector: objc2::runtime::Sel) {
+            // Arrows, Enter, Tab, Escape, Backspace...: the terminal owns them.
+            if let Some(event) = PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take()) {
+                forward_key_event_to_pane(&event);
+            }
+        }
+
+        #[unsafe(method(setMarkedText:selectedRange:replacementRange:))]
+        fn set_marked_text_selected_range_replacement_range(
+            &self,
+            string: &AnyObject,
+            selected_range: NSRange,
+            _replacement_range: NSRange,
+        ) {
+            PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take());
+            let text = text_from_input_object(string).unwrap_or_default();
+            ime_set_marked_text(text, (selected_range.location, selected_range.length));
+        }
+
+        #[unsafe(method(unmarkText))]
+        fn unmark_text(&self) {
+            // AppKit asks to commit the current pre-edit as typed.
+            if let Some(marked) = ime_marked_text() {
+                ime_commit_text(&marked.text);
+            }
+        }
+
+        #[unsafe(method(selectedRange))]
+        fn selected_range(&self) -> NSRange {
+            match ime_marked_text() {
+                Some(marked) => NSRange::new(marked.selected.0, marked.selected.1),
+                None => NSRange::new(NSNotFound as usize, 0),
+            }
+        }
+
+        #[unsafe(method(markedRange))]
+        fn marked_range(&self) -> NSRange {
+            match ime_marked_text() {
+                Some(marked) => NSRange::new(0, utf16_len(&marked.text)),
+                None => NSRange::new(NSNotFound as usize, 0),
+            }
+        }
+
+        #[unsafe(method(hasMarkedText))]
+        fn has_marked_text(&self) -> bool {
+            ime_marked_text().is_some()
+        }
+
+        #[unsafe(method_id(attributedSubstringForProposedRange:actualRange:))]
+        fn attributed_substring_for_proposed_range_actual_range(
+            &self,
+            _range: NSRange,
+            _actual_range: NSRangePointer,
+        ) -> Option<Retained<NSAttributedString>> {
+            None
+        }
+
+        #[unsafe(method_id(validAttributesForMarkedText))]
+        fn valid_attributes_for_marked_text(&self) -> Retained<NSArray<NSAttributedStringKey>> {
+            NSArray::new()
+        }
+
+        #[unsafe(method(firstRectForCharacterRange:actualRange:))]
+        fn first_rect_for_character_range_actual_range(
+            &self,
+            _range: NSRange,
+            _actual_range: NSRangePointer,
+        ) -> NSRect {
+            let in_view = ime_cursor_rect_in_view();
+            let in_window = self.convertRect_toView(in_view, None);
+            match self.window() {
+                Some(window) => window.convertRectToScreen(in_window),
+                None => in_window,
+            }
+        }
+
+        #[unsafe(method(characterIndexForPoint:))]
+        fn character_index_for_point(&self, _point: NSPoint) -> NSUInteger {
+            NSNotFound as NSUInteger
+        }
+    }
 );
+
+/// Send one key event to the focused pane with that pane's current input mode.
+fn forward_key_event_to_pane(event: &NSEvent) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            let mut tree = state.pane_tree.lock().unwrap();
+            if let Some(pane) = tree.focused_pane_mut() {
+                pane.grid.scroll_to_bottom();
+                if pane.attention {
+                    pane.attention = false;
+                    state.request_render();
+                }
+                if pane.selection.is_active() {
+                    pane.selection.clear();
+                    state.request_render();
+                }
+                if let Some(bytes) = translate_key_event(
+                    event,
+                    pane.grid.application_cursor_keys,
+                    pane.grid.kitty_disambiguate(),
+                    state.option_as_alt,
+                ) {
+                    pane.queue_input(bytes);
+                }
+            }
+        }
+    });
+}
+
+/// Text carried by an `NSTextInputClient` argument: an `NSString` or an
+/// `NSAttributedString` (the input method may send either).
+fn text_from_input_object(string: &AnyObject) -> Option<String> {
+    if let Some(string) = string.downcast_ref::<NSString>() {
+        return Some(string.to_string());
+    }
+    string
+        .downcast_ref::<NSAttributedString>()
+        .map(|attributed| attributed.string().to_string())
+}
+
+/// Commit text from the input method to the focused pane and drop the pre-edit.
+fn ime_commit_text(text: &str) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            state.marked_text = None;
+            let mut tree = state.pane_tree.lock().unwrap();
+            if let Some(pane) = tree.focused_pane_mut() {
+                pane.grid.scroll_to_bottom();
+                if pane.selection.is_active() {
+                    pane.selection.clear();
+                }
+                if !text.is_empty() {
+                    pane.queue_input(text.as_bytes().to_vec());
+                }
+            }
+            drop(tree);
+            state.request_render();
+        }
+    });
+}
+
+/// Replace the pre-edit shown at the cursor (empty text clears it).
+fn ime_set_marked_text(text: String, selected: (usize, usize)) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            state.marked_text = (!text.is_empty()).then_some(MarkedText { text, selected });
+            state.request_render();
+        }
+    });
+}
+
+fn ime_marked_text() -> Option<MarkedText> {
+    VIEW_STATE.with(|state| state.borrow().as_ref().and_then(|s| s.marked_text.clone()))
+}
+
+/// Rectangle of the focused pane's cursor cell in view coordinates (points,
+/// flipped view), where the input method places its candidate window.
+fn ime_cursor_rect_in_view() -> NSRect {
+    VIEW_STATE.with(|state| {
+        let state = state.borrow();
+        let Some(state) = state.as_ref() else {
+            return NSRect::ZERO;
+        };
+        let tree = state.pane_tree.lock().unwrap();
+        let atlas = state.atlas.lock().unwrap();
+        let scale = state.scale_factor.max(0.01) as f64;
+        let Some(pane) = tree.focused_pane() else {
+            return NSRect::ZERO;
+        };
+        let col = pane.grid.screen_cursor_col().unwrap_or(pane.grid.cursor_col);
+        let x = pane.rect.x + col as f32 * atlas.cell_width;
+        let y = pane.rect.y + pane.grid.cursor_row as f32 * atlas.cell_height;
+        NSRect::new(
+            NSPoint::new(x as f64 / scale, y as f64 / scale),
+            NSSize::new(atlas.cell_width as f64 / scale, atlas.cell_height as f64 / scale),
+        )
+    })
+}
+
+fn utf16_len(text: &str) -> usize {
+    text.encode_utf16().count()
+}
 
 /// Run `action` with the shared update status and the frame scheduler.
 fn with_update_status<T>(
@@ -1940,6 +2165,11 @@ fn render_frame() {
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
                     update_notice: update_notice.as_deref().filter(|_| *id == focused_id),
                     search: pane.search.as_ref(),
+                    preedit: state
+                        .marked_text
+                        .as_ref()
+                        .filter(|_| *id == focused_id)
+                        .map(|marked| marked.text.as_str()),
                 });
             }
         }
@@ -2197,6 +2427,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
             status_bar_enabled,
             status_bar_layout,
             option_as_alt,
+            marked_text: None,
             resize_step,
             prompt_indicator_color,
             image_store,
@@ -2239,6 +2470,26 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn ime_text_accepts_plain_and_attributed_strings() {
+        use super::text_from_input_object;
+        use objc2_foundation::{NSAttributedString, NSString};
+        let plain = NSString::from_str("日本語");
+        assert_eq!(text_from_input_object(&plain).as_deref(), Some("日本語"));
+        let attributed = NSAttributedString::from_nsstring(&NSString::from_str("é"));
+        assert_eq!(text_from_input_object(&attributed).as_deref(), Some("é"));
+        let other = objc2_foundation::NSArray::<NSString>::new();
+        assert_eq!(text_from_input_object(&other), None);
+    }
+
+    #[test]
+    fn ime_marked_range_uses_utf16_units() {
+        use super::utf16_len;
+        assert_eq!(utf16_len("abc"), 3);
+        assert_eq!(utf16_len("日本語"), 3);
+        assert_eq!(utf16_len("😀"), 2);
+    }
 
     #[derive(Clone, Copy)]
     struct FocusTarget {
