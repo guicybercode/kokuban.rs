@@ -5,6 +5,48 @@ use crate::grid::{CharSet, CursorShape, CursorStyle, Grid, MouseEncoding, MouseT
 use crate::parser::kitty_graphics;
 use crate::parser::sixel;
 
+/// Decoded OSC 52 payloads larger than this are dropped.
+pub(crate) const MAX_OSC52_TEXT_BYTES: usize = 1024 * 1024;
+
+/// Decode the `Pc;Pd` payload of OSC 52 into clipboard text.
+///
+/// Only writes are honoured: `?` (a read request) and anything that is not
+/// valid base64/UTF-8, or that decodes to more than 1 MiB, yields `None`.
+/// Control characters other than `\n` and `\t` are removed so a remote
+/// program cannot plant escape sequences in the clipboard.
+pub(crate) fn decode_osc52_write(payload: &str) -> Option<String> {
+    use base64::engine::general_purpose::GeneralPurpose;
+    use base64::engine::{DecodePaddingMode, GeneralPurposeConfig};
+    use base64::Engine;
+
+    const LENIENT_STANDARD: GeneralPurpose = GeneralPurpose::new(
+        &base64::alphabet::STANDARD,
+        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
+
+    let (_selection, data) = payload.split_once(';')?;
+    if data == "?" || data.is_empty() {
+        return None;
+    }
+    // Base64 expands 3 bytes to 4 characters; reject before decoding.
+    if data.len() > MAX_OSC52_TEXT_BYTES / 3 * 4 + 4 {
+        return None;
+    }
+    let bytes = LENIENT_STANDARD.decode(data).ok()?;
+    if bytes.len() > MAX_OSC52_TEXT_BYTES {
+        return None;
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    let cleaned: String = text
+        .chars()
+        .filter(|&c| c == '\n' || c == '\t' || !c.is_control())
+        .collect();
+    if cleaned.is_empty() {
+        return None;
+    }
+    Some(cleaned)
+}
+
 const MAX_CSI_PARAMS: usize = 32;
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_BYTES: usize = 64 * 1024;
@@ -661,6 +703,11 @@ impl Parser {
                         Osc99Action::Ignore => {}
                     }
                 }
+                "52" => {
+                    if let Some(text) = decode_osc52_write(pt) {
+                        grid.queue_clipboard_write(text);
+                    }
+                }
                 _ => { log::trace!("Ignoring OSC {ps}"); }
             }
         }
@@ -1186,6 +1233,7 @@ impl Utf8Parser {
 
 #[cfg(test)]
 mod tests {
+    use super::{decode_osc52_write, MAX_OSC52_TEXT_BYTES};
     use super::{
         terminal_pixel_extent, ControlStringLimits, GraphicsSupport, Utf8Parser, MAX_CSI_PARAMS,
         MAX_INTERMEDIATES,
@@ -1504,7 +1552,8 @@ mod tests {
                 TerminalEvent::Response(_)
                 | TerminalEvent::SixelGraphics { .. }
                 | TerminalEvent::Notification { .. }
-                | TerminalEvent::Bell => None,
+                | TerminalEvent::Bell
+                | TerminalEvent::ClipboardWrite(_) => None,
             })
             .collect()
     }
@@ -1517,7 +1566,8 @@ mod tests {
                 TerminalEvent::Response(_)
                 | TerminalEvent::KittyGraphics { .. }
                 | TerminalEvent::Notification { .. }
-                | TerminalEvent::Bell => None,
+                | TerminalEvent::Bell
+                | TerminalEvent::ClipboardWrite(_) => None,
             })
             .collect()
     }
@@ -2598,6 +2648,72 @@ mod tests {
         assert_eq!(grid.buffer.cell(0, 0).c, 'z');
     }
 
+
+    #[test]
+    fn osc52_write_queues_decoded_clipboard_text() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        // "hello\tworld\n" in base64.
+        parser.feed(b"\x1b]52;c;aGVsbG8Jd29ybGQK\x07", &mut screen);
+        let events = screen.drain_terminal_events();
+        assert!(matches!(
+            &events[..],
+            [TerminalEvent::ClipboardWrite(text)] if text == "hello\tworld\n"
+        ));
+    }
+
+    #[test]
+    fn osc52_accepts_unpadded_base64_and_st_terminator() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]52;;aGk\x1b\\", &mut screen);
+        let events = screen.drain_terminal_events();
+        assert!(matches!(
+            &events[..],
+            [TerminalEvent::ClipboardWrite(text)] if text == "hi"
+        ));
+    }
+
+    #[test]
+    fn osc52_read_request_is_ignored() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]52;c;?\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty(), "OSC 52 reads must not answer");
+    }
+
+    #[test]
+    fn osc52_rejects_invalid_base64_and_invalid_utf8() {
+        let mut parser = Utf8Parser::new();
+        let mut screen = grid();
+        parser.feed(b"\x1b]52;c;not*base64!\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+        // 0xff 0xfe is not UTF-8.
+        parser.feed(b"\x1b]52;c;//4=\x07", &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+    }
+
+    #[test]
+    fn osc52_rejects_oversized_payloads() {
+        let oversized = vec![b'A'; (MAX_OSC52_TEXT_BYTES / 3 + 1) * 4];
+        let mut sequence = b"\x1b]52;c;".to_vec();
+        sequence.extend_from_slice(&oversized);
+        sequence.push(0x07);
+        let mut parser = limited_parser(sequence.len() + 16, 1024, 1024);
+        let mut screen = grid();
+        parser.feed(&sequence, &mut screen);
+        assert!(screen.drain_terminal_events().is_empty());
+        assert!(decode_osc52_write(std::str::from_utf8(&sequence[5..sequence.len() - 1]).unwrap()).is_none());
+    }
+
+    #[test]
+    fn osc52_strips_control_characters() {
+        // "a\x1bb\r\nc\x07" -> "ab\nc"
+        let decoded = decode_osc52_write("c;YRtiDQpjBw==").unwrap();
+        assert_eq!(decoded, "ab\nc");
+        assert!(decode_osc52_write("c;Gxs=").is_none(), "control-only text is dropped");
+    }
+
     #[test]
     fn osc9_queues_notification_but_ignores_progress_bar() {
         let mut parser = Utf8Parser::new();
@@ -2758,7 +2874,8 @@ mod tests {
             TerminalEvent::Response(_)
             | TerminalEvent::SixelGraphics { .. }
             | TerminalEvent::Notification { .. }
-            | TerminalEvent::Bell => {
+            | TerminalEvent::Bell
+            | TerminalEvent::ClipboardWrite(_) => {
                 panic!("expected a Kitty delete event")
             }
         }
@@ -2774,7 +2891,8 @@ mod tests {
             TerminalEvent::Response(_)
             | TerminalEvent::SixelGraphics { .. }
             | TerminalEvent::Notification { .. }
-            | TerminalEvent::Bell => {
+            | TerminalEvent::Bell
+            | TerminalEvent::ClipboardWrite(_) => {
                 panic!("expected a Kitty query event")
             }
         }

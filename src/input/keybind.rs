@@ -35,6 +35,8 @@ pub enum PaneAction {
     ZoomReset,
     PrevPrompt,
     NextPrompt,
+    /// Jump to the next pane flagged with attention (BEL / notification).
+    FocusAttention,
 }
 
 pub struct KeybindMap {
@@ -60,6 +62,7 @@ impl KeybindMap {
             (&config.zoom_reset, PaneAction::ZoomReset),
             (&config.prev_prompt, PaneAction::PrevPrompt),
             (&config.next_prompt, PaneAction::NextPrompt),
+            (&config.focus_attention, PaneAction::FocusAttention),
         ];
 
         let mut bindings = Vec::new();
@@ -148,5 +151,32 @@ fn key_name_to_code(name: &str) -> Option<u16> {
         "left" => Some(123),
         "right" => Some(124),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_keybind, KeyBind, KeyModifiers, KeybindMap, PaneAction};
+    use crate::config::KeybindConfig;
+
+    #[test]
+    fn parses_cmd_shift_a() {
+        assert_eq!(
+            parse_keybind("cmd+shift+a"),
+            Some(KeyBind {
+                key_code: 0,
+                modifiers: KeyModifiers::CMD | KeyModifiers::SHIFT,
+            })
+        );
+    }
+
+    #[test]
+    fn default_focus_attention_binding_resolves() {
+        let map = KeybindMap::from_config(&KeybindConfig::default());
+        assert_eq!(
+            map.lookup(0, KeyModifiers::CMD | KeyModifiers::SHIFT),
+            Some(PaneAction::FocusAttention)
+        );
+        assert_eq!(map.lookup(0, KeyModifiers::CMD), None, "cmd+a stays free");
     }
 }

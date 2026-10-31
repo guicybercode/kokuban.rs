@@ -17,6 +17,7 @@ pub struct Config {
     pub omarchy: OmarchyConfig,
     pub update: UpdateConfig,
     pub notifications: NotificationsConfig,
+    pub clipboard: ClipboardConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +148,20 @@ impl Default for NotificationsConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ClipboardConfig {
+    /// Let programs copy text to the system clipboard with OSC 52.
+    /// Reads (`OSC 52 ; ? `) are never answered.
+    pub osc52_write: bool,
+}
+
+impl Default for ClipboardConfig {
+    fn default() -> Self {
+        Self { osc52_write: true }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct StatusBarConfig {
@@ -193,6 +208,8 @@ pub struct KeybindConfig {
     pub zoom_reset: String,
     pub prev_prompt: String,
     pub next_prompt: String,
+    /// Jump to the next pane flagged with attention (BEL / notification).
+    pub focus_attention: String,
     pub resize: ResizeConfig,
 }
 
@@ -290,6 +307,7 @@ impl Default for Config {
             omarchy: OmarchyConfig::default(),
             update: UpdateConfig::default(),
             notifications: NotificationsConfig::default(),
+            clipboard: ClipboardConfig::default(),
         }
     }
 }
@@ -320,8 +338,8 @@ impl Default for WindowConfig {
 impl Default for SelectionConfig {
     fn default() -> Self {
         Self {
-            foreground: "#000000".to_string(),
-            background: "#b4d5fe".to_string(),
+            foreground: "#1f3a2a".to_string(),
+            background: "#f4f6f0".to_string(),
             explicit_foreground: false,
             explicit_background: false,
         }
@@ -331,8 +349,8 @@ impl Default for SelectionConfig {
 impl Default for ColorConfig {
     fn default() -> Self {
         Self {
-            foreground: "#c0c0c0".to_string(),
-            background: "#1a1a2e".to_string(),
+            foreground: "#f4f6f0".to_string(),
+            background: "#1f3a2a".to_string(),
             cursor: None,
             ansi: None,
             explicit_foreground: false,
@@ -363,11 +381,11 @@ impl Default for ThemeConfig {
 impl Default for ChromeConfig {
     fn default() -> Self {
         Self {
-            sumi_black: "#1a1a1a".to_string(),
-            sumi_dark: "#2d2d2d".to_string(),
-            sumi_medium: "#4a4a4a".to_string(),
-            sumi_light: "#7a7a7a".to_string(),
-            sumi_ghost: "#3a3a3a".to_string(),
+            sumi_black: "#142619".to_string(),
+            sumi_dark: "#182e21".to_string(),
+            sumi_medium: "#3b5a48".to_string(),
+            sumi_light: "#c9d3c6".to_string(),
+            sumi_ghost: "#2d4a3a".to_string(),
             hanko_red: "#b5312c".to_string(),
             hanko_dim: "#6b2320".to_string(),
         }
@@ -393,6 +411,7 @@ impl Default for KeybindConfig {
             zoom_reset: "cmd+0".to_string(),
             prev_prompt: "cmd+up".to_string(),
             next_prompt: "cmd+down".to_string(),
+            focus_attention: "cmd+shift+a".to_string(),
             resize: ResizeConfig::default(),
         }
     }

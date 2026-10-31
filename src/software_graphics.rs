@@ -122,7 +122,9 @@ impl SoftwareGraphics {
         let cell_height = f32::from(grid.cell_pixel_height.max(1));
         let response = match event {
             TerminalEvent::Response(response) => Some(response),
-            TerminalEvent::Notification { .. } | TerminalEvent::Bell => None,
+            TerminalEvent::Notification { .. }
+            | TerminalEvent::Bell
+            | TerminalEvent::ClipboardWrite(_) => None,
             TerminalEvent::KittyGraphics {
                 command,
                 cursor_row,

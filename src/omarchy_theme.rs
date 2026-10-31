@@ -1,8 +1,6 @@
 //! Omarchy publishes a complete palette by replacing its current/theme directory.
 //! Observe filesystem events off the UI thread; idle terminals do not poll files.
 
-use crate::config::{ColorConfig, Config};
-use crate::grid::cell::Color;
 use crate::terminal_colors::{Rgb, TerminalColors};
 use nix::errno::Errno;
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
@@ -20,70 +18,6 @@ use std::thread::{self, JoinHandle};
 
 const MAX_THEME_BYTES: usize = 64 * 1024;
 const COLORS_FILE: &str = "colors.toml";
-
-/// Explicit settings keep their priority when the system palette changes.
-pub(crate) struct PaletteOverrides {
-    base: TerminalColors,
-    foreground: Option<Rgb>,
-    background: Option<Rgb>,
-    selection_foreground: Option<Rgb>,
-    selection_background: Option<Rgb>,
-    cursor: Option<Rgb>,
-    ansi: Option<[Rgb; 16]>,
-}
-
-impl PaletteOverrides {
-    pub(crate) fn from_config(config: &Config) -> Self {
-        let foreground = ColorConfig::parse_hex(&config.colors.foreground);
-        let background = ColorConfig::parse_hex(&config.colors.background);
-        Self {
-            base: TerminalColors::new(foreground, background),
-            foreground: config.colors.explicit_foreground.then_some(foreground),
-            background: config.colors.explicit_background.then_some(background),
-            selection_foreground: config
-                .selection
-                .explicit_foreground
-                .then(|| ColorConfig::parse_hex(&config.selection.foreground)),
-            selection_background: config
-                .selection
-                .explicit_background
-                .then(|| ColorConfig::parse_hex(&config.selection.background)),
-            cursor: config.colors.cursor.as_deref().map(ColorConfig::parse_hex),
-            ansi: config
-                .colors
-                .ansi
-                .as_ref()
-                .map(|ansi| std::array::from_fn(|index| ColorConfig::parse_hex(&ansi[index]))),
-        }
-    }
-
-    pub(crate) fn resolve(&self, theme: Option<TerminalColors>) -> TerminalColors {
-        let colors = theme.unwrap_or(self.base);
-        let mut colors = colors.with_defaults(
-            self.foreground
-                .unwrap_or_else(|| colors.resolve_foreground(Color::Default, false)),
-            self.background
-                .unwrap_or_else(|| colors.default_background()),
-        );
-        colors = colors.with_selection(
-            Some(
-                self.selection_foreground
-                    .unwrap_or_else(|| colors.selection_foreground()),
-            ),
-            Some(
-                self.selection_background
-                    .unwrap_or_else(|| colors.selection_background()),
-            ),
-        );
-        if let Some(cursor) = self.cursor {
-            colors = colors.with_cursor(cursor);
-        }
-        if let Some(ansi) = self.ansi {
-            colors = colors.with_ansi(ansi);
-        }
-        colors
-    }
-}
 
 fn invalid_theme(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
@@ -392,6 +326,9 @@ impl ThemeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use crate::grid::cell::Color;
+    use crate::palette::PaletteOverrides;
     use std::sync::mpsc;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -495,7 +432,7 @@ mod tests {
     #[test]
     fn explicit_values_equal_to_defaults_still_override_system_colors() {
         let config: Config = toml::from_str(
-            "[colors]\nforeground = '#c0c0c0'\n[selection]\nbackground = '#b4d5fe'\n",
+            "[colors]\nforeground = '#f4f6f0'\n[selection]\nbackground = '#f4f6f0'\n",
         )
         .unwrap();
         let overrides = PaletteOverrides::from_config(&config);
@@ -504,10 +441,10 @@ mod tests {
             let colors = overrides.resolve(Some(theme));
             assert_eq!(
                 colors.resolve_foreground(Color::Default, false),
-                (192, 192, 192)
+                (244, 246, 240)
             );
             assert_eq!(colors.default_background(), theme.default_background());
-            assert_eq!(colors.selection_background(), (180, 213, 254));
+            assert_eq!(colors.selection_background(), (244, 246, 240));
             assert_eq!(colors.selection_foreground(), theme.selection_foreground());
             assert_eq!(colors.cursor(), theme.cursor());
         }
@@ -541,9 +478,9 @@ mod tests {
         assert!(watcher.is_none());
         assert!(colors.is_none());
         let colors = PaletteOverrides::from_config(&Config::default()).resolve(None);
-        assert_eq!(colors.default_background(), (26, 26, 46));
+        assert_eq!(colors.default_background(), (31, 58, 42));
         assert_eq!(colors.selection_foreground(), colors.default_background());
-        assert_eq!(colors.selection_background(), (192, 192, 192));
+        assert_eq!(colors.selection_background(), (244, 246, 240));
         assert_eq!(colors.cursor(), None);
         assert_eq!(
             current_directory(Some("/home/test".into())).unwrap(),

@@ -43,6 +43,8 @@ pub(crate) enum TerminalEvent {
     },
     /// ASCII BEL (0x07) outside a control string.
     Bell,
+    /// OSC 52 request to place decoded text on the system clipboard.
+    ClipboardWrite(String),
 }
 
 const DEFAULT_CELL: Cell = Cell {
@@ -467,6 +469,11 @@ impl Grid {
 
     pub(crate) fn queue_bell(&mut self) {
         self.pending_terminal_events.push(TerminalEvent::Bell);
+    }
+
+    pub(crate) fn queue_clipboard_write(&mut self, text: String) {
+        self.pending_terminal_events
+            .push(TerminalEvent::ClipboardWrite(text));
     }
 
     pub(crate) fn take_osc99_draft(&mut self, id: &str) -> Option<Osc99Draft> {

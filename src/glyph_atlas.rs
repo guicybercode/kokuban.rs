@@ -365,6 +365,11 @@ impl GlyphAtlas {
         glyph.color
     }
 
+    /// Display scale the atlas was rasterized for.
+    pub fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
     fn rasterize_text(&mut self, text: &str, bold: bool, italic: bool) -> GlyphEntry {
         let width = UnicodeWidthStr::width(text).max(1) as f32 * self.cell_width;
         let style = style_index(bold, italic);

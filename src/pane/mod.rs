@@ -272,7 +272,15 @@ impl PaneTree {
         });
         let mut layout_results = Vec::new();
         let mut dividers = Vec::new();
-        compute_layout(&self.root, viewport, &mut layout_results, &mut dividers, self.focused);
+        let attention = self.attention_ids();
+        compute_layout(
+            &self.root,
+            viewport,
+            &mut layout_results,
+            &mut dividers,
+            self.focused,
+            &attention,
+        );
 
         for (id, rect) in layout_results {
             if let Some(pane) = self.panes.get_mut(&id) {
@@ -293,8 +301,43 @@ impl PaneTree {
     pub fn layout_info(&self, viewport: PixelRect) -> (Vec<(PaneId, PixelRect)>, Vec<DividerInfo>) {
         let mut layouts = Vec::new();
         let mut dividers = Vec::new();
-        compute_layout(&self.root, viewport, &mut layouts, &mut dividers, self.focused);
+        let attention = self.attention_ids();
+        compute_layout(
+            &self.root,
+            viewport,
+            &mut layouts,
+            &mut dividers,
+            self.focused,
+            &attention,
+        );
         (layouts, dividers)
+    }
+
+    /// Panes flagged with attention (BEL / notification while unwatched).
+    pub fn attention_ids(&self) -> HashSet<PaneId> {
+        self.panes
+            .iter()
+            .filter(|(_, pane)| pane.attention)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Drop the attention flag of the focused pane. Returns true when it changed.
+    pub fn clear_focused_attention(&mut self) -> bool {
+        match self.panes.get_mut(&self.focused) {
+            Some(pane) if pane.attention => {
+                pane.attention = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Next pane with attention after the focused one, in leaf order, wrapping.
+    pub fn next_attention_pane(&self) -> Option<PaneId> {
+        next_with_attention(&self.pane_ids(), self.focused, |id| {
+            self.panes.get(&id).is_some_and(|pane| pane.attention)
+        })
     }
 
     /// Find which pane contains the given pixel coordinate.
@@ -308,9 +351,28 @@ impl PaneTree {
     }
 }
 
+/// First id after `focused` (wrapping around, `focused` itself last) for which
+/// `has_attention` holds.
+pub fn next_with_attention(
+    ids: &[PaneId],
+    focused: PaneId,
+    has_attention: impl Fn(PaneId) -> bool,
+) -> Option<PaneId> {
+    if ids.is_empty() {
+        return None;
+    }
+    let start = ids.iter().position(|&id| id == focused).map_or(0, |i| i + 1);
+    (0..ids.len())
+        .map(|offset| ids[(start + offset) % ids.len()])
+        .find(|&id| has_attention(id))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{GraphicsSupport, KittyHandlerOptions, PaneTree, PixelRect, SplitDirection};
+    use super::{
+        next_with_attention, GraphicsSupport, KittyHandlerOptions, PaneId, PaneTree, PixelRect,
+        SplitDirection,
+    };
     use crate::graphics::{ImagePlacement, InlineRenderSize, PlacementMode};
     use std::collections::HashSet;
 
@@ -330,6 +392,20 @@ mod tests {
             },
             z_index: 0,
         }
+    }
+
+    #[test]
+    fn next_with_attention_wraps_and_skips_panes_without_attention() {
+        let ids = [1, 2, 3, 4];
+        let flagged = |id: PaneId| id == 1 || id == 3;
+        assert_eq!(next_with_attention(&ids, 2, flagged), Some(3));
+        assert_eq!(next_with_attention(&ids, 3, flagged), Some(1), "wraps around");
+        assert_eq!(next_with_attention(&ids, 1, flagged), Some(3));
+        assert_eq!(next_with_attention(&ids, 4, flagged), Some(1));
+        assert_eq!(next_with_attention(&ids, 3, |id| id == 3), Some(3), "only itself");
+        assert_eq!(next_with_attention(&ids, 2, |_| false), None);
+        assert_eq!(next_with_attention(&[], 2, |_| true), None);
+        assert_eq!(next_with_attention(&ids, 99, flagged), Some(1), "unknown focus starts at 0");
     }
 
     #[test]
