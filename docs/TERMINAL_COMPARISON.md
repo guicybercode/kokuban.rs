@@ -452,3 +452,35 @@ Evidências: [relatório X11](linux-evidence/2026-09-10-modern-terminals/x11.jso
 [relatório Wayland](linux-evidence/2026-09-10-modern-terminals/wayland.json),
 [pacotes](linux-evidence/2026-09-10-modern-terminals/system-packages.txt) e
 [manifesto](linux-evidence/2026-09-10-modern-terminals/manifest.json).
+
+## Matriz de recursos
+
+Estado em 2026-10-31. A coluna Kokuban descreve a `main` desta data; itens
+marcados "em PR" estão implementados em pull requests abertos e ainda não foram
+integrados. As colunas dos outros terminais vêm da documentação pública e de
+tabelas de capacidade de terceiros, não de medição nossa; células com "?" não
+foram verificadas em tempo hábil[^nv].
+
+| Recurso | Kokuban | Terminal.app (macOS) | kitty | Ghostty | Alacritty |
+| --- | --- | --- | --- | --- | --- |
+| Imagens Kitty | sim | não | sim | sim | não |
+| Sixel | sim | não | não | não | não |
+| Hyperlinks OSC 8 | em PR | ?[^nv] | sim | sim | sim |
+| Clipboard OSC 52 (escrita) | em PR | não | sim | sim | sim |
+| Protocolo de teclado kitty | em PR | não | sim | sim | sim |
+| Busca no scrollback | em PR | sim | sem UI própria (kitten `hints`/pager) | sim (1.3) | não |
+| Painéis divididos | macOS | parcial (mesma sessão) | sim (layouts) | sim | não |
+| Renderização GPU | Metal no macOS; software no Linux | não | OpenGL | Metal/OpenGL | OpenGL |
+| Atualização embutida | sim (`kokuban --update`) | via macOS | não | macOS (Sparkle) | não |
+| Licença | BSD-4-Clause | proprietária | GPL-3.0 | MIT | Apache-2.0 |
+
+O gráfico de vazão PTY do mesmo ensaio está em
+[screenshots/throughput-comparison.svg](screenshots/throughput-comparison.svg)
+(gerado por `scripts/render-comparison-chart.py`).
+
+[^nv]: não verificado: fontes consultadas divergem sobre OSC 8 no Terminal.app
+(uma lista o Terminal.app 13+ como tornando links clicáveis; a documentação da
+Apple não confirma). As demais células de terceiros foram conferidas em
+2026-10-31 contra documentação pública e discussões dos projetos (Ghostty
+recusa Sixel na discussão #2496; Alacritty não implementa imagens, issue #910;
+Ghostty 1.3 adicionou busca no scrollback).
