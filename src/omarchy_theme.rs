@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn explicit_values_equal_to_defaults_still_override_system_colors() {
         let config: Config = toml::from_str(
-            "[colors]\nforeground = '#c0c0c0'\n[selection]\nbackground = '#b4d5fe'\n",
+            "[colors]\nforeground = '#f4f6f0'\n[selection]\nbackground = '#f4f6f0'\n",
         )
         .unwrap();
         let overrides = PaletteOverrides::from_config(&config);
@@ -504,10 +504,10 @@ mod tests {
             let colors = overrides.resolve(Some(theme));
             assert_eq!(
                 colors.resolve_foreground(Color::Default, false),
-                (192, 192, 192)
+                (244, 246, 240)
             );
             assert_eq!(colors.default_background(), theme.default_background());
-            assert_eq!(colors.selection_background(), (180, 213, 254));
+            assert_eq!(colors.selection_background(), (244, 246, 240));
             assert_eq!(colors.selection_foreground(), theme.selection_foreground());
             assert_eq!(colors.cursor(), theme.cursor());
         }
@@ -541,9 +541,9 @@ mod tests {
         assert!(watcher.is_none());
         assert!(colors.is_none());
         let colors = PaletteOverrides::from_config(&Config::default()).resolve(None);
-        assert_eq!(colors.default_background(), (26, 26, 46));
+        assert_eq!(colors.default_background(), (31, 58, 42));
         assert_eq!(colors.selection_foreground(), colors.default_background());
-        assert_eq!(colors.selection_background(), (192, 192, 192));
+        assert_eq!(colors.selection_background(), (244, 246, 240));
         assert_eq!(colors.cursor(), None);
         assert_eq!(
             current_directory(Some("/home/test".into())).unwrap(),

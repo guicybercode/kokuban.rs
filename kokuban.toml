@@ -11,13 +11,16 @@ columns = 80
 rows = 24
 opacity = 1.0
 
+# Factory theme: chalkboard green with chalk-colored text.
 [colors]
-foreground = "#c0c0c0"
-background = "#1a1a2e"
+foreground = "#f4f6f0"
+background = "#1f3a2a"
+# cursor = "#f4f6f0"
 
+# Selection is chalk inverted: board-green text on a chalk block.
 [selection]
-foreground = "#000000"
-background = "#b4d5fe"
+foreground = "#1f3a2a"
+background = "#f4f6f0"
 
 [status_bar]
 enabled = true
@@ -48,12 +51,13 @@ enabled = true
 show_indicator = true
 indicator_color = "#b5312c"
 
+# Window chrome stays in the board family; hanko red is the single accent.
 [theme.chrome]
-sumi_black  = "#1a1a1a"
-sumi_dark   = "#2d2d2d"
-sumi_medium = "#4a4a4a"
-sumi_light  = "#7a7a7a"
-sumi_ghost  = "#3a3a3a"
+sumi_black  = "#142619"
+sumi_dark   = "#182e21"
+sumi_medium = "#3b5a48"
+sumi_light  = "#c9d3c6"
+sumi_ghost  = "#2d4a3a"
 hanko_red   = "#b5312c"
 hanko_dim   = "#6b2320"
 
