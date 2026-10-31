@@ -29,7 +29,7 @@ O backend mantém a propriedade do clipboard enquanto o terminal está aberto e 
 
 A seleção acompanha o descarte de linhas antigas do histórico. Mudanças de tela, reset e alterações de coordenadas invalidam seleções incompatíveis. Paste pendente é validado contra a tela e o modo de colagem de origem; repinturas da mesma tela não o cancelam. Ctrl+C/Ctrl+V comuns continuam destinados ao aplicativo.
 
-Wayland exige um compositor com `ext-data-control-v1` ou `wlr-data-control`, ou acesso via XWayland. O teste de CI é X11. Cópia de linhas automaticamente quebradas ainda usa as linhas físicas: o Grid não registra esse vínculo. Grafemas compostos completos, OSC 52 e medições de consumo continuam como trabalho restante.
+Wayland exige um compositor com `ext-data-control-v1` ou `wlr-data-control`, ou acesso via XWayland. O teste de CI é X11. Cópia de linhas automaticamente quebradas ainda usa as linhas físicas: o Grid não registra esse vínculo. Grafemas compostos completos, leitura de clipboard via OSC 52 (a escrita já é aceita) e medições de consumo continuam como trabalho restante.
 
 ## Executar os cenários
 
