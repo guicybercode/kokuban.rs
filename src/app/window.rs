@@ -361,6 +361,11 @@ impl WindowTitleMailbox {
         }
     }
 
+    /// Title requested with `--title`; OSC 0/2 updates replace it as usual.
+    pub(super) fn set_initial_title(&self, title: &str) {
+        self.publish(title);
+    }
+
     fn publish(&self, raw_title: &str) -> bool {
         let next_title = normalized_window_title(raw_title);
         let mut desired_title = self

@@ -8,6 +8,7 @@ use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
 use std::io;
+use std::ffi::OsString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -48,13 +49,22 @@ impl Pane {
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
         on_input_failed: InputFailureNotifier,
+        command: &[OsString],
     ) -> Result<Self, crate::pty::PtyError> {
-        let pty = Arc::new(Pty::spawn(
-            cols,
-            rows,
-            graphics_support.kitty,
-            graphics_support.sixel,
-        )?);
+        // An explicit `-e` command replaces the login shell; splits pass an
+        // empty slice and get the shell.
+        let pty = if command.is_empty() {
+            Pty::spawn(cols, rows, graphics_support.kitty, graphics_support.sixel)?
+        } else {
+            Pty::spawn_command(
+                cols,
+                rows,
+                graphics_support.kitty,
+                graphics_support.sixel,
+                command,
+            )?
+        };
+        let pty = Arc::new(pty);
         let input_failed = Arc::new(AtomicBool::new(false));
         let writer_input_failed = input_failed.clone();
         let writer_on_input_failed = on_input_failed.clone();
@@ -471,6 +481,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("paste policy test should spawn its shell");
         let oversized = Vec::with_capacity(pane.max_nonfatal_input_bytes() + 1);

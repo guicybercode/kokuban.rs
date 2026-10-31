@@ -16,6 +16,7 @@ use crate::parser::sixel::SixelImage;
 use crate::render_scene::{ChromeColors, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
+use crate::launch_options::LaunchOptions;
 use crate::window_title::WINDOW_TITLE;
 
 use objc2::{runtime::ProtocolObject, MainThreadMarker, Message};
@@ -144,7 +145,7 @@ where
     }
 }
 
-pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
+pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasError> {
     let mtm = MainThreadMarker::new().expect("Must be called from the main thread");
 
     let app = NSApplication::sharedApplication(mtm);
@@ -188,6 +189,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
             kitty_options,
             graphics_support,
             Arc::new(move || input_failure_wake.wake()),
+            &options.command,
         )
         .expect("Failed to create initial pane"),
     ));
@@ -206,6 +208,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
 
     let dirty = Arc::new(AtomicBool::new(true));
     let window_title = Arc::new(window::WindowTitleMailbox::new());
+    if let Some(title) = &options.title {
+        window_title.set_initial_title(title);
+    }
     let should_close = Arc::new(AtomicBool::new(false));
     let window_is_key = Arc::new(AtomicBool::new(false));
     let notifications = Arc::new(crate::notifications::NotificationController::new(

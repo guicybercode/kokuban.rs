@@ -62,7 +62,6 @@ impl Pty {
         Self::spawn_prepared(cols, rows, shell, argv, environment, program_name)
     }
 
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn spawn_command(
         cols: u16,
         rows: u16,
