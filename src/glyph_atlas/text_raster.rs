@@ -55,6 +55,11 @@ impl ShapingFont {
         Some((face, shaped))
     }
 
+    /// Face rustybuzz desta fonte para shaping por run (ligaduras).
+    pub fn face(&self) -> Option<rustybuzz::Face<'_>> {
+        rustybuzz::Face::from_slice(&self.data, self.index)
+    }
+
     fn rasterize(&self, text: &str, size: f32, max_width: f32) -> Option<Bitmap> {
         let (face, shaped) = self.shape(text)?;
         let advance: i32 = shaped.glyph_positions().iter().map(|p| p.x_advance).sum();
@@ -163,6 +168,29 @@ impl TextRasterizer {
         self.primary[style]
             .rasterize("\u{fffd}", size, max_width)
             .or_else(|| self.primary[style].rasterize("?", size, max_width))
+    }
+
+    /// Face rustybuzz do estilo primário, para o shaper de runs.
+    pub fn face(&self, style: usize) -> Option<rustybuzz::Face<'_>> {
+        self.primary[style].face()
+    }
+
+    /// Rasteriza um glifo da face primária por id, sem shaping, deslocado por
+    /// `x_offset` unidades da fonte. Usado pelos glifos de ligadura.
+    pub fn rasterize_glyph(
+        &self,
+        style: usize,
+        glyph_id: u16,
+        x_offset: i32,
+        size: f32,
+    ) -> Option<Bitmap> {
+        let font = &self.primary[style].font;
+        let units_per_em = font.metrics().units_per_em as f32;
+        if units_per_em <= 0.0 {
+            return None;
+        }
+        let offset = Vector2F::new(x_offset as f32 * size / units_per_em, 0.0);
+        rasterize_outline(font, u32::from(glyph_id), size, offset)
     }
 
     fn load_preferred_fallbacks(&mut self) {
