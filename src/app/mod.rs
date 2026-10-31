@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
-use window::create_terminal_view;
+use window::{create_terminal_view, TerminalViewParams};
 
 enum CleanupCommand<T> {
     Retire(Box<T>),
@@ -350,39 +350,39 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         None
     };
 
-    let view = create_terminal_view(
+    let view = create_terminal_view(TerminalViewParams {
         mtm,
-        &device,
-        pane_tree.clone(),
-        pane_cleanup.clone(),
-        atlas.clone(),
-        dirty.clone(),
-        render_scheduler.clone(),
-        should_close.clone(),
-        reader_wake.clone(),
-        window_is_key.clone(),
+        device: &device,
+        pane_tree: pane_tree.clone(),
+        pane_cleanup: pane_cleanup.clone(),
+        atlas: atlas.clone(),
+        dirty: dirty.clone(),
+        render_scheduler: render_scheduler.clone(),
+        should_close: should_close.clone(),
+        reader_wake: reader_wake.clone(),
+        window_is_key: window_is_key.clone(),
         terminal_colors,
         scale_factor,
-        config.font.family.clone(),
-        config.font.size,
-        config.font.zoom_step,
-        config.font.min_size,
-        config.font.max_size,
+        font_family: config.font.family.clone(),
+        font_size: config.font.size,
+        zoom_step: config.font.zoom_step,
+        min_font_size: config.font.min_size,
+        max_font_size: config.font.max_size,
         selection_fg,
         selection_bg,
         chrome,
         keybinds,
         bg_opacity,
         status_bar_height,
-        config.status_bar.enabled,
+        status_bar_enabled: config.status_bar.enabled,
         resize_step,
         prompt_indicator_color,
-        image_store.clone(),
-        window_title.clone(),
-        config.confirm.on_close_pane,
-        config.confirm.on_quit,
-        update_status.clone(),
-    );
+        image_store: image_store.clone(),
+        window_title: window_title.clone(),
+        confirm_on_close_pane: config.confirm.on_close_pane,
+        confirm_on_quit: config.confirm.on_quit,
+        update_status: update_status.clone(),
+    });
 
     window.setContentView(Some(&view));
     // NSWindow keeps its delegate weakly; the content view retains TerminalView
