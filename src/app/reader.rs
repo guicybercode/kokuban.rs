@@ -214,6 +214,10 @@ pub(super) struct ReaderShared {
     pub(super) kitty_enabled: bool,
     pub(super) sixel_enabled: bool,
     pub(super) notifications: Arc<NotificationController>,
+    /// `[clipboard] osc52_write`: honour OSC 52 clipboard writes.
+    pub(super) osc52_write: bool,
+    /// Text waiting to reach NSPasteboard from the main thread.
+    pub(super) clipboard_write: Arc<Mutex<Option<String>>>,
 }
 
 /// Decode one read of PTY output for `id`. The caller holds the tree lock
@@ -260,6 +264,15 @@ pub(super) fn process_pane_output(
                 TerminalEvent::Bell => {
                     // Dock bounce / attention is applied on the main thread.
                     shared.notifications.handle_bell();
+                }
+                TerminalEvent::ClipboardWrite(text) => {
+                    if !shared.osc52_write {
+                        continue;
+                    }
+                    // NSPasteboard is touched from the main thread frame callback.
+                    if let Ok(mut pending) = shared.clipboard_write.lock() {
+                        *pending = Some(text);
+                    }
                 }
                 TerminalEvent::KittyGraphics {
                     command,

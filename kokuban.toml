@@ -38,6 +38,11 @@ enabled = true
 # Do not set this to notify-send itself — that binary expects argv, not these env vars.
 # command = "/usr/local/bin/kokuban-notify-hook"
 
+[clipboard]
+# Allow programs (tmux, Neovim, SSH sessions) to copy text to the system clipboard
+# with OSC 52. Only writes are honoured; clipboard reads are never answered.
+osc52_write = true
+
 [prompt_marks]
 enabled = true
 show_indicator = true

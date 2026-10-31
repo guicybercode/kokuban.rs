@@ -314,7 +314,7 @@ Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-
 
 Omarchy maps `Super+C` and `Super+V` to the supported Insert shortcuts; see [Omarchy clipboard bindings](docs/OMARCHY.md#use-the-existing-omarchy-bindings) for the integration and validation scope.
 
-The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](docs/TERMINAL_TEXT.md) and [Linux application validation](docs/LINUX_APPS.md). OSC 52 remote clipboard commands remain pending.
+The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](docs/TERMINAL_TEXT.md) and [Linux application validation](docs/LINUX_APPS.md). OSC 52 clipboard writes are accepted (reads are not answered).
 
 These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux provides terminal keyboard/IME and mouse input and scrollback; it does not yet implement this pane shortcut table.
 
@@ -434,7 +434,7 @@ revisions, hosts or display backends should not be combined into one speedup.
 
 ## Development Status
 
-Kokuban v0.4 (Cargo version 0.4.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation, short mpv playback, theme changes and command launching. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52, broad Wayland coverage, physical Omarchy/Hyprland validation, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application uses native platform APIs and font libraries; resource use is documented for specific revisions and workloads, rather than guaranteed across machines.
+Kokuban v0.4 (Cargo version 0.4.0) is an early desktop release. Linux tests cover SSH with Neovim, tmux and fzf, clipboard, images, animation, short mpv playback, theme changes and command launching. Terminal text supports extended graphemes, soft-wrap reconstruction and resize reflow. OSC 52 clipboard reads, broad Wayland coverage, physical Omarchy/Hyprland validation, audio and sustained media playback remain incomplete or unverified. Android is developed separately and is not shipped in this release. The application uses native platform APIs and font libraries; resource use is documented for specific revisions and workloads, rather than guaranteed across machines.
 
 ## Project Name
 

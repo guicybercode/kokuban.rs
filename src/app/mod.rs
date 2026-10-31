@@ -208,6 +208,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         window_is_key.clone(),
     ));
     let (pane_cleanup, pane_cleanup_handle) = PaneCleanup::spawn();
+    let clipboard_write: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let default_fg = ColorConfig::parse_hex(&config.colors.foreground);
     let default_bg = ColorConfig::parse_hex(&config.colors.background);
@@ -318,6 +319,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let frame_dirty = dirty.clone();
     let frame_should_close = should_close.clone();
     let frame_notifications = notifications.clone();
+    let frame_clipboard_write = clipboard_write.clone();
     // Keep the callback sendable; recover the main-thread-only window by number per frame.
     let frame_window_number = window.windowNumber();
     let render_scheduler = render_scheduler::RenderScheduler::new(
@@ -329,6 +331,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
                 return;
             }
             window::apply_pending_user_attention(frame_notifications.as_ref());
+            window::apply_pending_clipboard_write(&frame_clipboard_write);
             window::sync_window_title(frame_window_number);
             window::render_if_dirty(&frame_dirty);
         }),
@@ -400,6 +403,8 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         kitty_enabled,
         sixel_enabled,
         notifications: notifications.clone(),
+        osc52_write: config.clipboard.osc52_write,
+        clipboard_write: clipboard_write.clone(),
     };
 
     let reader_handle = std::thread::Builder::new()

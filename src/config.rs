@@ -17,6 +17,7 @@ pub struct Config {
     pub omarchy: OmarchyConfig,
     pub update: UpdateConfig,
     pub notifications: NotificationsConfig,
+    pub clipboard: ClipboardConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,6 +145,20 @@ impl Default for NotificationsConfig {
             enabled: true,
             command: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ClipboardConfig {
+    /// Let programs copy text to the system clipboard with OSC 52.
+    /// Reads (`OSC 52 ; ? `) are never answered.
+    pub osc52_write: bool,
+}
+
+impl Default for ClipboardConfig {
+    fn default() -> Self {
+        Self { osc52_write: true }
     }
 }
 
@@ -290,6 +305,7 @@ impl Default for Config {
             omarchy: OmarchyConfig::default(),
             update: UpdateConfig::default(),
             notifications: NotificationsConfig::default(),
+            clipboard: ClipboardConfig::default(),
         }
     }
 }

@@ -1600,7 +1600,18 @@ fn pixel_to_grid_point(
     ))
 }
 
-fn copy_to_clipboard(text: &str) {
+/// Place text queued by OSC 52 on the pasteboard (main thread only).
+pub(super) fn apply_pending_clipboard_write(pending: &Mutex<Option<String>>) {
+    let text = match pending.lock() {
+        Ok(mut slot) => slot.take(),
+        Err(_) => None,
+    };
+    if let Some(text) = text {
+        copy_to_clipboard(&text);
+    }
+}
+
+pub(crate) fn copy_to_clipboard(text: &str) {
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.clearContents();
