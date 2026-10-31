@@ -210,8 +210,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     let (pane_cleanup, pane_cleanup_handle) = PaneCleanup::spawn();
     let clipboard_write: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-    let default_fg = ColorConfig::parse_hex(&config.colors.foreground);
-    let default_bg = ColorConfig::parse_hex(&config.colors.background);
+    let terminal_colors = crate::palette::configured_colors(&config);
     let selection_fg = ColorConfig::parse_hex(&config.selection.foreground);
     let selection_bg = ColorConfig::parse_hex(&config.selection.background);
 
@@ -357,8 +356,7 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         should_close.clone(),
         reader_wake.clone(),
         window_is_key.clone(),
-        default_fg,
-        default_bg,
+        terminal_colors,
         scale_factor,
         config.font.family.clone(),
         config.font.size,
