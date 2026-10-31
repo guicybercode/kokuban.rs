@@ -35,9 +35,94 @@ impl TerminalKeyModifiers {
     }
 
     fn xterm_parameter(self) -> Option<u8> {
-        let parameter =
-            1 + u8::from(self.shift) + 2 * u8::from(self.alt) + 4 * u8::from(self.control);
+        let parameter = self.kitty_parameter();
         (parameter > 1).then_some(parameter)
+    }
+
+    /// Modifier parameter shared by xterm and the kitty protocol:
+    /// `1 + shift(1) + alt(2) + ctrl(4)`.
+    const fn kitty_parameter(self) -> u8 {
+        1 + (self.shift as u8) + 2 * (self.alt as u8) + 4 * (self.control as u8)
+    }
+
+    const fn any(self) -> bool {
+        self.shift || self.alt || self.control
+    }
+
+    const fn with_shift(self) -> Self {
+        Self { shift: true, ..self }
+    }
+}
+
+/// A key press as seen by the kitty keyboard protocol encoder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KittyKey {
+    /// A key with a legacy escape sequence (Enter, arrows, F-keys, ...).
+    Named(TerminalKey),
+    /// A text-producing key, identified by the codepoint it produces with no
+    /// modifiers held (lowercase / unshifted layout key).
+    Text(char),
+}
+
+/// Encode a key press under kitty's "disambiguate escape codes" enhancement
+/// (progressive enhancement bit 1, see
+/// <https://sw.kovidgoyal.net/kitty/keyboard-protocol/>).
+///
+/// At this level the goal is to make keys that collide in the legacy
+/// encoding distinguishable:
+///
+/// * Escape is always `CSI 27 u` (never a bare `ESC`), so applications no
+///   longer need an escape timeout.
+/// * Enter, Tab and Backspace stay legacy (`\r`, `\t`, `DEL`) when pressed
+///   alone, but become `CSI 13;m u`, `CSI 9;m u`, `CSI 127;m u` with any
+///   modifier (so Shift+Enter is distinguishable from Enter).
+/// * Text keys held with Ctrl or Alt become `CSI codepoint;m u`, where the
+///   codepoint is the unshifted key and Shift is reported in `m`. This is
+///   what turns Ctrl+I / Ctrl+M / Ctrl+[ into something other than
+///   `\t` / `\r` / `ESC`.
+/// * Plain text (no Ctrl/Alt) and the remaining named keys (arrows, Home,
+///   F-keys, ...) keep their legacy encoding, as kitty does at this level.
+///   Callers should prefer their regular text path for plain text so IME
+///   input and shifted characters are preserved.
+pub fn encode_key_kitty_disambiguate(
+    key: KittyKey,
+    application_cursor_keys: bool,
+    modifiers: TerminalKeyModifiers,
+) -> Option<Vec<u8>> {
+    match key {
+        KittyKey::Named(TerminalKey::Escape) => Some(csi_u(27, modifiers)),
+        KittyKey::Named(TerminalKey::BackTab) => Some(csi_u(9, modifiers.with_shift())),
+        KittyKey::Named(named @ (TerminalKey::Enter | TerminalKey::Tab | TerminalKey::Backspace)) => {
+            if modifiers.any() {
+                let codepoint = match named {
+                    TerminalKey::Enter => 13,
+                    TerminalKey::Tab => 9,
+                    _ => 127,
+                };
+                Some(csi_u(codepoint, modifiers))
+            } else {
+                encode_terminal_key(named, application_cursor_keys)
+            }
+        }
+        KittyKey::Named(named) => {
+            encode_terminal_key_with_modifiers(named, application_cursor_keys, modifiers)
+        }
+        KittyKey::Text(codepoint) => {
+            if modifiers.control || modifiers.alt {
+                Some(csi_u(u32::from(codepoint), modifiers))
+            } else {
+                Some(codepoint.to_string().into_bytes())
+            }
+        }
+    }
+}
+
+fn csi_u(codepoint: u32, modifiers: TerminalKeyModifiers) -> Vec<u8> {
+    let parameter = modifiers.kitty_parameter();
+    if parameter > 1 {
+        format!("\x1b[{codepoint};{parameter}u").into_bytes()
+    } else {
+        format!("\x1b[{codepoint}u").into_bytes()
     }
 }
 
@@ -138,8 +223,72 @@ fn encode_xterm_modified_key(key: TerminalKey, parameter: u8) -> Option<Vec<u8>>
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_terminal_key, encode_terminal_key_with_modifiers, TerminalKey, TerminalKeyModifiers,
+        encode_key_kitty_disambiguate, encode_terminal_key, encode_terminal_key_with_modifiers,
+        KittyKey, TerminalKey, TerminalKeyModifiers,
     };
+
+    #[test]
+    fn kitty_disambiguate_encodes_colliding_keys_as_csi_u() {
+        const NONE: TerminalKeyModifiers = TerminalKeyModifiers::new(false, false, false);
+        const SHIFT: TerminalKeyModifiers = TerminalKeyModifiers::new(true, false, false);
+        const ALT: TerminalKeyModifiers = TerminalKeyModifiers::new(false, true, false);
+        const CTRL: TerminalKeyModifiers = TerminalKeyModifiers::new(false, false, true);
+        const CTRL_SHIFT: TerminalKeyModifiers = TerminalKeyModifiers::new(true, false, true);
+
+        let cases: &[(KittyKey, TerminalKeyModifiers, &[u8])] = &[
+            (KittyKey::Named(TerminalKey::Escape), NONE, b"\x1b[27u"),
+            (KittyKey::Named(TerminalKey::Escape), ALT, b"\x1b[27;3u"),
+            (KittyKey::Text('i'), CTRL, b"\x1b[105;5u"),
+            (KittyKey::Text('m'), CTRL, b"\x1b[109;5u"),
+            (KittyKey::Text('['), CTRL, b"\x1b[91;5u"),
+            (KittyKey::Named(TerminalKey::Tab), NONE, b"\t"),
+            (KittyKey::Named(TerminalKey::Tab), CTRL, b"\x1b[9;5u"),
+            (KittyKey::Named(TerminalKey::BackTab), NONE, b"\x1b[9;2u"),
+            (KittyKey::Named(TerminalKey::Enter), NONE, b"\r"),
+            (KittyKey::Named(TerminalKey::Enter), SHIFT, b"\x1b[13;2u"),
+            (KittyKey::Named(TerminalKey::Backspace), NONE, b"\x7f"),
+            (KittyKey::Named(TerminalKey::Backspace), ALT, b"\x1b[127;3u"),
+            (KittyKey::Text('a'), CTRL_SHIFT, b"\x1b[97;6u"),
+            (KittyKey::Text('x'), ALT, b"\x1b[120;3u"),
+            (KittyKey::Text('a'), NONE, b"a"),
+            (KittyKey::Text('\u{e9}'), ALT, b"\x1b[233;3u"),
+        ];
+        for (key, modifiers, expected) in cases {
+            assert_eq!(
+                encode_key_kitty_disambiguate(*key, false, *modifiers).as_deref(),
+                Some(*expected),
+                "{key:?} {modifiers:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn kitty_disambiguate_keeps_legacy_sequences_for_other_named_keys() {
+        const NONE: TerminalKeyModifiers = TerminalKeyModifiers::new(false, false, false);
+        const SHIFT: TerminalKeyModifiers = TerminalKeyModifiers::new(true, false, false);
+        assert_eq!(
+            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::Up), false, NONE).as_deref(),
+            Some(b"\x1b[A".as_slice())
+        );
+        assert_eq!(
+            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::Up), true, NONE).as_deref(),
+            Some(b"\x1bOA".as_slice())
+        );
+        assert_eq!(
+            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::Left), false, SHIFT).as_deref(),
+            Some(b"\x1b[1;2D".as_slice())
+        );
+        assert_eq!(
+            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::Function(5)), false, NONE)
+                .as_deref(),
+            Some(b"\x1b[15~".as_slice())
+        );
+        assert_eq!(
+            encode_key_kitty_disambiguate(KittyKey::Named(TerminalKey::PageDown), false, NONE)
+                .as_deref(),
+            Some(b"\x1b[6~".as_slice())
+        );
+    }
 
     #[test]
     fn encodes_cursor_keys_in_normal_and_application_modes() {
