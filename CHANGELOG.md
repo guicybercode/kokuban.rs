@@ -11,6 +11,7 @@
 - Per-pane attention on macOS: a BEL or desktop notification in an unfocused pane marks it with ● in the status bar and turns its dividers hanko red; `Cmd+Shift+A` jumps to the next marked pane.
 - Chalkboard factory theme: `#1f3a2a` board, `#f4f6f0` chalk text and cursor, chalk-inverted selection, window chrome in the same green family and hanko red as the only accent.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
+- Homebrew cask in `packaging/homebrew/Casks/kokuban.rb` (install with `brew install --cask guicybercode/tap/kokuban` once the tap is published), `scripts/update-homebrew-cask.sh` to point it at a new release, and the release checklist in `docs/RELEASE.md`.
 
 ### Changed
 

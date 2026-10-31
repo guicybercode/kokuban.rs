@@ -10,7 +10,13 @@ https://github.com/user-attachments/assets/4769ed61-12ed-4bb9-817f-5f3ee06c3238
 
 ## Install
 
-**macOS (Apple Silicon)** — for Intel Macs replace `aarch64-apple-darwin` with `x86_64-apple-darwin`:
+**macOS (Homebrew)** (tap published with each release; see [docs/INSTALL.md](docs/INSTALL.md)):
+
+```sh
+brew install --cask guicybercode/tap/kokuban
+```
+
+**macOS (direct download, Apple Silicon)** — for Intel Macs replace `aarch64-apple-darwin` with `x86_64-apple-darwin`:
 
 ```sh
 curl -LO https://github.com/guicybercode/kokuban.rs/releases/download/v0.4/kokuban-v0.4-aarch64-apple-darwin.dmg
