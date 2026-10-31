@@ -11,6 +11,7 @@
 - Per-pane attention on macOS: a BEL or desktop notification in an unfocused pane marks it with ● in the status bar and turns its dividers hanko red; `Cmd+Shift+A` jumps to the next marked pane.
 - Chalkboard factory theme: `#1f3a2a` board, `#f4f6f0` chalk text and cursor, chalk-inverted selection, window chrome in the same green family and hanko red as the only accent.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
+- `scripts/compare-terminal-performance.py` runs on macOS: `--backend macos` (the default there) launches Kokuban, Alacritty, kitty, Ghostty and, with `--terminals ... terminal`, Terminal.app through AppleScript; the grid is verified without pixel-cell matching, Terminal.app CPU/RSS are application-level deltas, the output gains `summary.json` and per-terminal summaries, and `scripts/render-comparison-chart.py` accepts `--summary`, `--output`, `--title` and `--subtitle`.
 
 ### Changed
 
