@@ -193,6 +193,7 @@ pub struct KeybindConfig {
     pub zoom_reset: String,
     pub prev_prompt: String,
     pub next_prompt: String,
+    pub search: String,
     pub resize: ResizeConfig,
 }
 
@@ -393,6 +394,7 @@ impl Default for KeybindConfig {
             zoom_reset: "cmd+0".to_string(),
             prev_prompt: "cmd+up".to_string(),
             next_prompt: "cmd+down".to_string(),
+            search: "cmd+f".to_string(),
             resize: ResizeConfig::default(),
         }
     }

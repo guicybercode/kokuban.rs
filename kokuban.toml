@@ -69,6 +69,7 @@ zoom_out         = "cmd+-"
 zoom_reset       = "cmd+0"
 prev_prompt      = "cmd+up"
 next_prompt      = "cmd+down"
+search           = "cmd+f"
 
 [keybind.resize]
 step = 20

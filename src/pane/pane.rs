@@ -3,6 +3,7 @@ use crate::layout::{PaneId, PixelRect};
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
+use crate::search::SearchState;
 use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
@@ -22,6 +23,10 @@ pub struct Pane {
     pub decoder: TerminalDecoder,
     pub grid: Grid,
     pub selection: SelectionState,
+    /// Busca aberta neste painel (`None` quando fechada).
+    pub search: Option<SearchState>,
+    /// Última consulta usada, reaproveitada ao reabrir a busca.
+    pub last_search_query: String,
     pub rect: PixelRect,
     pub kitty_handler: KittyHandler,
 }
@@ -66,6 +71,8 @@ impl Pane {
             decoder: TerminalDecoder::new(graphics_support),
             grid,
             selection: SelectionState::default(),
+            search: None,
+            last_search_query: String::new(),
             rect: PixelRect::ZERO,
             kitty_handler: KittyHandler::new(kitty_options),
         })

@@ -18,6 +18,7 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::MetalRenderer;
+use crate::search::SearchState;
 use crate::selection::GridPoint;
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::notifications::NotificationController;
@@ -974,6 +975,11 @@ define_class!(
                 return;
             }
 
+            // Busca aberta: as teclas vão para a consulta, não para o shell.
+            if !has_cmd && handle_search_key(event, key_code, key_modifiers) {
+                return;
+            }
+
             // Cmd keys are handled in performKeyEquivalent
             if has_cmd {
                 return;
@@ -1188,6 +1194,81 @@ fn with_update_status<T>(
     Some(action(status, scheduler))
 }
 
+/// Trata uma tecla enquanto a busca do painel focado está aberta. Retorna
+/// `false` quando não há busca aberta, deixando a tecla seguir para o shell.
+fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) -> bool {
+    const KEY_RETURN: u16 = 36;
+    const KEY_TAB: u16 = 48;
+    const KEY_DELETE: u16 = 51;
+    const KEY_ESCAPE: u16 = 53;
+    const KEY_KEYPAD_ENTER: u16 = 76;
+
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return false;
+        };
+        let mut tree = state.pane_tree.lock().unwrap();
+        let Some(pane) = tree.focused_pane_mut() else {
+            return false;
+        };
+        if pane.search.is_none() {
+            return false;
+        }
+        let shift = modifiers.contains(KeyModifiers::SHIFT);
+        let ctrl = modifiers.contains(KeyModifiers::CTRL);
+        match key_code {
+            KEY_ESCAPE => {
+                if let Some(search) = pane.search.take() {
+                    pane.last_search_query = search.query;
+                }
+            }
+            KEY_RETURN | KEY_KEYPAD_ENTER => {
+                if let Some(search) = pane.search.as_mut() {
+                    if search.needs_recompute(&pane.grid) {
+                        search.recompute(&pane.grid);
+                    }
+                    if shift {
+                        search.prev();
+                    } else {
+                        search.next();
+                    }
+                    search.scroll_to_current(&mut pane.grid);
+                }
+            }
+            KEY_DELETE => {
+                if let Some(search) = pane.search.as_mut() {
+                    search.query.pop();
+                    search.recompute(&pane.grid);
+                    search.scroll_to_current(&mut pane.grid);
+                }
+            }
+            KEY_TAB => {}
+            _ if ctrl => {}
+            _ => {
+                let typed: String = event
+                    .characters()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .collect();
+                if typed.is_empty() {
+                    return true;
+                }
+                if let Some(search) = pane.search.as_mut() {
+                    search.query.push_str(&typed);
+                    search.recompute(&pane.grid);
+                    search.scroll_to_current(&mut pane.grid);
+                }
+            }
+        }
+        drop(tree);
+        state.request_render();
+        true
+    })
+}
+
 fn handle_pane_action(action: PaneAction) {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -1331,6 +1412,16 @@ fn handle_pane_action(action: PaneAction) {
                 drop(tree);
                 perform_zoom(state, state.base_font_size);
                 return;
+            }
+            PaneAction::Search => {
+                if let Some(pane) = tree.focused_pane_mut() {
+                    if pane.search.is_none() {
+                        let mut search = SearchState::new(pane.last_search_query.clone());
+                        search.recompute(&pane.grid);
+                        search.scroll_to_current(&mut pane.grid);
+                        pane.search = Some(search);
+                    }
+                }
             }
             PaneAction::PrevPrompt => {
                 if let Some(pane) = tree.focused_pane_mut() {

@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn contains_cell_follows_scroll_offset() {
         let mut grid = grid_with(10, 2, "aaa\r\nbbb\r\nccc\r\nddd");
-        let mut state = search(&grid, "bbb");
+        let state = search(&grid, "bbb");
         assert_eq!(state.matches.len(), 1);
         assert_eq!(grid.scrollback_len(), 2);
         // Na viewport padrão (ccc, ddd) nada está destacado.

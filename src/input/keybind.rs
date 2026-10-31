@@ -35,6 +35,7 @@ pub enum PaneAction {
     ZoomReset,
     PrevPrompt,
     NextPrompt,
+    Search,
 }
 
 pub struct KeybindMap {
@@ -60,6 +61,7 @@ impl KeybindMap {
             (&config.zoom_reset, PaneAction::ZoomReset),
             (&config.prev_prompt, PaneAction::PrevPrompt),
             (&config.next_prompt, PaneAction::NextPrompt),
+            (&config.search, PaneAction::Search),
         ];
 
         let mut bindings = Vec::new();
