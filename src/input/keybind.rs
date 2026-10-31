@@ -35,6 +35,7 @@ pub enum PaneAction {
     ZoomReset,
     PrevPrompt,
     NextPrompt,
+    Search,
     /// Jump to the next pane flagged with attention (BEL / notification).
     FocusAttention,
 }
@@ -62,6 +63,7 @@ impl KeybindMap {
             (&config.zoom_reset, PaneAction::ZoomReset),
             (&config.prev_prompt, PaneAction::PrevPrompt),
             (&config.next_prompt, PaneAction::NextPrompt),
+            (&config.search, PaneAction::Search),
             (&config.focus_attention, PaneAction::FocusAttention),
         ];
 

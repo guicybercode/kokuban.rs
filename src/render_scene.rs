@@ -1,5 +1,6 @@
 use crate::grid::Grid;
 use crate::layout::PixelRect;
+use crate::search::SearchState;
 use crate::selection::SelectionState;
 
 pub struct PaneRenderData<'a> {
@@ -15,6 +16,9 @@ pub struct PaneRenderData<'a> {
     pub show_cursor: bool,
     /// Update notice shown at the right of the status bar.
     pub update_notice: Option<&'a str>,
+    /// Busca aberta neste painel; os resultados são destacados e a consulta
+    /// aparece na barra de status.
+    pub search: Option<&'a SearchState>,
 }
 
 pub struct ConfirmOverlayInfo {

@@ -24,6 +24,7 @@ mod pane;
 mod parser;
 mod pty;
 mod render_scene;
+mod search;
 mod selection;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod software_raster;

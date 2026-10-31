@@ -11,6 +11,7 @@ use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::search::MatchKind;
 use crate::terminal_colors::TerminalColors;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -256,11 +257,15 @@ impl MetalRenderer {
         atlas: &mut GlyphAtlas,
         selection_fg: (u8, u8, u8),
         selection_bg: (u8, u8, u8),
+        chrome: &ChromeColors,
         status_bar_height: f32,
         prompt_indicator_color: Option<(u8, u8, u8)>,
         vertices: &mut Vec<Vertex>,
     ) {
         let grid = pane.grid;
+        // Resultado atual da busca: fundo hanko_red com texto claro.
+        const SEARCH_CURRENT_FG: (u8, u8, u8) = (255, 255, 255);
+        let search_current_bg = chrome.hanko_red;
         let rect = pane.rect;
         let cell_w = atlas.cell_width;
         let cell_h = atlas.cell_height;
@@ -290,13 +295,30 @@ impl MetalRenderer {
                 let selected_by_range = pane.selection
                     .map(|s| s.contains_cell(grid, row, col))
                     .unwrap_or(false);
-                let (fg_packed, bg_packed) = Self::pack_cell_colors(
-                    fg,
-                    bg,
-                    selection_fg,
-                    selection_bg,
-                    selected_by_range,
-                );
+                let search_kind = pane.search.and_then(|s| s.contains_cell(grid, row, col));
+                let (fg_packed, bg_packed) = match search_kind {
+                    Some(MatchKind::Current) => Self::pack_cell_colors(
+                        fg,
+                        bg,
+                        SEARCH_CURRENT_FG,
+                        search_current_bg,
+                        true,
+                    ),
+                    Some(MatchKind::Other) => Self::pack_cell_colors(
+                        fg,
+                        bg,
+                        selection_fg,
+                        selection_bg,
+                        true,
+                    ),
+                    None => Self::pack_cell_colors(
+                        fg,
+                        bg,
+                        selection_fg,
+                        selection_bg,
+                        selected_by_range,
+                    ),
+                };
 
                 let x0 = rect.x + col as f32 * cell_w;
                 let y0 = rect.y + row as f32 * cell_h;
@@ -538,6 +560,36 @@ impl MetalRenderer {
             cursor_x = self.render_char(c, cursor_x, text_y, light, bg, atlas, vertices);
         }
 
+        // Busca aberta: "黒板 · /consulta  n/m" no lugar do shell e do cwd.
+        if let Some(search) = pane.search {
+            let red = Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255);
+            let (count_text, count_color) = match search.current {
+                Some(i) => (format!("{}/{}", i + 1, search.matches.len()), light),
+                None => ("0/0".to_string(), red),
+            };
+            let limit_x = x1 - cell_w * 3.0;
+            for c in " · /".chars() {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
+            let reserved = cell_w * (count_text.chars().count() + 2) as f32;
+            for c in search.query.chars() {
+                if cursor_x + cell_w * 2.0 + reserved > limit_x {
+                    break;
+                }
+                cursor_x = self.render_char(c, cursor_x, text_y, light, bg, atlas, vertices);
+            }
+            cursor_x += cell_w * 2.0;
+            for c in count_text.chars() {
+                if cursor_x + cell_w > limit_x {
+                    break;
+                }
+                cursor_x = self.render_char(c, cursor_x, text_y, count_color, bg, atlas, vertices);
+            }
+            let indicator_x = x1 - cell_w * 2.0;
+            self.render_char('■', indicator_x, text_y, indicator_color, bg, atlas, vertices);
+            return;
+        }
+
         // " · zsh"
         for c in " · zsh".chars() {
             cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
@@ -700,7 +752,7 @@ impl MetalRenderer {
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {
-            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, status_bar_height, prompt_indicator_color, &mut content_vertices);
+            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, &mut content_vertices);
             self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut content_vertices);
         }
 

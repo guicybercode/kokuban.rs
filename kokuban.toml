@@ -78,6 +78,7 @@ zoom_out         = "cmd+-"
 zoom_reset       = "cmd+0"
 prev_prompt      = "cmd+up"
 next_prompt      = "cmd+down"
+search           = "cmd+f"
 # Jump to the next pane marked with ● (BEL or notification while unwatched).
 focus_attention  = "cmd+shift+a"
 
