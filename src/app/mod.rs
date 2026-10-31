@@ -193,11 +193,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
     ));
 
     let scale_factor = 2.0f32;
-    let atlas = Arc::new(Mutex::new(GlyphAtlas::new(
-        &config.font.family,
-        config.font.size,
-        scale_factor,
-    )?));
+    let mut atlas = GlyphAtlas::new(&config.font.family, config.font.size, scale_factor)?;
+    atlas.set_ligatures(config.font.ligatures);
+    let atlas = Arc::new(Mutex::new(atlas));
 
     let dirty = Arc::new(AtomicBool::new(true));
     let window_title = Arc::new(window::WindowTitleMailbox::new());
