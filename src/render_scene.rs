@@ -24,6 +24,9 @@ pub struct PaneRenderData<'a> {
     /// Text being composed by the input method (macOS IME); drawn at the
     /// cursor with an underline and never written to the grid.
     pub preedit: Option<&'a str>,
+    /// Underline cells that carry an OSC 8 hyperlink (while the modifier that
+    /// opens links is held).
+    pub underline_links: bool,
 }
 
 /// Which status bar segments `[status_bar]` enables.

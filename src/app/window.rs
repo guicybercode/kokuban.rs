@@ -338,6 +338,8 @@ struct ViewState {
     option_as_alt: OptionAsAlt,
     /// Text the input method is composing (marked text) for the focused pane.
     marked_text: Option<MarkedText>,
+    /// Cmd is held: hyperlinks are underlined as a hint that Cmd+click opens them.
+    cmd_held: bool,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
@@ -994,6 +996,20 @@ define_class!(
                                 pane.queue_input(seq);
                             }
                         }
+                    }
+                }
+            });
+        }
+
+        #[unsafe(method(flagsChanged:))]
+        fn flags_changed(&self, event: &NSEvent) {
+            let cmd_held = event.modifierFlags().contains(NSEventModifierFlags::Command);
+            VIEW_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                if let Some(state) = state.as_mut() {
+                    if state.cmd_held != cmd_held {
+                        state.cmd_held = cmd_held;
+                        state.request_render();
                     }
                 }
             });
@@ -2165,6 +2181,7 @@ fn render_frame() {
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
                     update_notice: update_notice.as_deref().filter(|_| *id == focused_id),
                     search: pane.search.as_ref(),
+                    underline_links: state.cmd_held,
                     preedit: state
                         .marked_text
                         .as_ref()
@@ -2428,6 +2445,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
             status_bar_layout,
             option_as_alt,
             marked_text: None,
+            cmd_held: false,
             resize_step,
             prompt_indicator_color,
             image_store,

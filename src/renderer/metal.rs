@@ -426,6 +426,16 @@ impl MetalRenderer {
                     }
                 }
 
+                // Hyperlink hint: while the open-link modifier is held, cells that
+                // carry an OSC 8 target get a plain underline in the text color.
+                if pane.underline_links && cell.underline_style == UnderlineStyle::None {
+                    let retained_row = grid.scrollback_len().saturating_sub(grid.scroll_offset) + row;
+                    if grid.hyperlink_at_retained(retained_row, col).is_some() {
+                        let ul_y = y0 + atlas.ascent + 2.0;
+                        Self::add_rect(vertices, x0, ul_y, x1, ul_y + line_thickness, white_u, white_v, fg_packed);
+                    }
+                }
+
                 // Styled underlines
                 if cell.underline_style != UnderlineStyle::None {
                     let ul_color = match cell.underline_color {
