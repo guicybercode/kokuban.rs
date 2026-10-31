@@ -42,12 +42,7 @@ impl SearchState {
         }
     }
 
-    /// Quantidade de linhas retidas vista no último `recompute`; serve para
-    /// detectar saída nova e refazer a busca.
-    pub fn rows_seen(&self) -> usize {
-        self.rows_seen
-    }
-
+    /// Verdadeiro quando chegaram linhas novas desde o último `recompute`.
     pub fn needs_recompute(&self, grid: &Grid) -> bool {
         self.rows_seen != grid.retained_rows()
     }
@@ -372,7 +367,7 @@ mod tests {
         assert_eq!(state.current, Some(0));
         let mut parser = Utf8Parser::new();
         parser.feed(b"foo 3\r\nfoo 4\r\n", &mut grid);
-        assert!(state.needs_recompute(&grid) || grid.retained_rows() == state.rows_seen());
+        assert!(state.needs_recompute(&grid));
         state.recompute(&grid);
         assert_eq!(state.matches.len(), 4);
         assert_eq!(state.current_match(), Some(SearchMatch { row: 0, col: 0, len: 3 }));

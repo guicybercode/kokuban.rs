@@ -1827,7 +1827,7 @@ fn render_frame() {
 
         // Lock atlas FIRST (canonical order: atlas → tree → image_store)
         let mut atlas = state.atlas.lock().unwrap();
-        let tree = state.pane_tree.lock().unwrap();
+        let mut tree = state.pane_tree.lock().unwrap();
 
         let viewport = PixelRect {
             x: 0.0,
@@ -1836,6 +1836,18 @@ fn render_frame() {
             height: size.height as f32,
         };
         let (layouts, dividers) = tree.layout_info(viewport);
+
+        // Saída nova enquanto a busca está aberta: refaz os resultados antes
+        // de desenhar, mantendo o resultado atual quando ele ainda existe.
+        for (id, _) in &layouts {
+            if let Some(pane) = tree.pane_mut(*id) {
+                if let Some(search) = pane.search.as_mut() {
+                    if search.needs_recompute(&pane.grid) {
+                        search.recompute(&pane.grid);
+                    }
+                }
+            }
+        }
 
         let focused_id = tree.focused;
         let update_notice = update::read_status(&state.update_status).notice();
@@ -1867,6 +1879,7 @@ fn render_frame() {
                     prompt_mark_rows,
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
                     update_notice: update_notice.as_deref().filter(|_| *id == focused_id),
+                    search: pane.search.as_ref(),
                 });
             }
         }
