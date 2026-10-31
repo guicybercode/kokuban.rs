@@ -616,6 +616,11 @@ impl Parser {
                         _ => {}
                     }
                 }
+                "8" => {
+                    if let Some(link) = crate::grid::hyperlinks::parse_osc8(pt) {
+                        grid.active_hyperlink = link;
+                    }
+                }
                 "9" => {
                     // OSC 9;4 is the ConEmu/iTerm2 progress bar — not a notification.
                     if crate::parser::osc_notify::is_osc9_progress(pt) {
@@ -2890,5 +2895,114 @@ mod tests {
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].image_id, Some(7));
         assert!(parser.parser.active_control_string.is_none());
+    }
+
+    fn osc8_spans(grid: &Grid) -> Vec<(usize, usize, usize, String)> {
+        grid.hyperlinks
+            .spans()
+            .map(|span| (span.abs_row, span.start_col, span.end_col, span.url.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn osc8_open_text_close_records_one_span() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"ab\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\tail", &mut grid);
+        assert_eq!(osc8_spans(&grid), vec![(0, 2, 6, "https://example.com".to_string())]);
+        assert!(grid.active_hyperlink.is_none());
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 2), Some("https://example.com"));
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 5), Some("https://example.com"));
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 6), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 1), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(1, 2), None);
+        assert_eq!(grid.hyperlink_at_retained(0, 3), Some("https://example.com"));
+    }
+
+    #[test]
+    fn osc8_two_links_on_one_row_and_id_params() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(
+            b"\x1b]8;id=a;https://a.example\x07aa\x1b]8;;\x07 \x1b]8;id=b;https://b.example\x07bb\x1b]8;;\x07",
+            &mut grid,
+        );
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![
+                (0, 0, 2, "https://a.example".to_string()),
+                (0, 3, 5, "https://b.example".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc8_link_across_soft_wrap_spans_two_rows() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(6, 3, 10);
+        parser.feed(b"xxxx\x1b]8;;https://w.example\x1b\\abcd\x1b]8;;\x1b\\", &mut grid);
+        assert_eq!(
+            osc8_spans(&grid),
+            vec![
+                (0, 4, 6, "https://w.example".to_string()),
+                (1, 0, 2, "https://w.example".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn osc8_wide_char_covers_two_columns() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed("\x1b]8;;https://w.example\x1b\\漢\x1b]8;;\x1b\\".as_bytes(), &mut grid);
+        assert_eq!(osc8_spans(&grid), vec![(0, 0, 2, "https://w.example".to_string())]);
+    }
+
+    #[test]
+    fn osc8_overwrite_without_link_forgets_the_cells() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b]8;;https://o.example\x1b\\abcdef\x1b]8;;\x1b\\\r  ", &mut grid);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 0), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 1), None);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 2), Some("https://o.example"));
+    }
+
+    #[test]
+    fn osc8_spans_follow_scrollback_eviction_and_absolute_rows() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = Grid::new(8, 2, 2);
+        parser.feed(b"\x1b]8;;https://e.example\x1b\\L0\x1b]8;;\x1b\\\r\n", &mut grid);
+        for _ in 0..6 { parser.feed(b"x\r\n", &mut grid); }
+        // Row 0 scrolled past the two-line history; its span is gone.
+        assert!(grid.hyperlinks.is_empty(), "{:?}", osc8_spans(&grid));
+        parser.feed(b"\x1b]8;;https://k.example\x1b\\K\x1b]8;;\x1b\\\r\n", &mut grid);
+        let abs_row = grid.current_absolute_row() - 1;
+        assert_eq!(osc8_spans(&grid), vec![(abs_row, 0, 1, "https://k.example".to_string())]);
+        let retained = grid.scrollback_len() + grid.cursor_row - 1;
+        assert_eq!(grid.hyperlink_at_retained(retained, 0), Some("https://k.example"));
+        parser.feed(b"a\r\nb\r\nc\r\n", &mut grid);
+        assert!(grid.hyperlinks.is_empty());
+    }
+
+    #[test]
+    fn osc8_alt_screen_links_do_not_leak_into_primary() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        parser.feed(b"\x1b]8;;https://p.example\x1b\\P\x1b]8;;\x1b\\", &mut grid);
+        parser.feed(b"\x1b[?1049h\x1b]8;;https://alt.example\x1b\\A\x1b]8;;\x1b\\", &mut grid);
+        assert_eq!(grid.hyperlinks.hyperlink_at(0, 0), Some("https://alt.example"));
+        parser.feed(b"\x1b[?1049l", &mut grid);
+        assert_eq!(osc8_spans(&grid), vec![(0, 0, 1, "https://p.example".to_string())]);
+    }
+
+    #[test]
+    fn osc8_ignores_oversized_uri_and_keeps_state() {
+        let mut parser = Utf8Parser::new();
+        let mut grid = grid();
+        let long = format!("\x1b]8;;https://{}\x1b\\x", "a".repeat(3000));
+        parser.feed(long.as_bytes(), &mut grid);
+        assert!(grid.active_hyperlink.is_none());
+        assert!(grid.hyperlinks.is_empty());
     }
 }
