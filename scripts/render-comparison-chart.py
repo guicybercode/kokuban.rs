@@ -43,10 +43,11 @@ WORKLOAD_LABELS = {
 }
 
 TITLE = "PTY throughput, same Linux host (2026-09-13, medians of 5 runs)"
-SUBTITLE = (
-    "Kokuban 0.2.0 (d54f801), Ghostty 1.3.0-dev tip, Alacritty 0.16.1, Kitty 0.45.0 "
-    "on x86_64 EPYC 7763, Weston headless. Higher is better; not frame latency."
+SUBTITLE_LINES = (
+    "Kokuban 0.2.0 (d54f801), Ghostty 1.3.0-dev tip, Alacritty 0.16.1, Kitty 0.45.0",
+    "on x86_64 EPYC 7763, Weston headless. Higher is better; not frame latency.",
 )
+SUBTITLE = " ".join(SUBTITLE_LINES)
 
 BACKGROUND = "#fcfcfb"
 INK = "#1f2328"
@@ -108,9 +109,11 @@ def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
     parts.append(
         f'<text x="{margin_left}" y="34" font-size="18" font-weight="600" fill="{INK}">{TITLE}</text>'
     )
-    parts.append(
-        f'<text x="{margin_left}" y="56" font-size="12" fill="{INK_MUTED}">{SUBTITLE}</text>'
-    )
+    # Two short lines: one line at 12px would overflow the 880px canvas and be clipped.
+    for index, line in enumerate(SUBTITLE_LINES):
+        parts.append(
+            f'<text x="{margin_left}" y="{54 + index * 16}" font-size="12" fill="{INK_MUTED}">{line}</text>'
+        )
 
     # Grid and y axis.
     tick = 10.0 if y_max <= 100 else 20.0
