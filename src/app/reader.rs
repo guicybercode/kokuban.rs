@@ -214,6 +214,21 @@ pub(super) struct ReaderShared {
     pub(super) kitty_enabled: bool,
     pub(super) sixel_enabled: bool,
     pub(super) notifications: Arc<NotificationController>,
+    /// `[clipboard] osc52_write`: honour OSC 52 clipboard writes.
+    pub(super) osc52_write: bool,
+    /// Text waiting to reach NSPasteboard from the main thread.
+    pub(super) clipboard_write: Arc<Mutex<Option<String>>>,
+}
+
+/// Mark `id` as wanting attention unless the user is already watching it:
+/// focused pane in the key window.
+fn flag_pane_attention(tree: &mut PaneTree, id: PaneId, window_is_key: &AtomicBool) {
+    if id == tree.focused && window_is_key.load(Ordering::Acquire) {
+        return;
+    }
+    if let Some(pane) = tree.pane_mut(id) {
+        pane.attention = true;
+    }
 }
 
 /// Decode one read of PTY output for `id`. The caller holds the tree lock
@@ -256,10 +271,21 @@ pub(super) fn process_pane_output(
                     shared
                         .notifications
                         .handle_notification(NotificationRequest::new(title, body));
+                    flag_pane_attention(tree, id, shared.window_is_key.as_ref());
                 }
                 TerminalEvent::Bell => {
                     // Dock bounce / attention is applied on the main thread.
                     shared.notifications.handle_bell();
+                    flag_pane_attention(tree, id, shared.window_is_key.as_ref());
+                }
+                TerminalEvent::ClipboardWrite(text) => {
+                    if !shared.osc52_write {
+                        continue;
+                    }
+                    // NSPasteboard is touched from the main thread frame callback.
+                    if let Ok(mut pending) = shared.clipboard_write.lock() {
+                        *pending = Some(text);
+                    }
                 }
                 TerminalEvent::KittyGraphics {
                     command,
@@ -351,6 +377,7 @@ pub(super) fn process_pane_output(
             .is_some_and(|pane| pane.grid.title_revision() != title_revision_before);
     if focused_title_changed {
         window::publish_focused_window_title(tree, shared.window_title.as_ref());
+        tree.clear_focused_attention();
     }
 }
 

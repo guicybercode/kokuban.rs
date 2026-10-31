@@ -17,6 +17,7 @@ pub struct Config {
     pub omarchy: OmarchyConfig,
     pub update: UpdateConfig,
     pub notifications: NotificationsConfig,
+    pub clipboard: ClipboardConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +148,20 @@ impl Default for NotificationsConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ClipboardConfig {
+    /// Let programs copy text to the system clipboard with OSC 52.
+    /// Reads (`OSC 52 ; ? `) are never answered.
+    pub osc52_write: bool,
+}
+
+impl Default for ClipboardConfig {
+    fn default() -> Self {
+        Self { osc52_write: true }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct StatusBarConfig {
@@ -193,6 +208,8 @@ pub struct KeybindConfig {
     pub zoom_reset: String,
     pub prev_prompt: String,
     pub next_prompt: String,
+    /// Jump to the next pane flagged with attention (BEL / notification).
+    pub focus_attention: String,
     pub resize: ResizeConfig,
 }
 
@@ -290,6 +307,7 @@ impl Default for Config {
             omarchy: OmarchyConfig::default(),
             update: UpdateConfig::default(),
             notifications: NotificationsConfig::default(),
+            clipboard: ClipboardConfig::default(),
         }
     }
 }
@@ -393,6 +411,7 @@ impl Default for KeybindConfig {
             zoom_reset: "cmd+0".to_string(),
             prev_prompt: "cmd+up".to_string(),
             next_prompt: "cmd+down".to_string(),
+            focus_attention: "cmd+shift+a".to_string(),
             resize: ResizeConfig::default(),
         }
     }

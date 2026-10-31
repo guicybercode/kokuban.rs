@@ -24,6 +24,8 @@ pub struct Pane {
     pub selection: SelectionState,
     pub rect: PixelRect,
     pub kitty_handler: KittyHandler,
+    /// BEL or a notification arrived while this pane was not being watched.
+    pub attention: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -68,6 +70,7 @@ impl Pane {
             selection: SelectionState::default(),
             rect: PixelRect::ZERO,
             kitty_handler: KittyHandler::new(kitty_options),
+            attention: false,
         })
     }
 

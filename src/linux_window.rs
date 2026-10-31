@@ -113,6 +113,8 @@ enum LinuxEvent {
     GridUpdated,
     WindowTitleChanged,
     UserAttention,
+    /// OSC 52 asked to put this text on the system clipboard.
+    ClipboardWrite(String),
     ReaderExited(ReaderStatus),
     WriterExited(WriterStatus),
 }
@@ -849,6 +851,8 @@ pub(crate) fn launch(
     let update_title_pending = window_title_pending.clone();
     let mut observed_window_title = WINDOW_TITLE.to_string();
     let attention_proxy = event_proxy.clone();
+    let clipboard_write_proxy = event_proxy.clone();
+    let osc52_write = config.clipboard.osc52_write;
     let reader = match TerminalReader::spawn_with_graphics(
         pty.clone(),
         grid.clone(),
@@ -863,6 +867,12 @@ pub(crate) fn launch(
                 TerminalEvent::Bell => {
                     reader_notifications.handle_bell();
                     let _ = attention_proxy.send_event(LinuxEvent::UserAttention);
+                    Ok(None)
+                }
+                TerminalEvent::ClipboardWrite(text) => {
+                    if osc52_write {
+                        let _ = clipboard_write_proxy.send_event(LinuxEvent::ClipboardWrite(text));
+                    }
                     Ok(None)
                 }
                 event => {
@@ -2057,6 +2067,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref()) {
                     if let Err(error) = self.handle_clipboard_event(event) {
                         self.fail(event_loop, error.to_string());
+                    }
+                }
+            }
+            LinuxEvent::ClipboardWrite(text) => {
+                if let Some(clipboard) = &self.clipboard {
+                    if let Err(error) = clipboard.copy_text(text) {
+                        log::warn!("could not apply OSC 52 clipboard write: {error}");
                     }
                 }
             }

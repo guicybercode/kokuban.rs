@@ -578,6 +578,11 @@ impl MetalRenderer {
 
         // " · ■" (focus indicator) at the right
         let indicator_x = x1 - cell_w * 2.0;
+        if pane.attention && !pane.is_focused {
+            let attention_color =
+                Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255);
+            self.render_char('●', indicator_x - cell_w, text_y, attention_color, bg, atlas, vertices);
+        }
         self.render_char('■', indicator_x, text_y, indicator_color, bg, atlas, vertices);
     }
 
@@ -629,7 +634,7 @@ impl MetalRenderer {
         let mut vertices = Vec::new();
         let half = DIVIDER_THICKNESS / 2.0;
 
-        let fg_color = if divider.touches_focused {
+        let fg_color = if divider.touches_focused || divider.touches_attention {
             chrome.hanko_red
         } else {
             chrome.sumi_ghost
