@@ -408,6 +408,7 @@ impl Grid {
     }
 
     pub(crate) fn title(&self) -> &str { &self.title }
+    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn title_revision(&self) -> u64 { self.title_revision }
 
     pub(crate) fn set_title(&mut self, title: &str) {

@@ -1,4 +1,5 @@
 pub mod box_drawing;
+#[cfg(target_os = "macos")]
 pub mod braille;
 #[cfg(target_os = "macos")]
 pub mod brush;
@@ -19,6 +20,8 @@ pub mod metal;
 #[cfg(target_os = "macos")]
 pub mod shaders;
 
+// Metal vertex layout; the Linux path rasterizes in software.
+#[cfg(target_os = "macos")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex {
@@ -28,6 +31,7 @@ pub struct Vertex {
     pub bg_color: u32,
 }
 
+#[cfg(target_os = "macos")]
 impl Vertex {
     pub fn new(x: f32, y: f32, u: f32, v: f32, fg: u32, bg: u32) -> Self {
         Self {

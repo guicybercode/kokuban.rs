@@ -1,3 +1,5 @@
+// Keybinds are dispatched by the macOS window; Linux routes keys in `input::linux`.
+#[cfg(any(target_os = "macos", test))]
 pub mod keybind;
 pub mod keyboard;
 #[cfg(target_os = "linux")]

@@ -177,6 +177,7 @@ impl Pty {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn master_fd(&self) -> RawFd {
         self.master().as_raw_fd()
     }
@@ -257,6 +258,7 @@ impl Pty {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
         self.resize_with_pixels(cols, rows, 0, 0)
     }

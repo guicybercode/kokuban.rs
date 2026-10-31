@@ -109,6 +109,7 @@ impl SelectionState {
     }
 
     /// Extract selected text from the grid.
+    #[cfg(any(target_os = "macos", test))]
     pub fn get_text(&self, grid: &Grid) -> String {
         self.get_text_with_limit(grid, usize::MAX)
             .unwrap_or_default()
