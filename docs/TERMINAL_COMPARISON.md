@@ -455,9 +455,9 @@ Evidências: [relatório X11](linux-evidence/2026-09-10-modern-terminals/x11.jso
 
 ## Matriz de recursos
 
-Estado em 2026-10-31. A coluna Kokuban descreve a `main` desta data; itens
-marcados "em PR" estão implementados em pull requests abertos e ainda não foram
-integrados. As colunas dos outros terminais vêm da documentação pública e de
+Estado em 2026-10-31, após a integração dos PRs #28–#33. A coluna Kokuban
+descreve a `main` desta data (busca e protocolo de teclado só no macOS; OSC 52
+somente escrita; protocolo kitty no nível 1, desambiguação). As colunas dos outros terminais vêm da documentação pública e de
 tabelas de capacidade de terceiros, não de medição nossa; células com "?" não
 foram verificadas em tempo hábil[^nv].
 
@@ -465,10 +465,10 @@ foram verificadas em tempo hábil[^nv].
 | --- | --- | --- | --- | --- | --- |
 | Imagens Kitty | sim | não | sim | sim | não |
 | Sixel | sim | não | não | não | não |
-| Hyperlinks OSC 8 | em PR | ?[^nv] | sim | sim | sim |
-| Clipboard OSC 52 (escrita) | em PR | não | sim | sim | sim |
-| Protocolo de teclado kitty | em PR | não | sim | sim | sim |
-| Busca no scrollback | em PR | sim | sem UI própria (kitten `hints`/pager) | sim (1.3) | não |
+| Hyperlinks OSC 8 | sim | ?[^nv] | sim | sim | sim |
+| Clipboard OSC 52 (escrita) | sim | não | sim | sim | sim |
+| Protocolo de teclado kitty | sim | não | sim | sim | sim |
+| Busca no scrollback | sim | sim | sem UI própria (kitten `hints`/pager) | sim (1.3) | não |
 | Painéis divididos | macOS | parcial (mesma sessão) | sim (layouts) | sim | não |
 | Renderização GPU | Metal no macOS; software no Linux | não | OpenGL | Metal/OpenGL | OpenGL |
 | Atualização embutida | sim (`kokuban --update`) | via macOS | não | macOS (Sparkle) | não |

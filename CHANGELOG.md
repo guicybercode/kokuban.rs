@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Scrollback search on macOS: `Cmd+F` opens a prompt in the status bar, `Enter` and `Shift+Enter` move between case-insensitive matches across soft-wrapped lines, `Esc` closes it; matches use the selection colors and the current one the hanko accent.
+- OSC 8 hyperlinks: links are tracked per absolute row and opened with `Cmd`+click on macOS or `Ctrl`+click on Linux through the system `open`/`xdg-open` (http, https, file and mailto only).
+- OSC 52 clipboard writes (reads are refused), base64 payloads up to 1 MiB with control characters stripped; disable with `[clipboard] osc52_write = false`.
+- kitty keyboard protocol, progressive-enhancement level 1 (disambiguate escape codes): push/pop/set/query of the flag stack per screen, and `CSI u` encodings for Escape, modified Enter/Tab/Backspace and Ctrl/Alt letters.
+- Per-pane attention on macOS: a BEL or desktop notification in an unfocused pane marks it with ● in the status bar and turns its dividers hanko red; `Cmd+Shift+A` jumps to the next marked pane.
+- Chalkboard factory theme: `#1f3a2a` board, `#f4f6f0` chalk text and cursor, chalk-inverted selection, window chrome in the same green family and hanko red as the only accent.
+- `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
+
+### Changed
+
+- README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
+- Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
+- macOS applies the configured ANSI palette and the configured cursor color follows the text color.
+
 ## v0.4 — 2026-09-28
 
 Self-update, macOS installer and desktop responsiveness update. The Git tag is `v0.4`; the Cargo package version is `0.4.0`.

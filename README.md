@@ -48,6 +48,7 @@ cargo build --release --locked
 - **Omarchy integration (Linux)**: launcher arguments, existing copy/paste shortcuts, live system palette and the system monospace font.
 - **Panes, zoom and prompt marks (macOS)**: vim-style splits, per-session font zoom, command-boundary navigation and a status bar.
 - **Selection and clipboard**: mouse selection on both platforms; asynchronous system clipboard on Linux.
+- **Daily-driver basics**: scrollback search (`Cmd+F`), clickable OSC 8 links, OSC 52 clipboard writes over SSH and tmux, the kitty keyboard protocol for Neovim and Helix, and a per-pane attention mark with `Cmd+Shift+A` to jump to it.
 - **Self-update**: `kokuban --update` downloads, verifies and replaces the running release.
 - **Configuration**: local or XDG TOML for fonts, colors, images and keybinds.
 

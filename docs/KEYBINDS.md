@@ -13,6 +13,7 @@ Linux supports these clipboard and selection actions:
 | Select all retained text | `Ctrl+Shift+A` |
 | Scroll history | `Shift+PageUp` / `Shift+PageDown` |
 | Oldest/newest retained view | `Shift+Home` / `Shift+End` |
+| Open an OSC 8 hyperlink | `Ctrl` + left click |
 
 Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
 
@@ -40,8 +41,13 @@ These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux 
 | Reset zoom          | `Cmd+0`             |
 | Previous prompt     | `Cmd+↑`             |
 | Next prompt         | `Cmd+↓`             |
+| Search scrollback   | `Cmd+F`             |
+| Next / previous match (while searching) | `Enter` / `Shift+Enter` |
+| Close search        | `Esc`               |
+| Jump to pane with attention | `Cmd+Shift+A` |
+| Open an OSC 8 hyperlink | `Cmd` + left click |
 
-The pane, resize, zoom and prompt-navigation bindings in the macOS table are configurable. Linux clipboard and scrollback shortcuts use their fixed input routes. On macOS, `Cmd+C` copies a selection or sends Ctrl+C when there is none; `Cmd+V` pastes.
+The pane, resize, zoom, prompt-navigation, search and attention bindings in the macOS table are configurable; the search prompt, mouse clicks and `Esc` are fixed. A pane is marked with ● in its status bar after a BEL or a desktop notification arrives while it is not focused, and dividers touching it turn hanko red. Linux clipboard and scrollback shortcuts use their fixed input routes. On macOS, `Cmd+C` copies a selection or sends Ctrl+C when there is none; `Cmd+V` pastes.
 
 
 The pane, zoom, prompt and search bindings apply to macOS and can be remapped under `[keybind]`; the Linux clipboard and scrollback inputs above are fixed.
