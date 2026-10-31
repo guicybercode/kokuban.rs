@@ -1,9 +1,24 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+/// Where the active configuration was read from. Set by the loader, never by the file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ConfigSource {
+    /// `kokuban.toml` in the current working directory.
+    Cwd,
+    /// The user's own configuration directory (`$XDG_CONFIG_HOME` or `~/.config`).
+    UserDir,
+    /// No configuration file was used.
+    #[default]
+    Default,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// Origin of this configuration; drives which settings are trusted.
+    #[serde(skip)]
+    pub source: ConfigSource,
     pub font: FontConfig,
     pub window: WindowConfig,
     pub colors: ColorConfig,
@@ -295,6 +310,7 @@ impl Default for KittyImagesConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            source: ConfigSource::Default,
             font: FontConfig::default(),
             window: WindowConfig::default(),
             colors: ColorConfig::default(),
@@ -443,8 +459,8 @@ impl Config {
         ))
     }
 
-    fn load_paths(paths: impl IntoIterator<Item = PathBuf>) -> Self {
-        for path in paths {
+    fn load_paths(paths: impl IntoIterator<Item = (ConfigSource, PathBuf)>) -> Self {
+        for (source, path) in paths {
             let contents = match std::fs::read_to_string(&path) {
                 Ok(contents) => contents,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -453,9 +469,11 @@ impl Config {
                     return Self::default();
                 }
             };
-            match toml::from_str(&contents) {
-                Ok(config) => {
+            match toml::from_str::<Self>(&contents) {
+                Ok(mut config) => {
                     log::info!("Loaded config from {}", path.display());
+                    config.source = source;
+                    config.apply_source_policy(&path);
                     return config;
                 }
                 Err(error) => {
@@ -467,11 +485,49 @@ impl Config {
         log::info!("No kokuban.toml found, using defaults");
         Self::default()
     }
+
+    /// Whether settings that execute programs or widen file access may be honored.
+    ///
+    /// A `kokuban.toml` in the current working directory can come from any
+    /// repository or archive the user happens to open a terminal in, so only the
+    /// user's own configuration directory (or the built-in defaults) is trusted
+    /// for those settings.
+    pub fn trusts_executable_settings(&self) -> bool {
+        matches!(self.source, ConfigSource::UserDir | ConfigSource::Default)
+    }
+
+    /// Strip settings a working-directory configuration is not allowed to set.
+    ///
+    /// Applied once by the loader so call sites read the fields as usual. There
+    /// is no override: move the file to the configuration directory instead.
+    fn apply_source_policy(&mut self, path: &std::path::Path) {
+        if self.trusts_executable_settings() {
+            return;
+        }
+        if self.notifications.command.is_some() {
+            log::warn!(
+                "{}: [notifications] command ignorado: configuração do diretório atual não pode executar programas",
+                path.display()
+            );
+            self.notifications.command = None;
+        }
+        if self.images.kitty.allow_file_transfer {
+            log::warn!(
+                "{}: [images.kitty] allow_file_transfer ignorado: configuração do diretório atual não pode abrir arquivos",
+                path.display()
+            );
+            self.images.kitty.allow_file_transfer = false;
+        }
+    }
 }
 
-fn config_paths(xdg_config_home: Option<PathBuf>, home: Option<PathBuf>) -> Vec<PathBuf> {
+fn config_paths(
+    xdg_config_home: Option<PathBuf>,
+    home: Option<PathBuf>,
+) -> Vec<(ConfigSource, PathBuf)> {
     // Keep project-local configuration first for existing development setups.
-    let mut paths = vec![PathBuf::from("kokuban.toml")];
+    // Its origin is recorded so the loader can refuse the settings it may not set.
+    let mut paths = vec![(ConfigSource::Cwd, PathBuf::from("kokuban.toml"))];
     let directory = xdg_config_home
         .filter(|path| path.is_absolute())
         .or_else(|| {
@@ -479,7 +535,10 @@ fn config_paths(xdg_config_home: Option<PathBuf>, home: Option<PathBuf>) -> Vec<
                 .map(|path| path.join(".config"))
         });
     if let Some(directory) = directory {
-        paths.push(directory.join("kokuban/kokuban.toml"));
+        paths.push((
+            ConfigSource::UserDir,
+            directory.join("kokuban/kokuban.toml"),
+        ));
     }
     paths
 }
@@ -500,8 +559,21 @@ impl ColorConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_paths, ColorConfig, Config, ImagesConfig};
+    use super::{config_paths, ColorConfig, Config, ConfigSource, ImagesConfig};
     use std::path::PathBuf;
+
+    fn temp_directory(label: &str) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "kokuban-config-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        directory
+    }
 
     #[test]
     fn parses_hex_colors_with_existing_prefix_and_case_support() {
@@ -547,55 +619,99 @@ mod tests {
         assert_eq!(
             config_paths(Some("/custom/config".into()), Some("/home/test".into())),
             [
-                PathBuf::from("kokuban.toml"),
-                "/custom/config/kokuban/kokuban.toml".into()
+                (ConfigSource::Cwd, PathBuf::from("kokuban.toml")),
+                (
+                    ConfigSource::UserDir,
+                    "/custom/config/kokuban/kokuban.toml".into()
+                )
             ]
         );
         for invalid_xdg in [None, Some(PathBuf::new()), Some("relative".into())] {
             assert_eq!(
                 config_paths(invalid_xdg, Some("/home/test".into())),
                 [
-                    PathBuf::from("kokuban.toml"),
-                    "/home/test/.config/kokuban/kokuban.toml".into()
+                    (ConfigSource::Cwd, PathBuf::from("kokuban.toml")),
+                    (
+                        ConfigSource::UserDir,
+                        "/home/test/.config/kokuban/kokuban.toml".into()
+                    )
                 ]
             );
         }
-        assert_eq!(config_paths(None, None), [PathBuf::from("kokuban.toml")]);
+        assert_eq!(
+            config_paths(None, None),
+            [(ConfigSource::Cwd, PathBuf::from("kokuban.toml"))]
+        );
     }
 
     #[test]
     fn loads_first_existing_configuration_without_merging_or_hiding_parse_errors() {
-        let directory = std::env::temp_dir().join(format!(
-            "kokuban-config-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir(&directory).unwrap();
+        let directory = temp_directory("order");
         let local = directory.join("local.toml");
         let user = directory.join("user.toml");
+        let paths = || {
+            [
+                (ConfigSource::Cwd, local.clone()),
+                (ConfigSource::UserDir, user.clone()),
+            ]
+        };
         std::fs::write(&user, "[window]\ncolumns = 93\n").unwrap();
-        assert_eq!(
-            Config::load_paths([local.clone(), user.clone()])
-                .window
-                .columns,
-            93
-        );
+        let config = Config::load_paths(paths());
+        assert_eq!(config.window.columns, 93);
+        assert_eq!(config.source, ConfigSource::UserDir);
         std::fs::write(&local, "[window]\ncolumns = 71\n").unwrap();
-        assert_eq!(
-            Config::load_paths([local.clone(), user.clone()])
-                .window
-                .columns,
-            71
-        );
+        let config = Config::load_paths(paths());
+        assert_eq!(config.window.columns, 71);
+        assert_eq!(config.source, ConfigSource::Cwd);
         std::fs::write(&local, "invalid toml [").unwrap();
-        assert_eq!(
-            Config::load_paths([local, user]).window.columns,
-            Config::default().window.columns
-        );
+        let config = Config::load_paths(paths());
+        assert_eq!(config.window.columns, Config::default().window.columns);
+        assert_eq!(config.source, ConfigSource::Default);
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    const EXECUTABLE_SETTINGS: &str = "[window]\ncolumns = 77\n\n[notifications]\ncommand = \"x\"\n\n[images.kitty]\nallow_file_transfer = true\n";
+
+    #[test]
+    fn working_directory_configuration_cannot_execute_programs_or_open_files() {
+        let directory = temp_directory("cwd");
+        let local = directory.join("kokuban.toml");
+        std::fs::write(&local, EXECUTABLE_SETTINGS).unwrap();
+        let config = Config::load_paths([(ConfigSource::Cwd, local)]);
+        assert_eq!(config.source, ConfigSource::Cwd);
+        assert!(!config.trusts_executable_settings());
+        assert_eq!(config.notifications.command, None);
+        assert!(!config.images.kitty.allow_file_transfer);
+        // Harmless settings from the same file are still honored.
+        assert_eq!(config.window.columns, 77);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn user_directory_configuration_keeps_executable_settings() {
+        let directory = temp_directory("user");
+        let user = directory.join("kokuban.toml");
+        std::fs::write(&user, EXECUTABLE_SETTINGS).unwrap();
+        let config = Config::load_paths([(ConfigSource::UserDir, user)]);
+        assert_eq!(config.source, ConfigSource::UserDir);
+        assert!(config.trusts_executable_settings());
+        assert_eq!(config.notifications.command.as_deref(), Some("x"));
+        assert!(config.images.kitty.allow_file_transfer);
+        assert_eq!(config.window.columns, 77);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn defaults_are_trusted_and_unchanged_by_the_source_policy() {
+        let config = Config::default();
+        assert_eq!(config.source, ConfigSource::Default);
+        assert!(config.trusts_executable_settings());
+        assert_eq!(config.notifications.command, None);
+        assert!(config.images.kitty.allow_file_transfer);
+        let missing = std::env::temp_dir().join("kokuban-config-missing-file.toml");
+        let config = Config::load_paths([(ConfigSource::Cwd, missing)]);
+        assert_eq!(config.source, ConfigSource::Default);
+        assert!(config.images.kitty.allow_file_transfer);
     }
 
     #[test]
