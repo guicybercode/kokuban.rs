@@ -32,9 +32,12 @@ jobs:
       - name: Install Rust 1.94.1
         shell: bash
         run: |
-          rustup toolchain install 1.94.1 --profile minimal --component clippy
+          rustup toolchain install 1.94.1 --profile minimal --component clippy,rustfmt
           rustup default 1.94.1
           rustc --version
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
       - name: Install Linux display and font dependencies
         if: runner.os == 'Linux'

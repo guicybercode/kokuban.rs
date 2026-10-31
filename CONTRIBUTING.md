@@ -42,13 +42,14 @@ Android development currently lives on `codex/android-native`. Coordinate shared
 From the repository root:
 
 ```sh
+rustup run 1.94.1 cargo fmt --all -- --check
 rustup run 1.94.1 cargo check --locked --all-targets
 rustup run 1.94.1 cargo test --locked --all-targets
 rustup run 1.94.1 cargo clippy --locked --all-targets
 git diff --check
 ```
 
-Format the code you change with rustfmt while avoiding unrelated churn. Run the checks supported by your platform and let CI verify the other platform. For Linux interaction, clipboard and SSH checks, see [Linux application validation](docs/LINUX_APPS.md); for images/video and measurements, see [video validation](docs/LINUX_VIDEO.md) and [release measurements](docs/LINUX_PERFORMANCE.md). Report exactly what ran and what remains untested.
+The whole repository is rustfmt-clean and CI fails on `cargo fmt --all -- --check`, so run `cargo fmt --all` before pushing. Run the checks supported by your platform and let CI verify the other platform. For Linux interaction, clipboard and SSH checks, see [Linux application validation](docs/LINUX_APPS.md); for images/video and measurements, see [video validation](docs/LINUX_VIDEO.md) and [release measurements](docs/LINUX_PERFORMANCE.md). Report exactly what ran and what remains untested.
 
 ## Open a pull request
 
