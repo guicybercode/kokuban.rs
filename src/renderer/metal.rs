@@ -75,13 +75,26 @@ fn glyph_uv_bounds(
     )
 }
 
+/// Frames the CPU may prepare while the GPU is still drawing earlier ones.
+const FRAMES_IN_FLIGHT: usize = 3;
+
+struct FrameBuffers {
+    vertex: Retained<ProtocolObject<dyn MTLBuffer>>,
+    uniform: Retained<ProtocolObject<dyn MTLBuffer>>,
+    /// Command buffer that last read these buffers; waited on before reuse.
+    in_flight: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
+}
+
 pub struct MetalRenderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     image_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    vertex_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    uniform_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
+    /// Per-frame vertex/uniform buffers. The CPU only writes a slot after the
+    /// command buffer that last read it has completed, so a new frame never
+    /// overwrites data the GPU is still consuming.
+    frames: [FrameBuffers; FRAMES_IN_FLIGHT],
+    frame_index: usize,
     atlas_texture: Retained<ProtocolObject<dyn MTLTexture>>,
     sampler_state: Retained<ProtocolObject<dyn MTLSamplerState>>,
     pub brush: BrushRenderer,
@@ -184,13 +197,15 @@ impl MetalRenderer {
 
             let max_vertices = 200 * 100 * 12;
             let buffer_size = max_vertices * std::mem::size_of::<Vertex>();
-            let vertex_buffer = device
-                .newBufferWithLength_options(buffer_size, MTLResourceOptions::StorageModeShared)
-                .expect("Failed to create vertex buffer");
-
-            let uniform_buffer = device
-                .newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
-                .expect("Failed to create uniform buffer");
+            let frames = std::array::from_fn(|_| FrameBuffers {
+                vertex: device
+                    .newBufferWithLength_options(buffer_size, MTLResourceOptions::StorageModeShared)
+                    .expect("Failed to create vertex buffer"),
+                uniform: device
+                    .newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
+                    .expect("Failed to create uniform buffer"),
+                in_flight: None,
+            });
 
             let tex_desc = MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 MTLPixelFormat::RGBA8Unorm,
@@ -219,8 +234,8 @@ impl MetalRenderer {
                 command_queue,
                 pipeline_state,
                 image_pipeline_state,
-                vertex_buffer,
-                uniform_buffer,
+                frames,
+                frame_index: 0,
                 atlas_texture,
                 sampler_state,
                 brush,
@@ -850,19 +865,31 @@ impl MetalRenderer {
             return;
         }
 
+        let slot = self.frame_index;
+        self.frame_index = (slot + 1) % FRAMES_IN_FLIGHT;
+        // Block only if the GPU is still reading this slot (three frames back).
+        if let Some(previous) = self.frames[slot].in_flight.take() {
+            previous.waitUntilCompleted();
+        }
+
         unsafe {
             let needed = all_vertices.len() * std::mem::size_of::<Vertex>();
-            if needed > self.vertex_buffer.length() {
-                self.vertex_buffer = self
+            if needed > self.frames[slot].vertex.length() {
+                self.frames[slot].vertex = self
                     .device
                     .newBufferWithLength_options(needed * 2, MTLResourceOptions::StorageModeShared)
                     .expect("Failed to resize vertex buffer");
             }
 
-            let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
+            // SAFETY: the slot's command buffer completed above, the buffer is
+            // StorageModeShared and at least `needed` bytes long, and
+            // `all_vertices` is a valid, non-overlapping source.
+            let ptr = self.frames[slot].vertex.contents().as_ptr() as *mut Vertex;
             std::ptr::copy_nonoverlapping(all_vertices.as_ptr(), ptr, all_vertices.len());
 
-            let ptr = self.uniform_buffer.contents().as_ptr() as *mut [f32; 2];
+            // SAFETY: the uniform buffer is 16 bytes of shared memory, enough
+            // for two f32, and nothing else writes it while this frame runs.
+            let ptr = self.frames[slot].uniform.contents().as_ptr() as *mut [f32; 2];
             *ptr = [viewport_width, viewport_height];
 
             if atlas.dirty {
@@ -912,8 +939,8 @@ impl MetalRenderer {
                 .expect("Failed to create render encoder");
 
             encoder.setRenderPipelineState(&self.pipeline_state);
-            encoder.setVertexBuffer_offset_atIndex(Some(&self.vertex_buffer), 0, 0);
-            encoder.setVertexBuffer_offset_atIndex(Some(&self.uniform_buffer), 0, 1);
+            encoder.setVertexBuffer_offset_atIndex(Some(&self.frames[slot].vertex), 0, 0);
+            encoder.setVertexBuffer_offset_atIndex(Some(&self.frames[slot].uniform), 0, 1);
             encoder.setFragmentSamplerState_atIndex(Some(&self.sampler_state), 0);
 
             // Draw pane content + status bars with atlas texture
@@ -969,6 +996,7 @@ impl MetalRenderer {
 
             command_buffer.presentDrawable(drawable);
             command_buffer.commit();
+            self.frames[slot].in_flight = Some(command_buffer);
         }
     }
 
