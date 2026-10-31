@@ -280,8 +280,12 @@ impl MetalRenderer {
         chrome: &ChromeColors,
         status_bar_height: f32,
         prompt_indicator_color: Option<(u8, u8, u8)>,
+        bg_opacity: f32,
         vertices: &mut Vec<Vertex>,
     ) {
+        // Cells that keep the default background share the window opacity;
+        // explicit colors, selections and search matches stay opaque.
+        let default_bg_alpha = (bg_opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
         let grid = pane.grid;
         // Resultado atual da busca: fundo hanko_red com texto claro.
         const SEARCH_CURRENT_FG: (u8, u8, u8) = (255, 255, 255);
@@ -316,7 +320,7 @@ impl MetalRenderer {
                     .map(|s| s.contains_cell(grid, row, col))
                     .unwrap_or(false);
                 let search_kind = pane.search.and_then(|s| s.contains_cell(grid, row, col));
-                let (fg_packed, bg_packed) = match search_kind {
+                let (fg_packed, mut bg_packed) = match search_kind {
                     Some(MatchKind::Current) => Self::pack_cell_colors(
                         fg,
                         bg,
@@ -339,6 +343,14 @@ impl MetalRenderer {
                         selected_by_range,
                     ),
                 };
+                if default_bg_alpha < 255
+                    && search_kind.is_none()
+                    && !selected_by_range
+                    && cell.bg == Color::Default
+                    && !cell.flags.contains(CellFlags::REVERSE)
+                {
+                    bg_packed = (bg_packed & !0xff) | default_bg_alpha;
+                }
 
                 let x0 = rect.x + col as f32 * cell_w;
                 let y0 = rect.y + row as f32 * cell_h;
@@ -781,7 +793,7 @@ impl MetalRenderer {
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {
-            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, &mut content_vertices);
+            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, bg_opacity, &mut content_vertices);
             self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, status_bar_layout, &mut content_vertices);
         }
 
