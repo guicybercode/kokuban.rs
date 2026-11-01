@@ -1085,8 +1085,8 @@ define_class!(
                 let state = state.borrow();
                 let state = state.as_ref();
                 (
-                    state.map_or(false, |s| s.marked_text.is_some()),
-                    state.map_or(true, |s| option_acts_as_meta(modifiers, s.option_as_alt)),
+                    state.is_some_and(|s| s.marked_text.is_some()),
+                    state.is_none_or(|s| option_acts_as_meta(modifiers, s.option_as_alt)),
                 )
             });
             let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
