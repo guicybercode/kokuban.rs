@@ -39,12 +39,27 @@ enabled = true
 # Optional helper invoked with title/body in KOKUBAN_NOTIFICATION_TITLE / _BODY only
 # (never through a shell). Leave unset to use the built-in notify-send / osascript path.
 # Do not set this to notify-send itself — that binary expects argv, not these env vars.
+# Only read from ~/.config/kokuban/kokuban.toml: a kokuban.toml in the launch
+# directory cannot make Kokuban run a program, and this key is ignored there.
 # command = "/usr/local/bin/kokuban-notify-hook"
+
+[images.kitty]
+# Let kitty-protocol clients ask Kokuban to read an image from a local path
+# (t=f / t=t). Set to false to keep every transfer in the terminal byte stream.
+# Only read from ~/.config/kokuban/kokuban.toml: a kokuban.toml in the launch
+# directory always behaves as if this were false.
+allow_file_transfer = true
 
 [clipboard]
 # Allow programs (tmux, Neovim, SSH sessions) to copy text to the system clipboard
 # with OSC 52. Only writes are honoured; clipboard reads are never answered.
 osc52_write = true
+
+[input]
+# macOS: which Option key sends ESC-prefixed Meta sequences. "both" (default),
+# "left" or "right" keep the other side for accents (∫, ç); "none" lets macOS
+# compose text with both keys.
+option_as_alt = "both"
 
 [prompt_marks]
 enabled = true

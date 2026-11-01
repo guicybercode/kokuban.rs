@@ -578,6 +578,8 @@ mod tests {
     }
 
     #[test]
+    // Row/column numbers index the reference model and drive the buffer API alike.
+    #[allow(clippy::needless_range_loop)]
     fn repeated_region_scrolls_preserve_row_edits_and_reconstruction_order() {
         let mut buffer = Buffer::new(9, 7);
         let mut expected = vec![vec![Cell::default(); 9]; 7];
@@ -655,6 +657,8 @@ mod tests {
     }
 
     #[test]
+    // Row/column numbers index the reference model and drive the buffer API alike.
+    #[allow(clippy::needless_range_loop)]
     fn row_offset_rotation_keeps_graphemes_lengths_and_wrap_flags_together() {
         let mut buffer = Buffer::new(8, 6);
         for row in 0..6 {
@@ -684,6 +688,8 @@ mod tests {
     }
 
     #[test]
+    // Row/column numbers index the reference model and drive the buffer API alike.
+    #[allow(clippy::needless_range_loop)]
     fn scrolling_preserves_cells_outside_the_region_and_fills_exposed_rows() {
         let template = Cell {
             c: ' ',

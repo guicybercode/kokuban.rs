@@ -152,12 +152,6 @@ impl Parser {
         }
     }
 
-    pub fn feed(&mut self, input: &[u8], grid: &mut Grid) {
-        for &byte in input {
-            self.advance(byte, grid);
-        }
-    }
-
     fn advance(&mut self, byte: u8, grid: &mut Grid) {
         match self.state {
             State::Ground => self.ground(byte, grid),
@@ -712,7 +706,7 @@ impl Parser {
 
     fn execute(&mut self, byte: u8, grid: &mut Grid) {
         match byte {
-            0x0a | 0x0b | 0x0c => grid.newline(),
+            0x0a..=0x0c => grid.newline(),
             0x0d => grid.carriage_return(),
             0x08 => grid.backspace(),
             0x09 => grid.tab(),

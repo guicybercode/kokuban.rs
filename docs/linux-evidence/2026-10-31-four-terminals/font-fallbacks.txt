@@ -1,0 +1,10 @@
+DejaVu Sans Mono|/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+DejaVu Sans Mono|/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf
+DejaVu Sans Mono|/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf
+DejaVu Sans|/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+DejaVu Serif|/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf
+Noto Sans CJK JP|/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+Noto Serif CJK JP|/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc
+DejaVu Sans|/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+DejaVu Serif|/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf
+Noto Color Emoji|/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf
