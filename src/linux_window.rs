@@ -9,9 +9,8 @@ use crate::input::linux::{
     ImeCommitPayload, ScrollbackAction,
 };
 use crate::input::mouse::{
-    encode_alternate_scroll_steps, encode_mouse_event, mouse_button_with_modifier_flags,
-    mouse_wheel_route, MouseWheelRoute, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
-    MAX_WHEEL_STEPS_PER_EVENT,
+    encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
+    MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
 };
 use crate::input::paste::{encode_paste, MAX_PASTE_BYTES};
 use crate::linux_clipboard::{ClipboardEvent, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES};
@@ -49,6 +48,7 @@ mod damage;
 mod status;
 mod clipboard;
 mod sizing;
+mod pointer;
 #[cfg(test)]
 mod test_support;
 
@@ -68,6 +68,11 @@ use sizing::{
     set_grid_cell_dimensions, terminal_dimensions_from_grid, terminal_dimensions_from_locked_grid,
     terminal_size_for_surface, GlyphAtlasRebuildError, TerminalDimensions,
     TerminalSize, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+};
+use pointer::{
+    accumulate_wheel_steps, apply_wheel_scrollback, mouse_button_code_from_winit,
+    mouse_button_with_modifiers, terminal_cell_at_mouse_button, terminal_cell_at_mouse_motion,
+    terminal_cell_at_pointer, MouseMotionState, MouseWheelState, PointerRouteState,
 };
 
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
@@ -145,281 +150,6 @@ enum GridAccessError {
     Poisoned,
     #[error("terminal grid dimensions {columns}x{rows} exceed the Linux PTY limit")]
     DimensionsOutOfRange { columns: usize, rows: usize },
-}
-
-#[derive(Debug, Default)]
-struct MouseWheelState {
-    line_remainder: f64,
-    last_route: Option<MouseWheelRoute>,
-}
-
-impl MouseWheelState {
-    fn reset(&mut self) {
-        self.line_remainder = 0.0;
-        self.last_route = None;
-    }
-}
-
-#[derive(Debug, Default)]
-struct MouseMotionState {
-    // Xterm reports character-cell transitions, not raw subpixel movement.
-    last_cell: Option<(usize, usize)>,
-}
-
-impl MouseMotionState {
-    fn reset(&mut self) {
-        self.last_cell = None;
-    }
-
-    fn anchor(&mut self, cell: (usize, usize)) {
-        self.last_cell = Some(cell);
-    }
-
-    fn record_dispatch(&mut self, outcome: MouseMotionDispatchOutcome) {
-        if let MouseMotionDispatchOutcome::Observed(cell)
-        | MouseMotionDispatchOutcome::Enqueued(cell) = outcome
-        {
-            self.anchor(cell);
-        }
-    }
-}
-
-#[derive(Debug)]
-struct PointerRouteState<D: Copy + Eq> {
-    active_device: Option<D>,
-    position: Option<PhysicalPosition<f64>>,
-    wheel_state: MouseWheelState,
-    motion_state: MouseMotionState,
-    // Physical state is separate from successfully forwarded presses so 1002 can
-    // become active while a button that was pressed under another mode is held.
-    held_buttons: u8,
-    held_button_order: [u8; 3],
-    held_button_count: u8,
-    forwarded_buttons: u8,
-    left_while_captured: bool,
-    captured_cell_dimensions: Option<(u16, u16)>,
-    position_uses_captured_metrics: bool,
-}
-
-impl<D: Copy + Eq> Default for PointerRouteState<D> {
-    fn default() -> Self {
-        Self {
-            active_device: None,
-            position: None,
-            wheel_state: MouseWheelState::default(),
-            motion_state: MouseMotionState::default(),
-            held_buttons: 0,
-            held_button_order: [0; 3],
-            held_button_count: 0,
-            forwarded_buttons: 0,
-            left_while_captured: false,
-            captured_cell_dimensions: None,
-            position_uses_captured_metrics: false,
-        }
-    }
-}
-
-impl<D: Copy + Eq> PointerRouteState<D> {
-    fn reset(&mut self) {
-        self.active_device = None;
-        self.position = None;
-        self.wheel_state.reset();
-        self.motion_state.reset();
-        self.held_buttons = 0;
-        self.held_button_order = [0; 3];
-        self.held_button_count = 0;
-        self.forwarded_buttons = 0;
-        self.left_while_captured = false;
-        self.captured_cell_dimensions = None;
-        self.position_uses_captured_metrics = false;
-    }
-
-    fn select_device(&mut self, device_id: D) -> bool {
-        if self.active_device == Some(device_id) {
-            return true;
-        }
-        if self.has_pointer_capture() {
-            return false;
-        }
-        self.reset();
-        self.active_device = Some(device_id);
-        true
-    }
-
-    fn cursor_entered(&mut self, device_id: D) {
-        if self.select_device(device_id) {
-            self.left_while_captured = false;
-        }
-    }
-
-    fn cursor_moved(&mut self, device_id: D, position: PhysicalPosition<f64>) -> bool {
-        if !self.select_device(device_id) {
-            return false;
-        }
-        self.position = Some(position);
-        self.position_uses_captured_metrics = false;
-        true
-    }
-
-    fn cursor_left(&mut self, device_id: D) {
-        if self.active_device == Some(device_id) {
-            self.motion_state.reset();
-            if !self.has_pointer_capture() {
-                self.reset();
-            } else {
-                self.left_while_captured = true;
-            }
-        }
-    }
-
-    fn position_for(&self, device_id: D) -> Option<PhysicalPosition<f64>> {
-        if self.active_device == Some(device_id) {
-            self.position
-        } else {
-            None
-        }
-    }
-
-    fn select_wheel_device(&mut self, device_id: D) -> Option<Option<PhysicalPosition<f64>>> {
-        if !self.select_device(device_id) {
-            return None;
-        }
-        Some(if self.position_uses_captured_metrics {
-            None
-        } else {
-            self.position
-        })
-    }
-
-    fn button_cell_dimensions_for(
-        &self,
-        device_id: D,
-        state: ElementState,
-        button: Option<u8>,
-        current: Option<(u16, u16)>,
-    ) -> Option<(u16, u16)> {
-        if self.active_device != Some(device_id) || !self.position_uses_captured_metrics {
-            return current;
-        }
-        let captured_release = state == ElementState::Released
-            && button
-                .filter(|button| *button <= 2)
-                .is_some_and(|button| self.forwarded_buttons & (1 << button) != 0);
-        if captured_release {
-            self.captured_cell_dimensions.or(current)
-        } else {
-            None
-        }
-    }
-
-    fn scale_factor_changed(&mut self, current_cell_dimensions: Option<(u16, u16)>) {
-        self.wheel_state.reset();
-        self.motion_state.reset();
-        if !self.has_pointer_capture() {
-            self.reset();
-        } else if self.forwarded_buttons != 0 {
-            if !self.position_uses_captured_metrics {
-                self.captured_cell_dimensions =
-                    current_cell_dimensions.or(self.captured_cell_dimensions);
-            }
-            self.position_uses_captured_metrics = true;
-        } else {
-            self.position = None;
-            self.captured_cell_dimensions = None;
-            self.position_uses_captured_metrics = false;
-        }
-    }
-
-    fn record_physical_button_event(
-        &mut self,
-        device_id: D,
-        state: ElementState,
-        button: Option<u8>,
-    ) -> bool {
-        let Some(button) = button.filter(|button| *button <= 2) else {
-            return self.active_device == Some(device_id);
-        };
-        match state {
-            ElementState::Pressed => {
-                if !self.select_device(device_id) {
-                    return false;
-                }
-                self.remove_held_button(button);
-                let index = usize::from(self.held_button_count);
-                self.held_button_order[index] = button;
-                self.held_button_count += 1;
-                self.held_buttons |= 1 << button;
-            }
-            ElementState::Released => {
-                if self.active_device != Some(device_id) {
-                    return false;
-                }
-                self.remove_held_button(button);
-            }
-        }
-        true
-    }
-
-    fn active_motion_button(&self) -> Option<u8> {
-        self.held_button_count
-            .checked_sub(1)
-            .map(|index| self.held_button_order[usize::from(index)])
-    }
-
-    fn has_pointer_capture(&self) -> bool {
-        self.held_buttons != 0 || self.forwarded_buttons != 0
-    }
-
-    fn remove_held_button(&mut self, button: u8) {
-        let count = usize::from(self.held_button_count);
-        let Some(index) = self.held_button_order[..count]
-            .iter()
-            .position(|held| *held == button)
-        else {
-            self.held_buttons &= !(1 << button);
-            return;
-        };
-        self.held_button_order.copy_within(index + 1..count, index);
-        self.held_button_count -= 1;
-        self.held_button_order[usize::from(self.held_button_count)] = 0;
-        self.held_buttons &= !(1 << button);
-    }
-
-    fn record_button_dispatch(
-        &mut self,
-        device_id: D,
-        state: ElementState,
-        button: Option<u8>,
-        forwarded: bool,
-        cell_dimensions: Option<(u16, u16)>,
-    ) {
-        let Some(button) = button.filter(|button| *button <= 2) else {
-            return;
-        };
-        let mask = 1 << button;
-        match state {
-            ElementState::Pressed if forwarded && self.active_device == Some(device_id) => {
-                self.forwarded_buttons |= mask;
-                self.captured_cell_dimensions = cell_dimensions;
-            }
-            ElementState::Released if self.active_device == Some(device_id) => {
-                self.forwarded_buttons &= !mask;
-                if !self.has_pointer_capture() {
-                    if self.left_while_captured {
-                        self.reset();
-                    } else {
-                        if self.position_uses_captured_metrics {
-                            self.position = None;
-                            self.motion_state.reset();
-                        }
-                        self.captured_cell_dimensions = None;
-                        self.position_uses_captured_metrics = false;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
 }
 
 #[derive(Debug, Error)]
@@ -2042,133 +1772,6 @@ where
         encode(application_cursor_keys, kitty_disambiguate),
         write,
     )
-}
-
-fn accumulate_wheel_steps(
-    delta: MouseScrollDelta,
-    cell_height: Option<u16>,
-    remainder: &mut f64,
-) -> i32 {
-    let line_delta = match delta {
-        MouseScrollDelta::LineDelta(_, vertical) => f64::from(vertical),
-        MouseScrollDelta::PixelDelta(position) => {
-            let Some(cell_height) = cell_height.filter(|height| *height != 0) else {
-                *remainder = 0.0;
-                return 0;
-            };
-            position.y / f64::from(cell_height)
-        }
-    };
-    if !line_delta.is_finite() {
-        *remainder = 0.0;
-        return 0;
-    }
-
-    let total = *remainder + line_delta;
-    if !total.is_finite() {
-        *remainder = 0.0;
-        return 0;
-    }
-    let whole_steps = total.trunc();
-    let limit = f64::from(MAX_WHEEL_STEPS_PER_EVENT);
-    if whole_steps.abs() > limit {
-        *remainder = 0.0;
-        return if whole_steps.is_sign_positive() {
-            i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
-        } else {
-            -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
-        };
-    }
-
-    *remainder = total - whole_steps;
-    whole_steps as i32
-}
-
-fn terminal_cell_at_pointer(
-    position: PhysicalPosition<f64>,
-    cell_dimensions: (u16, u16),
-    terminal_dimensions: TerminalDimensions,
-) -> Option<(usize, usize)> {
-    if !position.x.is_finite()
-        || !position.y.is_finite()
-        || position.x < 0.0
-        || position.y < 0.0
-        || cell_dimensions.0 == 0
-        || cell_dimensions.1 == 0
-        || terminal_dimensions.columns == 0
-        || terminal_dimensions.rows == 0
-    {
-        return None;
-    }
-
-    let last_column = terminal_dimensions.columns - 1;
-    let last_row = terminal_dimensions.rows - 1;
-    let column = (position.x / f64::from(cell_dimensions.0))
-        .floor()
-        .min(f64::from(last_column)) as usize;
-    let row = (position.y / f64::from(cell_dimensions.1))
-        .floor()
-        .min(f64::from(last_row)) as usize;
-    Some((column + 1, row + 1))
-}
-
-fn terminal_cell_at_mouse_button(
-    position: PhysicalPosition<f64>,
-    cell_dimensions: (u16, u16),
-    terminal_dimensions: TerminalDimensions,
-    state: ElementState,
-) -> Option<(usize, usize)> {
-    let position =
-        if state == ElementState::Released && position.x.is_finite() && position.y.is_finite() {
-            PhysicalPosition::new(position.x.max(0.0), position.y.max(0.0))
-        } else {
-            position
-        };
-    terminal_cell_at_pointer(position, cell_dimensions, terminal_dimensions)
-}
-
-fn terminal_cell_at_mouse_motion(
-    position: PhysicalPosition<f64>,
-    cell_dimensions: (u16, u16),
-    terminal_dimensions: TerminalDimensions,
-    button_held: bool,
-) -> Option<(usize, usize)> {
-    let position = if button_held && position.x.is_finite() && position.y.is_finite() {
-        PhysicalPosition::new(position.x.max(0.0), position.y.max(0.0))
-    } else {
-        position
-    };
-    terminal_cell_at_pointer(position, cell_dimensions, terminal_dimensions)
-}
-
-fn apply_wheel_scrollback(grid: &mut Grid, steps: i32) -> bool {
-    let previous_offset = grid.scroll_offset;
-    let lines = usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
-        .expect("bounded wheel steps should fit usize");
-    if steps.is_positive() {
-        grid.scroll_viewport_up(lines);
-    } else {
-        grid.scroll_viewport_down(lines);
-    }
-    grid.scroll_offset != previous_offset
-}
-
-fn mouse_button_with_modifiers(button: u8, modifiers: ModifiersState) -> u8 {
-    mouse_button_with_modifier_flags(
-        button,
-        modifiers.shift_key(),
-        modifiers.alt_key(),
-        modifiers.control_key(),
-    )
-}
-
-fn mouse_button_code_from_winit(button: MouseButton) -> Option<u8> {
-    match button {
-        MouseButton::Left => Some(0),
-        MouseButton::Middle => Some(1),
-        MouseButton::Right => Some(2),
-        MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => None,
-    }
 }
 
 #[cfg(test)]
@@ -3995,7 +3598,6 @@ mod tests {
     use super::sizing::TerminalResizeError;
     use super::test_support::{test_atlas, test_colors, DEFAULT_BACKGROUND, DEFAULT_FOREGROUND};
     use super::{
-        accumulate_wheel_steps,
         apply_scrollback_action,
         arm_grid_redraw,
         arm_window_title_update,
@@ -4025,8 +3627,6 @@ mod tests {
         layout_ime_preedit_for_snapshot,
         layout_ime_preedit_with_mode,
         modifiers_after_focus_change,
-        mouse_button_code_from_winit,
-        mouse_button_with_modifiers,
         record_window_focus_change,
         replace_ime_preedit,
         resize_terminal_with,
@@ -4038,7 +3638,6 @@ mod tests {
         snapshot_grid,
         snapshot_window_title,
         sync_ime_cursor_area_with,
-        terminal_cell_at_pointer,
         terminal_color_query_value,
         terminal_size_for_surface,
         underline_anchor_y,
@@ -4056,7 +3655,6 @@ mod tests {
         MouseWheelState,
         PointerRouteState,
         ResolvedCellColors,
-        TerminalDimensions,
         CURSOR_THICKNESS,
         IME_PREEDIT_REPLACEMENT,
         MAX_IME_PREEDIT_BYTES,
@@ -4068,9 +3666,6 @@ mod tests {
     use crate::grid::cell::{Cell, CellFlags, Color, UnderlineStyle};
     use crate::grid::{CursorShape, Grid, MouseEncoding, MouseTracking};
     use crate::input::linux::{ime_commit_payload, ImeCommitPayload, ScrollbackAction};
-    use crate::input::mouse::{
-        MouseWheelRoute, MOUSE_WHEEL_UP, MAX_WHEEL_STEPS_PER_EVENT,
-    };
     use crate::terminal_writer::TerminalWriteQueueError;
     use std::cell::RefCell;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -5335,135 +4930,6 @@ mod tests {
     }
 
     #[test]
-    fn wheel_delta_accumulates_fractional_lines_and_bounds_each_event() {
-        let mut remainder = 0.0;
-
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::LineDelta(7.0, 0.5),
-                Some(20),
-                &mut remainder,
-            ),
-            0,
-            "horizontal motion must not affect vertical wheel steps"
-        );
-        assert_eq!(remainder, 0.5);
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::LineDelta(0.0, 0.5),
-                Some(20),
-                &mut remainder,
-            ),
-            1
-        );
-        assert_eq!(remainder, 0.0);
-
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -5.0)),
-                Some(20),
-                &mut remainder,
-            ),
-            0
-        );
-        assert_eq!(remainder, -0.25);
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -15.0)),
-                Some(20),
-                &mut remainder,
-            ),
-            -1
-        );
-        assert_eq!(remainder, 0.0);
-
-        remainder = 0.75;
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, 10.0)),
-                None,
-                &mut remainder,
-            ),
-            0
-        );
-        assert_eq!(remainder, 0.0);
-
-        remainder = 0.5;
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::LineDelta(0.0, f32::NAN),
-                Some(20),
-                &mut remainder,
-            ),
-            0
-        );
-        assert_eq!(remainder, 0.0);
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::PixelDelta(PhysicalPosition::new(0.0, f64::INFINITY)),
-                Some(20),
-                &mut remainder,
-            ),
-            0
-        );
-        assert_eq!(remainder, 0.0);
-
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::LineDelta(0.0, f32::MAX),
-                Some(20),
-                &mut remainder,
-            ),
-            i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).unwrap()
-        );
-        assert_eq!(remainder, 0.0);
-        assert_eq!(
-            accumulate_wheel_steps(
-                MouseScrollDelta::LineDelta(0.0, -f32::MAX),
-                Some(20),
-                &mut remainder,
-            ),
-            -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).unwrap()
-        );
-        assert_eq!(remainder, 0.0);
-    }
-
-    #[test]
-    fn mouse_wheel_modifiers_match_xterm_button_bits() {
-        for (modifiers, expected) in [
-            (ModifiersState::empty(), MOUSE_WHEEL_UP),
-            (ModifiersState::SUPER, MOUSE_WHEEL_UP),
-            (ModifiersState::SHIFT, MOUSE_WHEEL_UP | 4),
-            (ModifiersState::ALT, MOUSE_WHEEL_UP | 8),
-            (ModifiersState::CONTROL, MOUSE_WHEEL_UP | 16),
-            (
-                ModifiersState::SHIFT | ModifiersState::ALT | ModifiersState::CONTROL,
-                MOUSE_WHEEL_UP | 4 | 8 | 16,
-            ),
-        ] {
-            assert_eq!(
-                mouse_button_with_modifiers(MOUSE_WHEEL_UP, modifiers),
-                expected
-            );
-        }
-    }
-
-    #[test]
-    fn maps_only_primary_winit_mouse_buttons_to_xterm_codes() {
-        for (button, expected) in [
-            (MouseButton::Left, Some(0)),
-            (MouseButton::Middle, Some(1)),
-            (MouseButton::Right, Some(2)),
-            (MouseButton::Back, None),
-            (MouseButton::Forward, None),
-            (MouseButton::Other(0), None),
-            (MouseButton::Other(u16::MAX), None),
-        ] {
-            assert_eq!(mouse_button_code_from_winit(button), expected);
-        }
-    }
-
-    #[test]
     fn pointer_route_isolates_mouse_button_positions_by_device() {
         let mut history = grid_with_scrollback(4, 10);
         history.mouse_tracking = MouseTracking::Normal;
@@ -5715,198 +5181,6 @@ mod tests {
         pointer_route.cursor_moved(2, second_position);
         assert_eq!(pointer_route.active_device, Some(2));
         assert_eq!(pointer_route.position_for(2), Some(second_position));
-    }
-
-    #[test]
-    fn pointer_route_releases_chords_even_when_the_release_is_not_forwarded() {
-        let mut pointer_route = PointerRouteState::<u8>::default();
-        pointer_route.cursor_moved(1, PhysicalPosition::new(15.0, 25.0));
-        pointer_route.record_button_dispatch(
-            1,
-            ElementState::Pressed,
-            Some(0),
-            true,
-            Some((10, 20)),
-        );
-        pointer_route.record_button_dispatch(
-            1,
-            ElementState::Pressed,
-            Some(2),
-            true,
-            Some((10, 20)),
-        );
-        assert_eq!(pointer_route.forwarded_buttons, 0b101);
-
-        pointer_route.scale_factor_changed(Some((10, 20)));
-        assert_eq!(pointer_route.select_wheel_device(1), Some(None));
-        let moved_position = PhysicalPosition::new(45.0, 65.0);
-        pointer_route.cursor_moved(1, moved_position);
-        assert_eq!(
-            pointer_route.select_wheel_device(1),
-            Some(Some(moved_position))
-        );
-        assert!(!pointer_route.position_uses_captured_metrics);
-
-        pointer_route.cursor_left(1);
-        pointer_route.record_button_dispatch(
-            2,
-            ElementState::Released,
-            Some(2),
-            false,
-            Some((10, 20)),
-        );
-        assert_eq!(
-            pointer_route.forwarded_buttons, 0b101,
-            "another device must not release a captured button"
-        );
-
-        pointer_route.record_button_dispatch(
-            1,
-            ElementState::Released,
-            Some(0),
-            false,
-            Some((10, 20)),
-        );
-        assert_eq!(pointer_route.active_device, Some(1));
-        assert_eq!(pointer_route.forwarded_buttons, 0b100);
-        assert!(pointer_route.left_while_captured);
-
-        pointer_route.record_button_dispatch(
-            1,
-            ElementState::Released,
-            Some(2),
-            false,
-            Some((10, 20)),
-        );
-        assert_eq!(pointer_route.active_device, None);
-        assert_eq!(pointer_route.position, None);
-        assert_eq!(pointer_route.forwarded_buttons, 0);
-        assert!(!pointer_route.left_while_captured);
-    }
-
-    #[test]
-    fn pointer_route_drops_stale_dpi_position_after_the_last_release() {
-        let mut pointer_route = PointerRouteState::<u8>::default();
-        let old_position = PhysicalPosition::new(15.0, 25.0);
-        pointer_route.cursor_moved(1, old_position);
-        pointer_route.record_button_dispatch(
-            1,
-            ElementState::Pressed,
-            Some(0),
-            true,
-            Some((10, 20)),
-        );
-        pointer_route.scale_factor_changed(Some((10, 20)));
-        assert_eq!(
-            pointer_route.button_cell_dimensions_for(
-                1,
-                ElementState::Released,
-                Some(0),
-                Some((20, 40)),
-            ),
-            Some((10, 20))
-        );
-
-        pointer_route.record_button_dispatch(
-            1,
-            ElementState::Released,
-            Some(0),
-            false,
-            Some((10, 20)),
-        );
-        assert_eq!(pointer_route.active_device, Some(1));
-        assert_eq!(pointer_route.position, None);
-        assert_eq!(pointer_route.forwarded_buttons, 0);
-        assert_eq!(pointer_route.captured_cell_dimensions, None);
-        assert!(!pointer_route.position_uses_captured_metrics);
-
-        let new_position = PhysicalPosition::new(35.0, 45.0);
-        pointer_route.cursor_moved(1, new_position);
-        assert_eq!(pointer_route.position_for(1), Some(new_position));
-    }
-
-    #[test]
-    fn pointer_route_resets_on_device_changes_matching_leaves_and_scale_changes() {
-        let mut pointer_route = PointerRouteState::<u8>::default();
-        let second_position = PhysicalPosition::new(25.0, 45.0);
-
-        pointer_route.cursor_moved(1, PhysicalPosition::new(5.0, 5.0));
-        pointer_route.wheel_state.line_remainder = 0.5;
-        pointer_route.wheel_state.last_route = Some(MouseWheelRoute::Scrollback);
-        pointer_route.cursor_entered(2);
-        assert_eq!(pointer_route.active_device, Some(2));
-        assert_eq!(pointer_route.position, None);
-        assert_eq!(pointer_route.wheel_state.line_remainder, 0.0);
-        assert_eq!(pointer_route.wheel_state.last_route, None);
-
-        pointer_route.cursor_moved(2, second_position);
-        pointer_route.wheel_state.line_remainder = 0.75;
-        pointer_route.wheel_state.last_route = Some(MouseWheelRoute::Scrollback);
-        pointer_route.cursor_entered(2);
-        pointer_route.cursor_left(1);
-        assert_eq!(pointer_route.active_device, Some(2));
-        assert_eq!(pointer_route.position, Some(second_position));
-        assert_eq!(pointer_route.wheel_state.line_remainder, 0.75);
-        assert_eq!(
-            pointer_route.wheel_state.last_route,
-            Some(MouseWheelRoute::Scrollback)
-        );
-
-        pointer_route.cursor_left(2);
-        assert_eq!(pointer_route.active_device, None);
-        assert_eq!(pointer_route.position, None);
-        assert_eq!(pointer_route.wheel_state.line_remainder, 0.0);
-        assert_eq!(pointer_route.wheel_state.last_route, None);
-
-        pointer_route.cursor_moved(1, PhysicalPosition::new(5.0, 5.0));
-        pointer_route.wheel_state.line_remainder = 0.5;
-        pointer_route.wheel_state.last_route = Some(MouseWheelRoute::Scrollback);
-        pointer_route.scale_factor_changed(Some((10, 20)));
-        assert_eq!(pointer_route.active_device, None);
-        assert_eq!(pointer_route.position, None);
-        assert_eq!(pointer_route.wheel_state.line_remainder, 0.0);
-        assert_eq!(pointer_route.wheel_state.last_route, None);
-        assert_eq!(pointer_route.forwarded_buttons, 0);
-        assert_eq!(pointer_route.captured_cell_dimensions, None);
-        assert!(!pointer_route.position_uses_captured_metrics);
-    }
-
-    #[test]
-    fn pointer_route_preserves_physical_drag_identity_across_leave_and_dpi() {
-        let mut route = PointerRouteState::<u8>::default();
-        route.cursor_moved(1, PhysicalPosition::new(15.0, 25.0));
-        route.motion_state.anchor((2, 2));
-        assert!(route.record_physical_button_event(1, ElementState::Pressed, Some(0)));
-        assert_eq!(route.active_motion_button(), Some(0));
-
-        route.cursor_left(2);
-        assert_eq!(route.active_device, Some(1));
-        assert_eq!(route.motion_state.last_cell, Some((2, 2)));
-        route.cursor_left(1);
-        assert!(route.left_while_captured);
-        assert_eq!(route.motion_state.last_cell, None);
-        assert!(!route.cursor_moved(2, PhysicalPosition::new(55.0, 65.0)));
-        assert!(!route.record_physical_button_event(2, ElementState::Pressed, Some(2)));
-        assert!(!route.record_physical_button_event(2, ElementState::Released, Some(0)));
-        assert_eq!(route.active_motion_button(), Some(0));
-
-        route.scale_factor_changed(Some((10, 20)));
-        assert_eq!(route.active_device, Some(1));
-        assert_eq!(route.active_motion_button(), Some(0));
-        assert_eq!(route.position, None);
-        assert!(!route.position_uses_captured_metrics);
-        assert_eq!(route.motion_state.last_cell, None);
-
-        let new_position = PhysicalPosition::new(35.0, 45.0);
-        route.cursor_entered(1);
-        assert!(route.cursor_moved(1, new_position));
-        assert_eq!(route.position_for(1), Some(new_position));
-        assert!(!route.left_while_captured);
-        assert!(route.record_physical_button_event(1, ElementState::Released, Some(0)));
-        route.record_button_dispatch(1, ElementState::Released, Some(0), false, Some((20, 40)));
-        assert_eq!(route.active_motion_button(), None);
-        assert!(route.cursor_moved(2, PhysicalPosition::new(55.0, 65.0)));
-        assert_eq!(route.active_device, Some(2));
     }
 
     #[test]
@@ -7081,67 +6355,6 @@ mod tests {
                 error,
                 KeyboardInputError::Queue(actual) if actual == queue_error
             ));
-        }
-    }
-
-    #[test]
-    fn pointer_positions_map_to_one_based_clamped_terminal_cells() {
-        let terminal = TerminalDimensions {
-            columns: 80,
-            rows: 24,
-        };
-
-        assert_eq!(
-            terminal_cell_at_pointer(PhysicalPosition::new(0.0, 0.0), (10, 20), terminal),
-            Some((1, 1))
-        );
-        assert_eq!(
-            terminal_cell_at_pointer(PhysicalPosition::new(9.999, 19.999), (10, 20), terminal,),
-            Some((1, 1))
-        );
-        assert_eq!(
-            terminal_cell_at_pointer(PhysicalPosition::new(10.0, 20.0), (10, 20), terminal),
-            Some((2, 2))
-        );
-        assert_eq!(
-            terminal_cell_at_pointer(
-                PhysicalPosition::new(f64::MAX, f64::MAX),
-                (10, 20),
-                terminal,
-            ),
-            Some((80, 24)),
-            "positions beyond a stale surface must clamp to the terminal edge"
-        );
-
-        for invalid in [
-            terminal_cell_at_pointer(PhysicalPosition::new(-0.1, 0.0), (10, 20), terminal),
-            terminal_cell_at_pointer(PhysicalPosition::new(0.0, -0.1), (10, 20), terminal),
-            terminal_cell_at_pointer(PhysicalPosition::new(f64::NAN, 0.0), (10, 20), terminal),
-            terminal_cell_at_pointer(
-                PhysicalPosition::new(0.0, f64::INFINITY),
-                (10, 20),
-                terminal,
-            ),
-            terminal_cell_at_pointer(PhysicalPosition::new(0.0, 0.0), (0, 20), terminal),
-            terminal_cell_at_pointer(PhysicalPosition::new(0.0, 0.0), (10, 0), terminal),
-            terminal_cell_at_pointer(
-                PhysicalPosition::new(0.0, 0.0),
-                (10, 20),
-                TerminalDimensions {
-                    columns: 0,
-                    rows: 24,
-                },
-            ),
-            terminal_cell_at_pointer(
-                PhysicalPosition::new(0.0, 0.0),
-                (10, 20),
-                TerminalDimensions {
-                    columns: 80,
-                    rows: 0,
-                },
-            ),
-        ] {
-            assert_eq!(invalid, None);
         }
     }
 
