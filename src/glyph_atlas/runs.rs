@@ -9,6 +9,8 @@
 //! "para trás" sobre as vizinhas (estilo Fira Code: espaçador + glifo largo).
 //! Toda célula que não aparece em [`RunGlyph`] segue pelo caminho por célula,
 //! então uma fonte sem GSUB produz uma lista vazia e nada muda no desenho.
+// Run shaping feeds the Metal renderer only; the Linux rasterizer has no hook yet.
+#![cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 
 use rustybuzz::ttf_parser::Tag;
 use rustybuzz::Feature;

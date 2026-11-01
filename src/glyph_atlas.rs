@@ -159,8 +159,11 @@ pub struct GlyphAtlas {
     // Separate style maps allow borrowed text lookup without allocating a key.
     text_glyphs: [HashMap<String, GlyphEntry>; 4],
     /// Glifos de ligadura por (glyph_id, estilo, x_offset); spike de ligaduras.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     run_glyphs: HashMap<(u16, u8, i32), GlyphEntry>,
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     row_shaper: RowShaper,
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     ligatures: bool,
     rasterizer: TextRasterizer,
     pub glyphs: ScalarGlyphCache,
@@ -405,6 +408,7 @@ impl GlyphAtlas {
     }
 
     /// Liga o shaping por run (`calt`/`liga`) para linhas ASCII. Spike.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub fn set_ligatures(&mut self, enabled: bool) {
         if self.ligatures != enabled {
             self.row_shaper.clear();
@@ -412,11 +416,13 @@ impl GlyphAtlas {
         self.ligatures = enabled;
     }
 
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub fn ligatures_enabled(&self) -> bool {
         self.ligatures
     }
 
     /// Lista vazia compartilhada, para linhas sem shaping por run.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub fn no_run_glyphs(&self) -> Arc<[RunGlyph]> {
         self.row_shaper.empty()
     }
@@ -425,6 +431,7 @@ impl GlyphAtlas {
     /// escalar e o estilo (`bold | italic << 1`) de cada coluna; células que
     /// não devem participar devem vir como espaço. O resultado é cacheado por
     /// conteúdo da linha, então frames estáveis não moldam nada.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub fn row_run_glyphs(
         &mut self,
         cols: usize,
@@ -443,6 +450,7 @@ impl GlyphAtlas {
 
     /// Entrada do atlas para um glifo de ligadura, rasterizado por id a partir
     /// da origem da coluna inicial; a largura real pode cobrir `span` células.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub fn get_or_insert_run_glyph(&mut self, glyph: &RunGlyph) -> GlyphEntry {
         let key = (glyph.glyph_id, glyph.style, glyph.x_offset);
         if let Some(&entry) = self.run_glyphs.get(&key) {
