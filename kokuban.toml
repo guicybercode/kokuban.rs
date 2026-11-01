@@ -5,6 +5,9 @@ size = 14.0
 zoom_step = 1.0
 min_size = 6.0
 max_size = 72.0
+# Ligaduras de fontes de programação (Fira Code, JetBrains Mono, Cascadia).
+# Experimental: só o renderizador Metal (macOS) e só texto ASCII.
+# ligatures = false
 
 [window]
 columns = 80

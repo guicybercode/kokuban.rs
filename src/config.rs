@@ -44,6 +44,8 @@ pub struct FontConfig {
     pub zoom_step: f32,
     pub min_size: f32,
     pub max_size: f32,
+    /// Ligaduras de fontes de programação por shaping de runs (spike; só macOS/Metal).
+    pub ligatures: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -341,6 +343,7 @@ impl Default for FontConfig {
             zoom_step: 1.0,
             min_size: 6.0,
             max_size: 72.0,
+            ligatures: false,
         }
     }
 }

@@ -6,7 +6,11 @@ use font_kit::source::{Source, SystemSource};
 use std::collections::HashMap;
 use unicode_width::UnicodeWidthStr;
 
+mod runs;
 mod text_raster;
+use runs::RowShaper;
+pub use runs::RunGlyph;
+use std::sync::Arc;
 use text_raster::{Bitmap, ShapingFont, TextRasterizer};
 use thiserror::Error;
 
@@ -154,6 +158,10 @@ pub struct GlyphAtlas {
     pub rgba_pixels: Vec<u8>,
     // Separate style maps allow borrowed text lookup without allocating a key.
     text_glyphs: [HashMap<String, GlyphEntry>; 4],
+    /// Glifos de ligadura por (glyph_id, estilo, x_offset); spike de ligaduras.
+    run_glyphs: HashMap<(u16, u8, i32), GlyphEntry>,
+    row_shaper: RowShaper,
+    ligatures: bool,
     rasterizer: TextRasterizer,
     pub glyphs: ScalarGlyphCache,
     pub cell_width: f32,
@@ -272,6 +280,9 @@ impl GlyphAtlas {
             pixels,
             rgba_pixels,
             text_glyphs: std::array::from_fn(|_| HashMap::new()),
+            run_glyphs: HashMap::new(),
+            row_shaper: RowShaper::new(),
+            ligatures: false,
             #[cfg(any(target_os = "macos", test))]
             font: font.font.clone(),
             rasterizer: TextRasterizer::new(faces),
@@ -325,6 +336,8 @@ impl GlyphAtlas {
         for glyphs in &mut self.text_glyphs {
             glyphs.clear();
         }
+        self.run_glyphs.clear();
+        self.row_shaper.clear();
         self.rgba_pixels.fill(0);
         self.rgba_pixels[..4].fill(255);
         self.cursor_x = 2;
@@ -389,6 +402,64 @@ impl GlyphAtlas {
 
     pub fn is_color(&self, glyph: GlyphEntry) -> bool {
         glyph.color
+    }
+
+    /// Liga o shaping por run (`calt`/`liga`) para linhas ASCII. Spike.
+    pub fn set_ligatures(&mut self, enabled: bool) {
+        if self.ligatures != enabled {
+            self.row_shaper.clear();
+        }
+        self.ligatures = enabled;
+    }
+
+    pub fn ligatures_enabled(&self) -> bool {
+        self.ligatures
+    }
+
+    /// Lista vazia compartilhada, para linhas sem shaping por run.
+    pub fn no_run_glyphs(&self) -> Arc<[RunGlyph]> {
+        self.row_shaper.empty()
+    }
+
+    /// Glifos de ligadura de uma linha, em ordem de coluna. `cell` entrega o
+    /// escalar e o estilo (`bold | italic << 1`) de cada coluna; células que
+    /// não devem participar devem vir como espaço. O resultado é cacheado por
+    /// conteúdo da linha, então frames estáveis não moldam nada.
+    pub fn row_run_glyphs(
+        &mut self,
+        cols: usize,
+        cell: impl FnMut(usize) -> runs::RowCell,
+    ) -> Arc<[RunGlyph]> {
+        if !self.ligatures {
+            return self.row_shaper.empty();
+        }
+        let Self {
+            row_shaper,
+            rasterizer,
+            ..
+        } = self;
+        row_shaper.row(cols, cell, |style| rasterizer.face(usize::from(style & 3)))
+    }
+
+    /// Entrada do atlas para um glifo de ligadura, rasterizado por id a partir
+    /// da origem da coluna inicial; a largura real pode cobrir `span` células.
+    pub fn get_or_insert_run_glyph(&mut self, glyph: &RunGlyph) -> GlyphEntry {
+        let key = (glyph.glyph_id, glyph.style, glyph.x_offset);
+        if let Some(&entry) = self.run_glyphs.get(&key) {
+            return entry;
+        }
+        let bitmap = self.rasterizer.rasterize_glyph(
+            usize::from(glyph.style & 3),
+            glyph.glyph_id,
+            glyph.x_offset,
+            self.font_size * self.scale_factor,
+        );
+        let entry = match bitmap {
+            Some(bitmap) => self.insert_bitmap("ligature glyph", bitmap),
+            None => GlyphEntry::empty(),
+        };
+        self.run_glyphs.insert(key, entry);
+        entry
     }
 
     /// Display scale the atlas was rasterized for.
@@ -1325,5 +1396,44 @@ mod tests {
         assert_eq!(atlas.cell_height, original_cell_height);
         assert_eq!(atlas.glyphs.len(), original_glyph_count);
         assert!(!atlas.dirty);
+    }
+}
+
+#[cfg(test)]
+mod ligature_tests {
+    use super::*;
+
+    #[test]
+    fn run_glyphs_rasterize_into_cell_sized_entries() {
+        let Ok(mut atlas) = GlyphAtlas::new("JetBrainsMono Nerd Font Mono", 16.0, 1.0) else {
+            return;
+        };
+        atlas.set_ligatures(true);
+        let text: Vec<char> =
+            "  -> => <- <= >= != == === !== := <> </> <!-- --> ... :: ;; && || |> <| >> <<"
+                .chars()
+                .collect();
+        let glyphs = atlas.row_run_glyphs(text.len(), |c| (text[c], 0));
+        eprintln!(
+            "{} glifos de run; cell={}x{}",
+            glyphs.len(),
+            atlas.cell_width,
+            atlas.cell_height
+        );
+        for glyph in glyphs.iter() {
+            let entry = atlas.get_or_insert_run_glyph(glyph);
+            assert!(
+                entry.pixel_w as f32 <= atlas.cell_width * 4.0,
+                "{glyph:?} {entry:?}"
+            );
+            assert!(
+                entry.pixel_h as f32 <= atlas.cell_height * 2.0,
+                "{glyph:?} {entry:?}"
+            );
+        }
+        eprintln!(
+            "cursor=({}, {}) row_height={}",
+            atlas.cursor_x, atlas.cursor_y, atlas.row_height
+        );
     }
 }

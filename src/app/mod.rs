@@ -196,11 +196,9 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         .map(|screen| screen.backingScaleFactor() as f32)
         .filter(|scale| scale.is_finite() && *scale > 0.0)
         .unwrap_or(2.0);
-    let atlas = Arc::new(Mutex::new(GlyphAtlas::new(
-        &config.font.family,
-        config.font.size,
-        scale_factor,
-    )?));
+    let mut atlas = GlyphAtlas::new(&config.font.family, config.font.size, scale_factor)?;
+    atlas.set_ligatures(config.font.ligatures);
+    let atlas = Arc::new(Mutex::new(atlas));
 
     let dirty = Arc::new(AtomicBool::new(true));
     let window_title = Arc::new(window::WindowTitleMailbox::new());

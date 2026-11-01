@@ -319,6 +319,29 @@ impl MetalRenderer {
         let line_thickness = 1.5;
 
         for row in 0..grid.rows() {
+            // Ligaduras (spike): glifos moldados por run desta linha, em ordem de
+            // coluna. Vazio quando a opção está desligada ou a fonte não liga nada.
+            let run_glyphs = if atlas.ligatures_enabled() {
+                atlas.row_run_glyphs(grid.cols(), |c| {
+                    let cell = grid.visible_cell(row, c);
+                    if cell.grapheme.is_some()
+                        || cell
+                            .flags
+                            .intersects(CellFlags::WIDE | CellFlags::WIDE_CONT)
+                        || !cell_content_is_visible(cell.flags)
+                    {
+                        (' ', 0)
+                    } else {
+                        let style = u8::from(cell.flags.contains(CellFlags::BOLD))
+                            | (u8::from(cell.flags.contains(CellFlags::ITALIC)) << 1);
+                        (cell.c, style)
+                    }
+                })
+            } else {
+                atlas.no_run_glyphs()
+            };
+            let mut run_index = 0;
+            let mut run_skip_until = 0;
             for col in 0..grid.cols() {
                 let cell = grid.visible_cell(row, col);
 
@@ -461,9 +484,23 @@ impl MetalRenderer {
                                 fg_packed,
                             ));
                         }
+                    } else if col < run_skip_until {
+                        // Coluna coberta por uma ligadura iniciada antes: o fundo
+                        // já foi desenhado acima e o glifo pertence à coluna inicial.
                     } else {
-                        // Normal glyph from atlas
-                        let glyph = atlas.get_or_insert_cell(cell);
+                        // Normal glyph from atlas, or the run-shaped glyph that
+                        // starts at this column.
+                        while run_glyphs.get(run_index).is_some_and(|g| g.start_col < col) {
+                            run_index += 1;
+                        }
+                        let glyph = match run_glyphs.get(run_index).filter(|g| g.start_col == col) {
+                            Some(run_glyph) => {
+                                run_index += 1;
+                                run_skip_until = col + run_glyph.span;
+                                atlas.get_or_insert_run_glyph(run_glyph)
+                            }
+                            None => atlas.get_or_insert_cell(cell),
+                        };
                         let fg_packed = if atlas.is_color(glyph) {
                             0xffffff00 | (fg_packed & 0xff)
                         } else {
