@@ -13,9 +13,10 @@ use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::parser::ansi::GraphicsSupport;
 use crate::parser::sixel::SixelImage;
-use crate::render_scene::ChromeColors;
+use crate::render_scene::{ChromeColors, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
+use crate::launch_options::LaunchOptions;
 use crate::window_title::WINDOW_TITLE;
 
 use objc2::{runtime::ProtocolObject, MainThreadMarker, Message};
@@ -27,7 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 
-use window::create_terminal_view;
+use window::{create_terminal_view, TerminalViewParams};
 
 enum CleanupCommand<T> {
     Retire(Box<T>),
@@ -144,7 +145,7 @@ where
     }
 }
 
-pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
+pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasError> {
     let mtm = MainThreadMarker::new().expect("Must be called from the main thread");
 
     let app = NSApplication::sharedApplication(mtm);
@@ -188,11 +189,17 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
             kitty_options,
             graphics_support,
             Arc::new(move || input_failure_wake.wake()),
+            &options.command,
         )
         .expect("Failed to create initial pane"),
     ));
 
-    let scale_factor = 2.0f32;
+    // Size the glyph atlas and the first window for the screen the app opens on;
+    // `viewDidChangeBackingProperties` handles later moves between displays.
+    let scale_factor = NSScreen::mainScreen(mtm)
+        .map(|screen| screen.backingScaleFactor() as f32)
+        .filter(|scale| scale.is_finite() && *scale > 0.0)
+        .unwrap_or(2.0);
     let atlas = Arc::new(Mutex::new(GlyphAtlas::new(
         &config.font.family,
         config.font.size,
@@ -201,6 +208,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
 
     let dirty = Arc::new(AtomicBool::new(true));
     let window_title = Arc::new(window::WindowTitleMailbox::new());
+    if let Some(title) = &options.title {
+        window_title.set_initial_title(title);
+    }
     let should_close = Arc::new(AtomicBool::new(false));
     let window_is_key = Arc::new(AtomicBool::new(false));
     let notifications = Arc::new(crate::notifications::NotificationController::new(
@@ -220,7 +230,6 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         sumi_light: ColorConfig::parse_hex(&config.theme.chrome.sumi_light),
         sumi_ghost: ColorConfig::parse_hex(&config.theme.chrome.sumi_ghost),
         hanko_red: ColorConfig::parse_hex(&config.theme.chrome.hanko_red),
-        hanko_dim: ColorConfig::parse_hex(&config.theme.chrome.hanko_dim),
     };
 
     let keybinds = KeybindMap::from_config(&config.keybind);
@@ -292,6 +301,9 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         | NSWindowStyleMask::Miniaturizable
         | NSWindowStyleMask::Resizable;
 
+    // SAFETY: NSWindow's designated initializer runs once on a fresh
+    // allocation, on the main thread (`mtm`); rect, style mask and backing
+    // type are plain values and the window is retained by the returned handle.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
             mtm.alloc(),
@@ -345,39 +357,45 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
         None
     };
 
-    let view = create_terminal_view(
+    let view = create_terminal_view(TerminalViewParams {
         mtm,
-        &device,
-        pane_tree.clone(),
-        pane_cleanup.clone(),
-        atlas.clone(),
-        dirty.clone(),
-        render_scheduler.clone(),
-        should_close.clone(),
-        reader_wake.clone(),
-        window_is_key.clone(),
+        device: &device,
+        pane_tree: pane_tree.clone(),
+        pane_cleanup: pane_cleanup.clone(),
+        atlas: atlas.clone(),
+        dirty: dirty.clone(),
+        render_scheduler: render_scheduler.clone(),
+        should_close: should_close.clone(),
+        reader_wake: reader_wake.clone(),
+        window_is_key: window_is_key.clone(),
         terminal_colors,
         scale_factor,
-        config.font.family.clone(),
-        config.font.size,
-        config.font.zoom_step,
-        config.font.min_size,
-        config.font.max_size,
+        font_family: config.font.family.clone(),
+        font_size: config.font.size,
+        zoom_step: config.font.zoom_step,
+        min_font_size: config.font.min_size,
+        max_font_size: config.font.max_size,
         selection_fg,
         selection_bg,
         chrome,
         keybinds,
         bg_opacity,
         status_bar_height,
-        config.status_bar.enabled,
+        status_bar_enabled: config.status_bar.enabled,
+        option_as_alt: config.input.option_as_alt,
+        status_bar_layout: StatusBarLayout {
+            show_shell: config.status_bar.show_shell,
+            show_cwd: config.status_bar.show_cwd,
+            show_pane_index: config.status_bar.show_pane_index,
+        },
         resize_step,
         prompt_indicator_color,
-        image_store.clone(),
-        window_title.clone(),
-        config.confirm.on_close_pane,
-        config.confirm.on_quit,
-        update_status.clone(),
-    );
+        image_store: image_store.clone(),
+        window_title: window_title.clone(),
+        confirm_on_close_pane: config.confirm.on_close_pane,
+        confirm_on_quit: config.confirm.on_quit,
+        update_status: update_status.clone(),
+    });
 
     window.setContentView(Some(&view));
     // NSWindow keeps its delegate weakly; the content view retains TerminalView
@@ -456,6 +474,10 @@ pub fn launch(config: Config) -> Result<(), GlyphAtlasError> {
 }
 
 fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
+    // SAFETY: every call is an AppKit message send on the main thread (`mtm`)
+    // with valid, retained NSString/NSMenu arguments. The selectors are
+    // resolved by AppKit through the responder chain at click time, so no
+    // dangling target is stored.
     unsafe {
         let menu_bar = NSMenu::new(mtm);
         let app_menu_item = NSMenuItem::new(mtm);

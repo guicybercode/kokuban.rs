@@ -22,6 +22,7 @@ pub struct PixelRect {
 }
 
 impl PixelRect {
+    #[cfg(target_os = "macos")]
     pub const ZERO: Self = Self {
         x: 0.0,
         y: 0.0,
