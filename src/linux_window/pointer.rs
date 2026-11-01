@@ -1,7 +1,8 @@
 //! Pointer state per device (capture, wheel remainders, motion cells) and the
 //! arithmetic that maps winit pointer input onto terminal cells and buttons.
 
-use super::{MouseMotionDispatchOutcome, TerminalDimensions};
+use super::dispatch::MouseMotionDispatchOutcome;
+use super::sizing::TerminalDimensions;
 use crate::grid::Grid;
 use crate::input::mouse::{
     mouse_button_with_modifier_flags, MouseWheelRoute, MAX_WHEEL_STEPS_PER_EVENT,
