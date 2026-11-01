@@ -24,8 +24,15 @@ import time
 SIDES = ("before", "after")
 CONTENTS = ("ascii", "ascii-after-emoji", "unicode")
 CHANGES = ("single-row", "full-screen")
-TEST = "linux_window::damage_tests::benchmark_frame_repaint"
-SOURCE = "src/linux_window.rs"
+# The benchmark moved from the `damage_tests` module of linux_window.rs into
+# linux_window/damage.rs; older revisions are still measured with the legacy layout.
+LAYOUTS = (
+    {"source": "src/linux_window/damage.rs", "module": "\n#[cfg(test)]\nmod tests {\n",
+     "test": "linux_window::damage::tests::benchmark_frame_repaint"},
+    {"source": "src/linux_window.rs", "module": "\n#[cfg(test)]\nmod damage_tests {\n",
+     "test": "linux_window::damage_tests::benchmark_frame_repaint"},
+)
+LEGACY_LAYOUT = LAYOUTS[-1]
 RASTER_SOURCE = "src/software_raster.rs"
 COMPARISONS = ("revisions", "raster-only", "same-binary")
 MARKER = ('    #[test]\n'
@@ -68,16 +75,23 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n")
 
 
-def split_benchmark(data):
+def layout_for(root):
+    """The benchmark source layout of a checkout; newest layout first."""
+    for layout in LAYOUTS:
+        if (Path(root) / layout["source"]).is_file():
+            return layout
+    raise ValueError("no supported benchmark source under " + str(root))
+
+
+def split_benchmark(data, module=LEGACY_LAYOUT["module"]):
     """Accept only the supported final function, preserving the entire prefix."""
     text = data.decode("utf-8")
     require(text.count(MARKER) == 1, "expected one exact ignored benchmark marker")
     prefix, body = text.split(MARKER)
-    require(prefix.count("\n#[cfg(test)]\nmod damage_tests {\n") == 1,
-            "expected benchmark inside the damage_tests module")
-    module_body = prefix.split("\n#[cfg(test)]\nmod damage_tests {\n")[1]
+    require(prefix.count(module) == 1, "expected benchmark inside the " + module.strip() + " module")
+    module_body = prefix.split(module)[1]
     require(all(not line.strip() or line.startswith("    ") for line in module_body.splitlines()),
-            "benchmark is outside the supported damage_tests module")
+            "benchmark is outside the supported " + module.strip() + " module")
     lines = body.splitlines(keepends=True)
     require(len(lines) >= 2 and lines[-2:] == ["    }\n", "}\n"],
             "benchmark must be the final function and module at EOF")
@@ -107,10 +121,11 @@ def prepare(args):
     comparison = args.comparison
     sides = build_sides(comparison)
     roots = dict(zip(sides, distinct_roots([getattr(args, side + "_source") for side in sides])))
-    harness = (args.harness_source / SOURCE).resolve(strict=True)
+    harness_layout = layout_for(args.harness_source)
+    harness = (args.harness_source / harness_layout["source"]).resolve(strict=True)
     require(all(root not in harness.parents for root in roots.values()),
             "the harness checkout must be separate from both archived sources")
-    _, benchmark = split_benchmark(harness.read_bytes())
+    _, benchmark = split_benchmark(harness.read_bytes(), harness_layout["module"])
     original_manifests = {side: source_manifest(root) for side, root in roots.items()}
     common = None
     if comparison == "raster-only":
@@ -126,9 +141,10 @@ def prepare(args):
         common = {"root": str(common_root), "revision": args.common_ref,
                   "manifest": common_manifest}
     prepared = {}
+    layouts = {side: layout_for(root) for side, root in roots.items()}
     for side, root in roots.items():
-        original = (root / SOURCE).read_bytes()
-        prefix, _ = split_benchmark(original)
+        original = (root / layouts[side]["source"]).read_bytes()
+        prefix, _ = split_benchmark(original, layouts[side]["module"])
         prepared[side] = (original, prefix + benchmark, prefix)
     args.output.mkdir(parents=True, exist_ok=False)
     (args.output / "benchmark.rs.txt").write_bytes(benchmark)
@@ -142,11 +158,12 @@ def prepare(args):
         evidence.mkdir()
         (evidence / "original-linux_window.rs").write_bytes(original)
         (evidence / "injected-linux_window.rs").write_bytes(injected)
-        (root / SOURCE).write_bytes(injected)
+        (root / layouts[side]["source"]).write_bytes(injected)
         manifest = source_manifest(root)
         write_json(evidence / "original-source-manifest.json", original_manifests[side])
         write_json(evidence / "prepared-source-manifest.json", manifest)
-        report["sources"][side] = {"root": str(root), "original_sha256": digest(original),
+        report["sources"][side] = {"root": str(root), "source": layouts[side]["source"],
+                                   "test": layouts[side]["test"], "original_sha256": digest(original),
                                    "injected_sha256": digest(injected), "preserved_prefix_sha256": digest(prefix),
                                    "manifest": manifest,
                                    "cargo_sha256": {name: sha(root / name) for name in ("Cargo.toml", "Cargo.lock")}}
@@ -294,13 +311,18 @@ def measure(args):
         require(injection["comparison"] == args.comparison, "comparison differs from source preparation")
         require(set(injection["sources"]) == set(sides), "unexpected number of prepared builds")
         binaries = {}
+        tests = {}
         report["builds"] = {}
         for side in sides:
             source, target = sources[side], targets[side]
             provenance = injection["sources"][side]
             require(source == Path(provenance["root"]), "injection source root differs")
-            prefix, benchmark = split_benchmark((source / SOURCE).read_bytes())
-            require(sha(source / SOURCE) == provenance["injected_sha256"] and
+            layout = layout_for(source)
+            require(provenance.get("source", LEGACY_LAYOUT["source"]) == layout["source"],
+                    "benchmark source layout changed since source preparation")
+            tests[side] = layout["test"]
+            prefix, benchmark = split_benchmark((source / layout["source"]).read_bytes(), layout["module"])
+            require(sha(source / layout["source"]) == provenance["injected_sha256"] and
                     digest(prefix) == provenance["preserved_prefix_sha256"] and
                     digest(benchmark) == injection["benchmark_sha256"], "source changed since benchmark injection")
             require({name: sha(source / name) for name in ("Cargo.toml", "Cargo.lock")} == provenance["cargo_sha256"],
@@ -319,6 +341,7 @@ def measure(args):
                 report["builds"][side]["kernel_revision"] = getattr(args, side + "_ref")
         if args.comparison == "same-binary":
             binaries["after"] = binaries["before"]
+            tests["after"] = tests["before"]
         else:
             require(report["builds"]["before"]["binary_sha256"] != report["builds"]["after"]["binary_sha256"],
                     "the two test binaries are identical; use same-binary for variability controls")
@@ -339,7 +362,8 @@ def measure(args):
                                    KOKUBAN_FRAME_WARMUP=str(args.warmup))
                 if pair == 1:
                     environment["KOKUBAN_FRAME_OUTPUT_DIR"] = str(args.output.resolve() / (side + "-frames"))
-                command = [str(binaries[side]), "--exact", TEST, "--ignored", "--nocapture", "--test-threads=1"]
+                command = [str(binaries[side]), "--exact", tests[side], "--ignored", "--nocapture",
+                           "--test-threads=1"]
                 report["execution_order"].append({"pair": pair, "side": side, "command": command})
                 write_json(path, report)
                 log = args.output / f"{pair:02d}-{side}.log"

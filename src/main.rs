@@ -2,20 +2,21 @@
 mod app;
 mod app_icon;
 mod config;
+mod notifications;
 #[cfg(test)]
 mod content_preservation_tests;
-mod glyph_atlas;
 mod graphics;
+mod glyph_atlas;
 mod grid;
 mod input;
-#[cfg(any(target_os = "linux", test))]
-mod launch_options;
+// Pane layout, search and the render scene are consumed by the macOS window only.
+#[cfg(any(target_os = "macos", test))]
 mod layout;
-#[cfg(target_os = "linux")]
-mod linux_clipboard;
+mod launch_options;
 #[cfg(target_os = "linux")]
 mod linux_window;
-mod notifications;
+#[cfg(target_os = "linux")]
+mod linux_clipboard;
 #[cfg(target_os = "linux")]
 mod omarchy_theme;
 mod palette;
@@ -23,20 +24,22 @@ mod palette;
 mod pane;
 mod parser;
 mod pty;
+#[cfg(target_os = "macos")]
 mod render_scene;
-mod renderer;
+#[cfg(any(target_os = "macos", test))]
 mod search;
 mod selection;
-#[cfg(target_os = "linux")]
-mod software_graphics;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod software_raster;
-#[cfg_attr(target_os = "linux", allow(dead_code))]
-mod terminal_colors;
+#[cfg(target_os = "linux")]
+mod software_graphics;
 mod terminal_decoder;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod terminal_reader;
 mod terminal_writer;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+mod terminal_colors;
+mod renderer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod update;
 mod window_title;
@@ -54,24 +57,49 @@ fn launch_directory(
 
 #[cfg(target_os = "macos")]
 fn main() -> std::process::ExitCode {
-    env_logger::init();
-
-    // Finder may pass its own arguments, so only these exact flags are handled.
-    match std::env::args_os()
-        .nth(1)
-        .as_deref()
-        .and_then(std::ffi::OsStr::to_str)
-    {
-        Some("--update") => return update::run_update_command(),
-        Some("--check-update") => return update::run_check_command(),
-        Some("-V" | "--version") => {
+    // Finder and LaunchServices add a `-psn_...` process serial number; it is
+    // not a Kokuban option.
+    let arguments = std::env::args_os()
+        .skip(1)
+        .filter(|argument| !argument.to_string_lossy().starts_with("-psn_"));
+    let options = match launch_options::parse(arguments) {
+        Ok(launch_options::LaunchAction::Run(options)) => options,
+        Ok(launch_options::LaunchAction::Help) => {
+            println!("{}", launch_options::HELP);
+            return std::process::ExitCode::SUCCESS;
+        }
+        Ok(launch_options::LaunchAction::Version) => {
             println!("kokuban {}", env!("CARGO_PKG_VERSION"));
             return std::process::ExitCode::SUCCESS;
         }
-        _ => {}
-    }
+        Ok(launch_options::LaunchAction::CheckUpdate) => {
+            env_logger::init();
+            return update::run_check_command();
+        }
+        Ok(launch_options::LaunchAction::Update) => {
+            env_logger::init();
+            return update::run_update_command();
+        }
+        Err(error) => {
+            eprintln!("kokuban: {error}\nTry 'kokuban --help' for usage.");
+            return std::process::ExitCode::from(2);
+        }
+    };
+    env_logger::init();
 
-    if let Ok(current) = std::env::current_dir() {
+    if let Some(directory) = &options.working_directory {
+        if let Err(error) = std::env::set_current_dir(directory) {
+            eprintln!(
+                "kokuban: could not open working directory {}: {error}",
+                directory.display()
+            );
+            return std::process::ExitCode::FAILURE;
+        }
+        // Set before starting any renderer or terminal worker threads.
+        if let Ok(directory) = std::env::current_dir() {
+            std::env::set_var("PWD", directory);
+        }
+    } else if let Ok(current) = std::env::current_dir() {
         if let Some(home) = launch_directory(&current, std::env::var_os("HOME")) {
             match std::env::set_current_dir(&home) {
                 // Set before starting any renderer or terminal worker threads.
@@ -82,13 +110,9 @@ fn main() -> std::process::ExitCode {
     }
 
     let config = config::Config::load();
-    log::info!(
-        "黒板kokuban starting: {}x{} terminal",
-        config.window.columns,
-        config.window.rows
-    );
+    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
 
-    match app::launch(config) {
+    match app::launch(config, options) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("kokuban: failed to initialize macOS app: {error}");
@@ -137,11 +161,7 @@ fn main() -> std::process::ExitCode {
             std::env::set_var("PWD", directory);
         }
     }
-    log::info!(
-        "黒板kokuban starting: {}x{} terminal",
-        config.window.columns,
-        config.window.rows
-    );
+    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
 
     match linux_window::launch(config, options) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -174,13 +194,7 @@ mod tests {
         let home = || Some(OsString::from("/Users/kokuban"));
         assert_eq!(launch_directory(Path::new("/tmp/project"), home()), None);
         assert_eq!(launch_directory(Path::new("/"), None), None);
-        assert_eq!(
-            launch_directory(Path::new("/"), Some(OsString::from("relative"))),
-            None
-        );
-        assert_eq!(
-            launch_directory(Path::new("/"), Some(OsString::from("/"))),
-            None
-        );
+        assert_eq!(launch_directory(Path::new("/"), Some(OsString::from("relative"))), None);
+        assert_eq!(launch_directory(Path::new("/"), Some(OsString::from("/"))), None);
     }
 }

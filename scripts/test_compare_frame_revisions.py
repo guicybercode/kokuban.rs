@@ -95,10 +95,30 @@ class FrameRevisionTests(unittest.TestCase):
                     (directory / f"{content}-{change}-{index}.xrgb8888le").write_bytes(bytes([index]) * 120 * 40 * 4)
 
     def test_current_harness_layout_is_supported(self):
-        source = Path(__file__).resolve().parents[1] / "src/linux_window.rs"
-        prefix, benchmark = RUNNER["split_benchmark"](source.read_bytes())
+        root = Path(__file__).resolve().parents[1]
+        layout = RUNNER["layout_for"](root)
+        self.assertEqual(layout["source"], "src/linux_window/damage.rs")
+        source = root / layout["source"]
+        prefix, benchmark = RUNNER["split_benchmark"](source.read_bytes(), layout["module"])
         self.assertEqual(prefix + benchmark, source.read_bytes())
         self.assertIn(b"KOKUBAN_FRAME_OUTPUT_DIR", benchmark)
+
+    def test_split_module_layout_is_injected_alongside_the_legacy_layout(self):
+        roots = self.sources()
+        split_prefix = b"// split runtime\n#[cfg(test)]\nmod tests {\n"
+        (roots["after"] / "src/linux_window").mkdir()
+        (roots["after"] / "src/linux_window/damage.rs").write_bytes(
+            split_prefix + BENCHMARK.replace(b"fixture = 1", b"fixture = 3"))
+        (roots["after"] / "src/linux_window.rs").write_bytes(b"// split runtime without the benchmark\n")
+        output = self.root / "injection"
+        RUNNER["prepare"](SimpleNamespace(before_source=roots["before"], after_source=roots["after"],
+                                           harness_source=roots["harness"], output=output, comparison="revisions"))
+        self.assertEqual((roots["after"] / "src/linux_window/damage.rs").read_bytes(), split_prefix + BENCHMARK)
+        self.assertEqual((roots["before"] / "src/linux_window.rs").read_bytes(), PREFIX + BENCHMARK)
+        report = json.loads((output / "injection.json").read_text())
+        self.assertEqual(report["sources"]["after"]["source"], "src/linux_window/damage.rs")
+        self.assertEqual(report["sources"]["after"]["test"], "linux_window::damage::tests::benchmark_frame_repaint")
+        self.assertEqual(report["sources"]["before"]["test"], "linux_window::damage_tests::benchmark_frame_repaint")
 
     def test_injection_preserves_runtime_prefix_and_records_originals(self):
         roots = self.sources()
@@ -265,7 +285,8 @@ class FrameRevisionTests(unittest.TestCase):
             side = "before" if "before target" in command[0] else "after"
             calls.append(side)
             self.assertNotIn("KOKUBAN_FRAME_UNRELATED", env)
-            self.assertEqual(command[1:], ["--exact", RUNNER["TEST"], "--ignored", "--nocapture", "--test-threads=1"])
+            self.assertEqual(command[1:], ["--exact", RUNNER["LEGACY_LAYOUT"]["test"], "--ignored", "--nocapture",
+                                           "--test-threads=1"])
             if "KOKUBAN_FRAME_OUTPUT_DIR" in env:
                 self.images(Path(env["KOKUBAN_FRAME_OUTPUT_DIR"]))
             stdout.write(sample_output(600 if side == "before" else 300))

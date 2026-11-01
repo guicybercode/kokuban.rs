@@ -42,14 +42,13 @@ Android development currently lives on `codex/android-native`. Coordinate shared
 From the repository root:
 
 ```sh
-rustup run 1.94.1 cargo fmt --all -- --check
-rustup run 1.94.1 cargo check --locked --all-targets
-rustup run 1.94.1 cargo test --locked --all-targets
-rustup run 1.94.1 cargo clippy --locked --all-targets
+RUSTFLAGS="-D warnings" rustup run 1.94.1 cargo check --locked --all-targets
+RUSTFLAGS="-D warnings" rustup run 1.94.1 cargo test --locked --all-targets
+rustup run 1.94.1 cargo clippy --locked --all-targets -- -D warnings
 git diff --check
 ```
 
-The whole repository is rustfmt-clean and CI fails on `cargo fmt --all -- --check`, so run `cargo fmt --all` before pushing. Run the checks supported by your platform and let CI verify the other platform. For Linux interaction, clipboard and SSH checks, see [Linux application validation](docs/LINUX_APPS.md); for images/video and measurements, see [video validation](docs/LINUX_VIDEO.md) and [release measurements](docs/LINUX_PERFORMANCE.md). Report exactly what ran and what remains untested.
+CI runs the same commands on macOS and Linux with `RUSTFLAGS=-D warnings`, so any compiler or clippy warning fails the build; code that only compiles on one platform is checked by the other runner. Format the code you change with rustfmt while avoiding unrelated churn. Run the checks supported by your platform and let CI verify the other platform. For Linux interaction, clipboard and SSH checks, see [Linux application validation](docs/LINUX_APPS.md); for images/video and measurements, see [video validation](docs/LINUX_VIDEO.md) and [release measurements](docs/LINUX_PERFORMANCE.md). Report exactly what ran and what remains untested.
 
 ## Open a pull request
 

@@ -31,18 +31,18 @@ impl BrushRenderer {
 
         // The shared glyph shader samples RGBA: white RGB supplies the tint,
         // while alpha retains the generated brush coverage.
-        let rgba_pixels: Vec<u8> = pixels
-            .iter()
-            .flat_map(|&alpha| [255, 255, 255, alpha])
-            .collect();
-        let tex_desc = unsafe {
-            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                MTLPixelFormat::RGBA8Unorm,
-                BRUSH_TEX_WIDTH as usize,
-                total_height as usize,
-                false,
-            )
-        };
+        let rgba_pixels: Vec<u8> = pixels.iter().flat_map(|&alpha| [255, 255, 255, alpha]).collect();
+        // SAFETY: plain descriptor construction with a valid pixel format and
+        // non-zero dimensions.
+        let tex_desc =
+            unsafe {
+                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                    MTLPixelFormat::RGBA8Unorm,
+                    BRUSH_TEX_WIDTH as usize,
+                    total_height as usize,
+                    false,
+                )
+            };
         tex_desc.setUsage(MTLTextureUsage::ShaderRead);
 
         let texture = device
@@ -58,6 +58,9 @@ impl BrushRenderer {
             },
         };
 
+        // SAFETY: `rgba_pixels` holds BRUSH_TEX_WIDTH * total_height * 4 bytes,
+        // matching `region` and `bytesPerRow`; it outlives the call, which
+        // copies the data synchronously and never writes through the pointer.
         unsafe {
             let bytes_ptr =
                 std::ptr::NonNull::new(rgba_pixels.as_ptr() as *mut std::ffi::c_void).unwrap();

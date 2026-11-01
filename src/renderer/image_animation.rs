@@ -17,6 +17,8 @@ pub(crate) const MAX_RETAINED_FRAMES: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnimationError {
+    // Returned by the Metal image store, which does not animate.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Unsupported,
     ImageNotFound,
     FrameNotFound,

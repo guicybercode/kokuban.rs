@@ -2,6 +2,25 @@
 
 This page keeps the full installation reference that used to live in the README: the release table, dependencies, checksum verification, updating, building from source, Omarchy commands, troubleshooting, the Linux desktop entry and the image examples. The README has the three-line summary.
 
+## Homebrew (macOS)
+
+The cask lives in [`packaging/homebrew/Casks/kokuban.rb`](../packaging/homebrew/Casks/kokuban.rb) in this repository and is published to the `guicybercode/homebrew-tap` tap with each release. It installs `Kokuban.app` from the release disk image for your Mac (Apple Silicon or Intel) after checking the published SHA-256:
+
+```sh
+brew install --cask guicybercode/tap/kokuban   # taps guicybercode/tap on first use
+brew upgrade --cask kokuban                    # move to the latest release
+brew uninstall --cask kokuban                  # remove the app
+brew uninstall --cask --zap kokuban            # also remove ~/.config/kokuban
+```
+
+The app is ad-hoc signed, not Developer ID signed or notarized, and Homebrew prints a caveat saying so. If macOS refuses the first launch, use **Open** from the Finder context menu or clear the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Kokuban.app
+```
+
+If you installed with Homebrew, upgrade with `brew upgrade --cask kokuban` rather than `kokuban --update`, so Homebrew's record of the installed version stays correct.
+
 ## Run a downloaded release
 
 The [v0.4 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4) is an early desktop release. Download the archive (or, on a Mac, the disk image) for your computer and its matching `.sha256` file. Neither Rust nor Python is required to run the binary. Python is used only by development tools retained in the source repository; those tools and raw benchmark snapshots are omitted from the application archives.
@@ -66,6 +85,8 @@ On macOS the app menu also has **Check for Updates…** and **Install Update…*
 
 Turn the automatic check off with `check_on_startup = false` under `[update]` in `kokuban.toml`, or set `KOKUBAN_NO_UPDATE_CHECK=1`.
 
+Homebrew installs are updated with `brew upgrade --cask kokuban` instead (see [Homebrew (macOS)](#homebrew-macos)).
+
 ## Build and run from source
 
 Install Git and Rust through [rustup](https://rustup.rs/). The verified toolchain is **Rust 1.94.1**.
@@ -98,7 +119,7 @@ To work on the development version, clone `main` instead; see [CONTRIBUTING.md](
 KOKUBAN_SHELL=/bin/bash ./target/release/kokuban
 ```
 
-Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It searches the launch directory and then the user configuration directory described below. This minimal configuration keeps the platform's default font and disables Kitty file transfers:
+Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It searches the launch directory and then the user configuration directory described below. Settings that run a program or open local files (`[notifications] command`, `[images.kitty] allow_file_transfer`) are only read from the user configuration directory; a `kokuban.toml` in the launch directory can change appearance, window and keybinds, and those two fields are ignored there with a warning. This minimal configuration keeps the platform's default font and disables Kitty file transfers:
 
 ```toml
 [font]
@@ -109,22 +130,32 @@ size = 14.0
 allow_file_transfer = false
 ```
 
-## Omarchy and Linux commands
+## Command-line options
 
-Kokuban v0.4 supports Omarchy's terminal launcher, working-directory inheritance,
-and commands opened directly in the terminal:
+On macOS and Linux the executable accepts a working directory, an initial title
+and a command to run instead of the login shell:
 
 ```sh
 kokuban --working-directory="$HOME" -e nvim
-kokuban --app-id=org.omarchy.btop -e btop
+kokuban --title "logs" -e tail -f /var/log/system.log
+kokuban --app-id=org.omarchy.btop -e btop   # --app-id is Linux only
 kokuban --help
 ```
 
-See [Omarchy installation and bindings](OMARCHY.md) to register Kokuban with
-`xdg-terminal-exec`. Command arguments after `-e` are passed unchanged; use
-`sh -c` explicitly for pipelines or shell expansion. CI checks command launching
-under X11 and headless Weston/Wayland; Hyprland integration still needs an
-on-device run.
+Command arguments after `-e` are passed unchanged; use `sh -c` explicitly for
+pipelines or shell expansion. The command runs in the first pane; splits on
+macOS open the login shell. On macOS the status bar shows the program's name
+(`status_bar.show_shell`), and `Kokuban.app` ignores the `-psn_` argument that
+Finder adds. See [Omarchy installation and bindings](OMARCHY.md) to register
+Kokuban with `xdg-terminal-exec`. CI checks command launching under X11 and
+headless Weston/Wayland; Hyprland integration still needs an on-device run.
+
+### Option key on macOS
+
+By default both Option keys send Meta sequences (`ESC` + key), which Emacs,
+readline and tmux expect. To type accented or symbol characters with one side,
+set `[input] option_as_alt` in `kokuban.toml` to `"left"` or `"right"`, or
+`"none"` to let macOS compose text with both keys.
 
 On Linux, Omarchy palette changes update existing windows while preserving the
 shell session. Explicit Kokuban colors take priority. The default font follows
@@ -138,7 +169,7 @@ before copying explicit colors or a font family into your configuration.
 - **Missing Linux library:** install the runtime packages above. Libraries opened dynamically may not appear in `ldd` output.
 - **Missing font:** install `fonts-dejavu-core` on Linux. Install `fonts-noto-color-emoji` for the emoji fallback exercised by CI. macOS includes Menlo and Apple Color Emoji.
 - **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
-- **Configuration seems ignored:** a local `kokuban.toml` takes priority over the user configuration file. Settings are read when a window opens; the Omarchy palette has its own live reload. Invalid configuration falls back to defaults and logs a warning.
+- **Configuration seems ignored:** a local `kokuban.toml` takes priority over the user configuration file, except for `[notifications] command` and `[images.kitty] allow_file_transfer`, which are never honored from the launch directory. Settings are read when a window opens; the Omarchy palette has its own live reload. Invalid configuration falls back to defaults and logs a warning.
 
 ## Application icon
 
@@ -195,4 +226,4 @@ max_image_size_mb = 16
 allow_file_transfer = false
 ```
 
-These are example limits; defaults remain 256 MiB for the cache and 50 MiB per Kitty upload. `allow_file_transfer = false` keeps transfers in the terminal byte stream, including over SSH. Set `images.enabled = false` to disable both image protocols. Kokuban starts the shell configured through `KOKUBAN_SHELL` or `SHELL`; SSH on Linux runs through the system's `ssh` command in that shell.
+These are example limits; defaults remain 256 MiB for the cache and 50 MiB per Kitty upload. `allow_file_transfer = false` keeps transfers in the terminal byte stream, including over SSH; a launch-directory `kokuban.toml` always behaves as if it were `false`. Set `images.enabled = false` to disable both image protocols. Kokuban starts the shell configured through `KOKUBAN_SHELL` or `SHELL`; SSH on Linux runs through the system's `ssh` command in that shell.

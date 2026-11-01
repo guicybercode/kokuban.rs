@@ -1,0 +1,66 @@
+[
+    {
+        "Id": "sha256:febc1a2eec1fdaad5db7e542ce1fefaee9656b6e3a177f0c703d616e77b86a62",
+        "RepoTags": [
+            "ubuntu:26.04"
+        ],
+        "RepoDigests": [
+            "ubuntu@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c"
+        ],
+        "Parent": "",
+        "Comment": "Add rock control metadata",
+        "Created": "1970-01-01T00:00:00Z",
+        "DockerVersion": "",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Cmd": [
+                "/bin/bash"
+            ],
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": {
+                "org.opencontainers.image.created": "2026-10-25T10:26:07.538865+00:00",
+                "org.opencontainers.image.description": "The Ubuntu container image maintained by Canonical\n\nUbuntu is a Debian-based Linux operating system that runs from the desktop to the cloud, to all your internet connected things.\nIt is the world's most popular operating system across public clouds and OpenStack clouds.\nIt is the number one platform for containers; from Docker to Kubernetes to LXD, Ubuntu can run your containers at scale.\nFast, secure and simple, Ubuntu powers millions of PCs worldwide.\n",
+                "org.opencontainers.image.title": "ubuntu",
+                "org.opencontainers.image.version": "26.04"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 101511580,
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/2f6aa18db23b417ce02d6ad820f33e3954ddec37156d8635ec0e642065c68660/diff",
+                "MergedDir": "/var/lib/docker/overlay2/d97c1475dd4062051a84061d64c59d458f2a712edf18a6758db7c1a135a601f1/merged",
+                "UpperDir": "/var/lib/docker/overlay2/d97c1475dd4062051a84061d64c59d458f2a712edf18a6758db7c1a135a601f1/diff",
+                "WorkDir": "/var/lib/docker/overlay2/d97c1475dd4062051a84061d64c59d458f2a712edf18a6758db7c1a135a601f1/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:5cac300e390e2fd748b258618f403b7813229929ad6de903b0c52a210a930824",
+                "sha256:5f4be2c3badedfd7149d008a4902427c98e708c70031dc19b4264160a545df19"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "0001-01-01T00:00:00Z"
+        }
+    }
+]

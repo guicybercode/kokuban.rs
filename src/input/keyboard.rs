@@ -13,6 +13,8 @@ pub enum TerminalKey {
     End,
     PageUp,
     PageDown,
+    // Only `input::linux` maps a physical Insert key; macOS never produces it.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Insert,
     Delete,
     Function(u8),

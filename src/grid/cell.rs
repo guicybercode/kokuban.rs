@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,10 +45,11 @@ pub struct Cell {
 }
 
 impl Cell {
-    pub fn text(&self) -> Cow<'_, str> {
+    #[cfg(test)]
+    pub fn text(&self) -> std::borrow::Cow<'_, str> {
         match &self.grapheme {
-            Some(text) => Cow::Borrowed(text),
-            None => Cow::Owned(self.c.to_string()),
+            Some(text) => std::borrow::Cow::Borrowed(text),
+            None => std::borrow::Cow::Owned(self.c.to_string()),
         }
     }
 

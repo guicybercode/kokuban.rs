@@ -1,3 +1,5 @@
+// `pane::pane::Pane` is the leaf; the parent module owns the tree.
+#[allow(clippy::module_inception)]
 pub mod pane;
 
 use crate::graphics::{retain_unreferenced_image_ids, ImageId};
@@ -7,6 +9,7 @@ use crate::renderer::kitty_handler::KittyHandlerOptions;
 use pane::{InputFailureNotifier, Pane};
 
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 
 const MIN_PANE_COLS: usize = 10;
 const MIN_PANE_ROWS: usize = 3;
@@ -17,8 +20,6 @@ pub struct PaneTree {
     pub focused: PaneId,
     next_id: PaneId,
     scrollback_max: usize,
-    default_cols: u16,
-    default_rows: u16,
     kitty_options: KittyHandlerOptions,
     graphics_support: GraphicsSupport,
     on_input_failed: InputFailureNotifier,
@@ -49,6 +50,7 @@ impl PaneTree {
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
         on_input_failed: InputFailureNotifier,
+        command: &[OsString],
     ) -> Result<Self, crate::pty::PtyError> {
         let id: PaneId = 1;
         let pane = Pane::new(
@@ -59,6 +61,7 @@ impl PaneTree {
             kitty_options,
             graphics_support,
             on_input_failed.clone(),
+            command,
         )?;
         let mut panes = HashMap::new();
         panes.insert(id, pane);
@@ -69,8 +72,6 @@ impl PaneTree {
             focused: id,
             next_id: 2,
             scrollback_max,
-            default_cols: cols,
-            default_rows: rows,
             kitty_options,
             graphics_support,
             on_input_failed,
@@ -100,6 +101,7 @@ impl PaneTree {
         ids
     }
 
+    #[cfg(test)]
     pub fn pane_count(&self) -> usize {
         self.panes.len()
     }
@@ -152,6 +154,7 @@ impl PaneTree {
             self.kitty_options,
             self.graphics_support,
             self.on_input_failed.clone(),
+            &[],
         )?;
 
         // Copy color config from existing pane for OSC 10/11 queries
@@ -440,6 +443,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("pane tree should spawn its initial shell");
         let focused = tree.focused;
@@ -481,6 +485,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("pane tree should spawn its initial shell");
         tree.relayout(
@@ -532,6 +537,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("pane tree should spawn its initial shell");
         let viewport = PixelRect {

@@ -170,17 +170,33 @@ def child(directory: Path) -> None:
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, original)
 
 
+def darwin_process_start(pid: int) -> Optional[str]:
+    """BSD ps start timestamp of a live PID, or None when the PID is gone."""
+    result = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)],
+                            capture_output=True, text=True, timeout=10)
+    started = result.stdout.strip()
+    return started if result.returncode == 0 and started else None
+
+
+def same_recorded_process(child_info: dict[str, Any]) -> bool:
+    """True only while the recorded PID still belongs to the recorded process."""
+    if sys.platform == "darwin":
+        current = darwin_process_start(child_info["pid"])
+        recorded = child_info.get("start_time")
+        return current is not None and (recorded is None or current == recorded)
+    return process_stats(child_info["pid"])["start_ticks"] == child_info["start_ticks"]
+
+
 def stop_owned_child(directory: Path) -> None:
     child_info = read_json(directory / "child.json")
     if child_info is None:
         return
     for signum in (signal.SIGTERM, signal.SIGKILL):
         try:
-            current = process_stats(child_info["pid"])
-            if current["start_ticks"] != child_info["start_ticks"]:
+            if not same_recorded_process(child_info):
                 return
             os.kill(child_info["pid"], signum)
-        except (OSError, KeyError):
+        except (OSError, KeyError, subprocess.TimeoutExpired):
             return
         time.sleep(0.1)
 

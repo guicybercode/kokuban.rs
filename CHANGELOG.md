@@ -4,19 +4,29 @@
 
 ### Added
 
+- Sextants U+1FB00–U+1FB3B and the one-eighth bars and blocks U+1FB70–U+1FB8B (Symbols for Legacy Computing) are drawn as whole-pixel rectangles like the block elements, so btop graphs and 2×3 pixel art have no seams; rows split at thirds and columns where `▌`/`▐` split.
 - Scrollback search on macOS: `Cmd+F` opens a prompt in the status bar, `Enter` and `Shift+Enter` move between case-insensitive matches across soft-wrapped lines, `Esc` closes it; matches use the selection colors and the current one the hanko accent.
 - OSC 8 hyperlinks: links are tracked per absolute row and opened with `Cmd`+click on macOS or `Ctrl`+click on Linux through the system `open`/`xdg-open` (http, https, file and mailto only).
 - OSC 52 clipboard writes (reads are refused), base64 payloads up to 1 MiB with control characters stripped; disable with `[clipboard] osc52_write = false`.
 - kitty keyboard protocol, progressive-enhancement level 1 (disambiguate escape codes): push/pop/set/query of the flag stack per screen, and `CSI u` encodings for Escape, modified Enter/Tab/Backspace and Ctrl/Alt letters.
 - Per-pane attention on macOS: a BEL or desktop notification in an unfocused pane marks it with ● in the status bar and turns its dividers hanko red; `Cmd+Shift+A` jumps to the next marked pane.
 - Chalkboard factory theme: `#1f3a2a` board, `#f4f6f0` chalk text and cursor, chalk-inverted selection, window chrome in the same green family and hanko red as the only accent.
+- A fresh four-terminal throughput run on `main` (`docs/linux-evidence/2026-10-31-four-terminals/`): Kokuban now leads ASCII (92.4 MiB/s) and ANSI (63.6) on the CI host.
+- macOS accepts the same command line as Linux: `-e COMMAND`, `--working-directory`, `--title` and `--help`; Finder's `-psn_` argument is ignored.
+- `[input] option_as_alt = "both" | "left" | "right" | "none"` chooses which Option key acts as Meta on macOS; the other side composes accents and symbols.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
+- `scripts/compare-terminal-performance.py` runs on macOS: `--backend macos` (the default there) launches Kokuban, Alacritty, kitty, Ghostty and, with `--terminals ... terminal`, Terminal.app through AppleScript; the grid is verified without pixel-cell matching, Terminal.app CPU/RSS are application-level deltas, the output gains `summary.json` and per-terminal summaries, and `scripts/render-comparison-chart.py` accepts `--summary`, `--output`, `--title` and `--subtitle`.
+- Homebrew cask in `packaging/homebrew/Casks/kokuban.rb` (install with `brew install --cask guicybercode/tap/kokuban` once the tap is published), `scripts/update-homebrew-cask.sh` to point it at a new release, and the release checklist in `docs/RELEASE.md`.
 
 ### Changed
 
+- A `kokuban.toml` in the launch directory can no longer run a program or open local files: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored there with a warning and are only read from the user configuration directory; appearance, window and keybind settings are still honored.
 - README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
+- macOS applies the configured ANSI palette and `colors.cursor`; without a cursor color the cursor follows the text color.
+- macOS honors `window.opacity` for the default cell background, sizes the first window with the screen's real backing scale instead of a fixed 2×, shows the program running in each pane in the status bar and respects `status_bar.show_shell`, `show_cwd` and `show_pane_index`.
 - macOS applies the configured ANSI palette and the configured cursor color follows the text color.
+- README states macOS-first and lists platform support explicitly.
 
 ## v0.4 — 2026-09-28
 
