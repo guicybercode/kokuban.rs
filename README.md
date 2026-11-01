@@ -10,7 +10,13 @@ https://github.com/user-attachments/assets/4769ed61-12ed-4bb9-817f-5f3ee06c3238
 
 ## Install
 
-**macOS (Apple Silicon)** — for Intel Macs replace `aarch64-apple-darwin` with `x86_64-apple-darwin`:
+**macOS (Homebrew)** (tap published with each release; see [docs/INSTALL.md](docs/INSTALL.md)):
+
+```sh
+brew install --cask guicybercode/tap/kokuban
+```
+
+**macOS (direct download, Apple Silicon)** — for Intel Macs replace `aarch64-apple-darwin` with `x86_64-apple-darwin`:
 
 ```sh
 curl -LO https://github.com/guicybercode/kokuban.rs/releases/download/v0.4/kokuban-v0.4-aarch64-apple-darwin.dmg
@@ -52,6 +58,21 @@ cargo build --release --locked
 - **Self-update**: `kokuban --update` downloads, verifies and replaces the running release.
 - **Configuration**: local or XDG TOML for fonts, colors, images and keybinds.
 
+## Platform support
+
+macOS is the primary desktop target; Linux follows the Omarchy roadmap and shares the parser, grid, graphics and protocol work. Windows is not supported.
+
+| | macOS | Linux |
+|---|---|---|
+| Renderer | Metal GPU | Software rasterizer (winit + softbuffer, X11/Wayland) |
+| Panes, zoom, status bar, prompt marks | Yes | No |
+| Scrollback search | Yes (`Cmd+F`) | No |
+| Attention mark | Yes (`Cmd+Shift+A`) | No |
+| IME / text composition | In progress | Yes (preedit) |
+| Kitty animation | No (static images only) | Yes (bounded cache; mpv video) |
+| Omarchy integration | n/a | Yes |
+| Install channel | DMG with `Kokuban.app` (ad-hoc signed), `--update` | tar.gz, `--update` |
+
 ## Theme
 
 The factory theme is a chalkboard: a `#1f3a2a` green board, `#f4f6f0` chalk text and cursor, chrome in the same green family and hanko red `#b5312c` as the only accent.
@@ -84,7 +105,7 @@ Linux clipboard and scrollback inputs, and the configurable macOS pane, zoom and
 
 ## Configuration
 
-Kokuban reads `kokuban.toml` in the launch directory first, then `$XDG_CONFIG_HOME/kokuban/kokuban.toml` (or `$HOME/.config/kokuban/kokuban.toml`); the first existing file wins and files are not merged. Invalid or missing configuration falls back to the defaults in `src/config.rs`; see the annotated [kokuban.toml](kokuban.toml) example in the repository root.
+Kokuban reads `kokuban.toml` in the launch directory first, then `$XDG_CONFIG_HOME/kokuban/kokuban.toml` (or `$HOME/.config/kokuban/kokuban.toml`); the first existing file wins and files are not merged. A `kokuban.toml` in the launch directory is honored for appearance, window and keybind settings only: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored there (with a warning in the log) and are read only from your own `~/.config/kokuban/kokuban.toml`. Invalid or missing configuration falls back to the defaults in `src/config.rs`; see the annotated [kokuban.toml](kokuban.toml) example in the repository root.
 
 ```toml
 [font]
@@ -114,7 +135,7 @@ See [docs/OMARCHY.md](docs/OMARCHY.md) for installation and bindings.
 
 ## Status
 
-Kokuban v0.4 (Cargo version 0.4.0) is validated on macOS and Ubuntu 24.04 CI; the exact scope and open items are in the changelog's [validation scope](CHANGELOG.md#validation-scope-and-limits).
+Kokuban v0.4 (Cargo version 0.4.0) is the current release, validated on macOS and Ubuntu 24.04 CI; v0.5 is being prepared on `main` and tracked in the [roadmap](docs/ROADMAP.md). The exact scope and open items of v0.4 are in the changelog's [validation scope](CHANGELOG.md#validation-scope-and-limits).
 
 ## Community and license
 
