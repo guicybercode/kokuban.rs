@@ -41,6 +41,8 @@ enum FullQueuePolicy {
 }
 
 impl Pane {
+    // Constructor mirrors the PTY/grid/decoder inputs; a params struct would just rename them.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PaneId,
         cols: u16,

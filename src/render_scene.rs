@@ -50,5 +50,4 @@ pub struct ChromeColors {
     pub sumi_light: (u8, u8, u8),
     pub sumi_ghost: (u8, u8, u8),
     pub hanko_red: (u8, u8, u8),
-    pub hanko_dim: (u8, u8, u8),
 }

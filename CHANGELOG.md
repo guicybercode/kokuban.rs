@@ -13,13 +13,17 @@
 - macOS accepts the same command line as Linux: `-e COMMAND`, `--working-directory`, `--title` and `--help`; Finder's `-psn_` argument is ignored.
 - `[input] option_as_alt = "both" | "left" | "right" | "none"` chooses which Option key acts as Meta on macOS; the other side composes accents and symbols.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
+- Homebrew cask in `packaging/homebrew/Casks/kokuban.rb` (install with `brew install --cask guicybercode/tap/kokuban` once the tap is published), `scripts/update-homebrew-cask.sh` to point it at a new release, and the release checklist in `docs/RELEASE.md`.
 
 ### Changed
 
+- A `kokuban.toml` in the launch directory can no longer run a program or open local files: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored there with a warning and are only read from the user configuration directory; appearance, window and keybind settings are still honored.
 - README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
 - macOS applies the configured ANSI palette and `colors.cursor`; without a cursor color the cursor follows the text color.
 - macOS honors `window.opacity` for the default cell background, sizes the first window with the screen's real backing scale instead of a fixed 2×, shows the program running in each pane in the status bar and respects `status_bar.show_shell`, `show_cwd` and `show_pane_index`.
+- macOS applies the configured ANSI palette and the configured cursor color follows the text color.
+- README states macOS-first and lists platform support explicitly.
 
 ## v0.4 — 2026-09-28
 
