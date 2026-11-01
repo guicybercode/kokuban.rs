@@ -10,7 +10,7 @@ use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
-use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::render_scene::{StatusBarLayout, ChromeColors, ConfirmOverlayInfo, PaneRenderData};
 use crate::search::MatchKind;
 use crate::terminal_colors::TerminalColors;
 use objc2::rc::Retained;
@@ -88,11 +88,34 @@ pub struct MetalRenderer {
     colors: TerminalColors,
 }
 
+/// Inputs of one frame, grouped so `draw_frame` reads as named fields.
+pub struct FrameInputs<'a> {
+    pub panes: &'a [PaneRenderData<'a>],
+    pub dividers: &'a [DividerInfo],
+    pub atlas: &'a mut GlyphAtlas,
+    pub drawable: &'a ProtocolObject<dyn MTLDrawable>,
+    pub texture: &'a ProtocolObject<dyn MTLTexture>,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
+    pub bg_opacity: f32,
+    pub selection_fg: (u8, u8, u8),
+    pub selection_bg: (u8, u8, u8),
+    pub chrome: &'a ChromeColors,
+    pub status_bar_height: f32,
+    pub status_bar_layout: StatusBarLayout,
+    pub prompt_indicator_color: Option<(u8, u8, u8)>,
+    pub image_store: Option<&'a ImageStore>,
+    pub confirm_overlay: Option<&'a ConfirmOverlayInfo>,
+}
+
 impl MetalRenderer {
     pub fn new(
         device: Retained<ProtocolObject<dyn MTLDevice>>,
         colors: TerminalColors,
     ) -> Self {
+        // SAFETY: Metal object creation on a valid device; the shader source is
+        // a static string, every descriptor is fully populated before it is
+        // handed to the device, and failures panic instead of yielding null.
         unsafe {
             let command_queue = device.newCommandQueue().expect("Failed to create command queue");
 
@@ -251,6 +274,8 @@ impl MetalRenderer {
         )
     }
 
+    // Per-pane draw inputs mirror the shader uniforms; a struct is a separate refactor.
+    #[allow(clippy::too_many_arguments)]
     fn build_pane_vertices(
         &self,
         pane: &PaneRenderData,
@@ -260,8 +285,12 @@ impl MetalRenderer {
         chrome: &ChromeColors,
         status_bar_height: f32,
         prompt_indicator_color: Option<(u8, u8, u8)>,
+        bg_opacity: f32,
         vertices: &mut Vec<Vertex>,
     ) {
+        // Cells that keep the default background share the window opacity;
+        // explicit colors, selections and search matches stay opaque.
+        let default_bg_alpha = (bg_opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
         let grid = pane.grid;
         // Resultado atual da busca: fundo hanko_red com texto claro.
         const SEARCH_CURRENT_FG: (u8, u8, u8) = (255, 255, 255);
@@ -296,7 +325,7 @@ impl MetalRenderer {
                     .map(|s| s.contains_cell(grid, row, col))
                     .unwrap_or(false);
                 let search_kind = pane.search.and_then(|s| s.contains_cell(grid, row, col));
-                let (fg_packed, bg_packed) = match search_kind {
+                let (fg_packed, mut bg_packed) = match search_kind {
                     Some(MatchKind::Current) => Self::pack_cell_colors(
                         fg,
                         bg,
@@ -319,6 +348,14 @@ impl MetalRenderer {
                         selected_by_range,
                     ),
                 };
+                if default_bg_alpha < 255
+                    && search_kind.is_none()
+                    && !selected_by_range
+                    && cell.bg == Color::Default
+                    && !cell.flags.contains(CellFlags::REVERSE)
+                {
+                    bg_packed = (bg_packed & !0xff) | default_bg_alpha;
+                }
 
                 let x0 = rect.x + col as f32 * cell_w;
                 let y0 = rect.y + row as f32 * cell_h;
@@ -394,6 +431,16 @@ impl MetalRenderer {
                     }
                 }
 
+                // Hyperlink hint: while the open-link modifier is held, cells that
+                // carry an OSC 8 target get a plain underline in the text color.
+                if pane.underline_links && cell.underline_style == UnderlineStyle::None {
+                    let retained_row = grid.scrollback_len().saturating_sub(grid.scroll_offset) + row;
+                    if grid.hyperlink_at_retained(retained_row, col).is_some() {
+                        let ul_y = y0 + atlas.ascent + 2.0;
+                        Self::add_rect(vertices, x0, ul_y, x1, ul_y + line_thickness, white_u, white_v, fg_packed);
+                    }
+                }
+
                 // Styled underlines
                 if cell.underline_style != UnderlineStyle::None {
                     let ul_color = match cell.underline_color {
@@ -443,6 +490,39 @@ impl MetalRenderer {
             }
         }
 
+        // IME preedit: composed-but-uncommitted text drawn over the cursor
+        // cell with an underline, so the user sees what the input method
+        // will insert. It never touches the grid.
+        if let Some(preedit) = pane.preedit.filter(|text| !text.is_empty()) {
+            if grid.scroll_offset == 0 {
+                let crow = grid.cursor_row;
+                if let Some(ccol) = grid.screen_cursor_col().filter(|_| crow < grid.rows()) {
+                    use unicode_width::UnicodeWidthChar;
+                    let (fr, fg_, fb) = self.colors.resolve_foreground(Color::Default, false);
+                    let (br, bg_, bb) = self.colors.default_background();
+                    let fg = Self::pack_color(fr, fg_, fb, 255);
+                    let bgc = Self::pack_color(br, bg_, bb, 255);
+                    let y0 = rect.y + crow as f32 * cell_h;
+                    let max_x = rect.x + grid.cols() as f32 * cell_w;
+                    let mut x = rect.x + ccol as f32 * cell_w;
+                    let start_x = x;
+                    if y0 + cell_h <= rect.y + grid_height {
+                        for c in preedit.chars() {
+                            let cells = c.width().unwrap_or(1).max(1) as f32;
+                            if x + cells * cell_w > max_x {
+                                break;
+                            }
+                            Self::add_rect(vertices, x, y0, x + cells * cell_w, y0 + cell_h, white_u, white_v, bgc);
+                            self.render_char(c, x, y0, fg, bgc, atlas, vertices);
+                            x += cells * cell_w;
+                        }
+                        let underline_h = (cell_h / 12.0).max(1.0).round();
+                        Self::add_rect(vertices, start_x, y0 + cell_h - underline_h, x, y0 + cell_h, white_u, white_v, fg);
+                    }
+                }
+            }
+        }
+
         // Cursor rendering
         if pane.show_cursor && grid.scroll_offset == 0 {
             let crow = grid.cursor_row;
@@ -482,6 +562,8 @@ impl MetalRenderer {
         }
     }
 
+    // Two corners plus UV and color: a quad helper, not worth a struct.
+    #[allow(clippy::too_many_arguments)]
     fn add_rect(vertices: &mut Vec<Vertex>, x0: f32, y0: f32, x1: f32, y1: f32, u: f32, v: f32, color: u32) {
         vertices.push(Vertex::new(x0, y0, u, v, color, color));
         vertices.push(Vertex::new(x1, y0, u, v, color, color));
@@ -521,6 +603,7 @@ impl MetalRenderer {
         atlas: &mut GlyphAtlas,
         chrome: &ChromeColors,
         status_bar_height: f32,
+        layout: StatusBarLayout,
         vertices: &mut Vec<Vertex>,
     ) {
         let rect = pane.rect;
@@ -555,9 +638,14 @@ impl MetalRenderer {
             Self::pack_color(chrome.sumi_ghost.0, chrome.sumi_ghost.1, chrome.sumi_ghost.2, 255)
         };
 
-        // "黒板"
+        // "黒板", then the 1-based pane index when enabled: "黒板 2".
         for c in "黒板".chars() {
             cursor_x = self.render_char(c, cursor_x, text_y, light, bg, atlas, vertices);
+        }
+        if layout.show_pane_index {
+            for c in format!(" {}", pane.pane_index + 1).chars() {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
         }
 
         // Busca aberta: "黒板 · /consulta  n/m" no lugar do shell e do cwd.
@@ -590,9 +678,11 @@ impl MetalRenderer {
             return;
         }
 
-        // " · zsh"
-        for c in " · zsh".chars() {
-            cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+        // " · zsh": the program actually running in the pane.
+        if layout.show_shell && !pane.program.is_empty() {
+            for c in " · ".chars().chain(pane.program.chars()) {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
         }
 
         // Update notice, right-aligned before the focus indicator. It is
@@ -603,7 +693,7 @@ impl MetalRenderer {
         let notice_width = notice.map_or(0.0, |notice| cell_w * (notice.chars().count() + 1) as f32);
 
         // " · /cwd"
-        if !pane.cwd.is_empty() {
+        if layout.show_cwd && !pane.cwd.is_empty() {
             for c in " · ".chars() {
                 cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
             }
@@ -638,6 +728,8 @@ impl MetalRenderer {
         self.render_char('■', indicator_x, text_y, indicator_color, bg, atlas, vertices);
     }
 
+    // Glyph position, colors and atlas are all needed per call.
+    #[allow(clippy::too_many_arguments)]
     fn render_char(
         &self,
         c: char,
@@ -731,29 +823,30 @@ impl MetalRenderer {
         vertices
     }
 
-    pub fn draw_frame(
-        &mut self,
-        panes: &[PaneRenderData],
-        dividers: &[DividerInfo],
-        atlas: &mut GlyphAtlas,
-        drawable: &ProtocolObject<dyn MTLDrawable>,
-        texture: &ProtocolObject<dyn MTLTexture>,
-        viewport_width: f32,
-        viewport_height: f32,
-        bg_opacity: f32,
-        selection_fg: (u8, u8, u8),
-        selection_bg: (u8, u8, u8),
-        chrome: &ChromeColors,
-        status_bar_height: f32,
-        prompt_indicator_color: Option<(u8, u8, u8)>,
-        image_store: Option<&ImageStore>,
-        confirm_overlay: Option<&ConfirmOverlayInfo>,
-    ) {
+    pub fn draw_frame(&mut self, inputs: FrameInputs<'_>) {
+        let FrameInputs {
+            panes,
+            dividers,
+            atlas,
+            drawable,
+            texture,
+            viewport_width,
+            viewport_height,
+            bg_opacity,
+            selection_fg,
+            selection_bg,
+            chrome,
+            status_bar_height,
+            status_bar_layout,
+            prompt_indicator_color,
+            image_store,
+            confirm_overlay,
+        } = inputs;
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {
-            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, &mut content_vertices);
-            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut content_vertices);
+            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, bg_opacity, &mut content_vertices);
+            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, status_bar_layout, &mut content_vertices);
         }
 
         // Build divider vertices (use brush texture)
@@ -850,6 +943,12 @@ impl MetalRenderer {
             return;
         }
 
+        // SAFETY: both buffers are StorageModeShared, so `contents()` is a
+        // CPU-visible mapping of the whole buffer: `needed <= length()` after
+        // the resize check and the uniform buffer holds at least two f32. The
+        // atlas region matches `rgba_pixels` (width * height * 4 bytes) and
+        // `replaceRegion` copies synchronously. Nothing fences this CPU write
+        // against the previous frame's GPU reads of the same buffers.
         unsafe {
             let needed = all_vertices.len() * std::mem::size_of::<Vertex>();
             if needed > self.vertex_buffer.length() {
@@ -1102,6 +1201,8 @@ impl MetalRenderer {
         }
     }
 
+    // Same inputs as `render_char` plus the overlay alpha.
+    #[allow(clippy::too_many_arguments)]
     fn render_char_with_alpha(
         &self,
         c: char,

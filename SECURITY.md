@@ -36,7 +36,7 @@ In v0.4, configuration is loaded at startup in this order:
 1. `kokuban.toml` in the launch directory.
 2. `$XDG_CONFIG_HOME/kokuban/kokuban.toml` when `XDG_CONFIG_HOME` is an absolute path; otherwise `$HOME/.config/kokuban/kokuban.toml` when `HOME` is an absolute path.
 
-The first existing configuration takes precedence; files are not merged. A read or parse error uses defaults instead of trying the next location. Review project-local configuration before launching from an untrusted directory, even when you have configured your user-level file.
+The first existing configuration takes precedence; files are not merged. A read or parse error uses defaults instead of trying the next location. A launch-directory `kokuban.toml` can change appearance, window and keybind settings but cannot make Kokuban run a program or open local files: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored from that location (logged as a warning) and are only read from your user-level file. Still review project-local configuration before launching from an untrusted directory, since it replaces your user-level file entirely.
 
 Kitty file transfer is enabled by default; to keep image transfers in the PTY byte stream, set:
 

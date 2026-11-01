@@ -1,13 +1,12 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) const HELP: &str = "Usage: kokuban [OPTIONS] [-e COMMAND [ARGUMENTS...]]
 
 Options:
   -e, --execute COMMAND...    Run a command directly in the terminal
   --working-directory DIR    Start in this directory (alias: --dir)
-  --app-id ID                 Set Wayland app ID / X11 window class
+  --app-id ID                 Set Wayland app ID / X11 window class (Linux)
   --title TITLE               Set the initial window title
   --check-update              Check GitHub for a newer release
   --update                    Download and install the newest release

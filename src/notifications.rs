@@ -46,10 +46,6 @@ impl NotificationController {
         self.window_focused.load(Ordering::Acquire)
     }
 
-    pub fn enabled(&self) -> bool {
-        self.config.enabled
-    }
-
     /// Queue a desktop notification unless disabled, focused, empty, or rate-limited.
     pub fn handle_notification(&self, request: NotificationRequest) {
         if !self.config.enabled || request.is_empty() {
@@ -129,6 +125,7 @@ fn is_bidi_control(character: char) -> bool {
 }
 
 /// Escape text for notify-send's Pango markup body/summary.
+#[cfg(any(target_os = "linux", test))]
 pub fn escape_notify_send_markup(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for character in text.chars() {
