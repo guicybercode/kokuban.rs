@@ -8,6 +8,7 @@ use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
 use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::grid::Grid;
 use crate::input::keybind::KeybindMap;
+use crate::launch_options::LaunchOptions;
 use crate::layout::PixelRect;
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
@@ -16,7 +17,6 @@ use crate::parser::sixel::SixelImage;
 use crate::render_scene::{ChromeColors, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
-use crate::launch_options::LaunchOptions;
 use crate::window_title::WINDOW_TITLE;
 
 use objc2::{runtime::ProtocolObject, MainThreadMarker, Message};

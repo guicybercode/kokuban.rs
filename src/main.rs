@@ -2,21 +2,21 @@
 mod app;
 mod app_icon;
 mod config;
-mod notifications;
 #[cfg(test)]
 mod content_preservation_tests;
-mod graphics;
 mod glyph_atlas;
+mod graphics;
 mod grid;
 mod input;
+mod notifications;
 // Pane layout, search and the render scene are consumed by the macOS window only.
+mod launch_options;
 #[cfg(any(target_os = "macos", test))]
 mod layout;
-mod launch_options;
-#[cfg(target_os = "linux")]
-mod linux_window;
 #[cfg(target_os = "linux")]
 mod linux_clipboard;
+#[cfg(target_os = "linux")]
+mod linux_window;
 #[cfg(target_os = "linux")]
 mod omarchy_theme;
 mod palette;
@@ -26,20 +26,20 @@ mod parser;
 mod pty;
 #[cfg(target_os = "macos")]
 mod render_scene;
+mod renderer;
 #[cfg(any(target_os = "macos", test))]
 mod search;
 mod selection;
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-mod software_raster;
 #[cfg(target_os = "linux")]
 mod software_graphics;
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+mod software_raster;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+mod terminal_colors;
 mod terminal_decoder;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod terminal_reader;
 mod terminal_writer;
-#[cfg_attr(target_os = "linux", allow(dead_code))]
-mod terminal_colors;
-mod renderer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod update;
 mod window_title;
@@ -110,7 +110,11 @@ fn main() -> std::process::ExitCode {
     }
 
     let config = config::Config::load();
-    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
+    log::info!(
+        "黒板kokuban starting: {}x{} terminal",
+        config.window.columns,
+        config.window.rows
+    );
 
     match app::launch(config, options) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -161,7 +165,11 @@ fn main() -> std::process::ExitCode {
             std::env::set_var("PWD", directory);
         }
     }
-    log::info!("黒板kokuban starting: {}x{} terminal", config.window.columns, config.window.rows);
+    log::info!(
+        "黒板kokuban starting: {}x{} terminal",
+        config.window.columns,
+        config.window.rows
+    );
 
     match linux_window::launch(config, options) {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -194,7 +202,13 @@ mod tests {
         let home = || Some(OsString::from("/Users/kokuban"));
         assert_eq!(launch_directory(Path::new("/tmp/project"), home()), None);
         assert_eq!(launch_directory(Path::new("/"), None), None);
-        assert_eq!(launch_directory(Path::new("/"), Some(OsString::from("relative"))), None);
-        assert_eq!(launch_directory(Path::new("/"), Some(OsString::from("/"))), None);
+        assert_eq!(
+            launch_directory(Path::new("/"), Some(OsString::from("relative"))),
+            None
+        );
+        assert_eq!(
+            launch_directory(Path::new("/"), Some(OsString::from("/"))),
+            None
+        );
     }
 }

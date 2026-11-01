@@ -1,19 +1,19 @@
 use crate::config::Config;
-use crate::notifications::{NotificationController, NotificationRequest};
-use crate::grid::TerminalEvent;
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::cell::Color;
+use crate::grid::TerminalEvent;
 use crate::grid::{Grid, MouseTracking};
 use crate::input::linux::{
     encode_key_press, key_press_from_winit, scrollback_action_from_winit, ImeCommitPayload,
 };
 use crate::input::paste::{encode_paste, MAX_PASTE_BYTES};
 use crate::linux_clipboard::{ClipboardEvent, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES};
+use crate::notifications::{NotificationController, NotificationRequest};
 use crate::omarchy_theme::{watch_current_theme, ThemeWatcher};
 use crate::palette::PaletteOverrides;
-use crate::selection::{GridPoint, SelectionState};
-use crate::pty::Pty;
 use crate::parser::ansi::GraphicsSupport;
+use crate::pty::Pty;
+use crate::selection::{GridPoint, SelectionState};
 use crate::software_graphics::SoftwareGraphics;
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
@@ -27,35 +27,42 @@ use std::time::Instant;
 use thiserror::Error;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
-use winit::event::{
-    DeviceId, ElementState, Ime, MouseButton, WindowEvent,
-};
+use winit::event::{DeviceId, ElementState, Ime, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::platform::wayland::WindowAttributesExtWayland;
 use winit::platform::x11::WindowAttributesExtX11;
 use winit::window::{Icon, ImePurpose, UserAttentionType, Window, WindowId};
 
-mod damage;
-mod status;
 mod clipboard;
-mod sizing;
-mod pointer;
+mod damage;
 mod dispatch;
-mod ime;
 mod draw;
+mod ime;
+mod pointer;
+mod sizing;
+mod status;
 #[cfg(test)]
 mod test_support;
 
-use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
-use status::{
-    classify_reader_exit, classify_writer_exit, combine_launch_results, reader_status_result,
-    terminal_accepts_input, writer_status_result, ReaderStatus, WriterStatus,
-};
 use clipboard::{
     apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer, sync_selection,
     ClipboardAction, SelectionContext,
 };
+use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
+use dispatch::{
+    dispatch_encoded_terminal_input_with, dispatch_focus_event_with, dispatch_keyboard_input_with,
+    dispatch_mouse_button_and_motion_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
+    modifiers_after_focus_change, record_window_focus_change, KeyboardInputError,
+    KeyboardInputOutcome, MouseMotionDispatchOutcome,
+};
+use draw::{draw_grid_snapshot_in_band, draw_ime_preedit, rgb_to_xrgb, snapshot_locked_grid};
+use ime::{
+    ime_cursor_area, ime_payload_from_event, ime_preedit_payload, layout_ime_preedit_for_snapshot,
+    replace_ime_preedit, reveal_ime_input_viewport, sync_ime_cursor_area_with, ImeCursorArea,
+    ImePreedit, ImePreeditPayload,
+};
+use pointer::{mouse_button_code_from_winit, PointerRouteState};
 use sizing::{
     atlas_cell_dimensions, configured_terminal_dimensions, create_glyph_atlas, drawable_dimensions,
     immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
@@ -63,19 +70,10 @@ use sizing::{
     set_grid_cell_dimensions, terminal_dimensions_from_grid, terminal_size_for_surface,
     GlyphAtlasRebuildError, TerminalSize, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
 };
-use pointer::{mouse_button_code_from_winit, PointerRouteState};
-use dispatch::{
-    dispatch_encoded_terminal_input_with, dispatch_focus_event_with, dispatch_keyboard_input_with,
-    dispatch_mouse_button_and_motion_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
-    modifiers_after_focus_change, record_window_focus_change, KeyboardInputError,
-    KeyboardInputOutcome, MouseMotionDispatchOutcome,
+use status::{
+    classify_reader_exit, classify_writer_exit, combine_launch_results, reader_status_result,
+    terminal_accepts_input, writer_status_result, ReaderStatus, WriterStatus,
 };
-use ime::{
-    ime_cursor_area, ime_payload_from_event, ime_preedit_payload, layout_ime_preedit_for_snapshot,
-    replace_ime_preedit, reveal_ime_input_viewport, sync_ime_cursor_area_with, ImeCursorArea,
-    ImePreedit, ImePreeditPayload,
-};
-use draw::{draw_grid_snapshot_in_band, draw_ime_preedit, rgb_to_xrgb, snapshot_locked_grid};
 
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
 
@@ -200,7 +198,12 @@ pub(crate) fn launch(
     ));
     let reader_notifications = notifications.clone();
     let pty = if options.command.is_empty() {
-        Pty::spawn(columns, rows, graphics_support.kitty, graphics_support.sixel)
+        Pty::spawn(
+            columns,
+            rows,
+            graphics_support.kitty,
+            graphics_support.sixel,
+        )
     } else {
         Pty::spawn_command(
             columns,
@@ -218,7 +221,9 @@ pub(crate) fn launch(
     let clipboard_proxy = event_proxy.clone();
     let clipboard = LinuxClipboard::new(move |event| {
         let _ = clipboard_proxy.send_event(LinuxEvent::Clipboard(event));
-    }).map_err(|error| log::warn!("Linux clipboard worker unavailable: {error}")).ok();
+    })
+    .map_err(|error| log::warn!("Linux clipboard worker unavailable: {error}"))
+    .ok();
     let writer_proxy = event_proxy.clone();
     let mut writer = TerminalWriter::spawn(pty.clone(), move |exit| {
         let _ = writer_proxy.send_event(LinuxEvent::WriterExited(classify_writer_exit(exit)));
@@ -237,29 +242,27 @@ pub(crate) fn launch(
         pty.clone(),
         grid.clone(),
         graphics_support,
-        move |event, grid| {
-            match event {
-                TerminalEvent::Notification { title, body } => {
-                    reader_notifications
-                        .handle_notification(NotificationRequest::new(title, body));
-                    Ok(None)
+        move |event, grid| match event {
+            TerminalEvent::Notification { title, body } => {
+                reader_notifications.handle_notification(NotificationRequest::new(title, body));
+                Ok(None)
+            }
+            TerminalEvent::Bell => {
+                reader_notifications.handle_bell();
+                let _ = attention_proxy.send_event(LinuxEvent::UserAttention);
+                Ok(None)
+            }
+            TerminalEvent::ClipboardWrite(text) => {
+                if osc52_write {
+                    let _ = clipboard_write_proxy.send_event(LinuxEvent::ClipboardWrite(text));
                 }
-                TerminalEvent::Bell => {
-                    reader_notifications.handle_bell();
-                    let _ = attention_proxy.send_event(LinuxEvent::UserAttention);
-                    Ok(None)
-                }
-                TerminalEvent::ClipboardWrite(text) => {
-                    if osc52_write {
-                        let _ = clipboard_write_proxy.send_event(LinuxEvent::ClipboardWrite(text));
-                    }
-                    Ok(None)
-                }
-                event => {
-                    let mut graphics =
-                        reader_graphics.lock().map_err(|_| ReaderExit::GridPoisoned)?;
-                    Ok(graphics.process(event, grid))
-                }
+                Ok(None)
+            }
+            event => {
+                let mut graphics = reader_graphics
+                    .lock()
+                    .map_err(|_| ReaderExit::GridPoisoned)?;
+                Ok(graphics.process(event, grid))
             }
         },
         move || {
@@ -462,16 +465,10 @@ impl LinuxWindow {
             .with_window_icon(application_icon())
             .with_transparent(false)
             .with_inner_size(self.initial_size);
-        let attributes = WindowAttributesExtWayland::with_name(
-            attributes,
-            self.app_id.clone(),
-            "kokuban",
-        );
-        let attributes = WindowAttributesExtX11::with_name(
-            attributes,
-            self.app_id.clone(),
-            "kokuban",
-        );
+        let attributes =
+            WindowAttributesExtWayland::with_name(attributes, self.app_id.clone(), "kokuban");
+        let attributes =
+            WindowAttributesExtX11::with_name(attributes, self.app_id.clone(), "kokuban");
         let window = Arc::new(
             event_loop
                 .create_window(attributes)
@@ -592,8 +589,14 @@ impl LinuxWindow {
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let (snapshot, images) = {
             // Match reader lock order; text and image placements share one snapshot.
-            let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
-            let graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
+            let grid = self
+                .grid
+                .lock()
+                .map_err(|_| GridAccessError::Poisoned.to_string())?;
+            let graphics = self
+                .graphics
+                .lock()
+                .map_err(|_| "image cache lock is poisoned".to_string())?;
             sync_selection(&mut self.selection, &mut self.selection_context, &grid);
             let mut snapshot = snapshot_locked_grid(&grid);
             apply_selection_to_snapshot(&mut snapshot, &self.selection, &grid, &self.colors);
@@ -992,8 +995,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
         }
         let result = (|| {
             // Preserve the PTY reader's grid -> graphics lock order.
-            let grid = self.grid.lock().map_err(|_| GridAccessError::Poisoned.to_string())?;
-            let mut graphics = self.graphics.lock().map_err(|_| "image cache lock is poisoned".to_string())?;
+            let grid = self
+                .grid
+                .lock()
+                .map_err(|_| GridAccessError::Poisoned.to_string())?;
+            let mut graphics = self
+                .graphics
+                .lock()
+                .map_err(|_| "image cache lock is poisoned".to_string())?;
             Ok::<_, String>(graphics.advance_animations(&grid, cell_size, Instant::now()))
         })();
         match result {
@@ -1117,35 +1126,60 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                                 if let Err(error) = crate::notifications::open_hyperlink(&url) {
                                     log::warn!("Failed to open hyperlink: {error}");
                                 }
-                                self.pointer_route.record_button_dispatch(device_id, state, button_code, false, cell_dimensions);
+                                self.pointer_route.record_button_dispatch(
+                                    device_id,
+                                    state,
+                                    button_code,
+                                    false,
+                                    cell_dimensions,
+                                );
                                 return;
                             }
                             Ok(None) => {}
-                            Err(error) => { self.fail(event_loop, error.to_string()); return; }
+                            Err(error) => {
+                                self.fail(event_loop, error.to_string());
+                                return;
+                            }
                         }
                     }
                 }
                 let local_press = if button == MouseButton::Left && state.is_pressed() {
                     match self.grid.lock() {
-                        Ok(grid) => grid.mouse_tracking == MouseTracking::None || self.modifiers.shift_key(),
+                        Ok(grid) => {
+                            grid.mouse_tracking == MouseTracking::None || self.modifiers.shift_key()
+                        }
                         Err(_) => {
                             // Drop the poisoned guard before calling the error path.
                             false
                         }
                     }
-                } else { false };
-                let local_release = button == MouseButton::Left && state == ElementState::Released
+                } else {
+                    false
+                };
+                let local_release = button == MouseButton::Left
+                    && state == ElementState::Released
                     && self.selection_drag == Some(device_id);
                 if local_press || local_release {
                     if let Some(position) = self.pointer_route.position_for(device_id) {
                         match self.select_at_pointer(position, local_press) {
                             Ok(true) if local_press => self.selection_drag = Some(device_id),
-                            Ok(_) => {},
-                            Err(error) => { self.fail(event_loop, error.to_string()); return; }
+                            Ok(_) => {}
+                            Err(error) => {
+                                self.fail(event_loop, error.to_string());
+                                return;
+                            }
                         }
                     }
-                    if local_release { self.selection_drag = None; }
-                    self.pointer_route.record_button_dispatch(device_id, state, button_code, false, cell_dimensions);
+                    if local_release {
+                        self.selection_drag = None;
+                    }
+                    self.pointer_route.record_button_dispatch(
+                        device_id,
+                        state,
+                        button_code,
+                        false,
+                        cell_dimensions,
+                    );
                     return;
                 }
                 let result = dispatch_mouse_button_and_motion_with(
@@ -1309,7 +1343,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             .enqueue(bytes)
                     },
                 );
-                if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) { self.clear_selection(); }
+                if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) {
+                    self.clear_selection();
+                }
                 self.handle_terminal_input_result(event_loop, result);
             }
             WindowEvent::KeyboardInput {
@@ -1321,7 +1357,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     return;
                 }
                 if !is_synthetic && event.state.is_pressed() {
-                    if let Some(action) = clipboard_action(event.logical_key.as_ref(), self.modifiers) {
+                    if let Some(action) =
+                        clipboard_action(event.logical_key.as_ref(), self.modifiers)
+                    {
                         if !event.repeat {
                             if let Err(error) = self.handle_clipboard_action(action) {
                                 self.fail(event_loop, error.to_string());
@@ -1351,7 +1389,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             .enqueue(bytes)
                     },
                 );
-                if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) { self.clear_selection(); }
+                if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) {
+                    self.clear_selection();
+                }
                 self.handle_terminal_input_result(event_loop, result);
             }
             WindowEvent::Resized(size) => {
@@ -1461,19 +1501,27 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: LinuxEvent) {
         match event {
             LinuxEvent::ThemeChanged => {
-                let theme = self.theme_watcher.as_ref().and_then(ThemeWatcher::take_update);
+                let theme = self
+                    .theme_watcher
+                    .as_ref()
+                    .and_then(ThemeWatcher::take_update);
                 if let Some(theme) = theme {
                     let colors = self.palette_overrides.resolve(Some(theme));
                     if colors != self.colors {
                         let foreground = colors.resolve_foreground(Color::Default, false);
                         let background = colors.default_background();
-                        let result = self.grid.lock().map(|mut grid| {
-                            // OSC queries and the next frame observe the same palette.
-                            grid.default_fg_hex = terminal_color_query_value(foreground);
-                            grid.default_bg_hex = terminal_color_query_value(background);
-                            self.colors = colors;
-                            self.background = rgb_to_xrgb(background.0, background.1, background.2);
-                        }).map_err(|_| GridAccessError::Poisoned);
+                        let result = self
+                            .grid
+                            .lock()
+                            .map(|mut grid| {
+                                // OSC queries and the next frame observe the same palette.
+                                grid.default_fg_hex = terminal_color_query_value(foreground);
+                                grid.default_bg_hex = terminal_color_query_value(background);
+                                self.colors = colors;
+                                self.background =
+                                    rgb_to_xrgb(background.0, background.1, background.2);
+                            })
+                            .map_err(|_| GridAccessError::Poisoned);
                         if let Err(error) = result {
                             self.fail(event_loop, error.to_string());
                             return;
@@ -1624,17 +1672,9 @@ mod tests {
     use super::draw::snapshot_grid;
     use super::sizing::TerminalResizeError;
     use super::{
-        arm_grid_redraw,
-        arm_window_title_update,
-        begin_grid_redraw,
-        begin_window_title_update,
-        changed_window_title,
-        resize_terminal_with,
-        snapshot_window_title,
-        terminal_color_query_value,
-        terminal_size_for_surface,
-        GridAccessError,
-        WINDOW_TITLE,
+        arm_grid_redraw, arm_window_title_update, begin_grid_redraw, begin_window_title_update,
+        changed_window_title, resize_terminal_with, snapshot_window_title,
+        terminal_color_query_value, terminal_size_for_surface, GridAccessError, WINDOW_TITLE,
     };
     use crate::grid::Grid;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -1760,4 +1800,3 @@ mod tests {
         assert!(!arm_grid_redraw(&redraw_pending));
     }
 }
-

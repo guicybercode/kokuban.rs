@@ -7,8 +7,8 @@ use crate::search::SearchState;
 use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
-use std::io;
 use std::ffi::OsString;
+use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 

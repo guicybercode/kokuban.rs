@@ -14,7 +14,10 @@ const RIGHT_OPTION_DEVICE_BIT: usize = 0x40;
 
 /// Whether the Option key in `modifiers` should act as Meta (ESC prefix)
 /// under `option_as_alt`, or be left to macOS text composition.
-pub(crate) fn option_acts_as_meta(modifiers: NSEventModifierFlags, option_as_alt: OptionAsAlt) -> bool {
+pub(crate) fn option_acts_as_meta(
+    modifiers: NSEventModifierFlags,
+    option_as_alt: OptionAsAlt,
+) -> bool {
     if !modifiers.contains(NSEventModifierFlags::Option) {
         return false;
     }
@@ -374,7 +377,11 @@ mod tests {
             (plain, OptionAsAlt::None, false),
             (none, OptionAsAlt::Both, false),
         ] {
-            assert_eq!(option_acts_as_meta(modifiers, setting), expected, "{modifiers:?} {setting:?}");
+            assert_eq!(
+                option_acts_as_meta(modifiers, setting),
+                expected,
+                "{modifiers:?} {setting:?}"
+            );
         }
     }
 
