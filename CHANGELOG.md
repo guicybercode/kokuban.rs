@@ -21,6 +21,8 @@
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
 - macOS applies the configured ANSI palette and `colors.cursor`; without a cursor color the cursor follows the text color.
 - macOS honors `window.opacity` for the default cell background, sizes the first window with the screen's real backing scale instead of a fixed 2×, shows the program running in each pane in the status bar and respects `status_bar.show_shell`, `show_cwd` and `show_pane_index`.
+- macOS applies the configured ANSI palette and the configured cursor color follows the text color.
+- README states macOS-first and lists platform support explicitly.
 
 ## v0.4 — 2026-09-28
 
