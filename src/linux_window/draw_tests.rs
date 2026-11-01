@@ -635,7 +635,6 @@ fn empty_grid_cursor_is_visible_and_follows_each_cursor_shape() {
         .all(|&pixel| pixel == background));
 }
 
-#[cfg(test)]
 mod themed_cursor_tests {
     use super::*;
 
@@ -953,7 +952,6 @@ mod themed_cursor_tests {
     }
 }
 
-#[cfg(test)]
 mod graphics_tests {
     use super::{atlas_cell_dimensions, draw_grid_snapshot_with_images, snapshot_grid};
     use crate::config::ImagesConfig;
@@ -1086,7 +1084,6 @@ mod graphics_tests {
     }
 }
 
-#[cfg(test)]
 mod builtin_shape_tests {
     use super::*;
     use crate::renderer::box_drawing::light_thickness;
