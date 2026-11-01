@@ -12,10 +12,10 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 EXPECTED_MEDIANS = {
-    "kokuban": {"ascii": 70.015, "ansi": 55.677, "unicode": 36.853, "short_lines": 36.634},
-    "ghostty": {"ascii": 28.333, "ansi": 22.088, "unicode": 26.646, "short_lines": 24.340},
-    "alacritty": {"ascii": 50.854, "ansi": 53.846, "unicode": 51.779, "short_lines": 50.246},
-    "kitty": {"ascii": 78.800, "ansi": 16.747, "unicode": 57.365, "short_lines": 28.917},
+    "kokuban": {"ascii": 92.361, "ansi": 63.624, "unicode": 47.644, "short_lines": 39.634},
+    "ghostty": {"ascii": 25.551, "ansi": 20.745, "unicode": 26.094, "short_lines": 22.384},
+    "alacritty": {"ascii": 53.755, "ansi": 57.965, "unicode": 55.750, "short_lines": 53.128},
+    "kitty": {"ascii": 84.496, "ansi": 16.455, "unicode": 59.503, "short_lines": 27.788},
 }
 
 
