@@ -11,6 +11,7 @@ mod text_raster;
 use runs::RowShaper;
 #[cfg(any(target_os = "macos", test))]
 pub use runs::RunGlyph;
+#[cfg(any(target_os = "macos", test))]
 use std::sync::Arc;
 use text_raster::{Bitmap, ShapingFont, TextRasterizer};
 use thiserror::Error;
@@ -419,14 +420,14 @@ impl GlyphAtlas {
     }
 
     // Only the Metal renderer and the tests call the run-shaping API for now.
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(target_os = "macos")]
     pub fn ligatures_enabled(&self) -> bool {
         self.ligatures
     }
 
     /// Lista vazia compartilhada, para linhas sem shaping por run.
     // Only the Metal renderer and the tests call the run-shaping API for now.
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(target_os = "macos")]
     pub fn no_run_glyphs(&self) -> Arc<[RunGlyph]> {
         self.row_shaper.empty()
     }

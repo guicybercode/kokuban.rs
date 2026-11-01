@@ -56,6 +56,7 @@ impl ShapingFont {
     }
 
     /// Face rustybuzz desta fonte para shaping por run (ligaduras).
+    #[cfg(any(target_os = "macos", test))]
     pub fn face(&self) -> Option<rustybuzz::Face<'_>> {
         rustybuzz::Face::from_slice(&self.data, self.index)
     }
@@ -171,12 +172,14 @@ impl TextRasterizer {
     }
 
     /// Face rustybuzz do estilo primário, para o shaper de runs.
+    #[cfg(any(target_os = "macos", test))]
     pub fn face(&self, style: usize) -> Option<rustybuzz::Face<'_>> {
         self.primary[style].face()
     }
 
     /// Rasteriza um glifo da face primária por id, sem shaping, deslocado por
     /// `x_offset` unidades da fonte. Usado pelos glifos de ligadura.
+    #[cfg(any(target_os = "macos", test))]
     pub fn rasterize_glyph(
         &self,
         style: usize,
