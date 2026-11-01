@@ -13,6 +13,7 @@
 - macOS accepts the same command line as Linux: `-e COMMAND`, `--working-directory`, `--title` and `--help`; Finder's `-psn_` argument is ignored.
 - `[input] option_as_alt = "both" | "left" | "right" | "none"` chooses which Option key acts as Meta on macOS; the other side composes accents and symbols.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
+- Homebrew cask in `packaging/homebrew/Casks/kokuban.rb` (install with `brew install --cask guicybercode/tap/kokuban` once the tap is published), `scripts/update-homebrew-cask.sh` to point it at a new release, and the release checklist in `docs/RELEASE.md`.
 
 ### Changed
 

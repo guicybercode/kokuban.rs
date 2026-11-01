@@ -2,6 +2,25 @@
 
 This page keeps the full installation reference that used to live in the README: the release table, dependencies, checksum verification, updating, building from source, Omarchy commands, troubleshooting, the Linux desktop entry and the image examples. The README has the three-line summary.
 
+## Homebrew (macOS)
+
+The cask lives in [`packaging/homebrew/Casks/kokuban.rb`](../packaging/homebrew/Casks/kokuban.rb) in this repository and is published to the `guicybercode/homebrew-tap` tap with each release. It installs `Kokuban.app` from the release disk image for your Mac (Apple Silicon or Intel) after checking the published SHA-256:
+
+```sh
+brew install --cask guicybercode/tap/kokuban   # taps guicybercode/tap on first use
+brew upgrade --cask kokuban                    # move to the latest release
+brew uninstall --cask kokuban                  # remove the app
+brew uninstall --cask --zap kokuban            # also remove ~/.config/kokuban
+```
+
+The app is ad-hoc signed, not Developer ID signed or notarized, and Homebrew prints a caveat saying so. If macOS refuses the first launch, use **Open** from the Finder context menu or clear the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Kokuban.app
+```
+
+If you installed with Homebrew, upgrade with `brew upgrade --cask kokuban` rather than `kokuban --update`, so Homebrew's record of the installed version stays correct.
+
 ## Run a downloaded release
 
 The [v0.4 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4) is an early desktop release. Download the archive (or, on a Mac, the disk image) for your computer and its matching `.sha256` file. Neither Rust nor Python is required to run the binary. Python is used only by development tools retained in the source repository; those tools and raw benchmark snapshots are omitted from the application archives.
@@ -65,6 +84,8 @@ kokuban --update         # download, verify and install it
 On macOS the app menu also has **Check for Updates…** and **Install Update…**. The update downloads the archive for your computer (or, for `Kokuban.app`, the disk image) with its `.sha256`, refuses it unless the checksum matches, and replaces the executable or app bundle in place. Reopen Kokuban afterwards. If the executable lives in a directory you cannot write, such as `/usr/local/bin`, run `sudo kokuban --update`. Kokuban links no network library: checks and downloads run the system `curl`, `tar` and `shasum`/`sha256sum` (plus `hdiutil` for the app bundle).
 
 Turn the automatic check off with `check_on_startup = false` under `[update]` in `kokuban.toml`, or set `KOKUBAN_NO_UPDATE_CHECK=1`.
+
+Homebrew installs are updated with `brew upgrade --cask kokuban` instead (see [Homebrew (macOS)](#homebrew-macos)).
 
 ## Build and run from source
 
