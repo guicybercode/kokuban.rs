@@ -1,6 +1,8 @@
 //! Clipboard shortcuts and the selection state that follows the grid.
 
-use super::{terminal_cell_at_pointer, GridSnapshot, TerminalDimensions};
+use super::draw::GridSnapshot;
+use super::pointer::terminal_cell_at_pointer;
+use super::sizing::TerminalDimensions;
 use crate::grid::cell::{CellFlags, Color};
 use crate::grid::Grid;
 use crate::selection::{point_from_viewport, GridPoint, SelectionState};
@@ -116,7 +118,7 @@ mod tests {
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
     use crate::grid::Grid;
-    use crate::linux_window::snapshot_locked_grid;
+    use crate::linux_window::draw::snapshot_locked_grid;
     use crate::selection::{GridPoint, SelectionState};
     use crate::terminal_colors::TerminalColors;
     use winit::dpi::PhysicalPosition;

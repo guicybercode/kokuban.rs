@@ -1,7 +1,8 @@
 //! Window, surface and terminal sizing: cell metrics from the glyph atlas,
 //! terminal dimensions for a surface, and the PTY/grid resize transaction.
 
-use super::{rounded_positive_i32, GridAccessError};
+use super::draw::rounded_positive_i32;
+use super::GridAccessError;
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::Grid;
 use std::num::NonZeroU32;

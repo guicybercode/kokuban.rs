@@ -1,7 +1,8 @@
 //! IME support: commit/preedit payloads with their size limits, the cursor
 //! area reported to the input method, and the preedit layout over the grid.
 
-use super::{cell_origin, GridAccessError, GridSnapshot};
+use super::draw::{cell_origin, GridSnapshot};
+use super::GridAccessError;
 use crate::grid::cell::CellFlags;
 use crate::grid::Grid;
 use crate::input::linux::{ime_commit_payload, ImeCommitPayload};

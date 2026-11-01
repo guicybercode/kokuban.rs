@@ -1,7 +1,7 @@
 //! Damage tracking between presented frames: remembers the scene behind each
 //! swapchain buffer and computes the vertical band that must be repainted.
 
-use super::{cell_content_is_visible, rounded_f64_i32, GridSnapshot};
+use super::draw::{cell_content_is_visible, rounded_f64_i32, GridSnapshot};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::cell::CellFlags;
 
@@ -111,10 +111,11 @@ mod tests {
     use crate::glyph_atlas::GlyphKey;
     use crate::grid::cell::{Color, UnderlineStyle};
     use crate::grid::{CursorShape, Grid};
-    use crate::linux_window::{
-        atlas_cell_dimensions, draw_grid_snapshot_in_band, draw_grid_snapshot_with_images,
-        rgb_to_xrgb, rounded_i32, snapshot_locked_grid,
+    use crate::linux_window::draw::{
+        draw_grid_snapshot_in_band, draw_grid_snapshot_with_images, rgb_to_xrgb, rounded_i32,
+        snapshot_locked_grid,
     };
+    use crate::linux_window::sizing::atlas_cell_dimensions;
     use crate::terminal_colors::TerminalColors;
     use std::collections::VecDeque;
     use std::time::Instant;

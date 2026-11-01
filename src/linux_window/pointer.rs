@@ -423,7 +423,7 @@ mod tests {
         terminal_cell_at_pointer, PointerRouteState,
     };
     use crate::input::mouse::{MouseWheelRoute, MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_UP};
-    use crate::linux_window::TerminalDimensions;
+    use crate::linux_window::sizing::TerminalDimensions;
     use winit::dpi::PhysicalPosition;
     use winit::event::{ElementState, MouseButton, MouseScrollDelta};
     use winit::keyboard::ModifiersState;

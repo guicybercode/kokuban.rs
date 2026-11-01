@@ -10,13 +10,13 @@ use crate::grid::cell::{Cell, CellFlags, Color};
 use crate::grid::{CursorShape, Grid};
 use crate::input::linux::ImeCommitPayload;
 use crate::linux_window::dispatch::dispatch_encoded_terminal_input_with;
+use crate::linux_window::draw::{
+    contrasting_cursor_color, draw_grid_snapshot, draw_ime_preedit, ime_preedit_background_at,
+    ime_preedit_glyph_colors, resolve_cell_colors, rgb_to_xrgb, snapshot_grid, CURSOR_THICKNESS,
+};
 use crate::linux_window::sizing::atlas_cell_dimensions;
 use crate::linux_window::test_support::{
     grid_with_scrollback, test_atlas, test_colors, DEFAULT_BACKGROUND, DEFAULT_FOREGROUND,
-};
-use crate::linux_window::{
-    contrasting_cursor_color, draw_grid_snapshot, draw_ime_preedit, ime_preedit_background_at,
-    ime_preedit_glyph_colors, resolve_cell_colors, rgb_to_xrgb, snapshot_grid, CURSOR_THICKNESS,
 };
 use std::cell::RefCell;
 use std::sync::Mutex;
