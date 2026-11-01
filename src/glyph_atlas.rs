@@ -9,6 +9,7 @@ use unicode_width::UnicodeWidthStr;
 mod runs;
 mod text_raster;
 use runs::RowShaper;
+#[cfg(any(target_os = "macos", test))]
 pub use runs::RunGlyph;
 use std::sync::Arc;
 use text_raster::{Bitmap, ShapingFont, TextRasterizer};
