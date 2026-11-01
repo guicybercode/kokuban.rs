@@ -61,8 +61,7 @@ impl ClientImageRegistry {
     }
 
     pub(crate) fn retain_existing(&mut self, mut exists: impl FnMut(ImageId) -> bool) {
-        self.by_client_id
-            .retain(|_, image_id| exists(*image_id));
+        self.by_client_id.retain(|_, image_id| exists(*image_id));
     }
 }
 
@@ -102,10 +101,7 @@ impl ImageNumberRegistry {
         }
     }
 
-    pub(crate) fn retain_existing(
-        &mut self,
-        mut exists: impl FnMut(KittyImageId) -> bool,
-    ) {
+    pub(crate) fn retain_existing(&mut self, mut exists: impl FnMut(KittyImageId) -> bool) {
         let by_id = &mut self.by_id;
         self.by_number.retain(|_, image_ids| {
             image_ids.retain(|image_id| {
@@ -219,7 +215,10 @@ pub enum PlacementMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineRenderSize {
     CellAnchored,
-    NativePixels { width: u32, height: u32 },
+    NativePixels {
+        width: u32,
+        height: u32,
+    },
     AspectFromColumns {
         columns: u32,
         source_width: u32,
@@ -269,11 +268,7 @@ pub(crate) struct KittyPlacementLayout {
     pub render_size: InlineRenderSize,
 }
 
-fn cell_anchored_pixel_extent(
-    cells: u32,
-    cell_extent: f32,
-    pixel_offset: u32,
-) -> f32 {
+fn cell_anchored_pixel_extent(cells: u32, cell_extent: f32, pixel_offset: u32) -> f32 {
     let pixel_offset = cell_anchored_pixel_offset(pixel_offset, cell_extent);
     (cells as f32 * cell_extent - pixel_offset).max(0.0)
 }
@@ -321,8 +316,8 @@ fn aspect_ratio_cell_count(
     // while the visual rectangle stops at the explicit cell boundary.
     let explicit_pixels = f64::from(explicit_cells) * f64::from(explicit_cell_extent)
         + f64::from(explicit_pixel_offset);
-    let automatic_pixels = explicit_pixels * f64::from(automatic_source_extent)
-        / f64::from(explicit_source_extent);
+    let automatic_pixels =
+        explicit_pixels * f64::from(automatic_source_extent) / f64::from(explicit_source_extent);
     (automatic_pixels / f64::from(automatic_cell_extent))
         .ceil()
         .clamp(1.0, f64::from(u32::MAX)) as u32
@@ -340,12 +335,7 @@ pub(crate) fn resolve_kitty_placement_layout(
     let (cell_width, cell_height) = cell_size;
     let columns = columns.filter(|columns| *columns != 0);
     let rows = rows.filter(|rows| *rows != 0);
-    let render_size = InlineRenderSize::for_kitty_request(
-        columns,
-        rows,
-        image_width,
-        image_height,
-    );
+    let render_size = InlineRenderSize::for_kitty_request(columns, rows, image_width, image_height);
     let (display_cols, display_rows) = match (columns, rows) {
         (None, None) => (
             placement_cell_count(None, image_width, x_offset, cell_width),
@@ -430,25 +420,13 @@ impl PlacementMode {
                 y_offset,
                 render_size,
             } => {
-                let effective_x_offset =
-                    cell_anchored_pixel_offset(*x_offset, cell_width) as u32;
-                let effective_y_offset =
-                    cell_anchored_pixel_offset(*y_offset, cell_height) as u32;
+                let effective_x_offset = cell_anchored_pixel_offset(*x_offset, cell_width) as u32;
+                let effective_y_offset = cell_anchored_pixel_offset(*y_offset, cell_height) as u32;
                 let (effective_cols, effective_rows) = match render_size {
                     InlineRenderSize::CellAnchored => (*cols, *rows),
                     InlineRenderSize::NativePixels { width, height } => (
-                        placement_cell_count(
-                            None,
-                            *width,
-                            effective_x_offset,
-                            cell_width,
-                        ),
-                        placement_cell_count(
-                            None,
-                            *height,
-                            effective_y_offset,
-                            cell_height,
-                        ),
+                        placement_cell_count(None, *width, effective_x_offset, cell_width),
+                        placement_cell_count(None, *height, effective_y_offset, cell_height),
                     ),
                     InlineRenderSize::AspectFromColumns {
                         columns,
@@ -486,11 +464,7 @@ impl PlacementMode {
         }
     }
 
-    pub(crate) fn pixel_rect(
-        &self,
-        cell_width: f32,
-        cell_height: f32,
-    ) -> (f32, f32, f32, f32) {
+    pub(crate) fn pixel_rect(&self, cell_width: f32, cell_height: f32) -> (f32, f32, f32, f32) {
         match self {
             // X/Y move the origin within the first cell. Explicit c/r stop at
             // their cell boundary; when both are automatic, pixels stay native.
@@ -518,16 +492,9 @@ impl PlacementMode {
                         source_width,
                         source_height,
                     } => {
-                        let width = cell_anchored_pixel_extent(
-                            *columns,
-                            cell_width,
-                            *x_offset,
-                        );
-                        let height = aspect_scaled_pixel_extent(
-                            width,
-                            *source_width,
-                            *source_height,
-                        );
+                        let width = cell_anchored_pixel_extent(*columns, cell_width, *x_offset);
+                        let height =
+                            aspect_scaled_pixel_extent(width, *source_width, *source_height);
                         (width, height)
                     }
                     InlineRenderSize::AspectFromRows {
@@ -535,16 +502,9 @@ impl PlacementMode {
                         source_width,
                         source_height,
                     } => {
-                        let height = cell_anchored_pixel_extent(
-                            *rows,
-                            cell_height,
-                            *y_offset,
-                        );
-                        let width = aspect_scaled_pixel_extent(
-                            height,
-                            *source_height,
-                            *source_width,
-                        );
+                        let height = cell_anchored_pixel_extent(*rows, cell_height, *y_offset);
+                        let width =
+                            aspect_scaled_pixel_extent(height, *source_height, *source_width);
                         (width, height)
                     }
                 };
@@ -562,10 +522,9 @@ impl PlacementMode {
 #[cfg(test)]
 mod tests {
     use super::{
-        aspect_ratio_cell_count, placement_cell_count,
-        next_available_image_id, resolve_kitty_placement_layout,
-        retain_unreferenced_image_ids, ClientImageRegistry, ImageNumberRegistry,
-        ImagePlacement, InlineRenderSize, KittyPlacementLayout, PlacementMode,
+        aspect_ratio_cell_count, next_available_image_id, placement_cell_count,
+        resolve_kitty_placement_layout, retain_unreferenced_image_ids, ClientImageRegistry,
+        ImageNumberRegistry, ImagePlacement, InlineRenderSize, KittyPlacementLayout, PlacementMode,
     };
     use std::collections::HashSet;
 
@@ -636,14 +595,8 @@ mod tests {
             },
         };
 
-        assert_eq!(
-            placement.pixel_rect(10.0, 20.0),
-            (79.0, 79.0, 10.0, 20.0)
-        );
-        assert_eq!(
-            placement.pixel_rect(8.0, 16.0),
-            (63.0, 63.0, 10.0, 20.0)
-        );
+        assert_eq!(placement.pixel_rect(10.0, 20.0), (79.0, 79.0, 10.0, 20.0));
+        assert_eq!(placement.pixel_rect(8.0, 16.0), (63.0, 63.0, 10.0, 20.0));
 
         let explicit = PlacementMode::Inline {
             row: 3,
@@ -654,10 +607,7 @@ mod tests {
             y_offset: 19,
             render_size: InlineRenderSize::CellAnchored,
         };
-        assert_eq!(
-            explicit.pixel_rect(10.0, 20.0),
-            (79.0, 79.0, 11.0, 21.0)
-        );
+        assert_eq!(explicit.pixel_rect(10.0, 20.0), (79.0, 79.0, 11.0, 21.0));
     }
 
     #[test]
@@ -732,13 +682,7 @@ mod tests {
             (Some(0), Some(0)),
         ] {
             assert_eq!(
-                resolve_kitty_placement_layout(
-                    columns,
-                    rows,
-                    (20, 10),
-                    (2, 3),
-                    (10.0, 10.0),
-                ),
+                resolve_kitty_placement_layout(columns, rows, (20, 10), (2, 3), (10.0, 10.0),),
                 native
             );
         }
@@ -754,13 +698,7 @@ mod tests {
         };
         for rows in [None, Some(0)] {
             assert_eq!(
-                resolve_kitty_placement_layout(
-                    Some(3),
-                    rows,
-                    (20, 10),
-                    (2, 3),
-                    (10.0, 10.0),
-                ),
+                resolve_kitty_placement_layout(Some(3), rows, (20, 10), (2, 3), (10.0, 10.0),),
                 from_columns
             );
         }
@@ -776,25 +714,13 @@ mod tests {
         };
         for columns in [None, Some(0)] {
             assert_eq!(
-                resolve_kitty_placement_layout(
-                    columns,
-                    Some(3),
-                    (20, 10),
-                    (2, 3),
-                    (10.0, 10.0),
-                ),
+                resolve_kitty_placement_layout(columns, Some(3), (20, 10), (2, 3), (10.0, 10.0),),
                 from_rows
             );
         }
 
         assert_eq!(
-            resolve_kitty_placement_layout(
-                Some(3),
-                Some(2),
-                (20, 10),
-                (2, 3),
-                (10.0, 10.0),
-            ),
+            resolve_kitty_placement_layout(Some(3), Some(2), (20, 10), (2, 3), (10.0, 10.0),),
             KittyPlacementLayout {
                 display_cols: 3,
                 display_rows: 2,
@@ -818,18 +744,9 @@ mod tests {
                 source_height: 10,
             },
         };
-        assert_eq!(
-            from_columns.pixel_rect(10.0, 10.0),
-            (2.0, 3.0, 28.0, 14.0)
-        );
-        assert_eq!(
-            from_columns.pixel_rect(8.0, 6.0),
-            (2.0, 3.0, 22.0, 11.0)
-        );
-        assert_eq!(
-            from_columns.effective_cell_rect(8.0, 6.0),
-            (0, 0, 3, 3)
-        );
+        assert_eq!(from_columns.pixel_rect(10.0, 10.0), (2.0, 3.0, 28.0, 14.0));
+        assert_eq!(from_columns.pixel_rect(8.0, 6.0), (2.0, 3.0, 22.0, 11.0));
+        assert_eq!(from_columns.effective_cell_rect(8.0, 6.0), (0, 0, 3, 3));
 
         let from_rows = PlacementMode::Inline {
             row: 0,
@@ -844,29 +761,15 @@ mod tests {
                 source_height: 10,
             },
         };
-        assert_eq!(
-            from_rows.pixel_rect(10.0, 10.0),
-            (2.0, 3.0, 54.0, 27.0)
-        );
-        assert_eq!(
-            from_rows.pixel_rect(8.0, 6.0),
-            (2.0, 3.0, 30.0, 15.0)
-        );
-        assert_eq!(
-            from_rows.effective_cell_rect(8.0, 6.0),
-            (0, 0, 6, 3)
-        );
+        assert_eq!(from_rows.pixel_rect(10.0, 10.0), (2.0, 3.0, 54.0, 27.0));
+        assert_eq!(from_rows.pixel_rect(8.0, 6.0), (2.0, 3.0, 30.0, 15.0));
+        assert_eq!(from_rows.effective_cell_rect(8.0, 6.0), (0, 0, 6, 3));
     }
 
     #[test]
     fn single_axis_visual_rect_and_effective_footprint_are_distinct() {
-        let from_columns_layout = resolve_kitty_placement_layout(
-            Some(1),
-            None,
-            (10, 10),
-            (9, 0),
-            (10.0, 10.0),
-        );
+        let from_columns_layout =
+            resolve_kitty_placement_layout(Some(1), None, (10, 10), (9, 0), (10.0, 10.0));
         let from_columns = PlacementMode::Inline {
             row: 0,
             col: 0,
@@ -877,18 +780,10 @@ mod tests {
             render_size: from_columns_layout.render_size,
         };
         assert_eq!(from_columns.pixel_rect(10.0, 10.0), (9.0, 0.0, 1.0, 1.0));
-        assert_eq!(
-            from_columns.effective_cell_rect(10.0, 10.0),
-            (0, 0, 1, 2)
-        );
+        assert_eq!(from_columns.effective_cell_rect(10.0, 10.0), (0, 0, 1, 2));
 
-        let from_rows_layout = resolve_kitty_placement_layout(
-            None,
-            Some(1),
-            (10, 10),
-            (0, 9),
-            (10.0, 10.0),
-        );
+        let from_rows_layout =
+            resolve_kitty_placement_layout(None, Some(1), (10, 10), (0, 9), (10.0, 10.0));
         let from_rows = PlacementMode::Inline {
             row: 0,
             col: 0,
@@ -899,10 +794,7 @@ mod tests {
             render_size: from_rows_layout.render_size,
         };
         assert_eq!(from_rows.pixel_rect(10.0, 10.0), (0.0, 9.0, 1.0, 1.0));
-        assert_eq!(
-            from_rows.effective_cell_rect(10.0, 10.0),
-            (0, 0, 2, 1)
-        );
+        assert_eq!(from_rows.effective_cell_rect(10.0, 10.0), (0, 0, 2, 1));
     }
 
     #[test]
@@ -913,14 +805,7 @@ mod tests {
         assert_eq!(aspect_ratio_cell_count(1, 10.0, 1, 100, 100, 10.0), 2);
         assert_eq!(aspect_ratio_cell_count(1, 10.0, 0, 0, 100, 10.0), 1);
         assert_eq!(
-            aspect_ratio_cell_count(
-                u32::MAX,
-                10.0,
-                9,
-                1,
-                u32::MAX,
-                1.0,
-            ),
+            aspect_ratio_cell_count(u32::MAX, 10.0, 9, 1, u32::MAX, 1.0,),
             u32::MAX
         );
     }

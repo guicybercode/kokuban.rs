@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Render the four-terminal PTY throughput comparison as a static SVG.
+"""Render a PTY throughput comparison as a static SVG.
 
-Reads the audited ``summary.json`` produced by ``compare-terminal-performance.py``
-and writes a grouped bar chart (workload groups x terminals) using only the
-standard library, so the figure can be regenerated anywhere without matplotlib.
+Reads a ``summary.json`` produced by ``compare-terminal-performance.py`` (or its
+audited copy) and writes a grouped bar chart (workload groups x terminals) using
+only the standard library, so the figure can be regenerated anywhere without
+matplotlib. Defaults render the audited 2026-09-13 Linux comparison; ``--summary``,
+``--output``, ``--title`` and ``--subtitle`` render another run, such as macOS.
 """
 
 from __future__ import annotations
@@ -14,16 +16,18 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SUMMARY = (
-    REPO_ROOT / "docs" / "linux-evidence" / "2026-09-13-four-terminals" / "summary.json"
+    REPO_ROOT / "docs" / "linux-evidence" / "2026-10-31-four-terminals" / "summary.json"
 )
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "screenshots" / "throughput-comparison.svg"
 
-TERMINALS = ("kokuban", "ghostty", "alacritty", "kitty")
+# Known terminals in display order; a summary renders the subset it contains.
+TERMINALS = ("kokuban", "ghostty", "alacritty", "kitty", "terminal")
 TERMINAL_LABELS = {
     "kokuban": "Kokuban",
     "ghostty": "Ghostty",
     "alacritty": "Alacritty",
     "kitty": "Kitty",
+    "terminal": "Terminal.app",
 }
 # Kokuban keeps the chalkboard green; the rivals use neutral greys of distinct
 # lightness so the series stay apart under colour-vision deficiency. Every bar
@@ -33,6 +37,7 @@ TERMINAL_COLORS = {
     "ghostty": "#5b6670",
     "alacritty": "#8f99a3",
     "kitty": "#c5ccd3",
+    "terminal": "#3a434c",
 }
 WORKLOADS = ("ascii", "ansi", "unicode", "short_lines")
 WORKLOAD_LABELS = {
@@ -42,10 +47,10 @@ WORKLOAD_LABELS = {
     "short_lines": "Short lines",
 }
 
-TITLE = "PTY throughput, same Linux host (2026-09-13, medians of 5 runs)"
+TITLE = "PTY throughput, same Linux host (2026-10-31, medians of 5 runs)"
 SUBTITLE_LINES = (
-    "Kokuban 0.2.0 (d54f801), Ghostty 1.3.0-dev tip, Alacritty 0.16.1, Kitty 0.45.0",
-    "on x86_64 EPYC 7763, Weston headless. Higher is better; not frame latency.",
+    "Kokuban 0.4.0 (27bbb15), Ghostty 1.3.0-dev tip, Alacritty 0.16.1, Kitty 0.45.0",
+    "on GitHub Actions x86_64, Weston headless. Higher is better; not frame latency.",
 )
 SUBTITLE = " ".join(SUBTITLE_LINES)
 
@@ -55,14 +60,21 @@ INK_MUTED = "#57606a"
 GRID = "#e6e8eb"
 
 
-def load_medians(summary_path: Path) -> dict[str, dict[str, float]]:
-    """Return ``{terminal: {workload: median MiB/s}}`` from a summary.json file."""
+def load_medians(summary_path: Path, terminals: tuple[str, ...] | None = None) -> dict[str, dict[str, float]]:
+    """Return ``{terminal: {workload: median MiB/s}}`` from a summary.json file.
+
+    Without ``terminals`` every known terminal present in the summary is used,
+    in display order; a requested terminal that is missing raises ``KeyError``.
+    """
     with summary_path.open(encoding="utf-8") as handle:
         summary = json.load(handle)
-    terminals = summary["terminal_summaries"]
+    summaries = summary["terminal_summaries"]
+    selected = terminals if terminals is not None else tuple(t for t in TERMINALS if t in summaries)
+    if not selected:
+        raise ValueError(f"{summary_path} has no known terminal summaries")
     medians: dict[str, dict[str, float]] = {}
-    for terminal in TERMINALS:
-        workloads = terminals[terminal]["workloads"]
+    for terminal in selected:
+        workloads = summaries[terminal]["workloads"]
         medians[terminal] = {
             workload: float(workloads[workload]["mib_per_second"]["median"])
             for workload in WORKLOADS
@@ -77,8 +89,11 @@ def _nice_ceiling(value: float, step: float = 10.0) -> float:
     return ceiling
 
 
-def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
+def render_svg(medians: dict[str, dict[str, float]], width: int = 880,
+               title: str = TITLE, subtitle_lines: tuple[str, ...] = SUBTITLE_LINES) -> str:
     """Build the SVG document for the grouped bar chart."""
+    terminals = tuple(medians)
+    subtitle = " ".join(subtitle_lines)
     height = 520
     margin_left, margin_right = 72, 24
     margin_top, margin_bottom = 96, 92
@@ -95,7 +110,7 @@ def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
     group_w = plot_w / len(WORKLOADS)
     bar_gap = 2.0
     group_pad = group_w * 0.14
-    bar_w = (group_w - 2 * group_pad - bar_gap * (len(TERMINALS) - 1)) / len(TERMINALS)
+    bar_w = (group_w - 2 * group_pad - bar_gap * (len(terminals) - 1)) / len(terminals)
 
     parts: list[str] = []
     parts.append(
@@ -103,14 +118,14 @@ def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
         f'viewBox="0 0 {width} {height}" role="img" aria-labelledby="chart-title chart-desc" '
         f'font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif">'
     )
-    parts.append(f'<title id="chart-title">{TITLE}</title>')
-    parts.append(f'<desc id="chart-desc">{SUBTITLE}</desc>')
+    parts.append(f'<title id="chart-title">{title}</title>')
+    parts.append(f'<desc id="chart-desc">{subtitle}</desc>')
     parts.append(f'<rect width="{width}" height="{height}" fill="{BACKGROUND}" rx="8"/>')
     parts.append(
-        f'<text x="{margin_left}" y="34" font-size="18" font-weight="600" fill="{INK}">{TITLE}</text>'
+        f'<text x="{margin_left}" y="34" font-size="18" font-weight="600" fill="{INK}">{title}</text>'
     )
     # Two short lines: one line at 12px would overflow the 880px canvas and be clipped.
-    for index, line in enumerate(SUBTITLE_LINES):
+    for index, line in enumerate(subtitle_lines):
         parts.append(
             f'<text x="{margin_left}" y="{54 + index * 16}" font-size="12" fill="{INK_MUTED}">{line}</text>'
         )
@@ -138,7 +153,7 @@ def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
     # Bars.
     for g_index, workload in enumerate(WORKLOADS):
         group_x = margin_left + g_index * group_w + group_pad
-        for t_index, terminal in enumerate(TERMINALS):
+        for t_index, terminal in enumerate(terminals):
             v = medians[terminal][workload]
             x = group_x + t_index * (bar_w + bar_gap)
             top = y_for(v)
@@ -161,7 +176,7 @@ def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
     # Legend.
     legend_y = height - 30
     legend_x = margin_left
-    for terminal in TERMINALS:
+    for terminal in terminals:
         label = TERMINAL_LABELS[terminal]
         parts.append(
             f'<rect x="{legend_x}" y="{legend_y - 10}" width="14" height="14" rx="3" '
@@ -178,13 +193,20 @@ def render_svg(medians: dict[str, dict[str, float]], width: int = 880) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
+    parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY,
+                        help="summary.json from compare-terminal-performance.py or an audited copy")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--width", type=int, default=880)
+    parser.add_argument("--title", default=TITLE)
+    parser.add_argument("--subtitle", action="append", metavar="LINE",
+                        help="subtitle line; repeat for a second line (default: the Linux run's provenance)")
+    parser.add_argument("--terminals", nargs="+", choices=TERMINALS,
+                        help="terminals to draw, in this order (default: every known terminal in the summary)")
     args = parser.parse_args(argv)
 
-    medians = load_medians(args.summary)
-    svg = render_svg(medians, width=args.width)
+    medians = load_medians(args.summary, tuple(args.terminals) if args.terminals else None)
+    svg = render_svg(medians, width=args.width, title=args.title,
+                     subtitle_lines=tuple(args.subtitle) if args.subtitle else SUBTITLE_LINES)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(svg, encoding="utf-8")
     print(f"wrote {args.output}")

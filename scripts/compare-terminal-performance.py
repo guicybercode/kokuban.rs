@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Compare raw-PTY throughput and protocol RTT on one Linux display session.
+"""Compare raw-PTY throughput and protocol RTT on one Linux or macOS session.
 
 DSR acknowledges terminal processing, not frame presentation or input-to-photon
 latency. Configurations, payloads, logs, individual samples and limitations are
 retained alongside the report. No packages are installed and no terminals ranked.
-The PTY driver and Kokuban launch also run on macOS for paired Kokuban revisions.
+On macOS (``--backend macos``) the same PTY driver runs inside Kokuban, Alacritty,
+Kitty, Ghostty and, when requested, Terminal.app through AppleScript; PTY pixel
+cells are not matched there because the macOS Kokuban app reports no pixel size.
 """
 
 import argparse
@@ -34,8 +36,17 @@ terminal_size = HELPERS["terminal_size"]
 linux_process_stats = HELPERS["process_stats"]
 wait_for = HELPERS["wait_for"]
 stop_owned_child = HELPERS["stop_owned_child"]
+same_recorded_process = HELPERS["same_recorded_process"]
 TERMINALS = ("kokuban", "ghostty", "alacritty", "kitty")
+# Terminal.app is opt-in (macOS only): one application process hosts every window.
+TERMINAL_APP = "terminal"
+TERMINAL_APP_BUNDLE = "/System/Applications/Utilities/Terminal.app"
+BACKENDS = ("x11", "wayland", "macos")
 FONT = "Menlo" if sys.platform == "darwin" else "DejaVu Sans Mono"
+
+
+def default_backend() -> str:
+    return "macos" if sys.platform == "darwin" else "wayland"
 
 
 def parse_ps_cpu_time(text: str) -> float:
@@ -52,15 +63,17 @@ def parse_ps_cpu_time(text: str) -> float:
 
 def parse_ps_stats(pid: int, text: str) -> dict:
     fields = text.split()
-    if len(fields) != 2:
-        raise ValueError(f"ps output for PID {pid} is not 'time rss': {text!r}")
+    if len(fields) < 2:
+        raise ValueError(f"ps output for PID {pid} is not 'time rss [lstart]': {text!r}")
     return {"pid": pid, "cpu_seconds": parse_ps_cpu_time(fields[0]), "rss_kib": int(fields[1]),
+            "start_time": " ".join(fields[2:]) or None,
             "source": "ps", "monotonic_seconds": time.monotonic()}
 
 
 def darwin_process_stats(pid: int) -> dict:
-    # BSD ps reports user+system time at 10 ms resolution; RSS is in KiB.
-    result = subprocess.run(["ps", "-o", "time=,rss=", "-p", str(pid)],
+    # BSD ps reports user+system time at 10 ms resolution; RSS is in KiB. The
+    # start timestamp lets stop_owned_child refuse to signal a reused PID.
+    result = subprocess.run(["ps", "-o", "time=,rss=,lstart=", "-p", str(pid)],
                             capture_output=True, text=True, timeout=10, check=True)
     return parse_ps_stats(pid, result.stdout)
 
@@ -301,15 +314,93 @@ def controlled_child(directory: Path, thread_cpu: bool = False) -> None:
         termios.tcsetattr(0, termios.TCSANOW, original)
 
 
+def applescript_string(text: str) -> str:
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def terminal_app_launch_script(shell_command: str, args, point_size: float) -> str:
+    """Open one Terminal.app window running the PTY driver; report its tty and window id."""
+    return "\n".join([
+        'tell application "Terminal"',
+        f"  set driverTab to do script {applescript_string(shell_command)}",
+        f"  set font name of driverTab to {applescript_string(FONT)}",
+        f"  set font size of driverTab to {point_size:g}",
+        f"  set number of columns of driverTab to {args.columns}",
+        f"  set number of rows of driverTab to {args.rows}",
+        "  set driverTty to tty of driverTab",
+        "  set driverWindow to missing value",
+        "  repeat with candidate in windows",
+        "    repeat with candidateTab in tabs of candidate",
+        "      if tty of candidateTab is driverTty then set driverWindow to id of candidate",
+        "    end repeat",
+        "  end repeat",
+        '  return driverTty & "|" & driverWindow',
+        "end tell",
+    ])
+
+
+def terminal_app_close_script(window_id) -> str:
+    return "\n".join(['tell application "Terminal"',
+                      f"  if exists window id {window_id} then close window id {window_id} saving no",
+                      "end tell"])
+
+
+def terminal_app_pid():
+    result = subprocess.run(["pgrep", "-x", "Terminal"], capture_output=True, text=True, timeout=10)
+    pids = [int(line) for line in result.stdout.split() if line.isdecimal()]
+    return min(pids) if pids else None
+
+
+def launch_terminal_app(command: list, timeout: float = 60) -> dict:
+    """Run the AppleScript launcher; the measured PID is the Terminal.app process."""
+    was_running = terminal_app_pid() is not None
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError(f"osascript failed ({result.returncode}): {result.stderr.strip()[-1000:]}")
+    tty, _, window_id = result.stdout.strip().partition("|")
+    if not tty.startswith("/dev/") or not window_id.isdecimal():
+        raise RuntimeError(f"unexpected osascript reply: {result.stdout!r}")
+    pid = terminal_app_pid()
+    if pid is None:
+        raise RuntimeError("Terminal.app process not found after do script")
+    return {"pid": pid, "tty": tty, "window_id": int(window_id), "application_was_running": was_running,
+            "process_scope": "application: CPU/RSS deltas cover every Terminal.app window"}
+
+
+def close_terminal_app_window(window: dict) -> dict:
+    command = ["osascript", "-e", terminal_app_close_script(window["window_id"])]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        return {"status": result.returncode, "output": (result.stdout + result.stderr).strip()[-1000:]}
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"error": str(error)}
+
+
 def terminal_command(name: str, binary: Path, version: str, directory: Path, args) -> tuple[list, dict]:
     history = 0 if args.screen == "alternate" else args.scrollback_lines
     width_offset, height_offset = getattr(args, "cell_adjustments", {}).get(name, (0, 0))
     child = [sys.executable, str(Path(__file__).resolve()), "--child-dir", str(directory)]
     if getattr(args, "thread_cpu", False):
         child.append("--thread-cpu")
+    macos = getattr(args, "backend", None) == "macos"
     # Kokuban's size is logical pixels, the other terminals use points. Convert
-    # at 96 dpi; actual cells/pixels are still checked because DPI varies.
-    point_size = args.font_pixels * 72 / 96
+    # at 96 dpi; actual cells/pixels are still checked because DPI varies. On
+    # macOS one point is one logical pixel, so every terminal gets the same number.
+    point_size = args.font_pixels if macos else args.font_pixels * 72 / 96
+    if name == TERMINAL_APP:
+        if width_offset or height_offset:
+            raise ValueError("Terminal.app does not expose cell spacing adjustments")
+        filename = "terminal-app.applescript"
+        # The login shell is replaced by the driver; Terminal.app keeps the user's
+        # profile for colors and history and this script sets font and grid.
+        config = terminal_app_launch_script("exec " + shlex.join(child), args, point_size)
+        command = ["osascript", "-e", config]
+        (directory / filename).write_text(config)
+        configuration = {"filename": filename, "text": config,
+                         "sha256": hashlib.sha256(config.encode()).hexdigest(),
+                         "history_limit": None, "history_unit": "profile default (not configurable per window)",
+                         "launcher": "osascript"}
+        return command, configuration
     if name == "kokuban":
         if width_offset or height_offset:
             raise ValueError("Kokuban does not expose cell spacing adjustments")
@@ -352,8 +443,11 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
         config = (f'font_family {FONT}\nfont_size {point_size}\nscrollback_lines {history}\n'
                   'remember_window_size no\nwindow_padding_width 0\nwindow_margin_width 0\n'
                   f'initial_window_width {args.columns}c\ninitial_window_height {args.rows}c\n'
-                  'hide_window_decorations yes\nshell_integration disabled\n'
-                  f'linux_display_server {args.backend}\n')
+                  'hide_window_decorations yes\nshell_integration disabled\n')
+        if macos:
+            config += 'macos_quit_when_last_window_closed yes\n'
+        else:
+            config += f'linux_display_server {args.backend}\n'
         if width_offset or height_offset:
             config += (f'modify_font cell_width {width_offset}px\n'
                        f'modify_font cell_height {height_offset}px\n')
@@ -371,6 +465,8 @@ def terminal_command(name: str, binary: Path, version: str, directory: Path, arg
                   f'window-width = {args.columns}\nwindow-height = {args.rows}\n'
                   'window-padding-x = 0\nwindow-padding-y = 0\nwindow-decoration = none\n'
                   'shell-integration = none\ngtk-single-instance = false\n')
+        if macos:
+            config += 'quit-after-last-window-closed = true\n'
         if width_offset or height_offset:
             config += f'adjust-cell-width = {width_offset}\nadjust-cell-height = {height_offset}\n'
         command = [str(binary), "--config-default-files=false",
@@ -399,17 +495,30 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
         for key in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET"):
             environment.pop(key, None)
         environment.update(GDK_BACKEND="x11", WINIT_UNIX_BACKEND="x11", WINIT_X11_SCALE_FACTOR="1")
+    elif args.backend == "macos":
+        pass  # AppKit needs no display selection; the terminals keep the session's env.
     else:
         environment.pop("DISPLAY", None)
         environment.update(GDK_BACKEND="wayland", WINIT_UNIX_BACKEND="wayland")
     sample = {"command": command, "config": configuration, "thread_cpu_enabled": getattr(args, "thread_cpu", False)}
     process = None
+    window = None
+    terminal_app_launched = False
     try:
-        with (directory / "terminal.log").open("wb") as log:
-            process = subprocess.Popen(command, cwd=directory, env=environment,
-                                       stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+        if name == TERMINAL_APP:
+            # osascript returns at once; the window outlives it and the Terminal.app
+            # process (shared by every window) is the one whose CPU/RSS is sampled.
+            window = launch_terminal_app(command)
+            terminal_app_launched = True
+            sample["terminal_window"] = window
+            terminal_pid = window["pid"]
+        else:
+            with (directory / "terminal.log").open("wb") as log:
+                process = subprocess.Popen(command, cwd=directory, env=environment,
+                                           stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+            terminal_pid = process.pid
         record(directory, "case.json", {"payloads": payload_paths, "screen": args.screen,
-                                        "terminal_pid": process.pid, "settle_seconds": args.settle_seconds,
+                                        "terminal_pid": terminal_pid, "settle_seconds": args.settle_seconds,
                                         "thread_cpu": getattr(args, "thread_cpu", False),
                                         "idle_seconds": getattr(args, "idle_seconds", 0)})
 
@@ -420,13 +529,25 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
             result = directory / "result.json"
             if result.exists():
                 return json.loads(result.read_text())
-            if process.poll() is not None:
+            if process is not None and process.poll() is not None:
                 raise RuntimeError(f"terminal exited before measurements: {process.returncode}")
+            if window is not None:
+                try:
+                    os.kill(window["pid"], 0)
+                except OSError as exit_error:
+                    raise RuntimeError("Terminal.app exited before measurements") from exit_error
             return None
         sample["measurements"] = wait_for(observe, f"{name} measurements", args.timeout)
         (directory / "finish").touch()
-        if process.wait(timeout=10) != 0:
-            raise RuntimeError(f"terminal exit status: {process.returncode}")
+        if process is not None:
+            if process.wait(timeout=10) != 0:
+                raise RuntimeError(f"terminal exit status: {process.returncode}")
+        else:
+            wait_for(lambda: not same_recorded_process_in(directory), "Terminal.app driver exit", 10)
+            closed, window = window, None
+            sample["window_close"] = close_terminal_app_window(closed)
+            if closed["application_was_running"] is False:
+                sample["terminal_window"]["note"] = "Terminal.app was started by this run and stays open"
         sample["status"] = "passed"
     except Exception as error:
         sample.update(status="failed", error=str(error))
@@ -446,8 +567,26 @@ def execute_sample(name: str, binary: Path, version: str, directory: Path, paylo
                         process.wait(timeout=3)
             finally:
                 stop_owned_child(directory)
+        elif terminal_app_launched:
+            # Stop a driver that is still alive, then close a window a failure left open.
+            try:
+                stop_owned_child(directory)
+            finally:
+                if window is not None:
+                    sample["window_close"] = close_terminal_app_window(window)
     record(directory, "sample.json", sample)
     return sample
+
+
+def same_recorded_process_in(directory: Path) -> bool:
+    """Whether the PTY driver recorded in child.json is still alive."""
+    child_path = directory / "child.json"
+    if not child_path.exists():
+        return False
+    try:
+        return same_recorded_process(json.loads(child_path.read_text()))
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+        return False
 
 
 def cell_dimensions(geometry, args):
@@ -494,6 +633,14 @@ def calibrate_cell_size(report: dict, output: Path, args) -> None:
                        "alacritty": "https://github.com/alacritty/alacritty/blob/v0.10.0/alacritty/src/display/mod.rs#L776-L782",
                        "kitty": "https://github.com/kovidgoyal/kitty/blob/v0.26.0/kitty/fonts.c#L303-L337"}}
     report["cell_size_calibration"] = calibration
+    pixel_geometry = getattr(args, "pixel_geometry", True)
+    if not pixel_geometry:
+        # The macOS Kokuban app reports no PTY pixel size, so cells cannot be
+        # equalized. One untimed preflight per terminal still verifies the grid.
+        calibration.update(mode="rows_columns", target_cell_pixels=None,
+                           observed_pixel_geometry={}, spacing_adjustments_pixels={},
+                           note="PTY pixel cells are not matched on this backend; only the requested "
+                                "rows/columns grid is verified before timed samples")
     try:
         # Conservative supported baselines, not claims of introduction versions.
         minimum_versions = {"ghostty": (1, 0, 0), "alacritty": (0, 10, 0), "kitty": (0, 26, 0)}
@@ -501,7 +648,7 @@ def calibrate_cell_size(report: dict, output: Path, args) -> None:
         for name, terminal in report["terminals"].items():
             if "path" not in terminal:
                 raise ValueError(f"{name}: calibration requires an available executable and version")
-            if name in minimum_versions:
+            if name in minimum_versions and pixel_geometry:
                 match = re.search(rf"(?im)^{name}\s+(\d+)\.(\d+)\.(\d+)", terminal["version"])
                 if not match or tuple(map(int, match.groups())) < minimum_versions[name]:
                     raise ValueError(f"{name}: unsupported or unknown version for cell spacing calibration")
@@ -513,7 +660,7 @@ def calibrate_cell_size(report: dict, output: Path, args) -> None:
         calibration["payload"] = probe
         args.cell_adjustments = {}
         natural_sizes = {}
-        for phase in ("baseline", "adjusted"):
+        for phase in ("baseline", "adjusted") if pixel_geometry else ("baseline",):
             for name, terminal in report["terminals"].items():
                 report["in_progress"] = {"calibration": phase, "terminal": name}
                 record(output, "report.json", report)
@@ -524,11 +671,16 @@ def calibrate_cell_size(report: dict, output: Path, args) -> None:
                 calibration["preflight"][phase][name] = sample
                 record(output, "report.json", report)
                 size = calibrated_sample_size(sample, probe, args)
-                if phase == "baseline":
+                if not pixel_geometry:
+                    geometry = sample["measurements"]["initial_geometry"]
+                    if geometry[:2] != [args.rows, args.columns]:
+                        raise ValueError(f"{name}: effective PTY rows/columns differ from the requested geometry")
+                    calibration["observed_pixel_geometry"][name] = geometry[2:]
+                elif phase == "baseline":
                     natural_sizes[name] = size
                 elif list(size) != calibration["target_cell_pixels"]:
                     raise ValueError(f"{name}: spacing adjustments did not reach the target cell dimensions")
-            if phase == "baseline":
+            if phase == "baseline" and pixel_geometry:
                 target = [max(size[axis] for size in natural_sizes.values()) for axis in (0, 1)]
                 calibration["target_cell_pixels"] = target
                 args.cell_adjustments = {name: [target[axis] - size[axis] for axis in (0, 1)]
@@ -552,10 +704,21 @@ def calibrate_cell_size(report: dict, output: Path, args) -> None:
 
 def summarize(report: dict, args) -> None:
     reasons = []
+    notes = []
     geometries = set()
+    pixel_geometry = getattr(args, "pixel_geometry", True)
+    # The macOS backend compares rows/columns against the request; the paired
+    # Kokuban comparison keeps its original identical-geometry rule.
+    requested_grid = getattr(args, "grid_check", None) == "requested"
     calibration = report.get("cell_size_calibration")
     if calibration and calibration["status"] != "passed":
         reasons.append("cell size calibration did not pass")
+    if requested_grid:
+        notes.append("PTY pixel cell sizes were not matched: the macOS Kokuban app reports no pixel size; "
+                     "only the rows/columns grid and the requested font family/size are equal")
+    if TERMINAL_APP in report["terminals"]:
+        notes.append("Terminal.app CPU/RSS are deltas of the single Terminal.app process, which hosts every "
+                     "Terminal window, not of a fresh process per sample")
     for name, terminal in report["terminals"].items():
         samples = terminal.get("samples", [])
         passed = [sample["measurements"] for sample in samples if sample["status"] == "passed"]
@@ -569,8 +732,12 @@ def summarize(report: dict, args) -> None:
             for item in measured:
                 try:
                     size = cell_dimensions(item["geometry_before"], args)
-                    geometries.add(tuple(item["geometry_before"]))
-                    if calibration and list(size) != calibration.get("target_cell_pixels"):
+                    geometry = item["geometry_before"][:2] if requested_grid else item["geometry_before"]
+                    geometries.add(tuple(geometry))
+                    if requested_grid:
+                        if list(geometry) != [args.rows, args.columns]:
+                            reasons.append(f"{name}: effective PTY rows/columns differ from the requested geometry")
+                    elif pixel_geometry and calibration and list(size) != calibration.get("target_cell_pixels"):
                         reasons.append(f"{name}: measured cells differ from the calibrated target")
                 except ValueError as error:
                     reasons.append(f"{name}: {error}")
@@ -584,9 +751,12 @@ def summarize(report: dict, args) -> None:
         terminal["protocol_rtt_seconds"] = distribution([
             value for sample in passed for value in sample["protocol_rtt_seconds"]])
     if len(geometries) != 1:
-        reasons.append("actual PTY cell/pixel geometries differ or are missing")
+        reasons.append("actual PTY rows/columns differ or are missing" if requested_grid
+                       else "actual PTY cell/pixel geometries differ or are missing")
     if args.screen == "primary" and "ghostty" in report["terminals"]:
         reasons.append("Ghostty byte-limited scrollback is not equivalent to the configured line limits")
+    if args.screen == "primary" and TERMINAL_APP in report["terminals"]:
+        reasons.append("Terminal.app scrollback follows the user's profile, not the configured line limit")
     if len(report["terminals"]) < 2:
         reasons.append("fewer than two terminals requested")
     report["comparability"] = {"geometry_and_history_checks_passed": not reasons,
@@ -599,16 +769,22 @@ def summarize(report: dict, args) -> None:
                                ],
                                "ranking": None,
                                "scope": "Processing throughput and protocol RTT only; no overall performance ranking"}
+    if notes:
+        report["comparability"]["notes"] = notes
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--child-dir", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--terminals", nargs="+", choices=TERMINALS, default=list(TERMINALS))
+    parser.add_argument("--terminals", nargs="+", choices=TERMINALS + (TERMINAL_APP,),
+                        help=f"terminals to measure (default: {' '.join(TERMINALS)}; "
+                             f"'{TERMINAL_APP}' is Terminal.app, macOS only)")
     for name in TERMINALS:
         parser.add_argument("--" + name, default=name, help=f"path to {name} executable")
-    parser.add_argument("--backend", choices=("x11", "wayland"), default="wayland")
+    parser.add_argument("--" + TERMINAL_APP, default=TERMINAL_APP_BUNDLE, help="path to the Terminal.app bundle (macOS)")
+    parser.add_argument("--backend", choices=BACKENDS, default=default_backend(),
+                        help="display backend; 'macos' is the default on macOS, 'wayland' elsewhere")
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--bytes", type=int, default=2 * 1024 * 1024)
     parser.add_argument("--columns", type=int, default=80)
@@ -627,8 +803,23 @@ def main(argv=None) -> int:
     if args.child_dir:
         controlled_child(args.child_dir, args.thread_cpu)
         return 0
-    if not sys.platform.startswith("linux"):
-        parser.error("the benchmark runner requires Linux")
+    explicit_terminals = args.terminals is not None
+    if not explicit_terminals:
+        args.terminals = list(TERMINALS)
+    macos = args.backend == "macos"
+    if macos:
+        if sys.platform != "darwin":
+            parser.error("--backend macos requires macOS")
+        if args.thread_cpu:
+            parser.error("--thread-cpu reads Linux proc counters and is unavailable on macOS")
+    elif not sys.platform.startswith("linux"):
+        parser.error("the benchmark runner requires Linux for the x11 and wayland backends")
+    if TERMINAL_APP in args.terminals and not macos:
+        parser.error("Terminal.app is only available with --backend macos")
+    # The macOS Kokuban app sizes its own window and reports no PTY pixel size:
+    # verify the requested rows/columns grid instead of integer pixel cells.
+    args.pixel_geometry = not macos
+    args.grid_check = "requested" if macos else "pixels"
     if args.output_dir is None or args.samples < 3 or args.bytes < 1024:
         parser.error("--output-dir, at least 3 samples, and at least 1024 bytes are required")
     if (min(args.columns, args.rows, args.font_pixels, args.timeout) <= 0 or args.settle_seconds < 0
@@ -648,13 +839,20 @@ def main(argv=None) -> int:
         path = output / (name + ".bin")
         path.write_bytes(payload)
         paths[name] = str(path)
+    affinity = getattr(os, "sched_getaffinity", None)
+    font_command = ["fc-match", "-f", "%{family}\n%{file}\n", FONT]
+    if macos and shutil.which("fc-match") is None:
+        font_match = {"command": font_command, "status": None, "output": "",
+                      "note": f"fc-match is not installed; macOS terminals resolve {FONT} through CoreText"}
+    else:
+        font_match = command_observation(font_command)
     report = {"schema": 1, "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
               "platform": platform.platform(), "machine": platform.machine(), "cpu_count": os.cpu_count(),
-              "cpu_affinity": sorted(os.sched_getaffinity(0)),
+              "cpu_affinity": sorted(affinity(0)) if affinity else None,
               "environment_note": args.environment_note,
               "thread_cpu_enabled": args.thread_cpu,
-              "hardware": command_observation(["lscpu"]),
-              "font_match": command_observation(["fc-match", "-f", "%{family}\n%{file}\n", FONT]),
+              "hardware": command_observation(["sysctl", "-n", "machdep.cpu.brand_string"] if macos else ["lscpu"]),
+              "font_match": font_match,
               "python": sys.version, "backend": args.backend, "screen": args.screen,
               "requested_geometry": [args.rows, args.columns], "font_pixels": args.font_pixels,
               "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -666,12 +864,26 @@ def main(argv=None) -> int:
                            for name, payload in data.items()}, "terminals": {}, "execution_order": []}
     report["status"] = "running"
     report["match_cell_size"] = args.match_cell_size
+    if macos:
+        report["displays"] = command_observation(["system_profiler", "SPDisplaysDataType"])
+        report["geometry_validation"] = ("observed PTY rows/columns must equal the request in every sample; "
+                                         "pixel cells are not matched because the macOS Kokuban app reports none")
+        if TERMINAL_APP in args.terminals:
+            report["terminal_app_was_running"] = terminal_app_pid() is not None
     record(output, "report.json", report)
     result = 1
     try:
         for name in dict.fromkeys(args.terminals):
+            if name == TERMINAL_APP:
+                report["terminals"][name] = terminal_app_observation(Path(getattr(args, name)))
+                record(output, "report.json", report)
+                continue
             path = shutil.which(getattr(args, name))
             if path is None:
+                if name == "ghostty" and macos and not explicit_terminals:
+                    report.setdefault("skipped_terminals", {})[name] = (
+                        "ghostty executable not found on macOS; skipped because --terminals did not request it")
+                    continue
                 report["terminals"][name] = {"status": "missing", "samples": []}
                 continue
             binary = Path(path).resolve()
@@ -711,8 +923,85 @@ def main(argv=None) -> int:
             result = 1
         report["status"] = "interrupted" if result == 130 else "passed" if result == 0 else "failed"
         record(output, "report.json", report)
+        try:
+            write_summaries(report, output, args)
+        except OSError as error:
+            print(f"could not write summary files: {error}", file=sys.stderr)
     print(json.dumps({"report": str(output / "report.json"), "comparability": report["comparability"]}, indent=2))
     return result
+
+
+def terminal_app_observation(bundle: Path) -> dict:
+    """Locate Terminal.app, read its bundle version and hash its executable."""
+    executable = bundle / "Contents" / "MacOS" / "Terminal"
+    if not executable.is_file():
+        return {"status": "missing", "samples": []}
+    version = command_observation(["defaults", "read", str(bundle / "Contents" / "Info.plist"),
+                                   "CFBundleShortVersionString"])
+    if version.get("status") != 0 or not version.get("output"):
+        return {"status": "version_failed", "version_observation": version, "samples": []}
+    return {"path": str(bundle), "executable": str(executable), "version": f"Terminal.app {version['output']}",
+            "sha256": hashlib.sha256(executable.read_bytes()).hexdigest(), "samples": [],
+            "process_scope": "application: one Terminal.app process hosts every window, so CPU/RSS "
+                             "are deltas of that process during each sample"}
+
+
+def rival_comparison(terminals: dict, workloads) -> dict:
+    """Median ratios and min/max overlap of Kokuban against each other terminal."""
+    kokuban = terminals.get("kokuban")
+    comparison = {}
+    if kokuban is None:
+        return comparison
+    for workload in workloads:
+        mine = kokuban["workloads"][workload]["mib_per_second"]
+        comparison[workload] = {}
+        for name, terminal in terminals.items():
+            if name == "kokuban":
+                continue
+            theirs = terminal["workloads"][workload]["mib_per_second"]
+            comparison[workload][name] = {
+                "median_ratio_kokuban_over_rival": mine["median"] / theirs["median"] if theirs["median"] else None,
+                "relative_percent": 100 * (mine["median"] - theirs["median"]) / theirs["median"] if theirs["median"] else None,
+                "kokuban_higher": mine["median"] > theirs["median"],
+                "min_max_overlap": mine["min"] <= theirs["max"] and theirs["min"] <= mine["max"],
+                "kokuban_range": [mine["min"], mine["max"]], "rival_range": [theirs["min"], theirs["max"]]}
+    return comparison
+
+
+def write_summaries(report: dict, output: Path, args) -> None:
+    """summary.json follows the audited evidence schema; summary-<terminal>.json keeps each terminal's samples."""
+    terminals = {}
+    for name, terminal in report["terminals"].items():
+        if "summary" in terminal:
+            terminals[name] = {"path": terminal.get("path"), "version": terminal.get("version"),
+                               "sha256": terminal.get("sha256"), "workloads": terminal["summary"],
+                               "protocol_rtt": terminal["protocol_rtt_seconds"]}
+    calibration = report.get("cell_size_calibration") or {}
+    preflights = [{"phase": phase, "terminal": name, "status": sample.get("status"),
+                   "geometry": sample.get("measurements", {}).get("initial_geometry"),
+                   "config_sha256": sample.get("config", {}).get("sha256")}
+                  for phase, samples in calibration.get("preflight", {}).items()
+                  for name, sample in samples.items()]
+    timed = [sample for terminal in report["terminals"].values() for sample in terminal.get("samples", [])
+             if sample.get("status") == "passed"]
+    summary = {"schema": 1, "status": report["status"], "created_utc": report["created_utc"],
+               "platform": report["platform"], "machine": report["machine"], "backend": report["backend"],
+               "screen": report["screen"], "hardware": report["hardware"], "environment_note": report["environment_note"],
+               "requested_geometry": report["requested_geometry"], "font_family": FONT, "font_pixels": report["font_pixels"],
+               "samples_per_terminal": args.samples, "payloads": report["payloads"],
+               "terminal_summaries": terminals,
+               "kokuban_vs_rivals": rival_comparison(terminals, report["payloads"]),
+               "calibration": preflights, "cell_size_calibration_status": calibration.get("status"),
+               "target_cell_pixels": calibration.get("target_cell_pixels"),
+               "comparability": report["comparability"], "skipped_terminals": report.get("skipped_terminals", {}),
+               "timed_processes": len(timed), "calibration_processes": len(preflights),
+               "timed_loads": len(timed) * len(report["payloads"]), "report": str(output / "report.json")}
+    record(output, "summary.json", summary)
+    for name, terminal in report["terminals"].items():
+        samples = [{key: value for key, value in sample.items() if key != "log_tail"}
+                   for sample in terminal.get("samples", [])]
+        record(output, f"summary-{name}.json", {"terminal": name, **{key: value for key, value in terminal.items()
+                                                                    if key != "samples"}, "samples": samples})
 
 
 if __name__ == "__main__":

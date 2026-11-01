@@ -46,10 +46,7 @@ pub(crate) fn mouse_button_with_modifier_flags(
     encoded
 }
 
-pub(crate) fn encode_alternate_scroll_steps(
-    steps: i32,
-    application_cursor_keys: bool,
-) -> Vec<u8> {
+pub(crate) fn encode_alternate_scroll_steps(steps: i32, application_cursor_keys: bool) -> Vec<u8> {
     let key = if steps.is_positive() {
         TerminalKey::Up
     } else if steps.is_negative() {
@@ -111,26 +108,17 @@ fn encode_legacy_coordinate(coordinate: usize) -> u8 {
 mod tests {
     use super::{
         encode_alternate_scroll_steps, encode_mouse_event, mouse_button_with_modifier_flags,
-        mouse_wheel_route, MouseWheelRoute, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
-        MAX_WHEEL_STEPS_PER_EVENT,
+        mouse_wheel_route, MouseWheelRoute, MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN,
+        MOUSE_WHEEL_UP,
     };
     use crate::grid::{Grid, MouseEncoding, MouseTracking};
 
     #[test]
     fn alternate_scroll_encodes_bounded_cursor_key_repetitions() {
         assert!(encode_alternate_scroll_steps(0, false).is_empty());
-        assert_eq!(
-            encode_alternate_scroll_steps(2, false),
-            b"\x1b[A\x1b[A"
-        );
-        assert_eq!(
-            encode_alternate_scroll_steps(-2, false),
-            b"\x1b[B\x1b[B"
-        );
-        assert_eq!(
-            encode_alternate_scroll_steps(2, true),
-            b"\x1bOA\x1bOA"
-        );
+        assert_eq!(encode_alternate_scroll_steps(2, false), b"\x1b[A\x1b[A");
+        assert_eq!(encode_alternate_scroll_steps(-2, false), b"\x1b[B\x1b[B");
+        assert_eq!(encode_alternate_scroll_steps(2, true), b"\x1bOA\x1bOA");
         assert_eq!(
             encode_alternate_scroll_steps(i32::MAX, false),
             b"\x1b[A".repeat(usize::try_from(MAX_WHEEL_STEPS_PER_EVENT).unwrap())

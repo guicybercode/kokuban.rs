@@ -111,7 +111,11 @@ impl TerminalColors {
         self
     }
 
-    pub(crate) fn with_selection(mut self, foreground: Option<Rgb>, background: Option<Rgb>) -> Self {
+    pub(crate) fn with_selection(
+        mut self,
+        foreground: Option<Rgb>,
+        background: Option<Rgb>,
+    ) -> Self {
         self.selection_foreground = foreground;
         self.selection_background = background;
         self
@@ -292,22 +296,14 @@ mod tests {
 
         assert_eq!(FAINT_OPACITY, 128);
         assert_eq!(
-            colors.resolve_cell_colors(
-                Color::Default,
-                Color::Default,
-                CellFlags::FAINT,
-            ),
+            colors.resolve_cell_colors(Color::Default, Color::Default, CellFlags::FAINT,),
             ResolvedCellColors {
                 foreground: (109, 109, 119),
                 background: DEFAULT_BACKGROUND,
             }
         );
         assert_eq!(
-            colors.resolve_cell_colors(
-                Color::Indexed(1),
-                Color::Indexed(4),
-                CellFlags::FAINT,
-            ),
+            colors.resolve_cell_colors(Color::Indexed(1), Color::Indexed(4), CellFlags::FAINT,),
             ResolvedCellColors {
                 foreground: (121, 81, 124),
                 background: (36, 114, 200),

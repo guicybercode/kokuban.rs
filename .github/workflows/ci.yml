@@ -16,6 +16,9 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    env:
+      # Every cargo step below (checks, tests and smoke builds) fails on any warning.
+      RUSTFLAGS: -D warnings
     strategy:
       fail-fast: false
       matrix:
@@ -32,9 +35,12 @@ jobs:
       - name: Install Rust 1.94.1
         shell: bash
         run: |
-          rustup toolchain install 1.94.1 --profile minimal --component clippy
+          rustup toolchain install 1.94.1 --profile minimal --component clippy,rustfmt
           rustup default 1.94.1
           rustc --version
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
       - name: Install Linux display and font dependencies
         if: runner.os == 'Linux'
@@ -79,7 +85,7 @@ jobs:
         run: python3 -B -m unittest discover -s scripts -p 'test_compare_*.py'
 
       - name: Run Clippy
-        run: cargo clippy --locked --all-targets
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Verify macOS dependency isolation
         if: runner.os == 'macOS'

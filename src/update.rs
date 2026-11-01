@@ -158,7 +158,8 @@ fn run(program: &str, arguments: &[&std::ffi::OsStr]) -> Result<String, UpdateEr
 }
 
 fn curl(arguments: &[&std::ffi::OsStr]) -> Result<String, UpdateError> {
-    let mut all: Vec<&std::ffi::OsStr> = vec!["-fsSL".as_ref(), "--proto".as_ref(), "=https".as_ref()];
+    let mut all: Vec<&std::ffi::OsStr> =
+        vec!["-fsSL".as_ref(), "--proto".as_ref(), "=https".as_ref()];
     all.extend_from_slice(arguments);
     run("curl", &all)
 }
@@ -237,7 +238,8 @@ impl TempDir {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|elapsed| elapsed.as_nanos())
             .unwrap_or_default();
-        let path = std::env::temp_dir().join(format!("kokuban-update-{}-{nanos}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("kokuban-update-{}-{nanos}", std::process::id()));
         std::fs::create_dir(&path)?;
         Ok(Self(path))
     }
@@ -280,10 +282,20 @@ fn replace_standalone(tag: &str, executable: &Path) -> Result<(), UpdateError> {
         let temporary = TempDir::new()?;
         let stem = release_stem(tag);
         let archive = download_verified(tag, &format!("{stem}.tar.gz"), &temporary.0)?;
-        run("tar", &["-xzf".as_ref(), archive.as_os_str(), "-C".as_ref(), temporary.0.as_os_str()])?;
+        run(
+            "tar",
+            &[
+                "-xzf".as_ref(),
+                archive.as_os_str(),
+                "-C".as_ref(),
+                temporary.0.as_os_str(),
+            ],
+        )?;
         let extracted = temporary.0.join(&stem).join("kokuban");
         if !extracted.is_file() {
-            return Err(UpdateError::new(format!("{stem}.tar.gz has no kokuban executable")));
+            return Err(UpdateError::new(format!(
+                "{stem}.tar.gz has no kokuban executable"
+            )));
         }
         std::fs::copy(&extracted, &staged)?;
         std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
@@ -334,7 +346,14 @@ fn replace_app_bundle(tag: &str, bundle: &Path) -> Result<(), UpdateError> {
         }
         run("ditto", &[source.as_os_str(), staged.as_os_str()]).map(drop)
     })();
-    let _ = run("hdiutil", &["detach".as_ref(), "-quiet".as_ref(), mount_point.as_os_str()]);
+    let _ = run(
+        "hdiutil",
+        &[
+            "detach".as_ref(),
+            "-quiet".as_ref(),
+            mount_point.as_os_str(),
+        ],
+    );
     if let Err(error) = copied {
         let _ = std::fs::remove_dir_all(&staged);
         return Err(error);
@@ -361,7 +380,9 @@ pub fn install(tag: &str) -> Result<PathBuf, UpdateError> {
         return Err(UpdateError::new(format!("invalid release tag {tag:?}")));
     }
     if release_target() == "unsupported" {
-        return Err(UpdateError::new("no release is published for this platform"));
+        return Err(UpdateError::new(
+            "no release is published for this platform",
+        ));
     }
     let executable = std::env::current_exe()?.canonicalize()?;
     match install_kind(&executable) {
@@ -407,6 +428,7 @@ impl UpdateStatus {
 pub type SharedUpdateStatus = Arc<Mutex<UpdateStatus>>;
 
 /// Window title carrying the update notice, for windows without a status bar.
+#[cfg(any(target_os = "linux", test))]
 pub fn title_with_notice(title: &str, status: &UpdateStatus) -> String {
     match status.available_tag() {
         Some(tag) => format!("{title} · {tag} available (kokuban --update)"),
@@ -415,11 +437,16 @@ pub fn title_with_notice(title: &str, status: &UpdateStatus) -> String {
 }
 
 fn set_status(status: &SharedUpdateStatus, value: UpdateStatus) {
-    *status.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = value;
+    *status
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = value;
 }
 
 pub fn read_status(status: &SharedUpdateStatus) -> UpdateStatus {
-    status.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+    status
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
 }
 
 /// Whether the automatic check at launch should run.
@@ -431,7 +458,11 @@ pub fn startup_check_enabled(configured: bool) -> bool {
 }
 
 /// Check in the background; `manual` also reports "up to date" and failures.
-pub fn spawn_check(status: SharedUpdateStatus, manual: bool, on_change: impl Fn() + Send + 'static) {
+pub fn spawn_check(
+    status: SharedUpdateStatus,
+    manual: bool,
+    on_change: impl Fn() + Send + 'static,
+) {
     if manual {
         set_status(&status, UpdateStatus::Checking);
         on_change();
@@ -458,7 +489,11 @@ pub fn spawn_check(status: SharedUpdateStatus, manual: bool, on_change: impl Fn(
 }
 
 /// Install `tag` in the background, reporting progress through `status`.
-pub fn spawn_install(status: SharedUpdateStatus, tag: String, on_change: impl Fn() + Send + 'static) {
+pub fn spawn_install(
+    status: SharedUpdateStatus,
+    tag: String,
+    on_change: impl Fn() + Send + 'static,
+) {
     set_status(&status, UpdateStatus::Installing(tag.clone()));
     on_change();
     let spawned = std::thread::Builder::new()
@@ -486,7 +521,10 @@ pub fn spawn_install(status: SharedUpdateStatus, tag: String, on_change: impl Fn
 pub fn run_check_command() -> ExitCode {
     match check() {
         Ok(Some(tag)) => {
-            println!("kokuban {tag} is available (running {}); run `kokuban --update`", current_version());
+            println!(
+                "kokuban {tag} is available (running {}); run `kokuban --update`",
+                current_version()
+            );
             ExitCode::SUCCESS
         }
         Ok(None) => {
@@ -516,7 +554,10 @@ pub fn run_update_command() -> ExitCode {
     println!("Downloading kokuban {tag} for {}…", release_target());
     match install(&tag) {
         Ok(path) => {
-            println!("Installed kokuban {tag} at {}. Reopen kokuban to use it.", path.display());
+            println!(
+                "Installed kokuban {tag} at {}. Reopen kokuban to use it.",
+                path.display()
+            );
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -532,11 +573,26 @@ mod tests {
 
     #[test]
     fn parses_release_tags_and_cargo_versions() {
-        let v = |major, minor, patch| Some(Version { major, minor, patch });
+        let v = |major, minor, patch| {
+            Some(Version {
+                major,
+                minor,
+                patch,
+            })
+        };
         assert_eq!(parse_version("v0.4"), v(0, 4, 0));
         assert_eq!(parse_version("0.4.0"), v(0, 4, 0));
         assert_eq!(parse_version("v1.10.3"), v(1, 10, 3));
-        for invalid in ["", "v", "v1", "v0.4-rc1", "v0.4.0+build", "v0.4.0.1", "v0..4", "va.b"] {
+        for invalid in [
+            "",
+            "v",
+            "v1",
+            "v0.4-rc1",
+            "v0.4.0+build",
+            "v0.4.0.1",
+            "v0..4",
+            "va.b",
+        ] {
             assert_eq!(parse_version(invalid), None, "{invalid}");
         }
     }
@@ -553,7 +609,8 @@ mod tests {
     #[test]
     fn reads_tag_from_latest_release_redirect() {
         assert_eq!(
-            tag_from_release_url("https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4\n").as_deref(),
+            tag_from_release_url("https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4\n")
+                .as_deref(),
             Some("v0.4")
         );
         for invalid in [
@@ -581,20 +638,38 @@ mod tests {
     #[test]
     fn reads_only_the_matching_sha256_line() {
         let digest = "A".repeat(64);
-        let text = format!("{}  other.tar.gz\n{digest}  kokuban.tar.gz\n", "b".repeat(64));
-        assert_eq!(parse_checksum(&text, "kokuban.tar.gz"), Some("a".repeat(64)));
-        assert_eq!(parse_checksum(&format!("{digest} *kokuban.dmg"), "kokuban.dmg"), Some("a".repeat(64)));
-        assert_eq!(parse_checksum("abc  kokuban.tar.gz", "kokuban.tar.gz"), None);
+        let text = format!(
+            "{}  other.tar.gz\n{digest}  kokuban.tar.gz\n",
+            "b".repeat(64)
+        );
+        assert_eq!(
+            parse_checksum(&text, "kokuban.tar.gz"),
+            Some("a".repeat(64))
+        );
+        assert_eq!(
+            parse_checksum(&format!("{digest} *kokuban.dmg"), "kokuban.dmg"),
+            Some("a".repeat(64))
+        );
+        assert_eq!(
+            parse_checksum("abc  kokuban.tar.gz", "kokuban.tar.gz"),
+            None
+        );
         assert_eq!(parse_checksum(&text, "missing.tar.gz"), None);
     }
 
     #[test]
     fn recognizes_app_bundles_and_standalone_executables() {
         assert_eq!(
-            install_kind(Path::new("/Applications/Kokuban.app/Contents/MacOS/kokuban")),
+            install_kind(Path::new(
+                "/Applications/Kokuban.app/Contents/MacOS/kokuban"
+            )),
             InstallKind::AppBundle("/Applications/Kokuban.app".into())
         );
-        for standalone in ["/usr/local/bin/kokuban", "/tmp/Contents/MacOS/kokuban", "kokuban"] {
+        for standalone in [
+            "/usr/local/bin/kokuban",
+            "/tmp/Contents/MacOS/kokuban",
+            "kokuban",
+        ] {
             assert_eq!(
                 install_kind(Path::new(standalone)),
                 InstallKind::Standalone(standalone.into())
@@ -605,8 +680,14 @@ mod tests {
     #[test]
     fn notices_only_what_the_window_should_show() {
         assert_eq!(UpdateStatus::Idle.notice(), None);
-        assert_eq!(UpdateStatus::Available("v0.5".into()).notice().as_deref(), Some("v0.5 available"));
-        assert_eq!(UpdateStatus::Available("v0.5".into()).available_tag(), Some("v0.5"));
+        assert_eq!(
+            UpdateStatus::Available("v0.5".into()).notice().as_deref(),
+            Some("v0.5 available")
+        );
+        assert_eq!(
+            UpdateStatus::Available("v0.5".into()).available_tag(),
+            Some("v0.5")
+        );
         assert_eq!(UpdateStatus::Installed("v0.5".into()).available_tag(), None);
     }
 
@@ -618,7 +699,10 @@ mod tests {
             "vim · v0.5 available (kokuban --update)"
         );
         assert_eq!(title_with_notice("vim", &UpdateStatus::Idle), "vim");
-        assert_eq!(title_with_notice("vim", &UpdateStatus::Failed("x".into())), "vim");
+        assert_eq!(
+            title_with_notice("vim", &UpdateStatus::Failed("x".into())),
+            "vim"
+        );
     }
 
     #[test]

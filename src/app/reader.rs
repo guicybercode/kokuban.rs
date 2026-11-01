@@ -1,12 +1,12 @@
 //! macOS PTY reader: waits for pane output, decodes it and retires ended panes.
 
-use super::window::{self, WindowTitleMailbox};
 use super::render_scheduler::RenderScheduler;
+use super::window::{self, WindowTitleMailbox};
 use super::{process_sixel_event, snapshot_then_lock, PaneCleanup};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::TerminalEvent;
-use crate::notifications::{NotificationController, NotificationRequest};
 use crate::layout::PaneId;
+use crate::notifications::{NotificationController, NotificationRequest};
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::pty::unix::wait_any_readable_or_woken;
@@ -441,7 +441,13 @@ mod tests {
         for _ in 0..100_000 {
             wake.wake();
         }
-        assert!(result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap().woken);
+        assert!(
+            result_rx
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .unwrap()
+                .woken
+        );
         reader.join().unwrap();
 
         wake.drain();
@@ -460,7 +466,13 @@ mod tests {
             "drained wakeups must not wake the next wait"
         );
         wake.wake();
-        assert!(result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap().woken);
+        assert!(
+            result_rx
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .unwrap()
+                .woken
+        );
         reader.join().unwrap();
     }
 }

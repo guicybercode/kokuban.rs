@@ -53,7 +53,11 @@ impl Buffer {
         self.row_range_mut(row, 0..self.cols)
     }
 
-    pub(crate) fn row_range_mut(&mut self, row: usize, range: std::ops::Range<usize>) -> &mut [Cell] {
+    pub(crate) fn row_range_mut(
+        &mut self,
+        row: usize,
+        range: std::ops::Range<usize>,
+    ) -> &mut [Cell] {
         assert!(range.start <= range.end && range.end <= self.cols);
         let row = self.row_index(row);
         if !range.is_empty() {
@@ -76,7 +80,8 @@ impl Buffer {
         }
         let scan_start = metadata.len.min(suffix);
         if let Some(col) = self.cells[start + scan_start..start + suffix]
-            .iter().rposition(|cell| cell.c != ' ')
+            .iter()
+            .rposition(|cell| cell.c != ' ')
         {
             metadata.len = metadata.len.max(scan_start + col + 1);
         }
@@ -199,7 +204,10 @@ impl Buffer {
         if suffix < self.cols && self.cells[start + self.cols - 1] == super::DEFAULT_CELL {
             // The buffer already knows this entire suffix is default. Avoid
             // allocating and cloning it merely to move a short line offscreen.
-            return super::history::HistoryRow::from_prefix(self.cells[start..start + suffix].to_vec(), self.cols);
+            return super::history::HistoryRow::from_prefix(
+                self.cells[start..start + suffix].to_vec(),
+                self.cols,
+            );
         }
         // Unknown or styled suffixes keep the existing complete-row extraction.
         super::history::HistoryRow::from_prefix(self.extract_row(row), self.cols)
@@ -218,17 +226,22 @@ impl Buffer {
     fn row_index(&self, row: usize) -> usize {
         assert!(row < self.rows);
         let remaining = self.rows - self.row_origin;
-        if row < remaining { self.row_origin + row } else { row - remaining }
+        if row < remaining {
+            self.row_origin + row
+        } else {
+            row - remaining
+        }
     }
 
     fn normalize_rows(&mut self) {
-        if self.row_origin == 0 { return; }
+        if self.row_origin == 0 {
+            return;
+        }
         self.row_starts.rotate_left(self.row_origin);
         self.uniform_suffix_start.rotate_left(self.row_origin);
         self.metadata.rotate_left(self.row_origin);
         self.row_origin = 0;
     }
-
 }
 
 #[cfg(test)]
@@ -246,17 +259,31 @@ mod tests {
             let original_starts = buffer.row_starts.clone();
             for step in 0..96 {
                 let row = step % rows;
-                let cell = Cell { c: 'e', grapheme: Some(format!("e{}", char::from_u32(0x300 + (step % 16) as u32).unwrap()).into()),
-                    fg: Color::Indexed(step as u8), ..Cell::default() };
+                let cell = Cell {
+                    c: 'e',
+                    grapheme: Some(
+                        format!("e{}", char::from_u32(0x300 + (step % 16) as u32).unwrap()).into(),
+                    ),
+                    fg: Color::Indexed(step as u8),
+                    ..Cell::default()
+                };
                 *buffer.cell_mut(row, 0) = cell.clone();
                 expected[row][0] = cell;
                 buffer.mark_written(row, 1 + step % cols);
                 metadata[row].len = metadata[row].len.max(1 + step % cols);
                 buffer.set_wrapped(row, step % 3 == 0);
                 metadata[row].wrapped = step % 3 == 0;
-                let count = match step % 7 { 0 => 0, 1 => usize::MAX, 2 => rows, _ => 1 + step % rows };
+                let count = match step % 7 {
+                    0 => 0,
+                    1 => usize::MAX,
+                    2 => rows,
+                    _ => 1 + step % rows,
+                };
                 let shift = count.min(rows);
-                let template = Cell { bg: Color::Indexed((step % 4) as u8), ..Cell::default() };
+                let template = Cell {
+                    bg: Color::Indexed((step % 4) as u8),
+                    ..Cell::default()
+                };
                 if step % 2 == 0 {
                     buffer.scroll_up(0, rows - 1, count, template.clone());
                     expected.rotate_left(shift);
@@ -277,9 +304,16 @@ mod tests {
                 assert_eq!(buffer.row_starts, original_starts);
                 assert!(buffer.row_origin < rows);
                 for row in 0..rows {
-                    assert_eq!(buffer.extract_row(row), expected[row], "rows={rows}, step={step}, row={row}");
+                    assert_eq!(
+                        buffer.extract_row(row),
+                        expected[row],
+                        "rows={rows}, step={step}, row={row}"
+                    );
                     let actual = buffer.row_metadata(row);
-                    assert_eq!((actual.len, actual.wrapped), (metadata[row].len, metadata[row].wrapped));
+                    assert_eq!(
+                        (actual.len, actual.wrapped),
+                        (metadata[row].len, metadata[row].wrapped)
+                    );
                 }
             }
         }
@@ -297,30 +331,57 @@ mod tests {
         buffer.scroll_down(0, 6, 2, Cell::default());
         assert_eq!(buffer.row_origin, 3);
         buffer.cell_mut(5, 3).c = 'x';
-        buffer.row_range_mut(2, 1..3).fill(Cell { c: 'y', ..Cell::default() });
-        buffer.set_row_metadata(2, RowMetadata { len: 6, wrapped: true });
-        let before: Vec<_> = (0..7).map(|row| (buffer.extract_row(row), buffer.row_metadata(row))).collect();
-        let template = Cell { bg: Color::Rgb(1, 2, 3), flags: CellFlags::REVERSE, ..Cell::default() };
+        buffer.row_range_mut(2, 1..3).fill(Cell {
+            c: 'y',
+            ..Cell::default()
+        });
+        buffer.set_row_metadata(
+            2,
+            RowMetadata {
+                len: 6,
+                wrapped: true,
+            },
+        );
+        let before: Vec<_> = (0..7)
+            .map(|row| (buffer.extract_row(row), buffer.row_metadata(row)))
+            .collect();
+        let template = Cell {
+            bg: Color::Rgb(1, 2, 3),
+            flags: CellFlags::REVERSE,
+            ..Cell::default()
+        };
         buffer.scroll_up(1, 5, 2, template.clone());
         assert_eq!(buffer.row_origin, 0);
         for (row, source) in [(0, 0), (1, 3), (2, 4), (3, 5), (6, 6)] {
             assert_eq!(buffer.extract_row(row), before[source].0);
             let actual = buffer.row_metadata(row);
-            assert_eq!((actual.len, actual.wrapped), (before[source].1.len, before[source].1.wrapped));
+            assert_eq!(
+                (actual.len, actual.wrapped),
+                (before[source].1.len, before[source].1.wrapped)
+            );
         }
-        for row in [4, 5] { assert_eq!(buffer.extract_row(row), vec![template.clone(); 8]); }
+        for row in [4, 5] {
+            assert_eq!(buffer.extract_row(row), vec![template.clone(); 8]);
+        }
 
         buffer.scroll_down(0, 6, 1, Cell::default());
         assert_eq!(buffer.row_origin, 6);
-        let before: Vec<_> = (0..7).map(|row| (buffer.extract_row(row), buffer.row_metadata(row))).collect();
+        let before: Vec<_> = (0..7)
+            .map(|row| (buffer.extract_row(row), buffer.row_metadata(row)))
+            .collect();
         buffer.scroll_down(2, 5, usize::MAX, template.clone());
         assert_eq!(buffer.row_origin, 0);
         for row in [0, 1, 6] {
             assert_eq!(buffer.extract_row(row), before[row].0);
             let actual = buffer.row_metadata(row);
-            assert_eq!((actual.len, actual.wrapped), (before[row].1.len, before[row].1.wrapped));
+            assert_eq!(
+                (actual.len, actual.wrapped),
+                (before[row].1.len, before[row].1.wrapped)
+            );
         }
-        for row in 2..=5 { assert_eq!(buffer.extract_row(row), vec![template.clone(); 8]); }
+        for row in 2..=5 {
+            assert_eq!(buffer.extract_row(row), vec![template.clone(); 8]);
+        }
     }
 
     #[test]
@@ -343,7 +404,9 @@ mod tests {
         let mut no_columns = Buffer::new(0, 3);
         no_columns.scroll_up(0, 2, 2, Cell::default());
         no_columns.scroll_down(1, 2, 1, Cell::default());
-        for row in 0..3 { assert!(no_columns.extract_row(row).is_empty()); }
+        for row in 0..3 {
+            assert!(no_columns.extract_row(row).is_empty());
+        }
     }
 
     #[test]
@@ -351,9 +414,14 @@ mod tests {
         let mut buffer = Buffer::new(4, 3);
         let mut owners = Vec::new();
         for row in 0..3 {
-            let text: std::sync::Arc<str> = format!("e{}", char::from_u32(0x300 + row as u32).unwrap()).into();
+            let text: std::sync::Arc<str> =
+                format!("e{}", char::from_u32(0x300 + row as u32).unwrap()).into();
             owners.push(std::sync::Arc::downgrade(&text));
-            *buffer.cell_mut(row, 0) = Cell { c: 'e', grapheme: Some(text), ..Cell::default() };
+            *buffer.cell_mut(row, 0) = Cell {
+                c: 'e',
+                grapheme: Some(text),
+                ..Cell::default()
+            };
         }
         buffer.scroll_up(0, 2, 1, Cell::default());
         assert!(owners[0].upgrade().is_none());
@@ -373,7 +441,10 @@ mod tests {
         for range_access in [false, true] {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if range_access {
-                    buffer.row_range_mut(0, 0..5).fill(Cell { c: 'x', ..Cell::default() });
+                    buffer.row_range_mut(0, 0..5).fill(Cell {
+                        c: 'x',
+                        ..Cell::default()
+                    });
                 } else {
                     buffer.cell_mut(0, 4).c = 'x';
                 }
@@ -391,8 +462,15 @@ mod tests {
         let mut buffer = Buffer::new(12, 2);
         let text: std::sync::Arc<str> = "e\u{301}".into();
         let erased = std::sync::Arc::downgrade(&text);
-        *buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(text), ..Cell::default() };
-        buffer.row_range_mut(0, 1..3).fill(Cell { c: 'x', ..Cell::default() });
+        *buffer.cell_mut(0, 0) = Cell {
+            c: 'e',
+            grapheme: Some(text),
+            ..Cell::default()
+        };
+        buffer.row_range_mut(0, 1..3).fill(Cell {
+            c: 'x',
+            ..Cell::default()
+        });
         buffer.mark_written(0, 5); // Printed spaces remain retained content.
         assert_eq!(buffer.uniform_suffix_start[buffer.row_index(0)], 3);
         assert_eq!(buffer.row_metadata(0).len, 5);
@@ -401,7 +479,11 @@ mod tests {
         assert_eq!(buffer.uniform_suffix_start[buffer.row_index(0)], 0);
         assert_eq!(buffer.extract_row(0), vec![Cell::default(); 12]);
 
-        let styled = Cell { bg: Color::Indexed(5), flags: CellFlags::REVERSE, ..Cell::default() };
+        let styled = Cell {
+            bg: Color::Indexed(5),
+            flags: CellFlags::REVERSE,
+            ..Cell::default()
+        };
         buffer.clear_row(0, styled.clone());
         buffer.cell_mut(0, 2).c = 'x';
         buffer.clear_row(0, Cell::default());
@@ -417,10 +499,23 @@ mod tests {
     #[test]
     fn clearing_uniform_rows_compares_graphemes_and_wide_flags() {
         let mut buffer = Buffer::new(5, 1);
-        let first = Cell { c: 'e', grapheme: Some("e\u{301}".into()), ..Cell::default() };
-        let second = Cell { grapheme: Some("e\u{308}".into()), ..first.clone() };
-        let wide = Cell { flags: CellFlags::WIDE, ..second.clone() };
-        let continuation = Cell { flags: CellFlags::WIDE_CONT, ..wide.clone() };
+        let first = Cell {
+            c: 'e',
+            grapheme: Some("e\u{301}".into()),
+            ..Cell::default()
+        };
+        let second = Cell {
+            grapheme: Some("e\u{308}".into()),
+            ..first.clone()
+        };
+        let wide = Cell {
+            flags: CellFlags::WIDE,
+            ..second.clone()
+        };
+        let continuation = Cell {
+            flags: CellFlags::WIDE_CONT,
+            ..wide.clone()
+        };
         for template in [first, second, wide, continuation] {
             buffer.clear_row(0, template.clone());
             assert_eq!(buffer.extract_row(0), vec![template; 5]);
@@ -432,14 +527,21 @@ mod tests {
     fn extracted_rows_preserve_styles_and_own_their_compound_prefix() {
         let mut buffer = Buffer::new(8, 1);
         let template = Cell {
-            fg: Color::Rgb(1, 2, 3), bg: Color::Indexed(4), flags: CellFlags::REVERSE,
-            underline_style: UnderlineStyle::Curly, underline_color: Color::Indexed(5),
+            fg: Color::Rgb(1, 2, 3),
+            bg: Color::Indexed(4),
+            flags: CellFlags::REVERSE,
+            underline_style: UnderlineStyle::Curly,
+            underline_color: Color::Indexed(5),
             ..Cell::default()
         };
         buffer.clear_row(0, template.clone());
         let text: std::sync::Arc<str> = "e\u{301}".into();
         let retained = std::sync::Arc::downgrade(&text);
-        *buffer.cell_mut(0, 0) = Cell { c: 'e', grapheme: Some(text), ..template.clone() };
+        *buffer.cell_mut(0, 0) = Cell {
+            c: 'e',
+            grapheme: Some(text),
+            ..template.clone()
+        };
         let extracted = buffer.extract_row(0);
         buffer.clear_row(0, Cell::default());
         assert_eq!(extracted.len(), 8);
@@ -456,16 +558,33 @@ mod tests {
         let first: std::sync::Arc<str> = "e\u{301}".into();
         let second: std::sync::Arc<str> = "e\u{301}".into();
         assert!(!std::sync::Arc::ptr_eq(&first, &second));
-        buffer.clear_row(0, Cell { c: 'e', grapheme: Some(first.clone()), ..Cell::default() });
-        let replacement = Cell { c: 'e', grapheme: Some(second.clone()), ..Cell::default() };
+        buffer.clear_row(
+            0,
+            Cell {
+                c: 'e',
+                grapheme: Some(first.clone()),
+                ..Cell::default()
+            },
+        );
+        let replacement = Cell {
+            c: 'e',
+            grapheme: Some(second.clone()),
+            ..Cell::default()
+        };
         *buffer.cell_mut(0, 0) = replacement.clone();
         // Clearing with an equal template keeps the old suffix allocations.
         buffer.clear_row(0, replacement);
         assert_eq!(buffer.uniform_suffix_start[buffer.row_index(0)], 0);
         let extracted = buffer.extract_row(0);
-        assert!(std::sync::Arc::ptr_eq(extracted[0].grapheme.as_ref().unwrap(), &second));
+        assert!(std::sync::Arc::ptr_eq(
+            extracted[0].grapheme.as_ref().unwrap(),
+            &second
+        ));
         for cell in &extracted[1..] {
-            assert!(std::sync::Arc::ptr_eq(cell.grapheme.as_ref().unwrap(), &first));
+            assert!(std::sync::Arc::ptr_eq(
+                cell.grapheme.as_ref().unwrap(),
+                &first
+            ));
         }
     }
 
@@ -474,7 +593,11 @@ mod tests {
         for cols in [0, 1] {
             let mut buffer = Buffer::new(cols, 1);
             assert_eq!(buffer.extract_row(0), vec![Cell::default(); cols]);
-            let template = Cell { c: 'x', bg: Color::Indexed(3), ..Cell::default() };
+            let template = Cell {
+                c: 'x',
+                bg: Color::Indexed(3),
+                ..Cell::default()
+            };
             buffer.clear_row(0, template.clone());
             assert_eq!(buffer.extract_row(0), vec![template; cols]);
         }
@@ -496,10 +619,22 @@ mod tests {
             let col = random() % cols;
             let template = match step % 5 {
                 0 | 1 => Cell::default(),
-                2 => Cell { bg: Color::Indexed(4), flags: CellFlags::ITALIC, ..Cell::default() },
-                3 => Cell { c: 'e', grapheme: Some("e\u{301}".into()), ..Cell::default() },
-                _ => Cell { fg: Color::Rgb(1, 2, 3), underline_style: UnderlineStyle::Curly,
-                    underline_color: Color::Indexed(7), ..Cell::default() },
+                2 => Cell {
+                    bg: Color::Indexed(4),
+                    flags: CellFlags::ITALIC,
+                    ..Cell::default()
+                },
+                3 => Cell {
+                    c: 'e',
+                    grapheme: Some("e\u{301}".into()),
+                    ..Cell::default()
+                },
+                _ => Cell {
+                    fg: Color::Rgb(1, 2, 3),
+                    underline_style: UnderlineStyle::Curly,
+                    underline_color: Color::Indexed(7),
+                    ..Cell::default()
+                },
             };
             match random() % 8 {
                 0 => {
@@ -543,7 +678,10 @@ mod tests {
                     }
                 }
                 5 => {
-                    metadata[row] = RowMetadata { len: col, wrapped: step % 2 == 0 };
+                    metadata[row] = RowMetadata {
+                        len: col,
+                        wrapped: step % 2 == 0,
+                    };
                     buffer.set_row_metadata(row, metadata[row]);
                 }
                 6 => {
@@ -554,30 +692,48 @@ mod tests {
                     metadata[row].wrapped = step % 2 == 0;
                 }
                 _ => {
-                    let retained: Vec<_> = expected.iter().zip(&metadata)
+                    let retained: Vec<_> = expected
+                        .iter()
+                        .zip(&metadata)
                         .map(|(cells, metadata)| crate::grid::reflow::RetainedRow {
-                            cells: cells.clone(), metadata: *metadata,
-                        }).collect();
+                            cells: cells.clone(),
+                            metadata: *metadata,
+                        })
+                        .collect();
                     buffer = Buffer::from_retained_rows(cols, &retained);
                 }
             }
             for row in 0..rows {
-                assert_eq!(buffer.extract_row(row), expected[row], "step={step}, row={row}");
-                let last_nonblank = expected[row].iter().rposition(|cell| cell.c != ' ')
+                assert_eq!(
+                    buffer.extract_row(row),
+                    expected[row],
+                    "step={step}, row={row}"
+                );
+                let last_nonblank = expected[row]
+                    .iter()
+                    .rposition(|cell| cell.c != ' ')
                     .map_or(0, |col| col + 1);
                 let actual = buffer.row_metadata(row);
-                assert_eq!((actual.len, actual.wrapped),
+                assert_eq!(
+                    (actual.len, actual.wrapped),
                     (metadata[row].len.max(last_nonblank), metadata[row].wrapped),
-                    "step={step}, row={row}");
+                    "step={step}, row={row}"
+                );
                 let suffix = buffer.uniform_suffix_start[buffer.row_index(row)];
                 assert!(suffix <= cols);
-                assert!(expected[row][suffix..].iter().all(|cell| cell == &expected[row][cols - 1]),
-                    "invalid suffix after step={step}, row={row}");
+                assert!(
+                    expected[row][suffix..]
+                        .iter()
+                        .all(|cell| cell == &expected[row][cols - 1]),
+                    "invalid suffix after step={step}, row={row}"
+                );
             }
         }
     }
 
     #[test]
+    // Row/column numbers index the reference model and drive the buffer API alike.
+    #[allow(clippy::needless_range_loop)]
     fn repeated_region_scrolls_preserve_row_edits_and_reconstruction_order() {
         let mut buffer = Buffer::new(9, 7);
         let mut expected = vec![vec![Cell::default(); 9]; 7];
@@ -630,9 +786,12 @@ mod tests {
             expected[edited_row][edited_col].c = '日';
 
             if step % 13 == 0 {
-                let retained: Vec<_> = (0..rows).map(|row| crate::grid::reflow::RetainedRow {
-                    cells: buffer.extract_row(row), metadata: buffer.row_metadata(row),
-                }).collect();
+                let retained: Vec<_> = (0..rows)
+                    .map(|row| crate::grid::reflow::RetainedRow {
+                        cells: buffer.extract_row(row),
+                        metadata: buffer.row_metadata(row),
+                    })
+                    .collect();
                 buffer = Buffer::from_retained_rows(cols, &retained);
             }
             assert_eq!(buffer.rows(), expected.len());
@@ -655,16 +814,22 @@ mod tests {
     }
 
     #[test]
+    // Row/column numbers index the reference model and drive the buffer API alike.
+    #[allow(clippy::needless_range_loop)]
     fn row_offset_rotation_keeps_graphemes_lengths_and_wrap_flags_together() {
         let mut buffer = Buffer::new(8, 6);
         for row in 0..6 {
             *buffer.cell_mut(row, 0) = Cell {
-                c: 'e', grapheme: Some(format!("e{}", char::from_u32(0x300 + row as u32).unwrap()).into()), ..Cell::default()
+                c: 'e',
+                grapheme: Some(format!("e{}", char::from_u32(0x300 + row as u32).unwrap()).into()),
+                ..Cell::default()
             };
             buffer.mark_written(row, row + 1);
             buffer.set_wrapped(row, row % 2 == 0);
         }
-        let before: Vec<_> = (0..6).map(|row| (buffer.extract_row(row), buffer.row_metadata(row))).collect();
+        let before: Vec<_> = (0..6)
+            .map(|row| (buffer.extract_row(row), buffer.row_metadata(row)))
+            .collect();
         buffer.scroll_up(1, 4, 1, Cell::default());
         for (row, source) in [(0, 0), (1, 2), (2, 3), (3, 4), (5, 5)] {
             assert_eq!(buffer.extract_row(row), before[source].0);
@@ -684,6 +849,8 @@ mod tests {
     }
 
     #[test]
+    // Row/column numbers index the reference model and drive the buffer API alike.
+    #[allow(clippy::needless_range_loop)]
     fn scrolling_preserves_cells_outside_the_region_and_fills_exposed_rows() {
         let template = Cell {
             c: ' ',

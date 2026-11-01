@@ -1,14 +1,15 @@
+// `pane::pane::Pane` is the leaf; the parent module owns the tree.
+#[allow(clippy::module_inception)]
 pub mod pane;
 
 use crate::graphics::{retain_unreferenced_image_ids, ImageId};
-use crate::layout::{
-    compute_layout, DividerInfo, PaneId, PaneNode, PixelRect, SplitDirection,
-};
+use crate::layout::{compute_layout, DividerInfo, PaneId, PaneNode, PixelRect, SplitDirection};
 use crate::parser::ansi::GraphicsSupport;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
 use pane::{InputFailureNotifier, Pane};
 
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 
 const MIN_PANE_COLS: usize = 10;
 const MIN_PANE_ROWS: usize = 3;
@@ -19,8 +20,6 @@ pub struct PaneTree {
     pub focused: PaneId,
     next_id: PaneId,
     scrollback_max: usize,
-    default_cols: u16,
-    default_rows: u16,
     kitty_options: KittyHandlerOptions,
     graphics_support: GraphicsSupport,
     on_input_failed: InputFailureNotifier,
@@ -51,6 +50,7 @@ impl PaneTree {
         kitty_options: KittyHandlerOptions,
         graphics_support: GraphicsSupport,
         on_input_failed: InputFailureNotifier,
+        command: &[OsString],
     ) -> Result<Self, crate::pty::PtyError> {
         let id: PaneId = 1;
         let pane = Pane::new(
@@ -61,6 +61,7 @@ impl PaneTree {
             kitty_options,
             graphics_support,
             on_input_failed.clone(),
+            command,
         )?;
         let mut panes = HashMap::new();
         panes.insert(id, pane);
@@ -71,8 +72,6 @@ impl PaneTree {
             focused: id,
             next_id: 2,
             scrollback_max,
-            default_cols: cols,
-            default_rows: rows,
             kitty_options,
             graphics_support,
             on_input_failed,
@@ -102,15 +101,13 @@ impl PaneTree {
         ids
     }
 
+    #[cfg(test)]
     pub fn pane_count(&self) -> usize {
         self.panes.len()
     }
 
     /// Keep only cache-deletion candidates unused by every pane and protocol.
-    pub(crate) fn retain_unreferenced_image_ids(
-        &self,
-        candidates: &mut HashSet<ImageId>,
-    ) {
+    pub(crate) fn retain_unreferenced_image_ids(&self, candidates: &mut HashSet<ImageId>) {
         retain_unreferenced_image_ids(
             candidates,
             self.panes
@@ -134,8 +131,10 @@ impl PaneTree {
         let (left_rect, right_rect) = rect.split(direction, 0.5);
         let min_w = MIN_PANE_COLS as f32 * cell_w;
         let min_h = MIN_PANE_ROWS as f32 * cell_h;
-        if left_rect.width < min_w || left_rect.height < min_h
-            || right_rect.width < min_w || right_rect.height < min_h
+        if left_rect.width < min_w
+            || left_rect.height < min_h
+            || right_rect.width < min_w
+            || right_rect.height < min_h
         {
             log::warn!("Cannot split: resulting pane too small");
             return Ok(target); // Return existing pane ID
@@ -155,6 +154,7 @@ impl PaneTree {
             self.kitty_options,
             self.graphics_support,
             self.on_input_failed.clone(),
+            &[],
         )?;
 
         // Copy color config from existing pane for OSC 10/11 queries
@@ -202,7 +202,12 @@ impl PaneTree {
             self.focused = ids.first().copied().unwrap_or(0);
         }
         if let Some(params) = self.last_layout {
-            self.relayout(params.viewport, params.cell_w, params.cell_h, params.status_bar_height);
+            self.relayout(
+                params.viewport,
+                params.cell_w,
+                params.cell_h,
+                params.status_bar_height,
+            );
         }
         PaneCloseOutcome {
             should_terminate: false,
@@ -242,8 +247,8 @@ impl PaneTree {
             let py = r.y + r.height / 2.0;
 
             let is_valid = match (direction, positive) {
-                (SplitDirection::Vertical, true) => px > cx + 1.0,   // right
-                (SplitDirection::Vertical, false) => px < cx - 1.0,  // left
+                (SplitDirection::Vertical, true) => px > cx + 1.0, // right
+                (SplitDirection::Vertical, false) => px < cx - 1.0, // left
                 (SplitDirection::Horizontal, true) => py > cy + 1.0, // down
                 (SplitDirection::Horizontal, false) => py < cy - 1.0, // up
             };
@@ -263,7 +268,13 @@ impl PaneTree {
     }
 
     /// Recompute layout and update all pane rects. Also resize grids if needed.
-    pub fn relayout(&mut self, viewport: PixelRect, cell_w: f32, cell_h: f32, status_bar_height: f32) {
+    pub fn relayout(
+        &mut self,
+        viewport: PixelRect,
+        cell_w: f32,
+        cell_h: f32,
+        status_bar_height: f32,
+    ) {
         self.last_layout = Some(LayoutParams {
             viewport,
             cell_w,
@@ -289,10 +300,7 @@ impl PaneTree {
                 let grid_height = (rect.height - status_bar_height).max(cell_h);
                 let cols = (rect.width / cell_w).floor() as usize;
                 let rows = (grid_height / cell_h).floor() as usize;
-                pane.resize_grid(
-                    cols.max(MIN_PANE_COLS),
-                    rows.max(MIN_PANE_ROWS),
-                );
+                pane.resize_grid(cols.max(MIN_PANE_COLS), rows.max(MIN_PANE_ROWS));
             }
         }
     }
@@ -361,7 +369,10 @@ pub fn next_with_attention(
     if ids.is_empty() {
         return None;
     }
-    let start = ids.iter().position(|&id| id == focused).map_or(0, |i| i + 1);
+    let start = ids
+        .iter()
+        .position(|&id| id == focused)
+        .map_or(0, |i| i + 1);
     (0..ids.len())
         .map(|offset| ids[(start + offset) % ids.len()])
         .find(|&id| has_attention(id))
@@ -399,13 +410,25 @@ mod tests {
         let ids = [1, 2, 3, 4];
         let flagged = |id: PaneId| id == 1 || id == 3;
         assert_eq!(next_with_attention(&ids, 2, flagged), Some(3));
-        assert_eq!(next_with_attention(&ids, 3, flagged), Some(1), "wraps around");
+        assert_eq!(
+            next_with_attention(&ids, 3, flagged),
+            Some(1),
+            "wraps around"
+        );
         assert_eq!(next_with_attention(&ids, 1, flagged), Some(3));
         assert_eq!(next_with_attention(&ids, 4, flagged), Some(1));
-        assert_eq!(next_with_attention(&ids, 3, |id| id == 3), Some(3), "only itself");
+        assert_eq!(
+            next_with_attention(&ids, 3, |id| id == 3),
+            Some(3),
+            "only itself"
+        );
         assert_eq!(next_with_attention(&ids, 2, |_| false), None);
         assert_eq!(next_with_attention(&[], 2, |_| true), None);
-        assert_eq!(next_with_attention(&ids, 99, flagged), Some(1), "unknown focus starts at 0");
+        assert_eq!(
+            next_with_attention(&ids, 99, flagged),
+            Some(1),
+            "unknown focus starts at 0"
+        );
     }
 
     #[test]
@@ -420,6 +443,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("pane tree should spawn its initial shell");
         let focused = tree.focused;
@@ -461,6 +485,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("pane tree should spawn its initial shell");
         tree.relayout(
@@ -512,6 +537,7 @@ mod tests {
                 sixel: false,
             },
             std::sync::Arc::new(|| {}),
+            &[],
         )
         .expect("pane tree should spawn its initial shell");
         let viewport = PixelRect {

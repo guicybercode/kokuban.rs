@@ -50,6 +50,8 @@ pub(crate) enum ReaderExit {
     ResponseWriteFailed(io::Error),
     GridPoisoned,
     DecoderStalled,
+    // Produced by the text-only reader, which only tests spawn today.
+    #[cfg_attr(not(test), allow(dead_code))]
     UnexpectedProtocolEvent,
 }
 
@@ -61,28 +63,6 @@ pub(crate) struct TerminalReader {
 }
 
 impl TerminalReader {
-    pub(crate) fn spawn_text<U, X>(
-        pty: Arc<Pty>,
-        grid: Arc<Mutex<Grid>>,
-        on_update: U,
-        on_exit: X,
-    ) -> io::Result<Self>
-    where
-        U: FnMut() + Send + 'static,
-        X: FnOnce(&ReaderExit) + Send + 'static,
-    {
-        Self::spawn_with_io(
-            pty,
-            grid,
-            GraphicsSupport {
-                kitty: false,
-                sixel: false,
-            },
-            on_update,
-            on_exit,
-        )
-    }
-
     /// Start a reader with ordered graphics handling under the grid lock.
     /// The callback returns an optional PTY reply, written after releasing the lock.
     pub(crate) fn spawn_with_graphics<G, U, X>(
@@ -98,16 +78,11 @@ impl TerminalReader {
         U: FnMut() + Send + 'static,
         X: FnOnce(&ReaderExit) + Send + 'static,
     {
-        Self::spawn_with_graphics_io(
-            pty,
-            grid,
-            graphics_support,
-            on_graphics,
-            on_update,
-            on_exit,
-        )
+        Self::spawn_with_graphics_io(pty, grid, graphics_support, on_graphics, on_update, on_exit)
     }
 
+    /// Text-only reader: any protocol event ends the reader.
+    #[cfg(test)]
     fn spawn_with_io<I, U, X>(
         io: Arc<I>,
         grid: Arc<Mutex<Grid>>,
@@ -624,9 +599,7 @@ mod tests {
         let fake = FakeIo::new(
             vec![WaitAction::Ready],
             vec![
-                ReadAction::Data(
-                    b"\x1b[2;3H\x1bPq~\x1b\\\x1b_Ga=p,i=7\x1b\\\x1b[6nX".to_vec(),
-                ),
+                ReadAction::Data(b"\x1b[2;3H\x1bPq~\x1b\\\x1b_Ga=p,i=7\x1b\\\x1b[6nX".to_vec()),
                 ReadAction::Eof,
             ],
         )

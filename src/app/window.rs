@@ -2,27 +2,29 @@ use super::reader::ReaderWake;
 use super::render_scheduler::RenderScheduler;
 use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
+use crate::config::OptionAsAlt;
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::{
-    key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, translate_key_event,
+    key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, option_acts_as_meta,
+    terminal_key_from_key_code, translate_key_event,
 };
 use crate::input::mouse::{
     encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
 };
 use crate::layout::{PaneId, PixelRect, SplitDirection};
+use crate::notifications::NotificationController;
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
-use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
-use crate::renderer::metal::MetalRenderer;
+use crate::renderer::metal::{FrameInputs, MetalRenderer};
 use crate::search::SearchState;
 use crate::selection::GridPoint;
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
-use crate::notifications::NotificationController;
 use crate::update::{self, SharedUpdateStatus, UpdateStatus};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
 
@@ -45,8 +47,13 @@ const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClipboardPasteError {
-    TooLarge { byte_count: usize, limit: usize },
-    AllocationFailed { byte_count: usize },
+    TooLarge {
+        byte_count: usize,
+        limit: usize,
+    },
+    AllocationFailed {
+        byte_count: usize,
+    },
     ConversionFailed {
         expected_bytes: usize,
         converted_bytes: usize,
@@ -63,10 +70,7 @@ enum MacKeyEquivalentRoute {
     Keybind,
 }
 
-fn mac_key_equivalent_route(
-    key_code: u16,
-    modifiers: KeyModifiers,
-) -> MacKeyEquivalentRoute {
+fn mac_key_equivalent_route(key_code: u16, modifiers: KeyModifiers) -> MacKeyEquivalentRoute {
     if !modifiers.contains(KeyModifiers::CMD) {
         return MacKeyEquivalentRoute::PassThrough;
     }
@@ -95,10 +99,7 @@ enum MacScrollbackAction {
     End,
 }
 
-fn mac_scrollback_action(
-    key_code: u16,
-    modifiers: KeyModifiers,
-) -> Option<MacScrollbackAction> {
+fn mac_scrollback_action(key_code: u16, modifiers: KeyModifiers) -> Option<MacScrollbackAction> {
     if modifiers != KeyModifiers::SHIFT {
         return None;
     }
@@ -175,8 +176,8 @@ impl MacScrollState {
                 self.reset();
                 return 0;
             }
-            let line_delta = sample.delta_y * f64::from(sample.scale_factor)
-                / f64::from(sample.cell_height);
+            let line_delta =
+                sample.delta_y * f64::from(sample.scale_factor) / f64::from(sample.cell_height);
             if !line_delta.is_finite() {
                 self.reset();
                 return 0;
@@ -217,11 +218,9 @@ impl MacScrollState {
         let steps = if whole_steps.abs() > limit {
             self.line_remainder = 0.0;
             if whole_steps.is_sign_positive() {
-                i32::try_from(MAX_WHEEL_STEPS_PER_EVENT)
-                    .expect("wheel step limit should fit i32")
+                i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
             } else {
-                -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT)
-                    .expect("wheel step limit should fit i32")
+                -i32::try_from(MAX_WHEEL_STEPS_PER_EVENT).expect("wheel step limit should fit i32")
             }
         } else {
             self.line_remainder = total - whole_steps;
@@ -235,10 +234,7 @@ impl MacScrollState {
     }
 }
 
-fn mac_scroll_phase(
-    event_phase: NSEventPhase,
-    momentum_phase: NSEventPhase,
-) -> MacScrollPhase {
+fn mac_scroll_phase(event_phase: NSEventPhase, momentum_phase: NSEventPhase) -> MacScrollPhase {
     let started = NSEventPhase::MayBegin | NSEventPhase::Began;
     let finished = NSEventPhase::Ended | NSEventPhase::Cancelled;
     if momentum_phase.intersects(started) {
@@ -262,24 +258,16 @@ fn encode_macos_forwarded_wheel(
 ) -> Option<Vec<u8>> {
     match route {
         MouseWheelRoute::Terminal(mouse_encoding) => {
-            let (column, row) = terminal_cell
-                .expect("terminal mouse route should have a validated cell");
+            let (column, row) =
+                terminal_cell.expect("terminal mouse route should have a validated cell");
             let button = if steps.is_positive() {
                 MOUSE_WHEEL_UP
             } else {
                 MOUSE_WHEEL_DOWN
             };
             let button = mouse_button_with_appkit_modifiers(button, modifiers);
-            let report = encode_mouse_event(
-                button,
-                column + 1,
-                row + 1,
-                true,
-                mouse_encoding,
-            );
-            let report_count = usize::try_from(
-                steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT),
-            )
+            let report = encode_mouse_event(button, column + 1, row + 1, true, mouse_encoding);
+            let report_count = usize::try_from(steps.unsigned_abs().min(MAX_WHEEL_STEPS_PER_EVENT))
                 .expect("bounded wheel report count should fit usize");
             Some(report.repeat(report_count))
         }
@@ -291,6 +279,20 @@ fn encode_macos_forwarded_wheel(
         )),
         MouseWheelRoute::Scrollback => None,
     }
+}
+
+/// Marked (pre-edit) text supplied by the macOS input method.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MarkedText {
+    text: String,
+    /// Selection inside the marked text, in UTF-16 units as AppKit reports it.
+    selected: (usize, usize),
+}
+
+thread_local! {
+    /// Key event handed to `interpretKeyEvents:`; `doCommandBySelector:` and
+    /// the fallback after interpretation take it so the key is sent at most once.
+    static PENDING_KEY_EVENT: RefCell<Option<Retained<NSEvent>>> = const { RefCell::new(None) };
 }
 
 struct ViewState {
@@ -319,6 +321,12 @@ struct ViewState {
     bg_opacity: f32,
     status_bar_height: f32,
     status_bar_enabled: bool,
+    status_bar_layout: StatusBarLayout,
+    option_as_alt: OptionAsAlt,
+    /// Text the input method is composing (marked text) for the focused pane.
+    marked_text: Option<MarkedText>,
+    /// Cmd is held: hyperlinks are underlined as a hint that Cmd+click opens them.
+    cmd_held: bool,
     resize_step: f32,
     prompt_indicator_color: Option<(u8, u8, u8)>,
     image_store: Arc<Mutex<ImageStore>>,
@@ -358,6 +366,11 @@ impl WindowTitleMailbox {
             desired_title: Mutex::new(WINDOW_TITLE.to_string()),
             pending: AtomicBool::new(true),
         }
+    }
+
+    /// Title requested with `--title`; OSC 0/2 updates replace it as usual.
+    pub(super) fn set_initial_title(&self, title: &str) {
+        self.publish(title);
     }
 
     fn publish(&self, raw_title: &str) -> bool {
@@ -407,7 +420,7 @@ pub(super) fn publish_focused_window_title(
 }
 
 thread_local! {
-    static VIEW_STATE: RefCell<Option<ViewState>> = RefCell::new(None);
+    static VIEW_STATE: RefCell<Option<ViewState>> = const { RefCell::new(None) };
 }
 
 fn focus_report_bytes(focused: bool) -> &'static [u8] {
@@ -547,10 +560,18 @@ pub(super) fn apply_pending_user_attention(notifications: &NotificationControlle
     };
     // InformationalRequest == 0; avoid depending on an extra AppKit feature flag.
     let app = NSApplication::sharedApplication(mtm);
+    // SAFETY: `requestUserAttention:` takes an NSRequestUserAttentionType
+    // (NSInteger; 0 is NSInformationalRequest) and returns NSInteger. The
+    // shared NSApplication is messaged on the main thread (`mtm`).
     let _: usize = unsafe { msg_send![&app, requestUserAttention: 0usize] };
 }
 
-
+// SAFETY: TerminalView subclasses NSView without custom ivars and is
+// MainThreadOnly, so AppKit only calls into it from the main thread. Every
+// `#[unsafe(method(...))]` below uses the selector's declared AppKit signature
+// (NSEvent, NSNotification, NSSize, BOOL, NSMenuItem) and the overrides keep
+// NSView's invariants (super is called where the override replaces a
+// superclass behavior that must still run, e.g. `setFrameSize:`).
 define_class!(
     #[unsafe(super(NSView))]
     #[name = "TerminalView"]
@@ -586,7 +607,7 @@ define_class!(
 
             // If confirm dialog is active, route ALL keys to it (including Cmd+keys).
             let confirm_active = VIEW_STATE.with(|state| {
-                state.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some())
+                state.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some())
             });
             if confirm_active {
                 let ch = event.charactersIgnoringModifiers()
@@ -848,7 +869,7 @@ define_class!(
 
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, event: &NSEvent) {
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             let has_cmd = event.modifierFlags().contains(NSEventModifierFlags::Command);
@@ -912,7 +933,7 @@ define_class!(
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, event: &NSEvent) {
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if blocked { return; }
             let has_shift = event.modifierFlags().contains(NSEventModifierFlags::Shift);
             VIEW_STATE.with(|state| {
@@ -952,7 +973,7 @@ define_class!(
 
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, event: &NSEvent) {
-            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let blocked = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if blocked { return; }
             VIEW_STATE.with(|state| {
                 let state = state.borrow();
@@ -975,6 +996,20 @@ define_class!(
             });
         }
 
+        #[unsafe(method(flagsChanged:))]
+        fn flags_changed(&self, event: &NSEvent) {
+            let cmd_held = event.modifierFlags().contains(NSEventModifierFlags::Command);
+            VIEW_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                if let Some(state) = state.as_mut() {
+                    if state.cmd_held != cmd_held {
+                        state.cmd_held = cmd_held;
+                        state.request_render();
+                    }
+                }
+            });
+        }
+
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
             let key_code = event.keyCode();
@@ -983,7 +1018,7 @@ define_class!(
             let has_cmd = modifiers.contains(NSEventModifierFlags::Command);
 
             // If confirm dialog is active, route keys to it
-            let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().map_or(false, |s| s.confirm_dialog.is_some()));
+            let confirm_active = VIEW_STATE.with(|s| s.borrow().as_ref().is_some_and(|s| s.confirm_dialog.is_some()));
             if confirm_active {
                 let ch = event.charactersIgnoringModifiers()
                     .and_then(|s| s.to_string().chars().next());
@@ -1027,31 +1062,34 @@ define_class!(
                 }
             }
 
-            // Forward to the focused pane using that pane's current input mode.
-            VIEW_STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    let mut tree = state.pane_tree.lock().unwrap();
-                    if let Some(pane) = tree.focused_pane_mut() {
-                        pane.grid.scroll_to_bottom();
-                        if pane.attention {
-                            pane.attention = false;
-                            state.request_render();
-                        }
-                        if pane.selection.is_active() {
-                            pane.selection.clear();
-                            state.request_render();
-                        }
-                        if let Some(bytes) = translate_key_event(
-                            event,
-                            pane.grid.application_cursor_keys,
-                            pane.grid.kitty_disambiguate(),
-                        ) {
-                            pane.queue_input(bytes);
-                        }
-                    }
-                }
+            // Text keys go through the input method first so dead keys, CJK
+            // composition and the emoji picker work; `insertText:` commits the
+            // result, `setMarkedText:` shows the pre-edit and
+            // `doCommandBySelector:` returns control keys to the terminal path.
+            // Ctrl, Meta and named keys skip the IME unless text is being composed.
+            let (composing, option_meta) = VIEW_STATE.with(|state| {
+                let state = state.borrow();
+                let state = state.as_ref();
+                (
+                    state.is_some_and(|s| s.marked_text.is_some()),
+                    state.is_none_or(|s| option_acts_as_meta(modifiers, s.option_as_alt)),
+                )
             });
+            let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
+            let named_key =
+                terminal_key_from_key_code(key_code, modifiers.contains(NSEventModifierFlags::Shift)).is_some();
+            if composing || (!has_ctrl && !option_meta && !named_key) {
+                PENDING_KEY_EVENT.with(|pending| *pending.borrow_mut() = Some(event.retain()));
+                let events = NSArray::from_slice(&[event]);
+                self.interpretKeyEvents(&events);
+                // Nothing claimed the event (no text, no command): send it as before.
+                if let Some(event) = PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take()) {
+                    forward_key_event_to_pane(&event);
+                }
+                return;
+            }
+
+            forward_key_event_to_pane(event);
         }
 
         #[unsafe(method(viewDidChangeBackingProperties))]
@@ -1114,6 +1152,8 @@ define_class!(
 
         #[unsafe(method(setFrameSize:))]
         fn set_frame_size(&self, new_size: NSSize) {
+            // SAFETY: forwards the same NSSize to NSView's implementation;
+            // `self` is a live main-thread view and the selector returns void.
             let _: () = unsafe { msg_send![super(self), setFrameSize: new_size] };
 
             VIEW_STATE.with(|state| {
@@ -1201,10 +1241,223 @@ define_class!(
 
         #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _notification: &NSNotification) {
+            // A pre-edit cannot survive losing the key window: drop it on both sides.
+            if ime_marked_text().is_some() {
+                ime_set_marked_text(String::new(), (0, 0));
+                if let Some(context) = self.inputContext() {
+                    context.discardMarkedText();
+                }
+            }
             dispatch_window_focus_transition(false);
         }
     }
+
+    // SAFETY: every method below matches the NSTextInputClient protocol
+    // signatures generated by objc2-app-kit; all run on the main thread via
+    // AppKit's key event dispatch.
+    unsafe impl NSTextInputClient for TerminalView {
+        #[unsafe(method(insertText:replacementRange:))]
+        fn insert_text_replacement_range(&self, string: &AnyObject, _replacement_range: NSRange) {
+            PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take());
+            if let Some(text) = text_from_input_object(string) {
+                ime_commit_text(&text);
+            }
+        }
+
+        #[unsafe(method(doCommandBySelector:))]
+        fn do_command_by_selector(&self, _selector: objc2::runtime::Sel) {
+            // Arrows, Enter, Tab, Escape, Backspace...: the terminal owns them.
+            if let Some(event) = PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take()) {
+                forward_key_event_to_pane(&event);
+            }
+        }
+
+        #[unsafe(method(setMarkedText:selectedRange:replacementRange:))]
+        fn set_marked_text_selected_range_replacement_range(
+            &self,
+            string: &AnyObject,
+            selected_range: NSRange,
+            _replacement_range: NSRange,
+        ) {
+            PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take());
+            let text = text_from_input_object(string).unwrap_or_default();
+            ime_set_marked_text(text, (selected_range.location, selected_range.length));
+        }
+
+        #[unsafe(method(unmarkText))]
+        fn unmark_text(&self) {
+            // AppKit asks to commit the current pre-edit as typed.
+            if let Some(marked) = ime_marked_text() {
+                ime_commit_text(&marked.text);
+            }
+        }
+
+        #[unsafe(method(selectedRange))]
+        fn selected_range(&self) -> NSRange {
+            match ime_marked_text() {
+                Some(marked) => NSRange::new(marked.selected.0, marked.selected.1),
+                None => NSRange::new(NSNotFound as usize, 0),
+            }
+        }
+
+        #[unsafe(method(markedRange))]
+        fn marked_range(&self) -> NSRange {
+            match ime_marked_text() {
+                Some(marked) => NSRange::new(0, utf16_len(&marked.text)),
+                None => NSRange::new(NSNotFound as usize, 0),
+            }
+        }
+
+        #[unsafe(method(hasMarkedText))]
+        fn has_marked_text(&self) -> bool {
+            ime_marked_text().is_some()
+        }
+
+        #[unsafe(method_id(attributedSubstringForProposedRange:actualRange:))]
+        fn attributed_substring_for_proposed_range_actual_range(
+            &self,
+            _range: NSRange,
+            _actual_range: NSRangePointer,
+        ) -> Option<Retained<NSAttributedString>> {
+            None
+        }
+
+        #[unsafe(method_id(validAttributesForMarkedText))]
+        fn valid_attributes_for_marked_text(&self) -> Retained<NSArray<NSAttributedStringKey>> {
+            NSArray::new()
+        }
+
+        #[unsafe(method(firstRectForCharacterRange:actualRange:))]
+        fn first_rect_for_character_range_actual_range(
+            &self,
+            _range: NSRange,
+            _actual_range: NSRangePointer,
+        ) -> NSRect {
+            let in_view = ime_cursor_rect_in_view();
+            let in_window = self.convertRect_toView(in_view, None);
+            match self.window() {
+                Some(window) => window.convertRectToScreen(in_window),
+                None => in_window,
+            }
+        }
+
+        #[unsafe(method(characterIndexForPoint:))]
+        fn character_index_for_point(&self, _point: NSPoint) -> NSUInteger {
+            NSNotFound as NSUInteger
+        }
+    }
 );
+
+/// Send one key event to the focused pane with that pane's current input mode.
+fn forward_key_event_to_pane(event: &NSEvent) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            let mut tree = state.pane_tree.lock().unwrap();
+            if let Some(pane) = tree.focused_pane_mut() {
+                pane.grid.scroll_to_bottom();
+                if pane.attention {
+                    pane.attention = false;
+                    state.request_render();
+                }
+                if pane.selection.is_active() {
+                    pane.selection.clear();
+                    state.request_render();
+                }
+                if let Some(bytes) = translate_key_event(
+                    event,
+                    pane.grid.application_cursor_keys,
+                    pane.grid.kitty_disambiguate(),
+                    state.option_as_alt,
+                ) {
+                    pane.queue_input(bytes);
+                }
+            }
+        }
+    });
+}
+
+/// Text carried by an `NSTextInputClient` argument: an `NSString` or an
+/// `NSAttributedString` (the input method may send either).
+fn text_from_input_object(string: &AnyObject) -> Option<String> {
+    if let Some(string) = string.downcast_ref::<NSString>() {
+        return Some(string.to_string());
+    }
+    string
+        .downcast_ref::<NSAttributedString>()
+        .map(|attributed| attributed.string().to_string())
+}
+
+/// Commit text from the input method to the focused pane and drop the pre-edit.
+fn ime_commit_text(text: &str) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            state.marked_text = None;
+            let mut tree = state.pane_tree.lock().unwrap();
+            if let Some(pane) = tree.focused_pane_mut() {
+                pane.grid.scroll_to_bottom();
+                if pane.selection.is_active() {
+                    pane.selection.clear();
+                }
+                if !text.is_empty() {
+                    pane.queue_input(text.as_bytes().to_vec());
+                }
+            }
+            drop(tree);
+            state.request_render();
+        }
+    });
+}
+
+/// Replace the pre-edit shown at the cursor (empty text clears it).
+fn ime_set_marked_text(text: String, selected: (usize, usize)) {
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some(state) = state.as_mut() {
+            state.marked_text = (!text.is_empty()).then_some(MarkedText { text, selected });
+            state.request_render();
+        }
+    });
+}
+
+fn ime_marked_text() -> Option<MarkedText> {
+    VIEW_STATE.with(|state| state.borrow().as_ref().and_then(|s| s.marked_text.clone()))
+}
+
+/// Rectangle of the focused pane's cursor cell in view coordinates (points,
+/// flipped view), where the input method places its candidate window.
+fn ime_cursor_rect_in_view() -> NSRect {
+    VIEW_STATE.with(|state| {
+        let state = state.borrow();
+        let Some(state) = state.as_ref() else {
+            return NSRect::ZERO;
+        };
+        let tree = state.pane_tree.lock().unwrap();
+        let atlas = state.atlas.lock().unwrap();
+        let scale = state.scale_factor.max(0.01) as f64;
+        let Some(pane) = tree.focused_pane() else {
+            return NSRect::ZERO;
+        };
+        let col = pane
+            .grid
+            .screen_cursor_col()
+            .unwrap_or(pane.grid.cursor_col);
+        let x = pane.rect.x + col as f32 * atlas.cell_width;
+        let y = pane.rect.y + pane.grid.cursor_row as f32 * atlas.cell_height;
+        NSRect::new(
+            NSPoint::new(x as f64 / scale, y as f64 / scale),
+            NSSize::new(
+                atlas.cell_width as f64 / scale,
+                atlas.cell_height as f64 / scale,
+            ),
+        )
+    })
+}
+
+fn utf16_len(text: &str) -> usize {
+    text.encode_utf16().count()
+}
 
 /// Run `action` with the shared update status and the frame scheduler.
 fn with_update_status<T>(
@@ -1344,14 +1597,12 @@ fn handle_pane_action(action: PaneAction) {
                 if state.confirm_on_close_pane {
                     let id = tree.focused;
                     // Get foreground process name for the dialog
-                    let proc_name = tree.pane(id).and_then(|p| {
-                        confirm::foreground_process_name(p.pty.master_fd())
-                    });
+                    let proc_name = tree
+                        .pane(id)
+                        .and_then(|p| confirm::foreground_process_name(p.pty.master_fd()));
                     drop(tree);
-                    state.confirm_dialog = Some(ConfirmDialog::new(
-                        ConfirmAction::ClosePane(id),
-                        proc_name,
-                    ));
+                    state.confirm_dialog =
+                        Some(ConfirmDialog::new(ConfirmAction::ClosePane(id), proc_name));
                     state.request_render();
                     return;
                 }
@@ -1403,28 +1654,48 @@ fn handle_pane_action(action: PaneAction) {
                 let delta = -(state.resize_step / cell_w) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ResizeRight => {
                 let delta = (state.resize_step / cell_w) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ResizeUp => {
                 let delta = -(state.resize_step / cell_h) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ResizeDown => {
                 let delta = (state.resize_step / cell_h) * 0.01;
                 tree.resize_focused(delta);
                 let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect { x: 0.0, y: 0.0, width: size.width as f32, height: size.height as f32 };
+                let viewport = PixelRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: size.width as f32,
+                    height: size.height as f32,
+                };
                 tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
             }
             PaneAction::ZoomIn => {
@@ -1631,13 +1902,7 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
         0.0
     };
     let mut tree = state.pane_tree.lock().unwrap();
-    update_pane_geometry(
-        &mut tree,
-        cell_w,
-        cell_h,
-        status_bar_height,
-        drawable_size,
-    );
+    update_pane_geometry(&mut tree, cell_w, cell_h, status_bar_height, drawable_size);
     drop(tree);
     drop(atlas);
 
@@ -1688,7 +1953,11 @@ fn pixel_to_cell(
     let pane = tree.pane(pane_id)?;
     let col = ((px - pane.rect.x) / cell_w).max(0.0) as usize;
     let row = ((py - pane.rect.y) / cell_h).max(0.0) as usize;
-    Some((pane_id, col.min(pane.grid.cols().saturating_sub(1)), row.min(pane.grid.rows().saturating_sub(1))))
+    Some((
+        pane_id,
+        col.min(pane.grid.cols().saturating_sub(1)),
+        row.min(pane.grid.rows().saturating_sub(1)),
+    ))
 }
 
 /// OSC 8 target under a retained-grid point, if the pane recorded one there.
@@ -1743,6 +2012,9 @@ pub(super) fn apply_pending_clipboard_write(pending: &Mutex<Option<String>>) {
 }
 
 pub(crate) fn copy_to_clipboard(text: &str) {
+    // SAFETY: plain AppKit message sends on the general pasteboard with a
+    // valid, retained NSString and the framework-provided type constant;
+    // called from the view's event handlers on the main thread.
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.clearContents();
@@ -1752,6 +2024,8 @@ pub(crate) fn copy_to_clipboard(text: &str) {
 }
 
 fn paste_from_clipboard() -> Option<Retained<NSString>> {
+    // SAFETY: `stringForType:` on the general pasteboard with a valid type
+    // constant returns a retained, possibly nil NSString; main thread only.
     unsafe {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.stringForType(NSPasteboardTypeString)
@@ -1822,6 +2096,11 @@ fn encode_clipboard_paste(
         let mut converted_bytes = 0;
         let mut remaining_range = NSRange::default();
         let source_range = NSRange::new(0, utf16_len);
+        // SAFETY: the destination is exactly `payload_len` writable bytes of
+        // `bytes`, which was sized to `framed_len >= payload_start +
+        // payload_len`; `maxLength` equals that slice length, `source_range`
+        // covers the `utf16_len` UTF-16 units of `text`, and the two
+        // out-pointers reference live locals.
         let converted = unsafe {
             text.getBytes_maxLength_usedLength_encoding_options_range_remainingRange(
                 bytes[payload_start..payload_start + payload_len]
@@ -1845,8 +2124,7 @@ fn encode_clipboard_paste(
 
     if bracketed {
         bytes[..BRACKETED_PASTE_START.len()].copy_from_slice(BRACKETED_PASTE_START);
-        bytes[framed_len - BRACKETED_PASTE_END.len()..]
-            .copy_from_slice(BRACKETED_PASTE_END);
+        bytes[framed_len - BRACKETED_PASTE_END.len()..].copy_from_slice(BRACKETED_PASTE_END);
     }
     Ok(bytes)
 }
@@ -1927,11 +2205,18 @@ fn render_frame() {
                     is_focused: *id == focused_id,
                     attention: pane.attention,
                     pane_index: i,
+                    program: &pane.pty.program_name,
                     cwd: &pane.grid.cwd,
                     prompt_mark_rows,
                     show_cursor: pane.grid.cursor_visible && *id == focused_id,
                     update_notice: update_notice.as_deref().filter(|_| *id == focused_id),
                     search: pane.search.as_ref(),
+                    underline_links: state.cmd_held,
+                    preedit: state
+                        .marked_text
+                        .as_ref()
+                        .filter(|_| *id == focused_id)
+                        .map(|marked| marked.text.as_str()),
                 });
             }
         }
@@ -1941,7 +2226,8 @@ fn render_frame() {
             let region = match &dialog.action {
                 ConfirmAction::ClosePane(pane_id) => {
                     // Find the pane rect for this pane
-                    layouts.iter()
+                    layouts
+                        .iter()
                         .find(|(id, _)| id == pane_id)
                         .map(|(_, r)| *r)
                         .unwrap_or(viewport)
@@ -1957,30 +2243,34 @@ fn render_frame() {
         });
 
         let img_store = state.image_store.lock().unwrap();
-        state.renderer.draw_frame(
-            &pane_render_data,
-            &dividers,
-            &mut atlas,
-            ProtocolObject::from_ref(&*drawable),
-            &texture,
-            size.width as f32,
-            size.height as f32,
-            state.bg_opacity,
-            state.selection_fg,
-            state.selection_bg,
-            &state.chrome,
-            state.status_bar_height,
-            state.prompt_indicator_color,
-            Some(&img_store),
-            confirm_overlay.as_ref(),
-        );
+        state.renderer.draw_frame(FrameInputs {
+            panes: &pane_render_data,
+            dividers: &dividers,
+            atlas: &mut atlas,
+            drawable: ProtocolObject::from_ref(&*drawable),
+            texture: &texture,
+            viewport_width: size.width as f32,
+            viewport_height: size.height as f32,
+            bg_opacity: state.bg_opacity,
+            selection_fg: state.selection_fg,
+            selection_bg: state.selection_bg,
+            chrome: &state.chrome,
+            status_bar_height: state.status_bar_height,
+            status_bar_layout: state.status_bar_layout,
+            prompt_indicator_color: state.prompt_indicator_color,
+            image_store: Some(&img_store),
+            confirm_overlay: confirm_overlay.as_ref(),
+        });
         drop(img_store);
 
         drop(atlas);
         drop(tree);
 
         // Keep rendering during fade-in animation
-        let still_animating = state.confirm_dialog.as_ref().map_or(false, |d| d.is_animating());
+        let still_animating = state
+            .confirm_dialog
+            .as_ref()
+            .is_some_and(|d| d.is_animating());
         if still_animating {
             state.request_render();
         }
@@ -2049,40 +2339,83 @@ pub fn sync_window_title(window_number: NSInteger) {
     }
 }
 
-pub(super) fn create_terminal_view(
-    mtm: MainThreadMarker,
-    device: &ProtocolObject<dyn MTLDevice>,
-    pane_tree: Arc<Mutex<PaneTree>>,
-    pane_cleanup: PaneCleanup,
-    atlas: Arc<Mutex<GlyphAtlas>>,
-    dirty: Arc<AtomicBool>,
-    render_scheduler: Arc<RenderScheduler>,
-    should_close: Arc<AtomicBool>,
-    reader_wake: Arc<ReaderWake>,
-    window_is_key: Arc<AtomicBool>,
-    terminal_colors: TerminalColors,
-    scale_factor: f32,
-    font_family: String,
-    font_size: f32,
-    zoom_step: f32,
-    min_font_size: f32,
-    max_font_size: f32,
-    selection_fg: (u8, u8, u8),
-    selection_bg: (u8, u8, u8),
-    chrome: ChromeColors,
-    keybinds: KeybindMap,
-    bg_opacity: f32,
-    status_bar_height: f32,
-    status_bar_enabled: bool,
-    resize_step: f32,
-    prompt_indicator_color: Option<(u8, u8, u8)>,
-    image_store: Arc<Mutex<ImageStore>>,
-    window_title: Arc<WindowTitleMailbox>,
-    confirm_on_close_pane: bool,
-    confirm_on_quit: bool,
-    update_status: SharedUpdateStatus,
-) -> Retained<TerminalView> {
+/// Everything `create_terminal_view` needs, grouped so the call site reads as
+/// named fields instead of a positional list of thirty-odd arguments.
+pub(super) struct TerminalViewParams<'a> {
+    pub(super) mtm: MainThreadMarker,
+    pub(super) device: &'a ProtocolObject<dyn MTLDevice>,
+    pub(super) pane_tree: Arc<Mutex<PaneTree>>,
+    pub(super) pane_cleanup: PaneCleanup,
+    pub(super) atlas: Arc<Mutex<GlyphAtlas>>,
+    pub(super) dirty: Arc<AtomicBool>,
+    pub(super) render_scheduler: Arc<RenderScheduler>,
+    pub(super) should_close: Arc<AtomicBool>,
+    pub(super) reader_wake: Arc<ReaderWake>,
+    pub(super) window_is_key: Arc<AtomicBool>,
+    pub(super) terminal_colors: TerminalColors,
+    pub(super) scale_factor: f32,
+    pub(super) font_family: String,
+    pub(super) font_size: f32,
+    pub(super) zoom_step: f32,
+    pub(super) min_font_size: f32,
+    pub(super) max_font_size: f32,
+    pub(super) selection_fg: (u8, u8, u8),
+    pub(super) selection_bg: (u8, u8, u8),
+    pub(super) chrome: ChromeColors,
+    pub(super) keybinds: KeybindMap,
+    pub(super) bg_opacity: f32,
+    pub(super) status_bar_height: f32,
+    pub(super) status_bar_enabled: bool,
+    pub(super) status_bar_layout: StatusBarLayout,
+    pub(super) option_as_alt: OptionAsAlt,
+    pub(super) resize_step: f32,
+    pub(super) prompt_indicator_color: Option<(u8, u8, u8)>,
+    pub(super) image_store: Arc<Mutex<ImageStore>>,
+    pub(super) window_title: Arc<WindowTitleMailbox>,
+    pub(super) confirm_on_close_pane: bool,
+    pub(super) confirm_on_quit: bool,
+    pub(super) update_status: SharedUpdateStatus,
+}
+
+pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<TerminalView> {
+    let TerminalViewParams {
+        mtm,
+        device,
+        pane_tree,
+        pane_cleanup,
+        atlas,
+        dirty,
+        render_scheduler,
+        should_close,
+        reader_wake,
+        window_is_key,
+        terminal_colors,
+        scale_factor,
+        font_family,
+        font_size,
+        zoom_step,
+        min_font_size,
+        max_font_size,
+        selection_fg,
+        selection_bg,
+        chrome,
+        keybinds,
+        bg_opacity,
+        status_bar_height,
+        status_bar_enabled,
+        status_bar_layout,
+        option_as_alt,
+        resize_step,
+        prompt_indicator_color,
+        image_store,
+        window_title,
+        confirm_on_close_pane,
+        confirm_on_quit,
+        update_status,
+    } = params;
     let view = mtm.alloc::<TerminalView>().set_ivars(());
+    // SAFETY: `view` is a fresh allocation with its (unit) ivars set; NSView's
+    // designated `init` runs exactly once, on the main thread (`mtm`).
     let view: Retained<TerminalView> = unsafe { msg_send![super(view), init] };
 
     view.setWantsLayer(true);
@@ -2145,6 +2478,10 @@ pub(super) fn create_terminal_view(
             bg_opacity,
             status_bar_height,
             status_bar_enabled,
+            status_bar_layout,
+            option_as_alt,
+            marked_text: None,
+            cmd_held: false,
             resize_step,
             prompt_indicator_color,
             image_store,
@@ -2164,13 +2501,13 @@ pub(super) fn create_terminal_view(
 #[cfg(test)]
 mod tests {
     use super::{
-        bracketed_paste_len, encode_clipboard_paste, encode_macos_forwarded_wheel,
-        dispatch_pane_focus_transition_with, dispatch_window_focus_transition_with,
-        focus_report_bytes,
-        mac_key_equivalent_route, mac_scroll_phase, mac_scrollback_action,
-        sync_pending_window_title_with, ClipboardPasteError, MacKeyEquivalentRoute,
-        MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction,
-        WindowTitleMailbox, BRACKETED_PASTE_END, BRACKETED_PASTE_START, WINDOW_TITLE,
+        bracketed_paste_len, dispatch_pane_focus_transition_with,
+        dispatch_window_focus_transition_with, encode_clipboard_paste,
+        encode_macos_forwarded_wheel, focus_report_bytes, mac_key_equivalent_route,
+        mac_scroll_phase, mac_scrollback_action, sync_pending_window_title_with,
+        ClipboardPasteError, MacKeyEquivalentRoute, MacScrollPhase, MacScrollSample,
+        MacScrollState, MacScrollbackAction, WindowTitleMailbox, BRACKETED_PASTE_END,
+        BRACKETED_PASTE_START, WINDOW_TITLE,
     };
     use crate::grid::MouseEncoding;
     use crate::input::keybind::KeyModifiers;
@@ -2187,6 +2524,26 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
+
+    #[test]
+    fn ime_text_accepts_plain_and_attributed_strings() {
+        use super::text_from_input_object;
+        use objc2_foundation::{NSAttributedString, NSString};
+        let plain = NSString::from_str("日本語");
+        assert_eq!(text_from_input_object(&plain).as_deref(), Some("日本語"));
+        let attributed = NSAttributedString::from_nsstring(&NSString::from_str("é"));
+        assert_eq!(text_from_input_object(&attributed).as_deref(), Some("é"));
+        let other = objc2_foundation::NSArray::<NSString>::new();
+        assert_eq!(text_from_input_object(&other), None);
+    }
+
+    #[test]
+    fn ime_marked_range_uses_utf16_units() {
+        use super::utf16_len;
+        assert_eq!(utf16_len("abc"), 3);
+        assert_eq!(utf16_len("日本語"), 3);
+        assert_eq!(utf16_len("😀"), 2);
+    }
 
     #[derive(Clone, Copy)]
     struct FocusTarget {
@@ -2386,12 +2743,9 @@ mod tests {
 
     #[test]
     fn internal_focus_reports_old_then_new_for_all_mode_gate_combinations() {
-        for (old_enabled, new_enabled) in [
-            (false, false),
-            (false, true),
-            (true, false),
-            (true, true),
-        ] {
+        for (old_enabled, new_enabled) in
+            [(false, false), (false, true), (true, false), (true, true)]
+        {
             let old = FocusTarget {
                 id: 1,
                 enabled: old_enabled,
@@ -2568,10 +2922,7 @@ mod tests {
     #[test]
     fn macos_window_and_pane_focus_races_have_one_serialized_order() {
         assert_eq!(
-            run_focus_steps(
-                true,
-                &[FocusStep::Pane(2), FocusStep::Window(false)],
-            ),
+            run_focus_steps(true, &[FocusStep::Pane(2), FocusStep::Window(false)],),
             [
                 (1, focus_report_bytes(false).to_vec()),
                 (2, focus_report_bytes(true).to_vec()),
@@ -2579,24 +2930,15 @@ mod tests {
             ]
         );
         assert_eq!(
-            run_focus_steps(
-                true,
-                &[FocusStep::Window(false), FocusStep::Pane(2)],
-            ),
+            run_focus_steps(true, &[FocusStep::Window(false), FocusStep::Pane(2)],),
             [(1, focus_report_bytes(false).to_vec())]
         );
         assert_eq!(
-            run_focus_steps(
-                false,
-                &[FocusStep::Pane(2), FocusStep::Window(true)],
-            ),
+            run_focus_steps(false, &[FocusStep::Pane(2), FocusStep::Window(true)],),
             [(2, focus_report_bytes(true).to_vec())]
         );
         assert_eq!(
-            run_focus_steps(
-                false,
-                &[FocusStep::Window(true), FocusStep::Pane(2)],
-            ),
+            run_focus_steps(false, &[FocusStep::Window(true), FocusStep::Pane(2)],),
             [
                 (1, focus_report_bytes(true).to_vec()),
                 (1, focus_report_bytes(false).to_vec()),
@@ -2615,7 +2957,11 @@ mod tests {
             (8, cmd, MacKeyEquivalentRoute::Copy),
             (9, cmd, MacKeyEquivalentRoute::Paste),
             (24, cmd_shift, MacKeyEquivalentRoute::ZoomIn),
-            (12, KeyModifiers::empty(), MacKeyEquivalentRoute::PassThrough),
+            (
+                12,
+                KeyModifiers::empty(),
+                MacKeyEquivalentRoute::PassThrough,
+            ),
             (8, KeyModifiers::SHIFT, MacKeyEquivalentRoute::PassThrough),
             (
                 9,
@@ -2624,16 +2970,8 @@ mod tests {
             ),
             (24, KeyModifiers::SHIFT, MacKeyEquivalentRoute::PassThrough),
             (12, cmd_shift, MacKeyEquivalentRoute::Keybind),
-            (
-                8,
-                cmd | KeyModifiers::CTRL,
-                MacKeyEquivalentRoute::Keybind,
-            ),
-            (
-                9,
-                cmd | KeyModifiers::ALT,
-                MacKeyEquivalentRoute::Keybind,
-            ),
+            (8, cmd | KeyModifiers::CTRL, MacKeyEquivalentRoute::Keybind),
+            (9, cmd | KeyModifiers::ALT, MacKeyEquivalentRoute::Keybind),
             (24, cmd, MacKeyEquivalentRoute::Keybind),
             (
                 24,
@@ -2671,10 +3009,7 @@ mod tests {
             }
         }
 
-        assert_eq!(
-            mac_scrollback_action(123, KeyModifiers::SHIFT),
-            None,
-        );
+        assert_eq!(mac_scrollback_action(123, KeyModifiers::SHIFT), None,);
     }
 
     #[test]
@@ -2693,12 +3028,8 @@ mod tests {
         ] {
             assert_eq!(mac_scrollback_action(116, modifiers), None);
             assert_eq!(
-                encode_terminal_key_with_modifiers(
-                    TerminalKey::PageUp,
-                    false,
-                    terminal_modifiers,
-                )
-                .as_deref(),
+                encode_terminal_key_with_modifiers(TerminalKey::PageUp, false, terminal_modifiers,)
+                    .as_deref(),
                 Some(expected),
             );
         }
@@ -2766,16 +3097,16 @@ mod tests {
             bracketed_paste_len(usize::MAX - framing_bytes),
             Some(usize::MAX)
         );
-        assert_eq!(
-            bracketed_paste_len(usize::MAX - framing_bytes + 1),
-            None
-        );
+        assert_eq!(bracketed_paste_len(usize::MAX - framing_bytes + 1), None);
         assert_eq!(bracketed_paste_len(usize::MAX), None);
     }
 
     #[test]
     fn clipboard_paste_rejects_unconvertible_utf16() {
         let unpaired_surrogate = [0xd800_u16];
+        // SAFETY: the pointer references `unpaired_surrogate`, which outlives
+        // the call, and `length` is its exact element count; NSString copies
+        // the characters.
         let text = unsafe {
             NSString::initWithCharacters_length(
                 NSString::alloc(),
@@ -2843,7 +3174,11 @@ mod tests {
     #[test]
     fn gesture_and_momentum_boundaries_reset_even_when_delta_is_zero() {
         let none = NSEventPhase::None;
-        for phase in [NSEventPhase::None, NSEventPhase::Changed, NSEventPhase::Stationary] {
+        for phase in [
+            NSEventPhase::None,
+            NSEventPhase::Changed,
+            NSEventPhase::Stationary,
+        ] {
             assert_eq!(mac_scroll_phase(phase, none), MacScrollPhase::Continued);
             assert_eq!(mac_scroll_phase(none, phase), MacScrollPhase::Continued);
         }

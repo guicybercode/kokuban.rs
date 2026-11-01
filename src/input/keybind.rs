@@ -102,7 +102,10 @@ fn parse_keybind(s: &str) -> Option<KeyBind> {
     }
 
     let key_code = key_name_to_code(key_name)?;
-    Some(KeyBind { key_code, modifiers })
+    Some(KeyBind {
+        key_code,
+        modifiers,
+    })
 }
 
 fn key_name_to_code(name: &str) -> Option<u16> {

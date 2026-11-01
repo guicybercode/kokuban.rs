@@ -56,8 +56,8 @@ impl ConfirmDialog {
 
         // Fall back to key codes for special keys
         match key_code {
-            36 => ConfirmResult::Confirmed,  // Return
-            53 => ConfirmResult::Cancelled,   // Escape
+            36 => ConfirmResult::Confirmed, // Return
+            53 => ConfirmResult::Cancelled, // Escape
             _ => ConfirmResult::Pending,
         }
     }
@@ -72,7 +72,9 @@ impl ConfirmDialog {
 
     /// Generate the process status text, if any.
     pub fn process_text(&self) -> Option<String> {
-        self.process_name.as_ref().map(|name| format!("{name} is running"))
+        self.process_name
+            .as_ref()
+            .map(|name| format!("{name} is running"))
     }
 }
 
@@ -82,12 +84,16 @@ pub fn foreground_process_name(master_fd: RawFd) -> Option<String> {
         fn proc_name(pid: i32, buffer: *mut libc::c_void, buffersize: u32) -> i32;
     }
 
+    // SAFETY: `master_fd` is the pane's open PTY master; tcgetpgrp only
+    // queries the terminal and returns -1 on a bad descriptor.
     let fg_pgid = unsafe { libc::tcgetpgrp(master_fd) };
     if fg_pgid <= 0 {
         return None;
     }
 
     let mut name_buf = [0u8; 256];
+    // SAFETY: libproc's `proc_name` writes at most `buffersize` bytes into
+    // `name_buf`, a live 256-byte stack buffer, and returns the length used.
     let len = unsafe {
         proc_name(
             fg_pgid,

@@ -31,6 +31,10 @@ pub(crate) enum CancellableWriteOutcome {
 pub struct Pty {
     master: Option<OwnedFd>,
     pub child_pid: nix::unistd::Pid,
+    /// Basename of the program started in this PTY (shell or `-e` command),
+    /// shown in the macOS status bar; the Linux window has no status bar yet.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub program_name: String,
     output_lock: Mutex<()>,
 }
 
@@ -54,11 +58,11 @@ impl Pty {
         let argv = vec![CString::new(login_name)
             .map_err(|_| PtyError::InvalidShell("shell name contains NUL".to_string()))?];
         let environment = child_environment(&shell_path, kitty_graphics, sixel_graphics)?;
+        let program_name = shell_name.to_string_lossy().into_owned();
 
-        Self::spawn_prepared(cols, rows, shell, argv, environment)
+        Self::spawn_prepared(cols, rows, shell, argv, environment, program_name)
     }
 
-    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn spawn_command(
         cols: u16,
         rows: u16,
@@ -85,7 +89,11 @@ impl Pty {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let environment = child_environment(&resolve_shell(), kitty_graphics, sixel_graphics)?;
-        Self::spawn_prepared(cols, rows, program, argv, environment)
+        let program_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| name.to_string_lossy().into_owned());
+        Self::spawn_prepared(cols, rows, program, argv, environment, program_name)
     }
 
     fn spawn_prepared(
@@ -94,6 +102,7 @@ impl Pty {
         program: CString,
         argv: Vec<CString>,
         environment: Vec<CString>,
+        program_name: String,
     ) -> Result<Self, PtyError> {
         if argv.is_empty() {
             return Err(PtyError::InvalidShell(
@@ -131,7 +140,13 @@ impl Pty {
             environment.iter().map(|entry| entry.as_ptr()).collect();
         environment_ptrs.push(std::ptr::null());
 
+        // SAFETY: every allocation the child needs (argv/env pointer arrays,
+        // descriptors) exists before fork; the child only calls
+        // async-signal-safe functions in `exec_child` until execve or `_exit`,
+        // which is what fork in a multithreaded process requires.
         match unsafe { fork() } {
+            // SAFETY: in the child the descriptors and NUL-terminated pointer
+            // arrays prepared above are valid until execve replaces the image.
             Ok(ForkResult::Child) => unsafe {
                 exec_child(
                     master.as_raw_fd(),
@@ -170,6 +185,7 @@ impl Pty {
                 Ok(Self {
                     master: Some(master),
                     child_pid: child,
+                    program_name,
                     output_lock: Mutex::new(()),
                 })
             }
@@ -177,6 +193,7 @@ impl Pty {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn master_fd(&self) -> RawFd {
         self.master().as_raw_fd()
     }
@@ -249,14 +266,16 @@ impl Pty {
         let mut poll_fds = [PollFd::new(self.master().as_fd(), PollFlags::POLLOUT)];
         match poll(&mut poll_fds, poll_timeout_for(timeout)) {
             Ok(0) | Err(nix::errno::Errno::EINTR) => {}
-            Ok(_) if poll_fds[0]
-                .revents()
-                .is_some_and(|events| events.contains(PollFlags::POLLOUT)) => {}
+            Ok(_)
+                if poll_fds[0]
+                    .revents()
+                    .is_some_and(|events| events.contains(PollFlags::POLLOUT)) => {}
             // Hangup, error or a failed poll: keep the old backoff instead of spinning.
             Ok(_) | Err(_) => std::thread::sleep(WRITE_RETRY_INTERVAL),
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
         self.resize_with_pixels(cols, rows, 0, 0)
     }
@@ -278,6 +297,8 @@ impl Pty {
         };
         resize_with_ioctl(
             &win_size,
+            // SAFETY: `master()` is an open descriptor owned by this Pty and
+            // `size` points to a valid `winsize` for the duration of the call.
             |size| unsafe { libc::ioctl(self.master().as_raw_fd(), libc::TIOCSWINSZ, size) },
             std::io::Error::last_os_error,
         )
@@ -719,6 +740,8 @@ fn prepare_child_fd(fd: OwnedFd) -> Result<OwnedFd, PtyError> {
 
     let duplicated = nix::fcntl::fcntl(fd.as_raw_fd(), nix::fcntl::FcntlArg::F_DUPFD_CLOEXEC(3))?;
     drop(fd);
+    // SAFETY: `duplicated` was just returned by F_DUPFD_CLOEXEC and the
+    // original owner is dropped, so this OwnedFd is its sole owner.
     Ok(unsafe { OwnedFd::from_raw_fd(duplicated) })
 }
 
@@ -993,6 +1016,8 @@ fn wait_for_cleanup(pid: Pid, foreground_group: Option<Pid>, timeout: Duration) 
 }
 
 fn process_group_exists(group: Pid) -> bool {
+    // SAFETY: signal 0 only probes whether the process group exists; no
+    // signal is delivered and no memory is touched.
     let result = unsafe { libc::kill(-group.as_raw(), 0) };
     result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
@@ -1006,6 +1031,12 @@ fn process_groups_alive(pid: Pid, foreground_group: Option<Pid>) -> bool {
         .any(process_group_exists)
 }
 
+// SAFETY (contract): must run in the forked child between fork and execve.
+// The caller guarantees the four descriptors are open, that `program`,
+// `argv` and `environment` are NUL-terminated strings / null-terminated
+// arrays that stay alive, and this function only makes async-signal-safe
+// calls (close, setsid, ioctl, dup2, signal, sigprocmask, execve, write,
+// _exit) because other threads' locks may be held in the parent image.
 unsafe fn exec_child(
     master_fd: RawFd,
     slave_fd: RawFd,
@@ -1015,6 +1046,8 @@ unsafe fn exec_child(
     argv: &[*const libc::c_char],
     environment: &[*const libc::c_char],
 ) -> ! {
+    // SAFETY: see the contract above; the pointers come from CStrings and Vecs
+    // that the parent built before fork and that the child's copy still owns.
     unsafe {
         libc::close(master_fd);
         libc::close(error_reader_fd);
@@ -1046,7 +1079,11 @@ unsafe fn exec_child(
     }
 }
 
+// SAFETY (contract): child-only, after fork; `error_writer_fd` must be the
+// open status pipe. Only `write`, errno and `_exit` are used (async-signal-safe).
 unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
+    // SAFETY: `stage` is a one-byte stack slice that outlives the write, and
+    // `_exit` never returns, so no destructor runs in the child.
     unsafe {
         write_child_stage_with(stage, |stage| {
             let written = libc::write(error_writer_fd, stage.as_ptr().cast(), stage.len());
@@ -1074,13 +1111,17 @@ where
     }
 }
 
+// SAFETY (contract): reads the calling thread's errno; call it right after
+// the failing libc call, before anything else can overwrite errno.
 #[inline(always)]
 unsafe fn child_errno() -> libc::c_int {
+    // SAFETY: `__error()` returns a valid pointer to the thread's errno slot.
     #[cfg(target_os = "macos")]
     unsafe {
         *libc::__error()
     }
 
+    // SAFETY: `__errno_location()` returns a valid pointer to the thread's errno slot.
     #[cfg(target_os = "linux")]
     unsafe {
         *libc::__errno_location()
@@ -1156,6 +1197,7 @@ mod tests {
     }
 
     fn process_exists(pid: nix::unistd::Pid) -> bool {
+        // SAFETY: signal 0 only probes for existence; nothing is delivered.
         let result = unsafe { libc::kill(pid.as_raw(), 0) };
         result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
@@ -1174,7 +1216,15 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(
+            80,
+            24,
+            program,
+            argv,
+            test_environment(),
+            "test".to_string(),
+        )
+        .unwrap();
         assert_eq!(read_until(&pty, b"__SIZE_READY__"), b"__SIZE_READY__");
 
         let size = || {
@@ -1185,6 +1235,8 @@ mod tests {
                 ws_ypixel: 0,
             };
             assert_eq!(
+                // SAFETY: the master fd is open and `actual` is a valid
+                // `winsize` out-parameter for the duration of the call.
                 unsafe { libc::ioctl(pty.master_fd(), libc::TIOCGWINSZ, &mut actual) },
                 0
             );
@@ -1403,7 +1455,15 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(80, 24, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(
+            80,
+            24,
+            program,
+            argv,
+            test_environment(),
+            "test".to_string(),
+        )
+        .unwrap();
         assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
         let payload = vec![b'x'; mib * 1024 * 1024];
         let cancelled = AtomicBool::new(false);
@@ -1425,11 +1485,18 @@ mod tests {
     fn full_pty_input_queue_waits_for_space_and_still_observes_cancellation() {
         let program = CString::new("/bin/sh").unwrap();
         // The child never reads, so the PTY input queue stays full.
-        let argv = ["sh", "-c", "stty raw -echo; printf '__KOKUBAN_READY__'; exec sleep 30"]
-            .into_iter()
-            .map(|argument| CString::new(argument).unwrap())
-            .collect();
-        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap());
+        let argv = [
+            "sh",
+            "-c",
+            "stty raw -echo; printf '__KOKUBAN_READY__'; exec sleep 30",
+        ]
+        .into_iter()
+        .map(|argument| CString::new(argument).unwrap())
+        .collect();
+        let pty = Arc::new(
+            Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+                .unwrap(),
+        );
         assert_eq!(read_until(&pty, b"__KOKUBAN_READY__"), b"__KOKUBAN_READY__");
 
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -1449,7 +1516,10 @@ mod tests {
 
         let cancelled_at = Instant::now();
         cancelled.store(true, Ordering::Release);
-        let outcome = result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        let outcome = result_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
         assert_eq!(outcome, CancellableWriteOutcome::Cancelled);
         assert!(cancelled_at.elapsed() < Duration::from_secs(1));
         writer.join().unwrap();
@@ -2278,7 +2348,8 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
 
         assert!(!pty.wait_readable(Duration::ZERO).unwrap());
         let started = Instant::now();
@@ -2364,9 +2435,10 @@ mod tests {
         );
 
         for flag in [PollFlags::POLLIN, PollFlags::POLLHUP, PollFlags::POLLERR] {
-            let readiness =
-                wait_any_readable_or_woken_with(1, |_| Ok(vec![Some(flag), Some(PollFlags::empty())]))
-                    .unwrap();
+            let readiness = wait_any_readable_or_woken_with(1, |_| {
+                Ok(vec![Some(flag), Some(PollFlags::empty())])
+            })
+            .unwrap();
             assert_eq!((readiness.woken, readiness.readable), (false, vec![0]));
         }
         let readiness = wait_any_readable_or_woken_with(1, |_| {
@@ -2375,9 +2447,11 @@ mod tests {
         .unwrap();
         assert_eq!(readiness.invalid, vec![0]);
         // A wake with no PTYs is the reader's idle state.
-        assert!(wait_any_readable_or_woken_with(0, |_| Ok(vec![Some(PollFlags::POLLIN)]))
-            .unwrap()
-            .woken);
+        assert!(
+            wait_any_readable_or_woken_with(0, |_| Ok(vec![Some(PollFlags::POLLIN)]))
+                .unwrap()
+                .woken
+        );
     }
 
     #[test]
@@ -2387,7 +2461,8 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error.raw_os_error(), Some(libc::EBADF));
-        let error = wait_any_readable_or_woken_with(1, |_| Err(nix::errno::Errno::EIO)).unwrap_err();
+        let error =
+            wait_any_readable_or_woken_with(1, |_| Err(nix::errno::Errno::EIO)).unwrap_err();
         assert_eq!(error.raw_os_error(), Some(libc::EIO));
         for events in [
             vec![Some(PollFlags::empty())],
@@ -2407,7 +2482,15 @@ mod tests {
                 .into_iter()
                 .map(|argument| CString::new(argument).unwrap())
                 .collect();
-            Pty::spawn_prepared(40, 4, program.clone(), argv, test_environment()).unwrap()
+            Pty::spawn_prepared(
+                40,
+                4,
+                program.clone(),
+                argv,
+                test_environment(),
+                "test".to_string(),
+            )
+            .unwrap()
         };
         let silent = spawn("read line");
         let speaking = spawn("printf '__KOKUBAN_SPOKE__'; read line");
@@ -2422,12 +2505,18 @@ mod tests {
                 invalid: vec![],
             }
         );
-        assert_eq!(read_until(&speaking, b"__KOKUBAN_SPOKE__"), b"__KOKUBAN_SPOKE__");
+        assert_eq!(
+            read_until(&speaking, b"__KOKUBAN_SPOKE__"),
+            b"__KOKUBAN_SPOKE__"
+        );
 
         let (result_tx, result_rx) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
             result_tx
-                .send(wait_any_readable_or_woken(&[&silent, &speaking], wake.as_fd()))
+                .send(wait_any_readable_or_woken(
+                    &[&silent, &speaking],
+                    wake.as_fd(),
+                ))
                 .unwrap();
         });
         assert!(matches!(
@@ -2435,7 +2524,10 @@ mod tests {
             Err(mpsc::RecvTimeoutError::Timeout)
         ));
         std::io::Write::write_all(&mut &signal, b"w").unwrap();
-        let readiness = result_rx.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        let readiness = result_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
         assert!(readiness.woken);
         assert!(readiness.readable.is_empty());
         worker.join().unwrap();
@@ -2448,7 +2540,10 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Arc::new(Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap());
+        let pty = Arc::new(
+            Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+                .unwrap(),
+        );
         assert_eq!(read_until(&pty, b"__KOKUBAN_IDLE__"), b"__KOKUBAN_IDLE__");
         let (signal, cancellation) = UnixStream::pair().unwrap();
         for stream in [&signal, &cancellation] {
@@ -2489,7 +2584,8 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
         let (signal, cancellation) = UnixStream::pair().unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(2)).unwrap());
@@ -2508,7 +2604,8 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         assert!(pty.wait_readable(Duration::ZERO).unwrap());
@@ -2529,7 +2626,8 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
 
         assert!(pty.wait_readable(Duration::from_secs(5)).unwrap());
         let (_signal, cancellation) = UnixStream::pair().unwrap();
@@ -2602,7 +2700,8 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
         let expected = b"__KOKUBAN_PTY__:xterm-256color:kokuban";
         let output = read_until(&pty, expected);
 
@@ -2664,10 +2763,12 @@ mod tests {
         let program = CString::new("/definitely/not/a/kokuban-program").unwrap();
         let argv = vec![CString::new("missing-program").unwrap()];
 
-        let error = match Pty::spawn_prepared(40, 4, program, argv, test_environment()) {
-            Ok(_) => panic!("missing executable unexpectedly started"),
-            Err(error) => error,
-        };
+        let error =
+            match Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            {
+                Ok(_) => panic!("missing executable unexpectedly started"),
+                Err(error) => error,
+            };
 
         assert!(matches!(error, PtyError::ChildSetup("exec")));
     }
@@ -2683,7 +2784,8 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
         let pid = pty.child_pid;
         let output = read_until(&pty, b"__KOKUBAN_READY__");
         assert!(output
@@ -2710,7 +2812,8 @@ mod tests {
         .into_iter()
         .map(|argument| CString::new(argument).unwrap())
         .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
         let shell_pid = pty.child_pid;
         let output = read_until(&pty, b"\r\n");
         let output = String::from_utf8_lossy(&output);
@@ -2767,7 +2870,8 @@ mod tests {
             .into_iter()
             .map(|argument| CString::new(argument).unwrap())
             .collect();
-        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment()).unwrap();
+        let pty = Pty::spawn_prepared(40, 4, program, argv, test_environment(), "test".to_string())
+            .unwrap();
         let output = read_until(&pty, b"__YES_RC__:");
         let output = String::from_utf8_lossy(&output);
 

@@ -5,12 +5,12 @@ use super::image_store::ImageStore;
 use super::shaders::SHADER_SOURCE;
 use super::Vertex;
 
-use crate::graphics::ImageId;
 use crate::glyph_atlas::{GlyphAtlas, GlyphEntry, GlyphKey};
+use crate::graphics::ImageId;
 use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
 use crate::grid::CursorShape;
 use crate::layout::{DividerInfo, SplitDirection, DIVIDER_THICKNESS};
-use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData};
+use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData, StatusBarLayout};
 use crate::search::MatchKind;
 use crate::terminal_colors::TerminalColors;
 use objc2::rc::Retained;
@@ -26,8 +26,10 @@ fn clip_glyph_quad(
     bounds: [f32; 4],
 ) -> Option<([f32; 4], [f32; 4])> {
     let clipped = [
-        rectangle[0].max(bounds[0]), rectangle[1].max(bounds[1]),
-        rectangle[2].min(bounds[2]), rectangle[3].min(bounds[3]),
+        rectangle[0].max(bounds[0]),
+        rectangle[1].max(bounds[1]),
+        rectangle[2].min(bounds[2]),
+        rectangle[3].min(bounds[3]),
     ];
     if clipped[0] >= clipped[2] || clipped[1] >= clipped[3] {
         return None;
@@ -35,8 +37,7 @@ fn clip_glyph_quad(
     let mut clipped_uv = uv;
     for edge in 0..4 {
         let axis = edge % 2;
-        let fraction = (clipped[edge] - rectangle[axis])
-            / (rectangle[axis + 2] - rectangle[axis]);
+        let fraction = (clipped[edge] - rectangle[axis]) / (rectangle[axis + 2] - rectangle[axis]);
         clipped_uv[edge] = uv[axis] + fraction * (uv[axis + 2] - uv[axis]);
     }
     Some((clipped, clipped_uv))
@@ -75,26 +76,61 @@ fn glyph_uv_bounds(
     )
 }
 
+/// Frames the CPU may prepare while the GPU is still drawing earlier ones.
+const FRAMES_IN_FLIGHT: usize = 3;
+
+struct FrameBuffers {
+    vertex: Retained<ProtocolObject<dyn MTLBuffer>>,
+    uniform: Retained<ProtocolObject<dyn MTLBuffer>>,
+    /// Command buffer that last read these buffers; waited on before reuse.
+    in_flight: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
+}
+
 pub struct MetalRenderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     image_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    vertex_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    uniform_buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
+    /// Per-frame vertex/uniform buffers. The CPU only writes a slot after the
+    /// command buffer that last read it has completed, so a new frame never
+    /// overwrites data the GPU is still consuming.
+    frames: [FrameBuffers; FRAMES_IN_FLIGHT],
+    frame_index: usize,
     atlas_texture: Retained<ProtocolObject<dyn MTLTexture>>,
     sampler_state: Retained<ProtocolObject<dyn MTLSamplerState>>,
     pub brush: BrushRenderer,
     colors: TerminalColors,
 }
 
+/// Inputs of one frame, grouped so `draw_frame` reads as named fields.
+pub struct FrameInputs<'a> {
+    pub panes: &'a [PaneRenderData<'a>],
+    pub dividers: &'a [DividerInfo],
+    pub atlas: &'a mut GlyphAtlas,
+    pub drawable: &'a ProtocolObject<dyn MTLDrawable>,
+    pub texture: &'a ProtocolObject<dyn MTLTexture>,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
+    pub bg_opacity: f32,
+    pub selection_fg: (u8, u8, u8),
+    pub selection_bg: (u8, u8, u8),
+    pub chrome: &'a ChromeColors,
+    pub status_bar_height: f32,
+    pub status_bar_layout: StatusBarLayout,
+    pub prompt_indicator_color: Option<(u8, u8, u8)>,
+    pub image_store: Option<&'a ImageStore>,
+    pub confirm_overlay: Option<&'a ConfirmOverlayInfo>,
+}
+
 impl MetalRenderer {
-    pub fn new(
-        device: Retained<ProtocolObject<dyn MTLDevice>>,
-        colors: TerminalColors,
-    ) -> Self {
+    pub fn new(device: Retained<ProtocolObject<dyn MTLDevice>>, colors: TerminalColors) -> Self {
+        // SAFETY: Metal object creation on a valid device; the shader source is
+        // a static string, every descriptor is fully populated before it is
+        // handed to the device, and failures panic instead of yielding null.
         unsafe {
-            let command_queue = device.newCommandQueue().expect("Failed to create command queue");
+            let command_queue = device
+                .newCommandQueue()
+                .expect("Failed to create command queue");
 
             // Compile shaders
             let source = NSString::from_str(SHADER_SOURCE);
@@ -146,9 +182,7 @@ impl MetalRenderer {
             pipeline_desc.setFragmentFunction(Some(&fragment_fn));
             pipeline_desc.setVertexDescriptor(Some(&vertex_desc));
 
-            let color_attachment = pipeline_desc
-                .colorAttachments()
-                .objectAtIndexedSubscript(0);
+            let color_attachment = pipeline_desc.colorAttachments().objectAtIndexedSubscript(0);
             color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
             color_attachment.setBlendingEnabled(true);
             color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::SourceAlpha);
@@ -175,29 +209,34 @@ impl MetalRenderer {
             image_color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
             image_color_attachment.setBlendingEnabled(true);
             image_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::SourceAlpha);
-            image_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::OneMinusSourceAlpha);
+            image_color_attachment
+                .setDestinationRGBBlendFactor(MTLBlendFactor::OneMinusSourceAlpha);
             image_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
-            image_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::OneMinusSourceAlpha);
+            image_color_attachment
+                .setDestinationAlphaBlendFactor(MTLBlendFactor::OneMinusSourceAlpha);
             let image_pipeline_state = device
                 .newRenderPipelineStateWithDescriptor_error(&image_pipeline_desc)
                 .expect("Failed to create image render pipeline state");
 
             let max_vertices = 200 * 100 * 12;
             let buffer_size = max_vertices * std::mem::size_of::<Vertex>();
-            let vertex_buffer = device
-                .newBufferWithLength_options(buffer_size, MTLResourceOptions::StorageModeShared)
-                .expect("Failed to create vertex buffer");
+            let frames = std::array::from_fn(|_| FrameBuffers {
+                vertex: device
+                    .newBufferWithLength_options(buffer_size, MTLResourceOptions::StorageModeShared)
+                    .expect("Failed to create vertex buffer"),
+                uniform: device
+                    .newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
+                    .expect("Failed to create uniform buffer"),
+                in_flight: None,
+            });
 
-            let uniform_buffer = device
-                .newBufferWithLength_options(16, MTLResourceOptions::StorageModeShared)
-                .expect("Failed to create uniform buffer");
-
-            let tex_desc = MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                MTLPixelFormat::RGBA8Unorm,
-                1024,
-                1024,
-                false,
-            );
+            let tex_desc =
+                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                    MTLPixelFormat::RGBA8Unorm,
+                    1024,
+                    1024,
+                    false,
+                );
             tex_desc.setUsage(MTLTextureUsage::ShaderRead);
             let atlas_texture = device
                 .newTextureWithDescriptor(&tex_desc)
@@ -219,8 +258,8 @@ impl MetalRenderer {
                 command_queue,
                 pipeline_state,
                 image_pipeline_state,
-                vertex_buffer,
-                uniform_buffer,
+                frames,
+                frame_index: 0,
                 atlas_texture,
                 sampler_state,
                 brush,
@@ -251,6 +290,8 @@ impl MetalRenderer {
         )
     }
 
+    // Per-pane draw inputs mirror the shader uniforms; a struct is a separate refactor.
+    #[allow(clippy::too_many_arguments)]
     fn build_pane_vertices(
         &self,
         pane: &PaneRenderData,
@@ -260,8 +301,12 @@ impl MetalRenderer {
         chrome: &ChromeColors,
         status_bar_height: f32,
         prompt_indicator_color: Option<(u8, u8, u8)>,
+        bg_opacity: f32,
         vertices: &mut Vec<Vertex>,
     ) {
+        // Cells that keep the default background share the window opacity;
+        // explicit colors, selections and search matches stay opaque.
+        let default_bg_alpha = (bg_opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
         let grid = pane.grid;
         // Resultado atual da busca: fundo hanko_red com texto claro.
         const SEARCH_CURRENT_FG: (u8, u8, u8) = (255, 255, 255);
@@ -304,34 +349,31 @@ impl MetalRenderer {
                 }
 
                 let is_wide = cell.flags.contains(CellFlags::WIDE);
-                let render_width = if is_wide { 2.0_f32.min((grid.cols() - col) as f32) } else { 1.0 };
+                let render_width = if is_wide {
+                    2.0_f32.min((grid.cols() - col) as f32)
+                } else {
+                    1.0
+                };
                 let content_is_visible = cell_content_is_visible(cell.flags);
 
-                let resolved =
-                    self.colors
-                        .resolve_cell_colors(cell.fg, cell.bg, cell.flags);
+                let resolved = self
+                    .colors
+                    .resolve_cell_colors(cell.fg, cell.bg, cell.flags);
                 let fg = resolved.foreground;
                 let bg = resolved.background;
 
-                let selected_by_range = pane.selection
+                let selected_by_range = pane
+                    .selection
                     .map(|s| s.contains_cell(grid, row, col))
                     .unwrap_or(false);
                 let search_kind = pane.search.and_then(|s| s.contains_cell(grid, row, col));
-                let (fg_packed, bg_packed) = match search_kind {
-                    Some(MatchKind::Current) => Self::pack_cell_colors(
-                        fg,
-                        bg,
-                        SEARCH_CURRENT_FG,
-                        search_current_bg,
-                        true,
-                    ),
-                    Some(MatchKind::Other) => Self::pack_cell_colors(
-                        fg,
-                        bg,
-                        selection_fg,
-                        selection_bg,
-                        true,
-                    ),
+                let (fg_packed, mut bg_packed) = match search_kind {
+                    Some(MatchKind::Current) => {
+                        Self::pack_cell_colors(fg, bg, SEARCH_CURRENT_FG, search_current_bg, true)
+                    }
+                    Some(MatchKind::Other) => {
+                        Self::pack_cell_colors(fg, bg, selection_fg, selection_bg, true)
+                    }
                     None => Self::pack_cell_colors(
                         fg,
                         bg,
@@ -340,10 +382,20 @@ impl MetalRenderer {
                         selected_by_range,
                     ),
                 };
+                if default_bg_alpha < 255
+                    && search_kind.is_none()
+                    && !selected_by_range
+                    && cell.bg == Color::Default
+                    && !cell.flags.contains(CellFlags::REVERSE)
+                {
+                    bg_packed = (bg_packed & !0xff) | default_bg_alpha;
+                }
 
                 let x0 = rect.x + col as f32 * cell_w;
                 let y0 = rect.y + row as f32 * cell_h;
-                if y0 + cell_h > rect.y + grid_height { continue; }
+                if y0 + cell_h > rect.y + grid_height {
+                    continue;
+                }
                 let x1 = x0 + cell_w * render_width;
                 let y1 = y0 + cell_h;
 
@@ -366,13 +418,18 @@ impl MetalRenderer {
                     // without blended seams.
                     let builtin = if cell.grapheme.is_none() {
                         box_drawing::builtin_rects(
-                            cell.c, cw.round() as u32, cell_h.round() as u32, atlas.scale_factor(),
+                            cell.c,
+                            cw.round() as u32,
+                            cell_h.round() as u32,
+                            atlas.scale_factor(),
                         )
                     } else {
                         None
                     };
                     if let Some(rects) = builtin {
-                        Self::add_builtin_rects(vertices, &rects, x0, y0, white_u, white_v, fg_packed);
+                        Self::add_builtin_rects(
+                            vertices, &rects, x0, y0, white_u, white_v, fg_packed,
+                        );
                     } else if cell.grapheme.is_none() && braille::is_braille(cell.c) {
                         // Braille: render dots
                         let dots = braille::braille_dots(cell.c);
@@ -382,12 +439,48 @@ impl MetalRenderer {
                         for (dc, dr) in dots {
                             let dx = x0 + (dc as f32 + 0.5) * col_spacing - dot_r;
                             let dy = y0 + (dr as f32 + 0.25) * row_spacing - dot_r;
-                            vertices.push(Vertex::new(dx, dy, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(dx + dot_r * 2.0, dy, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(dx, dy + dot_r * 2.0, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(dx + dot_r * 2.0, dy, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(dx + dot_r * 2.0, dy + dot_r * 2.0, white_u, white_v, fg_packed, fg_packed));
-                            vertices.push(Vertex::new(dx, dy + dot_r * 2.0, white_u, white_v, fg_packed, fg_packed));
+                            vertices
+                                .push(Vertex::new(dx, dy, white_u, white_v, fg_packed, fg_packed));
+                            vertices.push(Vertex::new(
+                                dx + dot_r * 2.0,
+                                dy,
+                                white_u,
+                                white_v,
+                                fg_packed,
+                                fg_packed,
+                            ));
+                            vertices.push(Vertex::new(
+                                dx,
+                                dy + dot_r * 2.0,
+                                white_u,
+                                white_v,
+                                fg_packed,
+                                fg_packed,
+                            ));
+                            vertices.push(Vertex::new(
+                                dx + dot_r * 2.0,
+                                dy,
+                                white_u,
+                                white_v,
+                                fg_packed,
+                                fg_packed,
+                            ));
+                            vertices.push(Vertex::new(
+                                dx + dot_r * 2.0,
+                                dy + dot_r * 2.0,
+                                white_u,
+                                white_v,
+                                fg_packed,
+                                fg_packed,
+                            ));
+                            vertices.push(Vertex::new(
+                                dx,
+                                dy + dot_r * 2.0,
+                                white_u,
+                                white_v,
+                                fg_packed,
+                                fg_packed,
+                            ));
                         }
                     } else if col < run_skip_until {
                         // Coluna coberta por uma ligadura iniciada antes: o fundo
@@ -406,7 +499,11 @@ impl MetalRenderer {
                             }
                             None => atlas.get_or_insert_cell(cell),
                         };
-                        let fg_packed = if atlas.is_color(glyph) { 0xffffff00 | (fg_packed & 0xff) } else { fg_packed };
+                        let fg_packed = if atlas.is_color(glyph) {
+                            0xffffff00 | (fg_packed & 0xff)
+                        } else {
+                            fg_packed
+                        };
                         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
                             let gx0 = x0 + glyph.bearing_x as f32;
                             let gy0 = y0 + atlas.ascent + glyph.bearing_y as f32;
@@ -415,8 +512,14 @@ impl MetalRenderer {
                             let (u0, v0, u1, v1) =
                                 glyph_uv_bounds(atlas.width, atlas.height, &glyph);
                             if let Some(([gx0, gy0, gx1, gy1], [u0, v0, u1, v1])) = clip_glyph_quad(
-                                [gx0, gy0, gx1, gy1], [u0, v0, u1, v1],
-                                [rect.x, rect.y, rect.x + grid.cols() as f32 * cell_w, rect.y + grid_height],
+                                [gx0, gy0, gx1, gy1],
+                                [u0, v0, u1, v1],
+                                [
+                                    rect.x,
+                                    rect.y,
+                                    rect.x + grid.cols() as f32 * cell_w,
+                                    rect.y + grid_height,
+                                ],
                             ) {
                                 vertices.push(Vertex::new(gx0, gy0, u0, v0, fg_packed, bg_packed));
                                 vertices.push(Vertex::new(gx1, gy0, u1, v0, fg_packed, bg_packed));
@@ -426,6 +529,26 @@ impl MetalRenderer {
                                 vertices.push(Vertex::new(gx0, gy1, u0, v1, fg_packed, bg_packed));
                             }
                         }
+                    }
+                }
+
+                // Hyperlink hint: while the open-link modifier is held, cells that
+                // carry an OSC 8 target get a plain underline in the text color.
+                if pane.underline_links && cell.underline_style == UnderlineStyle::None {
+                    let retained_row =
+                        grid.scrollback_len().saturating_sub(grid.scroll_offset) + row;
+                    if grid.hyperlink_at_retained(retained_row, col).is_some() {
+                        let ul_y = y0 + atlas.ascent + 2.0;
+                        Self::add_rect(
+                            vertices,
+                            x0,
+                            ul_y,
+                            x1,
+                            ul_y + line_thickness,
+                            white_u,
+                            white_v,
+                            fg_packed,
+                        );
                     }
                 }
 
@@ -440,11 +563,38 @@ impl MetalRenderer {
                     let ul_h = line_thickness;
                     match cell.underline_style {
                         UnderlineStyle::Single => {
-                            Self::add_rect(vertices, x0, ul_y, x1, ul_y + ul_h, white_u, white_v, ul_packed);
+                            Self::add_rect(
+                                vertices,
+                                x0,
+                                ul_y,
+                                x1,
+                                ul_y + ul_h,
+                                white_u,
+                                white_v,
+                                ul_packed,
+                            );
                         }
                         UnderlineStyle::Double => {
-                            Self::add_rect(vertices, x0, ul_y, x1, ul_y + ul_h, white_u, white_v, ul_packed);
-                            Self::add_rect(vertices, x0, ul_y + ul_h + 1.0, x1, ul_y + ul_h * 2.0 + 1.0, white_u, white_v, ul_packed);
+                            Self::add_rect(
+                                vertices,
+                                x0,
+                                ul_y,
+                                x1,
+                                ul_y + ul_h,
+                                white_u,
+                                white_v,
+                                ul_packed,
+                            );
+                            Self::add_rect(
+                                vertices,
+                                x0,
+                                ul_y + ul_h + 1.0,
+                                x1,
+                                ul_y + ul_h * 2.0 + 1.0,
+                                white_u,
+                                white_v,
+                                ul_packed,
+                            );
                         }
                         UnderlineStyle::Curly => {
                             // Approximate curly underline with small segments
@@ -454,13 +604,31 @@ impl MetalRenderer {
                             for s in 0..steps {
                                 let sx = x0 + s as f32 * step_w;
                                 let sy = ul_y + ((s as f32 * std::f32::consts::PI).sin() * 2.0);
-                                Self::add_rect(vertices, sx, sy, sx + step_w, sy + ul_h, white_u, white_v, ul_packed);
+                                Self::add_rect(
+                                    vertices,
+                                    sx,
+                                    sy,
+                                    sx + step_w,
+                                    sy + ul_h,
+                                    white_u,
+                                    white_v,
+                                    ul_packed,
+                                );
                             }
                         }
                         UnderlineStyle::Dotted => {
                             let mut dx = x0;
                             while dx < x1 {
-                                Self::add_rect(vertices, dx, ul_y, dx + ul_h, ul_y + ul_h, white_u, white_v, ul_packed);
+                                Self::add_rect(
+                                    vertices,
+                                    dx,
+                                    ul_y,
+                                    dx + ul_h,
+                                    ul_y + ul_h,
+                                    white_u,
+                                    white_v,
+                                    ul_packed,
+                                );
                                 dx += ul_h + 2.0;
                             }
                         }
@@ -468,11 +636,71 @@ impl MetalRenderer {
                             let mut dx = x0;
                             while dx < x1 {
                                 let end = (dx + 4.0).min(x1);
-                                Self::add_rect(vertices, dx, ul_y, end, ul_y + ul_h, white_u, white_v, ul_packed);
+                                Self::add_rect(
+                                    vertices,
+                                    dx,
+                                    ul_y,
+                                    end,
+                                    ul_y + ul_h,
+                                    white_u,
+                                    white_v,
+                                    ul_packed,
+                                );
                                 dx += 6.0;
                             }
                         }
                         UnderlineStyle::None => {}
+                    }
+                }
+            }
+        }
+
+        // IME preedit: composed-but-uncommitted text drawn over the cursor
+        // cell with an underline, so the user sees what the input method
+        // will insert. It never touches the grid.
+        if let Some(preedit) = pane.preedit.filter(|text| !text.is_empty()) {
+            if grid.scroll_offset == 0 {
+                let crow = grid.cursor_row;
+                if let Some(ccol) = grid.screen_cursor_col().filter(|_| crow < grid.rows()) {
+                    use unicode_width::UnicodeWidthChar;
+                    let (fr, fg_, fb) = self.colors.resolve_foreground(Color::Default, false);
+                    let (br, bg_, bb) = self.colors.default_background();
+                    let fg = Self::pack_color(fr, fg_, fb, 255);
+                    let bgc = Self::pack_color(br, bg_, bb, 255);
+                    let y0 = rect.y + crow as f32 * cell_h;
+                    let max_x = rect.x + grid.cols() as f32 * cell_w;
+                    let mut x = rect.x + ccol as f32 * cell_w;
+                    let start_x = x;
+                    if y0 + cell_h <= rect.y + grid_height {
+                        for c in preedit.chars() {
+                            let cells = c.width().unwrap_or(1).max(1) as f32;
+                            if x + cells * cell_w > max_x {
+                                break;
+                            }
+                            Self::add_rect(
+                                vertices,
+                                x,
+                                y0,
+                                x + cells * cell_w,
+                                y0 + cell_h,
+                                white_u,
+                                white_v,
+                                bgc,
+                            );
+                            self.render_char(c, x, y0, fg, bgc, atlas, vertices);
+                            x += cells * cell_w;
+                        }
+                        let underline_h = (cell_h / 12.0).max(1.0).round();
+                        Self::add_rect(
+                            vertices,
+                            start_x,
+                            y0 + cell_h - underline_h,
+                            x,
+                            y0 + cell_h,
+                            white_u,
+                            white_v,
+                            fg,
+                        );
                     }
                 }
             }
@@ -493,13 +721,40 @@ impl MetalRenderer {
                     let cursor_color = Self::pack_color(cr, cg, cb, 180);
                     match grid.cursor_style.shape {
                         CursorShape::Block => {
-                            Self::add_rect(vertices, cx0, cy0, cx0 + cell_w, cy0 + cell_h, white_u, white_v, cursor_color);
+                            Self::add_rect(
+                                vertices,
+                                cx0,
+                                cy0,
+                                cx0 + cell_w,
+                                cy0 + cell_h,
+                                white_u,
+                                white_v,
+                                cursor_color,
+                            );
                         }
                         CursorShape::Bar => {
-                            Self::add_rect(vertices, cx0, cy0, cx0 + 2.0, cy0 + cell_h, white_u, white_v, cursor_color);
+                            Self::add_rect(
+                                vertices,
+                                cx0,
+                                cy0,
+                                cx0 + 2.0,
+                                cy0 + cell_h,
+                                white_u,
+                                white_v,
+                                cursor_color,
+                            );
                         }
                         CursorShape::Underline => {
-                            Self::add_rect(vertices, cx0, cy0 + cell_h - 2.0, cx0 + cell_w, cy0 + cell_h, white_u, white_v, cursor_color);
+                            Self::add_rect(
+                                vertices,
+                                cx0,
+                                cy0 + cell_h - 2.0,
+                                cx0 + cell_w,
+                                cy0 + cell_h,
+                                white_u,
+                                white_v,
+                                cursor_color,
+                            );
                         }
                     }
                 }
@@ -512,12 +767,32 @@ impl MetalRenderer {
             for &vis_row in &pane.prompt_mark_rows {
                 let dx0 = rect.x + 1.0;
                 let dy0 = rect.y + vis_row as f32 * cell_h + cell_h * 0.4;
-                Self::add_rect(vertices, dx0, dy0, dx0 + 3.0, dy0 + 3.0, white_u, white_v, dot_color);
+                Self::add_rect(
+                    vertices,
+                    dx0,
+                    dy0,
+                    dx0 + 3.0,
+                    dy0 + 3.0,
+                    white_u,
+                    white_v,
+                    dot_color,
+                );
             }
         }
     }
 
-    fn add_rect(vertices: &mut Vec<Vertex>, x0: f32, y0: f32, x1: f32, y1: f32, u: f32, v: f32, color: u32) {
+    // Two corners plus UV and color: a quad helper, not worth a struct.
+    #[allow(clippy::too_many_arguments)]
+    fn add_rect(
+        vertices: &mut Vec<Vertex>,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        u: f32,
+        v: f32,
+        color: u32,
+    ) {
         vertices.push(Vertex::new(x0, y0, u, v, color, color));
         vertices.push(Vertex::new(x1, y0, u, v, color, color));
         vertices.push(Vertex::new(x0, y1, u, v, color, color));
@@ -556,6 +831,7 @@ impl MetalRenderer {
         atlas: &mut GlyphAtlas,
         chrome: &ChromeColors,
         status_bar_height: f32,
+        layout: StatusBarLayout,
         vertices: &mut Vec<Vertex>,
     ) {
         let rect = pane.rect;
@@ -563,7 +839,12 @@ impl MetalRenderer {
         let (white_u, white_v) = white_pixel_uv(atlas.width, atlas.height);
 
         // Status bar background
-        let bg = Self::pack_color(chrome.sumi_dark.0, chrome.sumi_dark.1, chrome.sumi_dark.2, 255);
+        let bg = Self::pack_color(
+            chrome.sumi_dark.0,
+            chrome.sumi_dark.1,
+            chrome.sumi_dark.2,
+            255,
+        );
         let x0 = rect.x;
         let x1 = rect.x + rect.width;
         let y0 = bar_y;
@@ -582,22 +863,52 @@ impl MetalRenderer {
         let text_y = bar_y + (status_bar_height - cell_h) / 2.0;
         let mut cursor_x = rect.x + cell_w;
 
-        let light = Self::pack_color(chrome.sumi_light.0, chrome.sumi_light.1, chrome.sumi_light.2, 255);
-        let medium = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, 255);
+        let light = Self::pack_color(
+            chrome.sumi_light.0,
+            chrome.sumi_light.1,
+            chrome.sumi_light.2,
+            255,
+        );
+        let medium = Self::pack_color(
+            chrome.sumi_medium.0,
+            chrome.sumi_medium.1,
+            chrome.sumi_medium.2,
+            255,
+        );
         let indicator_color = if pane.is_focused {
-            Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255)
+            Self::pack_color(
+                chrome.hanko_red.0,
+                chrome.hanko_red.1,
+                chrome.hanko_red.2,
+                255,
+            )
         } else {
-            Self::pack_color(chrome.sumi_ghost.0, chrome.sumi_ghost.1, chrome.sumi_ghost.2, 255)
+            Self::pack_color(
+                chrome.sumi_ghost.0,
+                chrome.sumi_ghost.1,
+                chrome.sumi_ghost.2,
+                255,
+            )
         };
 
-        // "黒板"
+        // "黒板", then the 1-based pane index when enabled: "黒板 2".
         for c in "黒板".chars() {
             cursor_x = self.render_char(c, cursor_x, text_y, light, bg, atlas, vertices);
+        }
+        if layout.show_pane_index {
+            for c in format!(" {}", pane.pane_index + 1).chars() {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
         }
 
         // Busca aberta: "黒板 · /consulta  n/m" no lugar do shell e do cwd.
         if let Some(search) = pane.search {
-            let red = Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255);
+            let red = Self::pack_color(
+                chrome.hanko_red.0,
+                chrome.hanko_red.1,
+                chrome.hanko_red.2,
+                255,
+            );
             let (count_text, count_color) = match search.current {
                 Some(i) => (format!("{}/{}", i + 1, search.matches.len()), light),
                 None => ("0/0".to_string(), red),
@@ -621,13 +932,23 @@ impl MetalRenderer {
                 cursor_x = self.render_char(c, cursor_x, text_y, count_color, bg, atlas, vertices);
             }
             let indicator_x = x1 - cell_w * 2.0;
-            self.render_char('■', indicator_x, text_y, indicator_color, bg, atlas, vertices);
+            self.render_char(
+                '■',
+                indicator_x,
+                text_y,
+                indicator_color,
+                bg,
+                atlas,
+                vertices,
+            );
             return;
         }
 
-        // " · zsh"
-        for c in " · zsh".chars() {
-            cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+        // " · zsh": the program actually running in the pane.
+        if layout.show_shell && !pane.program.is_empty() {
+            for c in " · ".chars().chain(pane.program.chars()) {
+                cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
+            }
         }
 
         // Update notice, right-aligned before the focus indicator. It is
@@ -635,16 +956,18 @@ impl MetalRenderer {
         let notice = pane.update_notice.filter(|notice| {
             x1 - cell_w * (3.0 + notice.chars().count() as f32) > cursor_x + cell_w
         });
-        let notice_width = notice.map_or(0.0, |notice| cell_w * (notice.chars().count() + 1) as f32);
+        let notice_width =
+            notice.map_or(0.0, |notice| cell_w * (notice.chars().count() + 1) as f32);
 
         // " · /cwd"
-        if !pane.cwd.is_empty() {
+        if layout.show_cwd && !pane.cwd.is_empty() {
             for c in " · ".chars() {
                 cursor_x = self.render_char(c, cursor_x, text_y, medium, bg, atlas, vertices);
             }
             // Truncate cwd if too long
-            let max_cwd_chars =
-                ((rect.width - cursor_x + rect.x - cell_w * 4.0 - notice_width) / cell_w).max(0.0) as usize;
+            let max_cwd_chars = ((rect.width - cursor_x + rect.x - cell_w * 4.0 - notice_width)
+                / cell_w)
+                .max(0.0) as usize;
             let cwd_display = status_cwd_suffix(pane.cwd, max_cwd_chars);
             for c in cwd_display.chars() {
                 if cursor_x + cell_w > x1 - cell_w * 3.0 - notice_width {
@@ -655,8 +978,12 @@ impl MetalRenderer {
         }
 
         if let Some(notice) = notice {
-            let notice_color =
-                Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255);
+            let notice_color = Self::pack_color(
+                chrome.hanko_red.0,
+                chrome.hanko_red.1,
+                chrome.hanko_red.2,
+                255,
+            );
             let mut notice_x = x1 - cell_w * (3.0 + notice.chars().count() as f32);
             for c in notice.chars() {
                 notice_x = self.render_char(c, notice_x, text_y, notice_color, bg, atlas, vertices);
@@ -666,13 +993,35 @@ impl MetalRenderer {
         // " · ■" (focus indicator) at the right
         let indicator_x = x1 - cell_w * 2.0;
         if pane.attention && !pane.is_focused {
-            let attention_color =
-                Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, 255);
-            self.render_char('●', indicator_x - cell_w, text_y, attention_color, bg, atlas, vertices);
+            let attention_color = Self::pack_color(
+                chrome.hanko_red.0,
+                chrome.hanko_red.1,
+                chrome.hanko_red.2,
+                255,
+            );
+            self.render_char(
+                '●',
+                indicator_x - cell_w,
+                text_y,
+                attention_color,
+                bg,
+                atlas,
+                vertices,
+            );
         }
-        self.render_char('■', indicator_x, text_y, indicator_color, bg, atlas, vertices);
+        self.render_char(
+            '■',
+            indicator_x,
+            text_y,
+            indicator_color,
+            bg,
+            atlas,
+            vertices,
+        );
     }
 
+    // Glyph position, colors and atlas are all needed per call.
+    #[allow(clippy::too_many_arguments)]
     fn render_char(
         &self,
         c: char,
@@ -689,7 +1038,11 @@ impl MetalRenderer {
             italic: false,
         };
         let glyph = atlas.get_or_insert(key);
-        let fg = if atlas.is_color(glyph) { 0xffffff00 | (fg & 0xff) } else { fg };
+        let fg = if atlas.is_color(glyph) {
+            0xffffff00 | (fg & 0xff)
+        } else {
+            fg
+        };
         let cell_w = atlas.cell_width;
 
         if glyph.pixel_w > 0 && glyph.pixel_h > 0 {
@@ -698,8 +1051,7 @@ impl MetalRenderer {
             let gx1 = gx0 + glyph.pixel_w as f32;
             let gy1 = gy0 + glyph.pixel_h as f32;
 
-            let (u0, v0, u1, v1) =
-                glyph_uv_bounds(atlas.width, atlas.height, &glyph);
+            let (u0, v0, u1, v1) = glyph_uv_bounds(atlas.width, atlas.height, &glyph);
 
             vertices.push(Vertex::new(gx0, gy0, u0, v0, fg, bg));
             vertices.push(Vertex::new(gx1, gy0, u1, v0, fg, bg));
@@ -728,7 +1080,8 @@ impl MetalRenderer {
         };
         let fg = Self::pack_color(fg_color.0, fg_color.1, fg_color.2, 255);
 
-        let variant = ((divider.x0 as u32).wrapping_mul(7) + (divider.y0 as u32).wrapping_mul(13)) as usize;
+        let variant =
+            ((divider.x0 as u32).wrapping_mul(7) + (divider.y0 as u32).wrapping_mul(13)) as usize;
         let (u0, v0, u_w, v_h) = self.brush.uv_rect(variant);
         let u1 = u0 + u_w;
         let v1 = v0 + v_h;
@@ -766,29 +1119,47 @@ impl MetalRenderer {
         vertices
     }
 
-    pub fn draw_frame(
-        &mut self,
-        panes: &[PaneRenderData],
-        dividers: &[DividerInfo],
-        atlas: &mut GlyphAtlas,
-        drawable: &ProtocolObject<dyn MTLDrawable>,
-        texture: &ProtocolObject<dyn MTLTexture>,
-        viewport_width: f32,
-        viewport_height: f32,
-        bg_opacity: f32,
-        selection_fg: (u8, u8, u8),
-        selection_bg: (u8, u8, u8),
-        chrome: &ChromeColors,
-        status_bar_height: f32,
-        prompt_indicator_color: Option<(u8, u8, u8)>,
-        image_store: Option<&ImageStore>,
-        confirm_overlay: Option<&ConfirmOverlayInfo>,
-    ) {
+    pub fn draw_frame(&mut self, inputs: FrameInputs<'_>) {
+        let FrameInputs {
+            panes,
+            dividers,
+            atlas,
+            drawable,
+            texture,
+            viewport_width,
+            viewport_height,
+            bg_opacity,
+            selection_fg,
+            selection_bg,
+            chrome,
+            status_bar_height,
+            status_bar_layout,
+            prompt_indicator_color,
+            image_store,
+            confirm_overlay,
+        } = inputs;
         // Build pane content + status bar vertices (use atlas texture)
         let mut content_vertices: Vec<Vertex> = Vec::with_capacity(200 * 80 * 12);
         for pane in panes {
-            self.build_pane_vertices(pane, atlas, selection_fg, selection_bg, chrome, status_bar_height, prompt_indicator_color, &mut content_vertices);
-            self.build_status_bar_vertices(pane, atlas, chrome, status_bar_height, &mut content_vertices);
+            self.build_pane_vertices(
+                pane,
+                atlas,
+                selection_fg,
+                selection_bg,
+                chrome,
+                status_bar_height,
+                prompt_indicator_color,
+                bg_opacity,
+                &mut content_vertices,
+            );
+            self.build_status_bar_vertices(
+                pane,
+                atlas,
+                chrome,
+                status_bar_height,
+                status_bar_layout,
+                &mut content_vertices,
+            );
         }
 
         // Build divider vertices (use brush texture)
@@ -885,19 +1256,37 @@ impl MetalRenderer {
             return;
         }
 
+        let slot = self.frame_index;
+        self.frame_index = (slot + 1) % FRAMES_IN_FLIGHT;
+        // Block only if the GPU is still reading this slot (three frames back).
+        if let Some(previous) = self.frames[slot].in_flight.take() {
+            previous.waitUntilCompleted();
+        }
+
+        // SAFETY: both buffers are StorageModeShared, so `contents()` is a
+        // CPU-visible mapping of the whole buffer: `needed <= length()` after
+        // the resize check and the uniform buffer holds at least two f32. The
+        // atlas region matches `rgba_pixels` (width * height * 4 bytes) and
+        // `replaceRegion` copies synchronously. The wait above guarantees the
+        // GPU finished reading this slot's buffers before the CPU rewrites them.
         unsafe {
             let needed = all_vertices.len() * std::mem::size_of::<Vertex>();
-            if needed > self.vertex_buffer.length() {
-                self.vertex_buffer = self
+            if needed > self.frames[slot].vertex.length() {
+                self.frames[slot].vertex = self
                     .device
                     .newBufferWithLength_options(needed * 2, MTLResourceOptions::StorageModeShared)
                     .expect("Failed to resize vertex buffer");
             }
 
-            let ptr = self.vertex_buffer.contents().as_ptr() as *mut Vertex;
+            // SAFETY: the slot's command buffer completed above, the buffer is
+            // StorageModeShared and at least `needed` bytes long, and
+            // `all_vertices` is a valid, non-overlapping source.
+            let ptr = self.frames[slot].vertex.contents().as_ptr() as *mut Vertex;
             std::ptr::copy_nonoverlapping(all_vertices.as_ptr(), ptr, all_vertices.len());
 
-            let ptr = self.uniform_buffer.contents().as_ptr() as *mut [f32; 2];
+            // SAFETY: the uniform buffer is 16 bytes of shared memory, enough
+            // for two f32, and nothing else writes it while this frame runs.
+            let ptr = self.frames[slot].uniform.contents().as_ptr() as *mut [f32; 2];
             *ptr = [viewport_width, viewport_height];
 
             if atlas.dirty {
@@ -910,7 +1299,8 @@ impl MetalRenderer {
                     },
                 };
                 let bytes_ptr =
-                    std::ptr::NonNull::new(atlas.rgba_pixels.as_ptr() as *mut std::ffi::c_void).unwrap();
+                    std::ptr::NonNull::new(atlas.rgba_pixels.as_ptr() as *mut std::ffi::c_void)
+                        .unwrap();
                 self.atlas_texture
                     .replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                         region,
@@ -947,8 +1337,8 @@ impl MetalRenderer {
                 .expect("Failed to create render encoder");
 
             encoder.setRenderPipelineState(&self.pipeline_state);
-            encoder.setVertexBuffer_offset_atIndex(Some(&self.vertex_buffer), 0, 0);
-            encoder.setVertexBuffer_offset_atIndex(Some(&self.uniform_buffer), 0, 1);
+            encoder.setVertexBuffer_offset_atIndex(Some(&self.frames[slot].vertex), 0, 0);
+            encoder.setVertexBuffer_offset_atIndex(Some(&self.frames[slot].uniform), 0, 1);
             encoder.setFragmentSamplerState_atIndex(Some(&self.sampler_state), 0);
 
             // Draw pane content + status bars with atlas texture
@@ -1004,6 +1394,7 @@ impl MetalRenderer {
 
             command_buffer.presentDrawable(drawable);
             command_buffer.commit();
+            self.frames[slot].in_flight = Some(command_buffer);
         }
     }
 
@@ -1023,9 +1414,16 @@ impl MetalRenderer {
         // 1. Dimming overlay — semi-transparent black covering the region
         let dim_alpha = (0.85 * alpha * 255.0) as u8;
         let dim_color = Self::pack_color(0x1a, 0x1a, 0x1a, dim_alpha);
-        Self::add_rect(vertices, region.x, region.y,
-            region.x + region.width, region.y + region.height,
-            white_u, white_v, dim_color);
+        Self::add_rect(
+            vertices,
+            region.x,
+            region.y,
+            region.x + region.width,
+            region.y + region.height,
+            white_u,
+            white_v,
+            dim_color,
+        );
 
         // 2. Calculate dialog box dimensions (account for CJK double-width)
         let title = &overlay.title;
@@ -1035,9 +1433,16 @@ impl MetalRenderer {
         let actions_text = "[Y] \u{9589} confirm      [N] \u{623B} cancel";
 
         let char_width = |s: &str| -> f32 {
-            s.chars().map(|c| {
-                if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) >= 2 { 2.0 } else { 1.0 }
-            }).sum::<f32>() * cell_w
+            s.chars()
+                .map(|c| {
+                    if unicode_width::UnicodeWidthChar::width(c).unwrap_or(1) >= 2 {
+                        2.0
+                    } else {
+                        1.0
+                    }
+                })
+                .sum::<f32>()
+                * cell_w
         };
 
         let title_width = char_width(&full_title);
@@ -1060,39 +1465,142 @@ impl MetalRenderer {
 
         // 3. Dialog background
         let bg_alpha = (0.95 * alpha * 255.0) as u8;
-        let bg_color = Self::pack_color(chrome.sumi_dark.0, chrome.sumi_dark.1, chrome.sumi_dark.2, bg_alpha);
-        Self::add_rect(vertices, box_x, box_y, box_x + box_width, box_y + box_height,
-            white_u, white_v, bg_color);
+        let bg_color = Self::pack_color(
+            chrome.sumi_dark.0,
+            chrome.sumi_dark.1,
+            chrome.sumi_dark.2,
+            bg_alpha,
+        );
+        Self::add_rect(
+            vertices,
+            box_x,
+            box_y,
+            box_x + box_width,
+            box_y + box_height,
+            white_u,
+            white_v,
+            bg_color,
+        );
 
         // 4. Corner brush marks — short L-shaped strokes at each corner
         let corner_len = cell_h * 1.5;
         let corner_thickness = 2.0;
         let mark_alpha = (alpha * 255.0) as u8;
-        let mark_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, mark_alpha);
+        let mark_color = Self::pack_color(
+            chrome.sumi_medium.0,
+            chrome.sumi_medium.1,
+            chrome.sumi_medium.2,
+            mark_alpha,
+        );
 
         // Top-left: horizontal right + vertical down
-        Self::add_rect(vertices, box_x, box_y, box_x + corner_len, box_y + corner_thickness, white_u, white_v, mark_color);
-        Self::add_rect(vertices, box_x, box_y, box_x + corner_thickness, box_y + corner_len, white_u, white_v, mark_color);
+        Self::add_rect(
+            vertices,
+            box_x,
+            box_y,
+            box_x + corner_len,
+            box_y + corner_thickness,
+            white_u,
+            white_v,
+            mark_color,
+        );
+        Self::add_rect(
+            vertices,
+            box_x,
+            box_y,
+            box_x + corner_thickness,
+            box_y + corner_len,
+            white_u,
+            white_v,
+            mark_color,
+        );
         // Top-right: horizontal left + vertical down
-        Self::add_rect(vertices, box_x + box_width - corner_len, box_y, box_x + box_width, box_y + corner_thickness, white_u, white_v, mark_color);
-        Self::add_rect(vertices, box_x + box_width - corner_thickness, box_y, box_x + box_width, box_y + corner_len, white_u, white_v, mark_color);
+        Self::add_rect(
+            vertices,
+            box_x + box_width - corner_len,
+            box_y,
+            box_x + box_width,
+            box_y + corner_thickness,
+            white_u,
+            white_v,
+            mark_color,
+        );
+        Self::add_rect(
+            vertices,
+            box_x + box_width - corner_thickness,
+            box_y,
+            box_x + box_width,
+            box_y + corner_len,
+            white_u,
+            white_v,
+            mark_color,
+        );
         // Bottom-left: horizontal right + vertical up
-        Self::add_rect(vertices, box_x, box_y + box_height - corner_thickness, box_x + corner_len, box_y + box_height, white_u, white_v, mark_color);
-        Self::add_rect(vertices, box_x, box_y + box_height - corner_len, box_x + corner_thickness, box_y + box_height, white_u, white_v, mark_color);
+        Self::add_rect(
+            vertices,
+            box_x,
+            box_y + box_height - corner_thickness,
+            box_x + corner_len,
+            box_y + box_height,
+            white_u,
+            white_v,
+            mark_color,
+        );
+        Self::add_rect(
+            vertices,
+            box_x,
+            box_y + box_height - corner_len,
+            box_x + corner_thickness,
+            box_y + box_height,
+            white_u,
+            white_v,
+            mark_color,
+        );
         // Bottom-right: horizontal left + vertical up
-        Self::add_rect(vertices, box_x + box_width - corner_len, box_y + box_height - corner_thickness, box_x + box_width, box_y + box_height, white_u, white_v, mark_color);
-        Self::add_rect(vertices, box_x + box_width - corner_thickness, box_y + box_height - corner_len, box_x + box_width, box_y + box_height, white_u, white_v, mark_color);
+        Self::add_rect(
+            vertices,
+            box_x + box_width - corner_len,
+            box_y + box_height - corner_thickness,
+            box_x + box_width,
+            box_y + box_height,
+            white_u,
+            white_v,
+            mark_color,
+        );
+        Self::add_rect(
+            vertices,
+            box_x + box_width - corner_thickness,
+            box_y + box_height - corner_len,
+            box_x + box_width,
+            box_y + box_height,
+            white_u,
+            white_v,
+            mark_color,
+        );
 
         // 5. Title text: "閉じる · <title>"
         let text_alpha = (alpha * 255.0) as u8;
-        let title_color = Self::pack_color(chrome.sumi_light.0, chrome.sumi_light.1, chrome.sumi_light.2, text_alpha);
+        let title_color = Self::pack_color(
+            chrome.sumi_light.0,
+            chrome.sumi_light.1,
+            chrome.sumi_light.2,
+            text_alpha,
+        );
 
         let title_x = box_x + (box_width - title_width) / 2.0;
         let title_y = box_y + padding_v;
 
         let mut cursor_x = title_x;
         for c in full_title.chars() {
-            cursor_x = self.render_char_with_alpha(c, cursor_x, title_y, title_color, bg_color, atlas, vertices);
+            cursor_x = self.render_char_with_alpha(
+                c,
+                cursor_x,
+                title_y,
+                title_color,
+                bg_color,
+                atlas,
+                vertices,
+            );
         }
 
         // 5b. Process text if present
@@ -1100,10 +1608,16 @@ impl MetalRenderer {
             let proc_text = process_text.as_ref().unwrap();
             let proc_x = box_x + (box_width - process_width) / 2.0;
             let proc_y = title_y + cell_h * 1.5;
-            let proc_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, text_alpha);
+            let proc_color = Self::pack_color(
+                chrome.sumi_medium.0,
+                chrome.sumi_medium.1,
+                chrome.sumi_medium.2,
+                text_alpha,
+            );
             let mut cx = proc_x;
             for c in proc_text.chars() {
-                cx = self.render_char_with_alpha(c, cx, proc_y, proc_color, bg_color, atlas, vertices);
+                cx = self
+                    .render_char_with_alpha(c, cx, proc_y, proc_color, bg_color, atlas, vertices);
             }
             cell_h * 1.5
         } else {
@@ -1112,8 +1626,18 @@ impl MetalRenderer {
 
         // 6. Action keys line
         let actions_y = title_y + cell_h * 2.0 + actions_y_offset;
-        let hanko_color = Self::pack_color(chrome.hanko_red.0, chrome.hanko_red.1, chrome.hanko_red.2, text_alpha);
-        let medium_color = Self::pack_color(chrome.sumi_medium.0, chrome.sumi_medium.1, chrome.sumi_medium.2, text_alpha);
+        let hanko_color = Self::pack_color(
+            chrome.hanko_red.0,
+            chrome.hanko_red.1,
+            chrome.hanko_red.2,
+            text_alpha,
+        );
+        let medium_color = Self::pack_color(
+            chrome.sumi_medium.0,
+            chrome.sumi_medium.1,
+            chrome.sumi_medium.2,
+            text_alpha,
+        );
         let light_color = title_color;
 
         // Center the actions line
@@ -1121,22 +1645,56 @@ impl MetalRenderer {
 
         // Render "[Y]" in hanko_red, " 閉 confirm" in light, "      " spacing, "[N]" in medium, " 戻 cancel" in light
         for c in "[Y]".chars() {
-            ax = self.render_char_with_alpha(c, ax, actions_y, hanko_color, bg_color, atlas, vertices);
+            ax = self.render_char_with_alpha(
+                c,
+                ax,
+                actions_y,
+                hanko_color,
+                bg_color,
+                atlas,
+                vertices,
+            );
         }
         for c in " \u{9589} confirm".chars() {
-            ax = self.render_char_with_alpha(c, ax, actions_y, light_color, bg_color, atlas, vertices);
+            ax = self.render_char_with_alpha(
+                c,
+                ax,
+                actions_y,
+                light_color,
+                bg_color,
+                atlas,
+                vertices,
+            );
         }
         for c in "      ".chars() {
             ax = self.render_char_with_alpha(c, ax, actions_y, bg_color, bg_color, atlas, vertices);
         }
         for c in "[N]".chars() {
-            ax = self.render_char_with_alpha(c, ax, actions_y, medium_color, bg_color, atlas, vertices);
+            ax = self.render_char_with_alpha(
+                c,
+                ax,
+                actions_y,
+                medium_color,
+                bg_color,
+                atlas,
+                vertices,
+            );
         }
         for c in " \u{623B} cancel".chars() {
-            ax = self.render_char_with_alpha(c, ax, actions_y, light_color, bg_color, atlas, vertices);
+            ax = self.render_char_with_alpha(
+                c,
+                ax,
+                actions_y,
+                light_color,
+                bg_color,
+                atlas,
+                vertices,
+            );
         }
     }
 
+    // Same inputs as `render_char` plus the overlay alpha.
+    #[allow(clippy::too_many_arguments)]
     fn render_char_with_alpha(
         &self,
         c: char,
@@ -1147,9 +1705,17 @@ impl MetalRenderer {
         atlas: &mut GlyphAtlas,
         vertices: &mut Vec<Vertex>,
     ) -> f32 {
-        let key = GlyphKey { c, bold: false, italic: false };
+        let key = GlyphKey {
+            c,
+            bold: false,
+            italic: false,
+        };
         let glyph = atlas.get_or_insert(key);
-        let fg = if atlas.is_color(glyph) { 0xffffff00 | (fg & 0xff) } else { fg };
+        let fg = if atlas.is_color(glyph) {
+            0xffffff00 | (fg & 0xff)
+        } else {
+            fg
+        };
         let char_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(1);
         let advance = atlas.cell_width * char_width as f32;
 
@@ -1158,8 +1724,7 @@ impl MetalRenderer {
             let gy0 = y + atlas.ascent + glyph.bearing_y as f32;
             let gx1 = gx0 + glyph.pixel_w as f32;
             let gy1 = gy0 + glyph.pixel_h as f32;
-            let (u0, v0, u1, v1) =
-                glyph_uv_bounds(atlas.width, atlas.height, &glyph);
+            let (u0, v0, u1, v1) = glyph_uv_bounds(atlas.width, atlas.height, &glyph);
             vertices.push(Vertex::new(gx0, gy0, u0, v0, fg, bg));
             vertices.push(Vertex::new(gx1, gy0, u1, v0, fg, bg));
             vertices.push(Vertex::new(gx0, gy1, u0, v1, fg, bg));
@@ -1186,19 +1751,31 @@ mod tests {
             device,
             super::TerminalColors::new((255, 255, 255), (0, 0, 0)),
         );
-        assert_eq!(renderer.atlas_texture.pixelFormat(), objc2_metal::MTLPixelFormat::RGBA8Unorm);
-        assert_eq!(renderer.brush.texture.pixelFormat(), objc2_metal::MTLPixelFormat::RGBA8Unorm);
+        assert_eq!(
+            renderer.atlas_texture.pixelFormat(),
+            objc2_metal::MTLPixelFormat::RGBA8Unorm
+        );
+        assert_eq!(
+            renderer.brush.texture.pixelFormat(),
+            objc2_metal::MTLPixelFormat::RGBA8Unorm
+        );
     }
 
     #[test]
     fn clips_wide_grapheme_at_pane_edge_with_matching_texture_coordinates() {
         let clipped = super::clip_glyph_quad(
-            [10.0, 10.0, 30.0, 30.0], [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 20.0, 40.0],
-        ).unwrap();
+            [10.0, 10.0, 30.0, 30.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 20.0, 40.0],
+        )
+        .unwrap();
         assert_eq!(clipped, ([10.0, 10.0, 20.0, 30.0], [0.0, 0.0, 0.5, 1.0]));
         assert!(super::clip_glyph_quad(
-            [20.0, 0.0, 30.0, 10.0], [0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 10.0, 10.0],
-        ).is_none());
+            [20.0, 0.0, 30.0, 10.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 10.0, 10.0],
+        )
+        .is_none());
     }
     use super::{
         cell_content_is_visible, glyph_uv_bounds, status_cwd_suffix, white_pixel_uv, MetalRenderer,
