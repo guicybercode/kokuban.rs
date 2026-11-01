@@ -16,7 +16,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SUMMARY = (
-    REPO_ROOT / "docs" / "linux-evidence" / "2026-09-13-four-terminals" / "summary.json"
+    REPO_ROOT / "docs" / "linux-evidence" / "2026-10-31-four-terminals" / "summary.json"
 )
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "screenshots" / "throughput-comparison.svg"
 
@@ -47,10 +47,10 @@ WORKLOAD_LABELS = {
     "short_lines": "Short lines",
 }
 
-TITLE = "PTY throughput, same Linux host (2026-09-13, medians of 5 runs)"
+TITLE = "PTY throughput, same Linux host (2026-10-31, medians of 5 runs)"
 SUBTITLE_LINES = (
-    "Kokuban 0.2.0 (d54f801), Ghostty 1.3.0-dev tip, Alacritty 0.16.1, Kitty 0.45.0",
-    "on x86_64 EPYC 7763, Weston headless. Higher is better; not frame latency.",
+    "Kokuban 0.4.0 (27bbb15), Ghostty 1.3.0-dev tip, Alacritty 0.16.1, Kitty 0.45.0",
+    "on GitHub Actions x86_64, Weston headless. Higher is better; not frame latency.",
 )
 SUBTITLE = " ".join(SUBTITLE_LINES)
 
