@@ -8,8 +8,8 @@ use unicode_width::UnicodeWidthStr;
 
 mod runs;
 mod text_raster;
-pub use runs::RunGlyph;
 use runs::RowShaper;
+pub use runs::RunGlyph;
 use std::sync::Arc;
 use text_raster::{Bitmap, ShapingFont, TextRasterizer};
 use thiserror::Error;
@@ -433,7 +433,11 @@ impl GlyphAtlas {
         if !self.ligatures {
             return self.row_shaper.empty();
         }
-        let Self { row_shaper, rasterizer, .. } = self;
+        let Self {
+            row_shaper,
+            rasterizer,
+            ..
+        } = self;
         row_shaper.row(cols, cell, |style| rasterizer.face(usize::from(style & 3)))
     }
 
@@ -1405,14 +1409,31 @@ mod ligature_tests {
             return;
         };
         atlas.set_ligatures(true);
-        let text: Vec<char> = "  -> => <- <= >= != == === !== := <> </> <!-- --> ... :: ;; && || |> <| >> <<".chars().collect();
+        let text: Vec<char> =
+            "  -> => <- <= >= != == === !== := <> </> <!-- --> ... :: ;; && || |> <| >> <<"
+                .chars()
+                .collect();
         let glyphs = atlas.row_run_glyphs(text.len(), |c| (text[c], 0));
-        eprintln!("{} glifos de run; cell={}x{}", glyphs.len(), atlas.cell_width, atlas.cell_height);
+        eprintln!(
+            "{} glifos de run; cell={}x{}",
+            glyphs.len(),
+            atlas.cell_width,
+            atlas.cell_height
+        );
         for glyph in glyphs.iter() {
             let entry = atlas.get_or_insert_run_glyph(glyph);
-            assert!(entry.pixel_w as f32 <= atlas.cell_width * 4.0, "{glyph:?} {entry:?}");
-            assert!(entry.pixel_h as f32 <= atlas.cell_height * 2.0, "{glyph:?} {entry:?}");
+            assert!(
+                entry.pixel_w as f32 <= atlas.cell_width * 4.0,
+                "{glyph:?} {entry:?}"
+            );
+            assert!(
+                entry.pixel_h as f32 <= atlas.cell_height * 2.0,
+                "{glyph:?} {entry:?}"
+            );
         }
-        eprintln!("cursor=({}, {}) row_height={}", atlas.cursor_x, atlas.cursor_y, atlas.row_height);
+        eprintln!(
+            "cursor=({}, {}) row_height={}",
+            atlas.cursor_x, atlas.cursor_y, atlas.row_height
+        );
     }
 }

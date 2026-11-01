@@ -325,7 +325,9 @@ impl MetalRenderer {
                 atlas.row_run_glyphs(grid.cols(), |c| {
                     let cell = grid.visible_cell(row, c);
                     if cell.grapheme.is_some()
-                        || cell.flags.intersects(CellFlags::WIDE | CellFlags::WIDE_CONT)
+                        || cell
+                            .flags
+                            .intersects(CellFlags::WIDE | CellFlags::WIDE_CONT)
                         || !cell_content_is_visible(cell.flags)
                     {
                         (' ', 0)

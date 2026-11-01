@@ -114,8 +114,11 @@ impl RowShaper {
         self.shaped_rows += 1;
         let mut out = Vec::new();
         shape_row(&self.scratch, &mut out, &mut face_for);
-        let shaped: Arc<[RunGlyph]> =
-            if out.is_empty() { self.empty.clone() } else { Arc::from(out) };
+        let shaped: Arc<[RunGlyph]> = if out.is_empty() {
+            self.empty.clone()
+        } else {
+            Arc::from(out)
+        };
         if self.cache.len() >= ROW_CACHE_CAPACITY {
             // Geração nova em vez de LRU de verdade: uma tela cabe inteira em
             // 512 linhas, então o custo de reaquecer é um frame.
@@ -203,7 +206,11 @@ fn shape_run(
         while j + 1 < infos.len() && infos[j + 1].cluster as usize == cluster {
             j += 1;
         }
-        let next = if j + 1 < infos.len() { infos[j + 1].cluster as usize } else { bytes.len() };
+        let next = if j + 1 < infos.len() {
+            infos[j + 1].cluster as usize
+        } else {
+            bytes.len()
+        };
         if next <= cluster || cluster >= bytes.len() {
             out.truncate(first);
             return;
@@ -222,12 +229,16 @@ fn shape_run(
         };
         let nominal = face.glyph_index(bytes[cluster] as char).map(|id| id.0);
         let x_offset = positions[i].x_offset;
-        let plain = span == 1
-            && nominal == Some(glyph_id)
-            && x_offset == 0
-            && positions[i].y_offset == 0;
+        let plain =
+            span == 1 && nominal == Some(glyph_id) && x_offset == 0 && positions[i].y_offset == 0;
         if !plain {
-            out.push(RunGlyph { start_col: start + cluster, span, glyph_id, style, x_offset });
+            out.push(RunGlyph {
+                start_col: start + cluster,
+                span,
+                glyph_id,
+                style,
+                x_offset,
+            });
         }
         i = j + 1;
     }
@@ -247,14 +258,18 @@ mod tests {
     }
 
     fn load(family: FamilyName) -> Option<FaceData> {
-        let handle = SystemSource::new().select_best_match(&[family], &Properties::new()).ok()?;
+        let handle = SystemSource::new()
+            .select_best_match(&[family], &Properties::new())
+            .ok()?;
         match handle {
-            font_kit::handle::Handle::Path { path, font_index } => {
-                Some(FaceData { data: std::fs::read(path).ok()?, index: font_index })
-            }
-            font_kit::handle::Handle::Memory { bytes, font_index } => {
-                Some(FaceData { data: bytes.to_vec(), index: font_index })
-            }
+            font_kit::handle::Handle::Path { path, font_index } => Some(FaceData {
+                data: std::fs::read(path).ok()?,
+                index: font_index,
+            }),
+            font_kit::handle::Handle::Memory { bytes, font_index } => Some(FaceData {
+                data: bytes.to_vec(),
+                index: font_index,
+            }),
         }
     }
 
@@ -275,15 +290,20 @@ mod tests {
 
     #[test]
     fn menlo_without_gsub_ligatures_yields_no_run_glyphs() {
-        let Some(font) = load(FamilyName::Title("Menlo".to_owned()))
-            .or_else(|| load(FamilyName::Monospace))
+        let Some(font) =
+            load(FamilyName::Title("Menlo".to_owned())).or_else(|| load(FamilyName::Monospace))
         else {
             return;
         };
         let cells = row("if a != b && c -> d { x <= y; www http:// } ==> ... </>");
         let mut out = Vec::new();
-        shape_row(&cells, &mut out, &mut |_| rustybuzz::Face::from_slice(&font.data, font.index));
-        assert!(out.is_empty(), "fonte sem ligaduras produziu glifos de run: {out:?}");
+        shape_row(&cells, &mut out, &mut |_| {
+            rustybuzz::Face::from_slice(&font.data, font.index)
+        });
+        assert!(
+            out.is_empty(),
+            "fonte sem ligaduras produziu glifos de run: {out:?}"
+        );
     }
 
     #[test]
@@ -294,12 +314,20 @@ mod tests {
         };
         let cells = row("a -> b != c");
         let mut out = Vec::new();
-        shape_row(&cells, &mut out, &mut |_| rustybuzz::Face::from_slice(&font.data, font.index));
-        assert!(!out.is_empty(), "fonte com ligaduras não produziu glifos de run");
+        shape_row(&cells, &mut out, &mut |_| {
+            rustybuzz::Face::from_slice(&font.data, font.index)
+        });
+        assert!(
+            !out.is_empty(),
+            "fonte com ligaduras não produziu glifos de run"
+        );
         eprintln!("glifos de run para {:?}: {out:?}", "a -> b != c");
         // `->` começa na coluna 2 e `!=` na coluna 7, em qualquer um dos dois
         // estilos de implementação (cluster largo ou espaçador + glifo largo).
-        let covers = |col: usize| out.iter().any(|g| g.start_col <= col && col < g.start_col + g.span);
+        let covers = |col: usize| {
+            out.iter()
+                .any(|g| g.start_col <= col && col < g.start_col + g.span)
+        };
         assert!(covers(2) || covers(3), "{out:?}");
         assert!(covers(7) || covers(8), "{out:?}");
         for glyph in &out {
@@ -314,12 +342,16 @@ mod tests {
         };
         let mut shaper = RowShaper::new();
         let cells = row("x -> y");
-        let first = shaper.row(cells.len(), |c| cells[c], |_| {
-            rustybuzz::Face::from_slice(&font.data, font.index)
-        });
-        let second = shaper.row(cells.len(), |c| cells[c], |_| {
-            rustybuzz::Face::from_slice(&font.data, font.index)
-        });
+        let first = shaper.row(
+            cells.len(),
+            |c| cells[c],
+            |_| rustybuzz::Face::from_slice(&font.data, font.index),
+        );
+        let second = shaper.row(
+            cells.len(),
+            |c| cells[c],
+            |_| rustybuzz::Face::from_slice(&font.data, font.index),
+        );
         assert!(Arc::ptr_eq(&first, &second));
         assert_eq!(shaper.shaped_rows, 1);
         assert_eq!(shaper.cached_rows, 1);
@@ -337,10 +369,16 @@ mod tests {
             ("Menlo", load(FamilyName::Title("Menlo".to_owned()))),
         ];
         const ROWS: usize = 10_000;
-        let sample = "fn main() -> Result<(), E> { if a != b && c >= d || e <= f { x => y; } } // www ==";
+        let sample =
+            "fn main() -> Result<(), E> { if a != b && c >= d || e <= f { x => y; } } // www ==";
         let rows: Vec<Vec<RowCell>> = (0..ROWS)
             .map(|i| {
-                let shifted: String = sample.chars().cycle().skip(i % sample.len()).take(80).collect();
+                let shifted: String = sample
+                    .chars()
+                    .cycle()
+                    .skip(i % sample.len())
+                    .take(80)
+                    .collect();
                 row(&shifted)
             })
             .collect();
