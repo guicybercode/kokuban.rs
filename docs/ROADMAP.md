@@ -1,8 +1,26 @@
 # Entrega Linux e Android
 
+Foco desktop: macOS é a plataforma principal; Linux segue a trilha Omarchy e compartilha parser, grade, gráficos e protocolos. Windows não é suportado.
+
 Objetivo do usuário: um terminal leve, utilizável em Linux e Android, com SSH, fotos, vídeo, animações e aplicações modernas de desenvolvimento, mantendo a implementação da aplicação em Rust. Cada pequena alteração deve ser versionada e enviada ao remoto. A segunda sessão recebe uma frente de implementação no [prompt Android](SECOND_SESSION_PROMPT.md).
 
 Esta matriz registra a auditoria inicial de 2026-09-05, em `9fb2ea7`. Atualize as linhas com commits e evidência de execução conforme o trabalho avançar. Código existente e configuração de CI indicam capacidades e intenção de teste; não substituem resultados executados.
+
+## Rumo à v0.5 em 2026-10-31
+
+O código `27bbb15`, publicado na `main` após a integração dos PRs #28–#33, passou no [CI Linux/macOS](https://github.com/guicybercode/kokuban.rs/actions/runs/41250348787) com **829 testes Linux e 714 macOS** no binário principal, mais 284 por SO no mesmo passo `cargo test --all-targets`, e na [comparação de processamento com quatro terminais](https://github.com/guicybercode/kokuban.rs/actions/runs/41250525735). A v0.4 continua sendo a release atual; o que está na `main` hoje forma a base da v0.5.
+
+- Tema lousa como padrão de fábrica, README reescrito em torno do cartão da marca e documentação detalhada movida para `docs/` (`KEYBINDS.md`, `PERFORMANCE.md`, `INSTALL.md`, matriz de funcionalidades em `TERMINAL_COMPARISON.md`).
+- #28: paleta ANSI configurada e cor do cursor aplicadas no macOS.
+- #29: blocos (U+2580–U+259F) e box-drawing desenhados como retângulos alinhados ao pixel nos dois renderizadores.
+- #30: busca no histórico no macOS (`Cmd+F`) com destaque pelas cores de seleção.
+- #31: links OSC 8 por linha absoluta, abertos com `Cmd`+clique (macOS) ou `Ctrl`+clique (Linux).
+- #32: escrita OSC 52 no clipboard (leitura recusada) e marca de atenção por pane com `Cmd+Shift+A` no macOS.
+- #33: protocolo de teclado kitty, nível 1, com pilha de flags por tela e codificações `CSI u`.
+
+Em PRs abertos, ainda não integrados: #34 (configuração do diretório atual não executa nem abre caminhos), #35 (fmt, Clippy e warnings como gates de CI), #36 (cask do Homebrew e checklist de release) e #37 (macOS honra a configuração, `-e` e `--working-directory`).
+
+O que falta para fechar a v0.5: IME/composição de texto no macOS (NSTextInputClient, em andamento); validação física em Hyprland; benchmarks novos com o código atual, já que as medições abaixo se referem a commits de setembro; e a landing page, publicada só no lançamento. Notarização do `Kokuban.app` foi adiada para depois da v0.5. Panes no Linux não estão planejados: splits, zoom, barra de status, marcas de prompt, busca e atenção seguem exclusivos do macOS.
 
 ## Preservação de texto em 2026-09-10
 

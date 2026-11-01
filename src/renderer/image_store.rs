@@ -160,6 +160,10 @@ impl ImageStore {
         height: u32,
         rgba_data: &[u8],
     ) -> Option<MetalTexture> {
+        // SAFETY: `prepare_image`/`rgba_byte_len` already checked that
+        // `rgba_data` holds width * height * 4 bytes, which is what `region`
+        // and `bytesPerRow` describe; `replaceRegion` copies synchronously and
+        // the descriptor uses the same validated dimensions.
         unsafe {
             let desc =
                 MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(

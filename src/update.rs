@@ -407,6 +407,7 @@ impl UpdateStatus {
 pub type SharedUpdateStatus = Arc<Mutex<UpdateStatus>>;
 
 /// Window title carrying the update notice, for windows without a status bar.
+#[cfg(any(target_os = "linux", test))]
 pub fn title_with_notice(title: &str, status: &UpdateStatus) -> String {
     match status.available_tag() {
         Some(tag) => format!("{title} · {tag} available (kokuban --update)"),

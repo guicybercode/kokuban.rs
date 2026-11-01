@@ -1,7 +1,8 @@
 # Comparação reproduzível entre terminais
 
 `scripts/compare-terminal-performance.py` executa Kokuban, Ghostty, Alacritty e
-Kitty na mesma sessão Linux. Cada janela recebe a mesma aplicação Python por
+Kitty na mesma sessão Linux (e, no macOS, também o Terminal.app; ver
+[Executar no macOS](#executar-no-macos)). Cada janela recebe a mesma aplicação Python por
 PTY, os mesmos bytes e uma consulta final de posição do cursor (DSR). O resultado
 mede processamento de saída e resposta do protocolo; não mede apresentação de
 quadros, latência entre teclado e tela, nem estabelece o melhor terminal.
@@ -69,6 +70,74 @@ GPU, o compositor e o monitor reais para conclusões sobre o Omarchy. Mantenha a
 janelas visíveis, no mesmo monitor e escala, e suspenda outras compilações ou
 medições durante o ensaio. Um gerenciador de janelas pode substituir o tamanho
 solicitado; o relatório registra o tamanho efetivo antes e depois de cada carga.
+
+## Executar no macOS
+
+No macOS o mesmo comparador usa `--backend macos` (padrão quando
+`sys.platform == "darwin"`). Kokuban abre pelo executável release com
+`KOKUBAN_SHELL` apontando para o driver Python; Alacritty, Kitty e Ghostty
+recebem `-e` e as mesmas configurações isoladas do Linux, com
+`macos_quit_when_last_window_closed`/`quit-after-last-window-closed` para que o
+processo termine junto com o driver. `terminal` seleciona o Terminal.app: um
+AppleScript (`do script`) abre uma janela no shell de login do usuário, aplica
+`Menlo`, o tamanho de fonte, `number of columns` e `number of rows` e devolve o
+`tty`; ao final a janela é fechada com `saving no`. O Terminal.app é opcional e
+só entra com `--terminals ... terminal`; Ghostty ausente é apenas anotado em
+`skipped_terminals` quando não foi pedido explicitamente.
+
+```sh
+cargo build --locked --release
+python3 scripts/compare-terminal-performance.py \
+  --kokuban "$PWD/target/release/kokuban" --backend macos \
+  --terminals kokuban alacritty kitty terminal \
+  --samples 5 --bytes 16777216 --match-cell-size \
+  --environment-note 'Modelo, macOS, monitores/escala e gerenciador de janelas' \
+  --output-dir /tmp/kokuban-comparison-macos
+```
+
+Diferenças em relação ao Linux, todas registradas em `report.json` e
+`summary.json`:
+
+- **Células em pixels não são igualadas.** O app macOS do Kokuban não informa
+  `ws_xpixel`/`ws_ypixel`; `--match-cell-size` faz um único pré-voo por
+  terminal (`cell_size_calibration.mode = "rows_columns"`) que exige a grade
+  pedida (80×24) e anota os pixels observados dos demais. A fonte é Menlo com o
+  mesmo número para todos (`--font-pixels`, 14 por padrão): no macOS um ponto é
+  um pixel lógico, então não há conversão 96/72 dpi. A equivalência visual
+  continua não verificada.
+- **CPU/RSS do Terminal.app são deltas do único processo `Terminal`**, que
+  hospeda todas as janelas abertas, e não de um processo novo por amostra como
+  nos outros terminais. Histórico e cores seguem o perfil do usuário; na tela
+  principal o relatório marca a comparação como não equivalente.
+- `cpu_affinity` é `null`, `hardware` vem de `sysctl machdep.cpu.brand_string`,
+  `displays` de `system_profiler SPDisplaysDataType` e `font_match` do
+  `fc-match` quando instalado (o Fontconfig não descreve a resolução CoreText).
+  `--thread-cpu` é recusado porque lê `/proc`.
+- Além de `report.json`, o diretório recebe `summary.json` (mesmo esquema do
+  pacote auditado: `terminal_summaries.<terminal>.workloads.<carga>.mib_per_second`)
+  e `summary-<terminal>.json` com as amostras sem os logs. O gráfico aceita
+  `scripts/render-comparison-chart.py --summary ... --output ... --title ...`.
+
+Um gerenciador de janelas em mosaico invalida o ensaio: a primeira leitura de
+geometria acontece após a estabilização, e nessa altura a janela já foi
+redimensionada. Com o AeroSpace, pause-o (`aerospace enable off` … `aerospace
+enable on`) ou acrescente uma regra `on-window-detected` com `layout floating`
+para os terminais medidos antes de rodar.
+
+### Tentativa de 2026-10-31 neste MacBook (sem números publicados)
+
+MacBook Air M4 2025, macOS 26.2, monitor interno 2940×1912@2x e externo
+1920×1080, AeroSpace ativo sem regras de flutuação. Kokuban `0.4.0` (release
+local desta branch), Alacritty `0.17.0 (94e7c88)` e Terminal.app `2.15` foram
+identificados; o `kitty` do Homebrew é um wrapper para `/Applications/kitty.app`,
+que não existe (`version_failed`), e Ghostty não está instalado. Nada foi
+instalado. O comando acima com os quatro terminais parou na verificação de
+versões; sem o kitty, o pré-voo do Kokuban observou 23×75 (e 58×106 em outra
+tentativa) em vez de 80×24 porque o AeroSpace colocou a janela no mosaico antes
+da leitura, e a calibração falhou antes de qualquer amostra cronometrada.
+O Terminal.app abriu e fechou pelo AppleScript sem pedir permissão de
+Automação. Nenhuma medição foi publicada; repetir com o AeroSpace pausado ou
+com regra de flutuação e com um `kitty.app` presente.
 
 ## Executar a comparação de processamento no CI
 

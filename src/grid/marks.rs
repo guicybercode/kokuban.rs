@@ -8,6 +8,8 @@ pub enum PromptMarkKind {
 
 #[derive(Debug, Clone)]
 pub struct PromptMark {
+    // Only the macOS window navigates prompts; Linux records marks without a UI yet.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub kind: PromptMarkKind,
     pub absolute_row: usize,
 }
@@ -31,6 +33,7 @@ impl MarkIndex {
     }
 
     /// Find the nearest PromptStart mark ABOVE (strictly less than) the given row.
+    #[cfg(any(target_os = "macos", test))]
     pub fn prev_prompt(&self, current_row: usize) -> Option<usize> {
         // marks are in insertion order (monotonically increasing)
         // binary search for the last mark < current_row
@@ -45,6 +48,7 @@ impl MarkIndex {
     }
 
     /// Find the nearest PromptStart mark BELOW (strictly greater than) the given row.
+    #[cfg(any(target_os = "macos", test))]
     pub fn next_prompt(&self, current_row: usize) -> Option<usize> {
         for mark in &self.marks {
             if mark.absolute_row > current_row && mark.kind == PromptMarkKind::PromptStart {
@@ -55,6 +59,7 @@ impl MarkIndex {
     }
 
     /// Get all PromptStart absolute rows that are currently visible.
+    #[cfg(any(target_os = "macos", test))]
     pub fn visible_prompt_rows(
         &self,
         scroll_offset: usize,
@@ -74,10 +79,6 @@ impl MarkIndex {
             }
         }
         rows
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.marks.is_empty()
     }
 }
 

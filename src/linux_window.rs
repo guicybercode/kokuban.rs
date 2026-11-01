@@ -381,6 +381,8 @@ struct LinuxWindow {
 }
 
 impl LinuxWindow {
+    // Window construction takes every subsystem handle once; a builder is not worth it.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         colors: TerminalColors,
         palette_overrides: PaletteOverrides,
