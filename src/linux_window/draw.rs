@@ -178,6 +178,7 @@ pub(super) fn underline_anchor_y(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_cell_underline(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -201,6 +202,7 @@ pub(super) fn draw_cell_underline(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_cell_underline_in_band(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -314,6 +316,7 @@ pub(super) fn draw_images(
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_grid_snapshot_with_images(
     frame: &mut [u32],
     frame_size: (u32, u32),
@@ -337,6 +340,7 @@ pub(super) fn draw_grid_snapshot_with_images(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn draw_grid_snapshot_in_band(
     frame: &mut [u32],
     frame_size: (u32, u32),

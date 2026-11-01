@@ -269,14 +269,12 @@ fn layout_ime_preedit_with_mode(
                 column = column.min(columns - 1);
             }
         }
-        if width != 0 {
-            if width_usize > columns.saturating_sub(column) {
-                if auto_wrap {
-                    row = row.saturating_add(1);
-                    column = 0;
-                } else {
-                    renderable = false;
-                }
+        if width != 0 && width_usize > columns.saturating_sub(column) {
+            if auto_wrap {
+                row = row.saturating_add(1);
+                column = 0;
+            } else {
+                renderable = false;
             }
         }
         if preedit

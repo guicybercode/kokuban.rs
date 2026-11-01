@@ -282,6 +282,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_mouse_wheel_with<W>(
     grid: &Mutex<Grid>,
     pointer_position: Option<PhysicalPosition<f64>>,
