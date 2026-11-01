@@ -21,6 +21,12 @@ pub struct PaneRenderData<'a> {
     /// Busca aberta neste painel; os resultados são destacados e a consulta
     /// aparece na barra de status.
     pub search: Option<&'a SearchState>,
+    /// Text being composed by the input method (macOS IME); drawn at the
+    /// cursor with an underline and never written to the grid.
+    pub preedit: Option<&'a str>,
+    /// Underline cells that carry an OSC 8 hyperlink (while the modifier that
+    /// opens links is held).
+    pub underline_links: bool,
 }
 
 /// Which status bar segments `[status_bar]` enables.

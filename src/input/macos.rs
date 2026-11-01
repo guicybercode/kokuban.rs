@@ -210,7 +210,7 @@ fn encode_macos_kitty_key(
     )
 }
 
-fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<TerminalKey> {
+pub(crate) fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<TerminalKey> {
     match key_code {
         36 => Some(TerminalKey::Enter),
         51 => Some(TerminalKey::Backspace),

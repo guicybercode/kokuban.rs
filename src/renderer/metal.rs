@@ -431,6 +431,16 @@ impl MetalRenderer {
                     }
                 }
 
+                // Hyperlink hint: while the open-link modifier is held, cells that
+                // carry an OSC 8 target get a plain underline in the text color.
+                if pane.underline_links && cell.underline_style == UnderlineStyle::None {
+                    let retained_row = grid.scrollback_len().saturating_sub(grid.scroll_offset) + row;
+                    if grid.hyperlink_at_retained(retained_row, col).is_some() {
+                        let ul_y = y0 + atlas.ascent + 2.0;
+                        Self::add_rect(vertices, x0, ul_y, x1, ul_y + line_thickness, white_u, white_v, fg_packed);
+                    }
+                }
+
                 // Styled underlines
                 if cell.underline_style != UnderlineStyle::None {
                     let ul_color = match cell.underline_color {
@@ -475,6 +485,39 @@ impl MetalRenderer {
                             }
                         }
                         UnderlineStyle::None => {}
+                    }
+                }
+            }
+        }
+
+        // IME preedit: composed-but-uncommitted text drawn over the cursor
+        // cell with an underline, so the user sees what the input method
+        // will insert. It never touches the grid.
+        if let Some(preedit) = pane.preedit.filter(|text| !text.is_empty()) {
+            if grid.scroll_offset == 0 {
+                let crow = grid.cursor_row;
+                if let Some(ccol) = grid.screen_cursor_col().filter(|_| crow < grid.rows()) {
+                    use unicode_width::UnicodeWidthChar;
+                    let (fr, fg_, fb) = self.colors.resolve_foreground(Color::Default, false);
+                    let (br, bg_, bb) = self.colors.default_background();
+                    let fg = Self::pack_color(fr, fg_, fb, 255);
+                    let bgc = Self::pack_color(br, bg_, bb, 255);
+                    let y0 = rect.y + crow as f32 * cell_h;
+                    let max_x = rect.x + grid.cols() as f32 * cell_w;
+                    let mut x = rect.x + ccol as f32 * cell_w;
+                    let start_x = x;
+                    if y0 + cell_h <= rect.y + grid_height {
+                        for c in preedit.chars() {
+                            let cells = c.width().unwrap_or(1).max(1) as f32;
+                            if x + cells * cell_w > max_x {
+                                break;
+                            }
+                            Self::add_rect(vertices, x, y0, x + cells * cell_w, y0 + cell_h, white_u, white_v, bgc);
+                            self.render_char(c, x, y0, fg, bgc, atlas, vertices);
+                            x += cells * cell_w;
+                        }
+                        let underline_h = (cell_h / 12.0).max(1.0).round();
+                        Self::add_rect(vertices, start_x, y0 + cell_h - underline_h, x, y0 + cell_h, white_u, white_v, fg);
                     }
                 }
             }
