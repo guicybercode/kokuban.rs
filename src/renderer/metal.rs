@@ -113,6 +113,9 @@ impl MetalRenderer {
         device: Retained<ProtocolObject<dyn MTLDevice>>,
         colors: TerminalColors,
     ) -> Self {
+        // SAFETY: Metal object creation on a valid device; the shader source is
+        // a static string, every descriptor is fully populated before it is
+        // handed to the device, and failures panic instead of yielding null.
         unsafe {
             let command_queue = device.newCommandQueue().expect("Failed to create command queue");
 
@@ -271,6 +274,8 @@ impl MetalRenderer {
         )
     }
 
+    // Per-pane draw inputs mirror the shader uniforms; a struct is a separate refactor.
+    #[allow(clippy::too_many_arguments)]
     fn build_pane_vertices(
         &self,
         pane: &PaneRenderData,
@@ -514,6 +519,8 @@ impl MetalRenderer {
         }
     }
 
+    // Two corners plus UV and color: a quad helper, not worth a struct.
+    #[allow(clippy::too_many_arguments)]
     fn add_rect(vertices: &mut Vec<Vertex>, x0: f32, y0: f32, x1: f32, y1: f32, u: f32, v: f32, color: u32) {
         vertices.push(Vertex::new(x0, y0, u, v, color, color));
         vertices.push(Vertex::new(x1, y0, u, v, color, color));
@@ -678,6 +685,8 @@ impl MetalRenderer {
         self.render_char('■', indicator_x, text_y, indicator_color, bg, atlas, vertices);
     }
 
+    // Glyph position, colors and atlas are all needed per call.
+    #[allow(clippy::too_many_arguments)]
     fn render_char(
         &self,
         c: char,
@@ -891,6 +900,12 @@ impl MetalRenderer {
             return;
         }
 
+        // SAFETY: both buffers are StorageModeShared, so `contents()` is a
+        // CPU-visible mapping of the whole buffer: `needed <= length()` after
+        // the resize check and the uniform buffer holds at least two f32. The
+        // atlas region matches `rgba_pixels` (width * height * 4 bytes) and
+        // `replaceRegion` copies synchronously. Nothing fences this CPU write
+        // against the previous frame's GPU reads of the same buffers.
         unsafe {
             let needed = all_vertices.len() * std::mem::size_of::<Vertex>();
             if needed > self.vertex_buffer.length() {
@@ -1143,6 +1158,8 @@ impl MetalRenderer {
         }
     }
 
+    // Same inputs as `render_char` plus the overlay alpha.
+    #[allow(clippy::too_many_arguments)]
     fn render_char_with_alpha(
         &self,
         c: char,

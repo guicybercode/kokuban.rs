@@ -25,8 +25,8 @@ pub(crate) fn option_acts_as_meta(modifiers: NSEventModifierFlags, option_as_alt
         OptionAsAlt::Both => true,
         OptionAsAlt::None => false,
         // Without device bits (synthetic events) fall back to Meta.
-        OptionAsAlt::Left => left || (!left && !right),
-        OptionAsAlt::Right => right || (!left && !right),
+        OptionAsAlt::Left => left || !right,
+        OptionAsAlt::Right => right || !left,
     }
 }
 

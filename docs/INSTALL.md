@@ -119,7 +119,7 @@ To work on the development version, clone `main` instead; see [CONTRIBUTING.md](
 KOKUBAN_SHELL=/bin/bash ./target/release/kokuban
 ```
 
-Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It searches the launch directory and then the user configuration directory described below. This minimal configuration keeps the platform's default font and disables Kitty file transfers:
+Kokuban selects `KOKUBAN_SHELL`, then `SHELL`, then `/bin/sh`. It searches the launch directory and then the user configuration directory described below. Settings that run a program or open local files (`[notifications] command`, `[images.kitty] allow_file_transfer`) are only read from the user configuration directory; a `kokuban.toml` in the launch directory can change appearance, window and keybinds, and those two fields are ignored there with a warning. This minimal configuration keeps the platform's default font and disables Kitty file transfers:
 
 ```toml
 [font]
@@ -169,7 +169,7 @@ before copying explicit colors or a font family into your configuration.
 - **Missing Linux library:** install the runtime packages above. Libraries opened dynamically may not appear in `ldd` output.
 - **Missing font:** install `fonts-dejavu-core` on Linux. Install `fonts-noto-color-emoji` for the emoji fallback exercised by CI. macOS includes Menlo and Apple Color Emoji.
 - **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
-- **Configuration seems ignored:** a local `kokuban.toml` takes priority over the user configuration file. Settings are read when a window opens; the Omarchy palette has its own live reload. Invalid configuration falls back to defaults and logs a warning.
+- **Configuration seems ignored:** a local `kokuban.toml` takes priority over the user configuration file, except for `[notifications] command` and `[images.kitty] allow_file_transfer`, which are never honored from the launch directory. Settings are read when a window opens; the Omarchy palette has its own live reload. Invalid configuration falls back to defaults and logs a warning.
 
 ## Application icon
 
@@ -226,4 +226,4 @@ max_image_size_mb = 16
 allow_file_transfer = false
 ```
 
-These are example limits; defaults remain 256 MiB for the cache and 50 MiB per Kitty upload. `allow_file_transfer = false` keeps transfers in the terminal byte stream, including over SSH. Set `images.enabled = false` to disable both image protocols. Kokuban starts the shell configured through `KOKUBAN_SHELL` or `SHELL`; SSH on Linux runs through the system's `ssh` command in that shell.
+These are example limits; defaults remain 256 MiB for the cache and 50 MiB per Kitty upload. `allow_file_transfer = false` keeps transfers in the terminal byte stream, including over SSH; a launch-directory `kokuban.toml` always behaves as if it were `false`. Set `images.enabled = false` to disable both image protocols. Kokuban starts the shell configured through `KOKUBAN_SHELL` or `SHELL`; SSH on Linux runs through the system's `ssh` command in that shell.

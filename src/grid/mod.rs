@@ -140,6 +140,8 @@ pub enum CursorShape {
 #[derive(Debug, Clone, Copy)]
 pub struct CursorStyle {
     pub shape: CursorShape,
+    /// Parsed from DECSCUSR; no renderer blinks the cursor yet.
+    #[allow(dead_code)]
     pub blinking: bool,
 }
 
@@ -382,7 +384,9 @@ impl Grid {
     }
 
     pub fn scrollback_max(&self) -> usize { self.scrollback_max }
+    #[cfg(any(target_os = "linux", test))]
     pub(crate) fn selection_revision(&self) -> u64 { self.selection_revision }
+    #[cfg(any(target_os = "linux", test))]
     pub(crate) fn screen_revision(&self) -> u64 { self.screen_revision }
 
     /// Iterate every placement reference for cache retention, including a hidden primary screen.
@@ -404,6 +408,7 @@ impl Grid {
     }
 
     pub(crate) fn title(&self) -> &str { &self.title }
+    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn title_revision(&self) -> u64 { self.title_revision }
 
     pub(crate) fn set_title(&mut self, title: &str) {
@@ -430,6 +435,7 @@ impl Grid {
         *self = reset;
     }
 
+    #[cfg(test)]
     pub fn scrollback_cell(&self, row: usize, col: usize) -> char {
         self.scrollback_cell_data(row, col).c
     }

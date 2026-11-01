@@ -139,7 +139,13 @@ impl Pty {
             environment.iter().map(|entry| entry.as_ptr()).collect();
         environment_ptrs.push(std::ptr::null());
 
+        // SAFETY: every allocation the child needs (argv/env pointer arrays,
+        // descriptors) exists before fork; the child only calls
+        // async-signal-safe functions in `exec_child` until execve or `_exit`,
+        // which is what fork in a multithreaded process requires.
         match unsafe { fork() } {
+            // SAFETY: in the child the descriptors and NUL-terminated pointer
+            // arrays prepared above are valid until execve replaces the image.
             Ok(ForkResult::Child) => unsafe {
                 exec_child(
                     master.as_raw_fd(),
@@ -186,6 +192,7 @@ impl Pty {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn master_fd(&self) -> RawFd {
         self.master().as_raw_fd()
     }
@@ -266,6 +273,7 @@ impl Pty {
         }
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
         self.resize_with_pixels(cols, rows, 0, 0)
     }
@@ -287,6 +295,8 @@ impl Pty {
         };
         resize_with_ioctl(
             &win_size,
+            // SAFETY: `master()` is an open descriptor owned by this Pty and
+            // `size` points to a valid `winsize` for the duration of the call.
             |size| unsafe { libc::ioctl(self.master().as_raw_fd(), libc::TIOCSWINSZ, size) },
             std::io::Error::last_os_error,
         )
@@ -728,6 +738,8 @@ fn prepare_child_fd(fd: OwnedFd) -> Result<OwnedFd, PtyError> {
 
     let duplicated = nix::fcntl::fcntl(fd.as_raw_fd(), nix::fcntl::FcntlArg::F_DUPFD_CLOEXEC(3))?;
     drop(fd);
+    // SAFETY: `duplicated` was just returned by F_DUPFD_CLOEXEC and the
+    // original owner is dropped, so this OwnedFd is its sole owner.
     Ok(unsafe { OwnedFd::from_raw_fd(duplicated) })
 }
 
@@ -1002,6 +1014,8 @@ fn wait_for_cleanup(pid: Pid, foreground_group: Option<Pid>, timeout: Duration) 
 }
 
 fn process_group_exists(group: Pid) -> bool {
+    // SAFETY: signal 0 only probes whether the process group exists; no
+    // signal is delivered and no memory is touched.
     let result = unsafe { libc::kill(-group.as_raw(), 0) };
     result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
@@ -1015,6 +1029,12 @@ fn process_groups_alive(pid: Pid, foreground_group: Option<Pid>) -> bool {
         .any(process_group_exists)
 }
 
+// SAFETY (contract): must run in the forked child between fork and execve.
+// The caller guarantees the four descriptors are open, that `program`,
+// `argv` and `environment` are NUL-terminated strings / null-terminated
+// arrays that stay alive, and this function only makes async-signal-safe
+// calls (close, setsid, ioctl, dup2, signal, sigprocmask, execve, write,
+// _exit) because other threads' locks may be held in the parent image.
 unsafe fn exec_child(
     master_fd: RawFd,
     slave_fd: RawFd,
@@ -1024,6 +1044,8 @@ unsafe fn exec_child(
     argv: &[*const libc::c_char],
     environment: &[*const libc::c_char],
 ) -> ! {
+    // SAFETY: see the contract above; the pointers come from CStrings and Vecs
+    // that the parent built before fork and that the child's copy still owns.
     unsafe {
         libc::close(master_fd);
         libc::close(error_reader_fd);
@@ -1055,7 +1077,11 @@ unsafe fn exec_child(
     }
 }
 
+// SAFETY (contract): child-only, after fork; `error_writer_fd` must be the
+// open status pipe. Only `write`, errno and `_exit` are used (async-signal-safe).
 unsafe fn child_setup_failed(error_writer_fd: RawFd, stage: u8) -> ! {
+    // SAFETY: `stage` is a one-byte stack slice that outlives the write, and
+    // `_exit` never returns, so no destructor runs in the child.
     unsafe {
         write_child_stage_with(stage, |stage| {
             let written = libc::write(error_writer_fd, stage.as_ptr().cast(), stage.len());
@@ -1083,13 +1109,17 @@ where
     }
 }
 
+// SAFETY (contract): reads the calling thread's errno; call it right after
+// the failing libc call, before anything else can overwrite errno.
 #[inline(always)]
 unsafe fn child_errno() -> libc::c_int {
+    // SAFETY: `__error()` returns a valid pointer to the thread's errno slot.
     #[cfg(target_os = "macos")]
     unsafe {
         *libc::__error()
     }
 
+    // SAFETY: `__errno_location()` returns a valid pointer to the thread's errno slot.
     #[cfg(target_os = "linux")]
     unsafe {
         *libc::__errno_location()
@@ -1165,6 +1195,7 @@ mod tests {
     }
 
     fn process_exists(pid: nix::unistd::Pid) -> bool {
+        // SAFETY: signal 0 only probes for existence; nothing is delivered.
         let result = unsafe { libc::kill(pid.as_raw(), 0) };
         result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
@@ -1194,6 +1225,8 @@ mod tests {
                 ws_ypixel: 0,
             };
             assert_eq!(
+                // SAFETY: the master fd is open and `actual` is a valid
+                // `winsize` out-parameter for the duration of the call.
                 unsafe { libc::ioctl(pty.master_fd(), libc::TIOCGWINSZ, &mut actual) },
                 0
             );

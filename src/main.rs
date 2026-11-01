@@ -9,6 +9,8 @@ mod graphics;
 mod glyph_atlas;
 mod grid;
 mod input;
+// Pane layout, search and the render scene are consumed by the macOS window only.
+#[cfg(any(target_os = "macos", test))]
 mod layout;
 mod launch_options;
 #[cfg(target_os = "linux")]
@@ -22,7 +24,9 @@ mod palette;
 mod pane;
 mod parser;
 mod pty;
+#[cfg(target_os = "macos")]
 mod render_scene;
+#[cfg(any(target_os = "macos", test))]
 mod search;
 mod selection;
 #[cfg_attr(target_os = "macos", allow(dead_code))]

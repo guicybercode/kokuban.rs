@@ -1,3 +1,5 @@
+// `pane::pane::Pane` is the leaf; the parent module owns the tree.
+#[allow(clippy::module_inception)]
 pub mod pane;
 
 use crate::graphics::{retain_unreferenced_image_ids, ImageId};
@@ -20,8 +22,6 @@ pub struct PaneTree {
     pub focused: PaneId,
     next_id: PaneId,
     scrollback_max: usize,
-    default_cols: u16,
-    default_rows: u16,
     kitty_options: KittyHandlerOptions,
     graphics_support: GraphicsSupport,
     on_input_failed: InputFailureNotifier,
@@ -74,8 +74,6 @@ impl PaneTree {
             focused: id,
             next_id: 2,
             scrollback_max,
-            default_cols: cols,
-            default_rows: rows,
             kitty_options,
             graphics_support,
             on_input_failed,
@@ -105,6 +103,7 @@ impl PaneTree {
         ids
     }
 
+    #[cfg(test)]
     pub fn pane_count(&self) -> usize {
         self.panes.len()
     }

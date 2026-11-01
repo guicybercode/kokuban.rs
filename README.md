@@ -105,7 +105,7 @@ Linux clipboard and scrollback inputs, and the configurable macOS pane, zoom and
 
 ## Configuration
 
-Kokuban reads `kokuban.toml` in the launch directory first, then `$XDG_CONFIG_HOME/kokuban/kokuban.toml` (or `$HOME/.config/kokuban/kokuban.toml`); the first existing file wins and files are not merged. Invalid or missing configuration falls back to the defaults in `src/config.rs`; see the annotated [kokuban.toml](kokuban.toml) example in the repository root.
+Kokuban reads `kokuban.toml` in the launch directory first, then `$XDG_CONFIG_HOME/kokuban/kokuban.toml` (or `$HOME/.config/kokuban/kokuban.toml`); the first existing file wins and files are not merged. A `kokuban.toml` in the launch directory is honored for appearance, window and keybind settings only: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored there (with a warning in the log) and are read only from your own `~/.config/kokuban/kokuban.toml`. Invalid or missing configuration falls back to the defaults in `src/config.rs`; see the annotated [kokuban.toml](kokuban.toml) example in the repository root.
 
 ```toml
 [font]

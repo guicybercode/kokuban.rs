@@ -230,7 +230,6 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         sumi_light: ColorConfig::parse_hex(&config.theme.chrome.sumi_light),
         sumi_ghost: ColorConfig::parse_hex(&config.theme.chrome.sumi_ghost),
         hanko_red: ColorConfig::parse_hex(&config.theme.chrome.hanko_red),
-        hanko_dim: ColorConfig::parse_hex(&config.theme.chrome.hanko_dim),
     };
 
     let keybinds = KeybindMap::from_config(&config.keybind);
@@ -302,6 +301,9 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         | NSWindowStyleMask::Miniaturizable
         | NSWindowStyleMask::Resizable;
 
+    // SAFETY: NSWindow's designated initializer runs once on a fresh
+    // allocation, on the main thread (`mtm`); rect, style mask and backing
+    // type are plain values and the window is retained by the returned handle.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
             mtm.alloc(),
@@ -472,6 +474,10 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
 }
 
 fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
+    // SAFETY: every call is an AppKit message send on the main thread (`mtm`)
+    // with valid, retained NSString/NSMenu arguments. The selectors are
+    // resolved by AppKit through the responder chain at click time, so no
+    // dangling target is stored.
     unsafe {
         let menu_bar = NSMenu::new(mtm);
         let app_menu_item = NSMenuItem::new(mtm);
