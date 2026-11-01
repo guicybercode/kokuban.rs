@@ -32,7 +32,8 @@ pub struct Pty {
     master: Option<OwnedFd>,
     pub child_pid: nix::unistd::Pid,
     /// Basename of the program started in this PTY (shell or `-e` command),
-    /// shown in the status bar.
+    /// shown in the macOS status bar; the Linux window has no status bar yet.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub program_name: String,
     output_lock: Mutex<()>,
 }
