@@ -3,6 +3,7 @@
 from contextlib import redirect_stdout
 import hashlib
 import io
+import os
 import json
 from pathlib import Path
 import runpy
@@ -309,7 +310,8 @@ class MacosBackendTests(unittest.TestCase):
         self.assertIn('tell application "Terminal"', script)
         self.assertIn(f'do script "exec {RUNNER["sys"].executable} ', script)
         self.assertIn(f"--child-dir {self.directory}", script)
-        self.assertIn('set font name of driverTab to "Menlo"', script)
+        # The font follows the module default, which differs between macOS and the Linux CI host.
+        self.assertIn(f'set font name of driverTab to "{RUNNER["FONT"]}"', script)
         self.assertIn("set font size of driverTab to 14\n", script)
         self.assertIn("set number of columns of driverTab to 80", script)
         self.assertIn("set number of rows of driverTab to 24", script)
@@ -457,7 +459,9 @@ class MacosBackendTests(unittest.TestCase):
             ["--match-cell-size", "--terminals", "kokuban", "alacritty", "terminal"])
         self.assertEqual(status, 0, report["comparability"])
         self.assertEqual(report["backend"], "macos")
-        self.assertIsNone(report["cpu_affinity"])
+        # Affinity is only recorded where the OS exposes it (absent on macOS, present on the Linux CI host).
+        affinity = getattr(os, "sched_getaffinity", None)
+        self.assertEqual(report["cpu_affinity"], sorted(affinity(0)) if affinity else None)
         self.assertEqual(report["hardware"]["command"], ["sysctl", "-n", "machdep.cpu.brand_string"])
         self.assertIn("displays", report)
         calibration = report["cell_size_calibration"]
