@@ -1081,6 +1081,8 @@ define_class!(
                                     log::info!("Scale factor changed to {new_scale}");
                                     let mut atlas = state.atlas.lock().unwrap();
                                     let mut tree = state.pane_tree.lock().unwrap();
+                                    let mut replacement = replacement;
+                                    replacement.set_ligatures(atlas.ligatures_enabled());
                                     *atlas = replacement;
                                     update_pane_geometry(
                                         &mut tree,

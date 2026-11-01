@@ -1185,3 +1185,25 @@ mod tests {
         assert!(!atlas.dirty);
     }
 }
+
+#[cfg(test)]
+mod ligature_tests {
+    use super::*;
+
+    #[test]
+    fn run_glyphs_rasterize_into_cell_sized_entries() {
+        let Ok(mut atlas) = GlyphAtlas::new("JetBrainsMono Nerd Font Mono", 16.0, 1.0) else {
+            return;
+        };
+        atlas.set_ligatures(true);
+        let text: Vec<char> = "  -> => <- <= >= != == === !== := <> </> <!-- --> ... :: ;; && || |> <| >> <<".chars().collect();
+        let glyphs = atlas.row_run_glyphs(text.len(), |c| (text[c], 0));
+        eprintln!("{} glifos de run; cell={}x{}", glyphs.len(), atlas.cell_width, atlas.cell_height);
+        for glyph in glyphs.iter() {
+            let entry = atlas.get_or_insert_run_glyph(glyph);
+            assert!(entry.pixel_w as f32 <= atlas.cell_width * 4.0, "{glyph:?} {entry:?}");
+            assert!(entry.pixel_h as f32 <= atlas.cell_height * 2.0, "{glyph:?} {entry:?}");
+        }
+        eprintln!("cursor=({}, {}) row_height={}", atlas.cursor_x, atlas.cursor_y, atlas.row_height);
+    }
+}
