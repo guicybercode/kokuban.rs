@@ -3,9 +3,10 @@
 Pergunta do spike: vale trocar o rasterizador de CPU da janela Linux
 (softbuffer + `draw.rs`) por um apresentador GPU via wgpu, mantendo o caminho
 de software como fallback? Resultado: abstração `FramePresenter` em uso pelo
-caminho atual, apresentador wgpu completo e compilando, CI verde com o
-fallback, workflow de medição rodado em Mesa (sem GPU real) e recomendação ao
-fim deste documento.
+caminho atual, apresentador wgpu completo e compilando atrás da feature Cargo
+`gpu` (desligada por padrão; `[render] backend` padrão `"software"`), CI verde
+sem a feature, workflow de medição rodado em Mesa (sem GPU real) e
+recomendação ao fim deste documento.
 
 Branch: `spike/wgpu-linux` (PR #49). Tempo gasto: cerca de um dia de agente.
 Desenvolvido num Mac: o código Linux foi verificado por `cargo check`/`clippy`
@@ -42,16 +43,21 @@ present_frame (linux_window.rs)
   viraram `presenter: Option<Box<dyn FramePresenter>>`, `create_window` chama
   `create_presenter`, `present_frame` monta a cena e delega. O resto fica em
   arquivos novos para não colidir com o trabalho de múltiplos painéis.
+- Feature Cargo `gpu` (`Cargo.toml`): `wgpu` e `pollster` são opcionais no
+  alvo Linux; `gpu.rs`, o shader e o ramo `WgpuPresenter` só compilam com
+  `cargo build --features gpu`. Sem a feature, `backend = "gpu"` falha ao
+  iniciar com `kokuban was built without the gpu feature; rebuild with
+  --features gpu` e `auto` usa software.
 - Seleção do backend (`presenter.rs::create_presenter`): `[render] backend`
   (`config.rs`, tabela com `#[serde(default)]`) ou `KOKUBAN_RENDER`.
-  - `auto` (padrão): tenta o wgpu; cai para software se não há adapter, se a
+  - `software` (padrão): nunca cria instância wgpu.
+  - `auto`: tenta o wgpu; cai para software se não há adapter, se a
     criação do device falha, ou se o adapter é rasterizador de CPU
     (`DeviceType::Cpu` ou nome com llvmpipe/lavapipe/softpipe/swiftshader).
     Uma linha `Linux renderer: ...` em nível info registra a escolha e o motivo.
   - `gpu`: aceita qualquer adapter (inclusive lavapipe, é assim que a CI
     exercita o pipeline) e falha com `kokuban: failed to initialize Linux
     window: could not initialize the GPU renderer requested by ...`.
-  - `software`: nunca cria instância wgpu.
 
 ### O que o apresentador wgpu desenha
 
@@ -82,13 +88,15 @@ no cursor (`gpu.rs::tests`); a saída real do shader não tem teste.
 `COPY_SRC`, o quadro é copiado para um buffer mapeável e varrido por pixels
 diferentes do fundo (mesma verificação da CPU). Sem `COPY_SRC`
 (`visible_content = None`) o smoke **falha** com "could not verify the first
-frame" em vez de passar sem verificar. Os smokes existentes da CI rodam com
-`auto`, que cai para software por não haver GPU, e continuam verdes.
+frame" em vez de passar sem verificar. Os smokes existentes da CI (`ci.yml`)
+compilam sem a feature e rodam com o padrão `software`; continuam verdes e o
+grep de isolamento de dependências não muda.
 
 ## Pegada de dependências
 
-`cargo tree --target aarch64-unknown-linux-gnu`: 154 → 188 crates únicos
-(+34). Novos: wgpu, wgpu-core, wgpu-hal, wgpu-types, naga, naga-types,
+`cargo tree --target aarch64-unknown-linux-gnu`: 154 crates únicos sem a
+feature (igual à `main`; nenhum wgpu/naga/ash/glow/pollster/khronos-egl) → 188
+com `--features gpu` (+34). Novos com a feature: wgpu, wgpu-core, wgpu-hal, wgpu-types, naga, naga-types,
 wgpu-naga-bridge, wgpu-core-deps-windows-linux-android, ash, gpu-allocator,
 presser, glow, khronos-egl, renderdoc-sys, profiling, codespan-reporting,
 spirv, bit-set, bit-vec, half, ordered-float, hashbrown 0.17, foldhash 0.2,
@@ -101,13 +109,16 @@ precisa mudar. As bibliotecas do sistema (libvulkan, libEGL) são carregadas em
 tempo de execução (`ash` `loaded`, `khronos-egl` `dynamic`), então o binário
 não ganha dependências de link e segue rodando em máquinas sem Mesa.
 
-Tamanho do binário release: +5,46 MB (ver "Medições"; o Mac não linka o alvo
-Linux, o workflow mede).
+Tamanho do binário release: +5,46 MB só com `--features gpu`; sem a feature
+volta ao da `main` (ver "Medições"; o Mac não linka o alvo Linux, o workflow
+mede).
 
 ## Medições
 
-Workflow manual `.github/workflows/linux-gpu-smoke.yml` (também disparado pelo
-PR para mudanças no apresentador) em `ubuntu-24.04` com Mesa
+Workflow manual `.github/workflows/linux-gpu-smoke.yml` (`workflow_dispatch`;
+só aparece para o `gh workflow run` depois de estar na `main`; durante o spike
+foi disparado por um gatilho `pull_request` temporário) em `ubuntu-24.04`,
+build com `--features gpu`, Mesa
 (`mesa-vulkan-drivers` = lavapipe, `libgl1-mesa-dri` = llvmpipe):
 
 Primeira execução (run `41492287911`, commit `d568832`, artefato
@@ -122,7 +133,11 @@ Primeira execução (run `41492287911`, commit `d568832`, artefato
 | Weston headless `--use-pixman`, `gpu` | Vulkan lavapipe | quadro apresentado e verificado; saída 0 |
 
 Ou seja: o caminho wgpu apresenta no X11 e no Wayland (xdg-shell via winit)
-com os dois backends do wgpu, e o `auto` faz o que promete sem GPU.
+com os dois backends do wgpu, e o `auto` faz o que promete sem GPU. O run
+`41502844019`, já com a feature e o padrão `software`, repetiu os cinco
+cenários com o mesmo resultado (comparação: software 0,54 ms/quadro e 47 MiB,
+wgpu sobre lavapipe 4,9 ms/quadro e 174 MiB — o host da CI varia entre runs,
+a proporção não).
 
 `compare-render-backends.py`, binário release, 3 rodadas alternadas, 20 000
 linhas coloridas com pausa de 2 ms a cada 200 linhas, Xvfb 1280×900, janela
@@ -141,12 +156,19 @@ que o fallback do `auto` é obrigatório e que a montagem da cena na CPU por si
 só não aparece como gargalo nesse tamanho de janela (o wall é igual).
 
 Tamanho do binário release (x86_64, `lto = "fat"`, `codegen-units = 1`, run
-`41493246565`): `main` (`f0c9ca2`) 8 345 520 bytes → spike 13 806 696 bytes,
-**+5,46 MB (+65 %)**. É o custo de wgpu-core/hal, naga (parser WGSL e
-backends SPIR-V/GLSL) e ash/glow ligados estaticamente; sem `gles` cairia
-parte disso, e um `strip` no empacotamento não muda a proporção. Crates em
-`cargo tree -e normal` no x86_64: 173 → 221 linhas (154 → 188 nomes únicos no
-alvo aarch64 contado localmente).
+`41502844019`, commit `f413cbd`):
+
+| Build | `cargo tree -e normal` (linhas) | Binário release |
+| --- | --- | --- |
+| `main` (`f0c9ca2`) | 173 | 8 345 520 bytes |
+| spike sem a feature (build normal, o que a CI e um release levariam) | 173 | 8 362 176 bytes (**+16,7 KB**, a abstração e a seleção de backend) |
+| spike com `--features gpu` | 221 | 13 806 496 bytes (**+5,46 MB, +65 %**) |
+
+O custo com a feature é wgpu-core/hal, naga (parser WGSL e backends
+SPIR-V/GLSL) e ash/glow ligados estaticamente; sem `gles` cairia parte disso,
+e um `strip` no empacotamento não muda a proporção. O workflow falha se
+wgpu/naga/ash/glow aparecerem na árvore sem a feature. No alvo aarch64 contado
+localmente: 154 nomes únicos sem a feature (igual à `main`), 188 com.
 
 `scripts/compare-render-backends.py` roda o mesmo binário com
 `KOKUBAN_RENDER=software` e `=gpu`, uma carga de rolagem idêntica via `-e`, e
@@ -160,8 +182,9 @@ custo da montagem da cena, não o ganho de uma GPU real.
 
 - **Nenhum teste em hardware real.** Wayland (Hyprland/Sway/GNOME/KDE), X11
   com drivers proprietários, HiDPI com `ScaleFactorChanged` e janelas
-  redimensionadas só foram exercitados logicamente. O `auto` padrão coloca o
-  wgpu na frente de qualquer usuário com GPU assim que isto for mesclado.
+  redimensionadas só foram exercitados logicamente. Por isso o wgpu fica
+  atrás de `--features gpu` e o padrão é `software`: ninguém recebe o caminho
+  GPU sem pedir duas vezes (compilar e configurar).
 - **Custo de arranque em `auto`:** criar a instância wgpu (carregar libvulkan,
   enumerar ICDs, inicializar EGL) e descartá-la no fallback adiciona dezenas de
   milissegundos ao primeiro quadro em máquinas sem GPU.
@@ -189,19 +212,22 @@ custo da montagem da cena, não o ganho de uma GPU real.
 **GO condicional, em duas partes:**
 
 1. **GO para a abstração `FramePresenter` e para o apresentador wgpu como
-   opção explícita.** A separação cena/apresentação já paga por si: o
+   opt-in (`--features gpu` + `backend = "auto"|"gpu"`).** A separação
+   cena/apresentação já paga por si: o
    `present_frame` encolheu, o caminho de software ficou intacto (mesmos
    bytes, mesmos testes) e o trabalho de múltiplos painéis em
    `linux_window.rs` não precisa saber quem rasteriza. O wgpu compila, passa
    em clippy, apresenta e é verificável no X11 e no Wayland com Vulkan e GLES.
-2. **NO-GO para `auto` como padrão antes de medir em hardware real.** Nada
-   aqui rodou numa GPU; o único número comparável (lavapipe) é pior que o
-   software em CPU, RSS e cadência. Recomendação para mesclar: trocar o padrão
-   de `[render] backend` para `"software"` (uma linha em `config.rs` e no
-   `kokuban.toml`), manter `auto`/`gpu` como opt-in documentado e só promover
-   `auto` quando as medições abaixo existirem.
+2. **NO-GO para ligar a feature por padrão ou tornar `auto` o padrão antes de
+   medir em hardware real.** Nada aqui rodou numa GPU; o único número
+   comparável (lavapipe) é pior que o software em CPU, RSS e cadência. O PR já
+   reflete isso: feature desligada, padrão `"software"`, binário e árvore de
+   dependências dos builds normais iguais aos da `main`. Só promover (feature
+   no build de release, depois `auto` como padrão) quando as medições abaixo
+   existirem.
 
-Trabalho restante estimado para o GO completo (padrão `auto`):
+Trabalho restante estimado para o GO completo (feature no release, padrão
+`auto`):
 
 | Item | Estimativa |
 | --- | --- |
@@ -211,7 +237,7 @@ Trabalho restante estimado para o GO completo (padrão `auto`):
 | Testes de pixel compartilhados: renderizar a mesma cena pelos dois apresentadores num teste `ignore` que roda no workflow (readback já existe) e comparar com tolerância | 1 dia |
 | Tratamento de perda de device (`DeviceLost` → recriar ou cair para software em tempo de execução), redimensionamento sob `Outdated`, `ScaleFactorChanged` | 0,5 dia |
 | Medir e, se preciso, adiar a sondagem do `auto` (custo de arranque em máquinas sem GPU) | 0,5 dia |
-| Documentação de usuário (`docs/INSTALL.md`, `kokuban.toml`), CHANGELOG final, remover o gatilho `pull_request` do workflow | 0,5 dia |
+| Documentação de usuário (`docs/INSTALL.md`, `kokuban.toml`), CHANGELOG final, decidir se os artefatos de release Linux levam `--features gpu` | 0,5 dia |
 
 Total: cerca de 5–6 dias de agente além deste spike. Se as medições em
 hardware real não mostrarem ganho claro em janelas grandes ou com imagens, a
