@@ -7,8 +7,8 @@ use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::MouseTracking;
 use crate::input::keybind::{KeyModifiers, KeybindMap, PaneAction};
 use crate::input::macos::{
-    key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, option_acts_as_meta,
-    terminal_key_from_key_code, translate_key_event,
+    key_modifiers_from_appkit, key_name_from_key_code, mouse_button_with_appkit_modifiers,
+    option_acts_as_meta, terminal_key_from_key_code, translate_key_event,
 };
 use crate::input::mouse::{
     encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
@@ -71,11 +71,11 @@ enum MacKeyEquivalentRoute {
 }
 
 fn mac_key_equivalent_route(key_code: u16, modifiers: KeyModifiers) -> MacKeyEquivalentRoute {
-    if !modifiers.contains(KeyModifiers::CMD) {
+    if !modifiers.contains(KeyModifiers::SUPER) {
         return MacKeyEquivalentRoute::PassThrough;
     }
 
-    if modifiers == KeyModifiers::CMD {
+    if modifiers == KeyModifiers::SUPER {
         return match key_code {
             12 => MacKeyEquivalentRoute::Quit,
             8 => MacKeyEquivalentRoute::Copy,
@@ -84,7 +84,7 @@ fn mac_key_equivalent_route(key_code: u16, modifiers: KeyModifiers) -> MacKeyEqu
         };
     }
 
-    if key_code == 24 && modifiers == (KeyModifiers::CMD | KeyModifiers::SHIFT) {
+    if key_code == 24 && modifiers == (KeyModifiers::SUPER | KeyModifiers::SHIFT) {
         return MacKeyEquivalentRoute::ZoomIn;
     }
 
@@ -754,11 +754,17 @@ define_class!(
             }
 
             // Check configurable keybinds
-            let action = VIEW_STATE.with(|state| {
-                let state = state.borrow();
-                state
-                    .as_ref()
-                    .and_then(|s| s.keybinds.lookup(key_code, modifiers))
+            let characters = event
+                .charactersIgnoringModifiers()
+                .map(|characters| characters.to_string());
+            let key_name = key_name_from_key_code(key_code, characters.as_deref());
+            let action = key_name.and_then(|key_name| {
+                VIEW_STATE.with(|state| {
+                    let state = state.borrow();
+                    state
+                        .as_ref()
+                        .and_then(|s| s.keybinds.lookup(key_name, modifiers))
+                })
             });
 
             if let Some(action) = action {
@@ -2949,8 +2955,8 @@ mod tests {
 
     #[test]
     fn mac_key_equivalent_routes_require_exact_relevant_modifiers() {
-        let cmd = KeyModifiers::CMD;
-        let cmd_shift = KeyModifiers::CMD | KeyModifiers::SHIFT;
+        let cmd = KeyModifiers::SUPER;
+        let cmd_shift = KeyModifiers::SUPER | KeyModifiers::SHIFT;
 
         for (key_code, modifiers, expected) in [
             (12, cmd, MacKeyEquivalentRoute::Quit),

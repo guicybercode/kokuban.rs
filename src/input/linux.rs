@@ -1,10 +1,11 @@
+use super::keybind::KeyName;
 use super::keyboard::{
     encode_key_kitty_disambiguate, encode_terminal_key_with_modifiers, KittyKey, TerminalKey,
     TerminalKeyModifiers,
 };
 use crate::terminal_writer::TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
 use winit::event::{ElementState, KeyEvent};
-use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
 
 const MAX_IME_COMMIT_BYTES: usize = TERMINAL_INPUT_LOSSLESS_BYTE_HEADROOM;
@@ -192,6 +193,141 @@ fn encode_key_press_kitty(
     )
 }
 
+/// Logical key of a winit key event, for keybind lookup. `logical` should be
+/// the key without modifiers (`KeyEvent::key_without_modifiers`), so Shift
+/// never changes the character; non-Latin layouts fall back to the physical
+/// key's QWERTY position.
+// The Linux window dispatches keybinds once its pane port lands.
+#[allow(dead_code)]
+pub(crate) fn key_name_from_winit(logical: &Key, physical: PhysicalKey) -> Option<KeyName> {
+    match logical {
+        Key::Named(named) => key_name_from_named(*named),
+        Key::Character(text) => text
+            .chars()
+            .next()
+            .and_then(KeyName::from_char)
+            .or_else(|| key_name_from_physical(physical)),
+        Key::Unidentified(_) | Key::Dead(_) => key_name_from_physical(physical),
+    }
+}
+
+fn key_name_from_named(named: NamedKey) -> Option<KeyName> {
+    Some(match named {
+        NamedKey::ArrowUp => KeyName::Up,
+        NamedKey::ArrowDown => KeyName::Down,
+        NamedKey::ArrowLeft => KeyName::Left,
+        NamedKey::ArrowRight => KeyName::Right,
+        NamedKey::PageUp => KeyName::PageUp,
+        NamedKey::PageDown => KeyName::PageDown,
+        NamedKey::Home => KeyName::Home,
+        NamedKey::End => KeyName::End,
+        NamedKey::Tab => KeyName::Tab,
+        NamedKey::Escape => KeyName::Escape,
+        NamedKey::Enter => KeyName::Enter,
+        NamedKey::Backspace => KeyName::Backspace,
+        NamedKey::Space => KeyName::Space,
+        NamedKey::Insert => KeyName::Insert,
+        NamedKey::Delete => KeyName::Delete,
+        NamedKey::F1 => KeyName::F(1),
+        NamedKey::F2 => KeyName::F(2),
+        NamedKey::F3 => KeyName::F(3),
+        NamedKey::F4 => KeyName::F(4),
+        NamedKey::F5 => KeyName::F(5),
+        NamedKey::F6 => KeyName::F(6),
+        NamedKey::F7 => KeyName::F(7),
+        NamedKey::F8 => KeyName::F(8),
+        NamedKey::F9 => KeyName::F(9),
+        NamedKey::F10 => KeyName::F(10),
+        NamedKey::F11 => KeyName::F(11),
+        NamedKey::F12 => KeyName::F(12),
+        _ => return None,
+    })
+}
+
+fn key_name_from_physical(physical: PhysicalKey) -> Option<KeyName> {
+    let PhysicalKey::Code(code) = physical else {
+        return None;
+    };
+    Some(match code {
+        KeyCode::KeyA => KeyName::Char('a'),
+        KeyCode::KeyB => KeyName::Char('b'),
+        KeyCode::KeyC => KeyName::Char('c'),
+        KeyCode::KeyD => KeyName::Char('d'),
+        KeyCode::KeyE => KeyName::Char('e'),
+        KeyCode::KeyF => KeyName::Char('f'),
+        KeyCode::KeyG => KeyName::Char('g'),
+        KeyCode::KeyH => KeyName::Char('h'),
+        KeyCode::KeyI => KeyName::Char('i'),
+        KeyCode::KeyJ => KeyName::Char('j'),
+        KeyCode::KeyK => KeyName::Char('k'),
+        KeyCode::KeyL => KeyName::Char('l'),
+        KeyCode::KeyM => KeyName::Char('m'),
+        KeyCode::KeyN => KeyName::Char('n'),
+        KeyCode::KeyO => KeyName::Char('o'),
+        KeyCode::KeyP => KeyName::Char('p'),
+        KeyCode::KeyQ => KeyName::Char('q'),
+        KeyCode::KeyR => KeyName::Char('r'),
+        KeyCode::KeyS => KeyName::Char('s'),
+        KeyCode::KeyT => KeyName::Char('t'),
+        KeyCode::KeyU => KeyName::Char('u'),
+        KeyCode::KeyV => KeyName::Char('v'),
+        KeyCode::KeyW => KeyName::Char('w'),
+        KeyCode::KeyX => KeyName::Char('x'),
+        KeyCode::KeyY => KeyName::Char('y'),
+        KeyCode::KeyZ => KeyName::Char('z'),
+        KeyCode::Digit0 => KeyName::Char('0'),
+        KeyCode::Digit1 => KeyName::Char('1'),
+        KeyCode::Digit2 => KeyName::Char('2'),
+        KeyCode::Digit3 => KeyName::Char('3'),
+        KeyCode::Digit4 => KeyName::Char('4'),
+        KeyCode::Digit5 => KeyName::Char('5'),
+        KeyCode::Digit6 => KeyName::Char('6'),
+        KeyCode::Digit7 => KeyName::Char('7'),
+        KeyCode::Digit8 => KeyName::Char('8'),
+        KeyCode::Digit9 => KeyName::Char('9'),
+        KeyCode::Minus | KeyCode::NumpadSubtract => KeyName::Char('-'),
+        KeyCode::Equal => KeyName::Char('='),
+        KeyCode::NumpadAdd => KeyName::Char('+'),
+        KeyCode::BracketLeft => KeyName::Char('['),
+        KeyCode::BracketRight => KeyName::Char(']'),
+        KeyCode::Backslash => KeyName::Char('\\'),
+        KeyCode::Semicolon => KeyName::Char(';'),
+        KeyCode::Quote => KeyName::Char('\''),
+        KeyCode::Comma => KeyName::Char(','),
+        KeyCode::Period => KeyName::Char('.'),
+        KeyCode::Slash => KeyName::Char('/'),
+        KeyCode::Backquote => KeyName::Char('`'),
+        KeyCode::Space => KeyName::Space,
+        KeyCode::Enter | KeyCode::NumpadEnter => KeyName::Enter,
+        KeyCode::Tab => KeyName::Tab,
+        KeyCode::Escape => KeyName::Escape,
+        KeyCode::Backspace => KeyName::Backspace,
+        KeyCode::Insert => KeyName::Insert,
+        KeyCode::Delete => KeyName::Delete,
+        KeyCode::Home => KeyName::Home,
+        KeyCode::End => KeyName::End,
+        KeyCode::PageUp => KeyName::PageUp,
+        KeyCode::PageDown => KeyName::PageDown,
+        KeyCode::ArrowUp => KeyName::Up,
+        KeyCode::ArrowDown => KeyName::Down,
+        KeyCode::ArrowLeft => KeyName::Left,
+        KeyCode::ArrowRight => KeyName::Right,
+        KeyCode::F1 => KeyName::F(1),
+        KeyCode::F2 => KeyName::F(2),
+        KeyCode::F3 => KeyName::F(3),
+        KeyCode::F4 => KeyName::F(4),
+        KeyCode::F5 => KeyName::F(5),
+        KeyCode::F6 => KeyName::F(6),
+        KeyCode::F7 => KeyName::F(7),
+        KeyCode::F8 => KeyName::F(8),
+        KeyCode::F9 => KeyName::F(9),
+        KeyCode::F10 => KeyName::F(10),
+        KeyCode::F11 => KeyName::F(11),
+        KeyCode::F12 => KeyName::F(12),
+        _ => return None,
+    })
+}
+
 fn named_key_from_logical(logical_key: Key<&str>) -> Option<NamedKey> {
     match logical_key {
         Key::Named(named_key) => Some(named_key),
@@ -268,13 +404,15 @@ fn terminal_key_from_named(named_key: NamedKey, has_shift: bool) -> Option<Termi
 #[cfg(test)]
 mod tests {
     use super::{
-        encode_key_press, ime_commit_payload_with_limit, named_key_from_logical,
-        scrollback_action_for_key_event, should_forward_key_event, terminal_key_from_named,
-        ImeCommitPayload, LinuxKeyPress, ScrollbackAction, MAX_IME_COMMIT_BYTES,
+        encode_key_press, ime_commit_payload_with_limit, key_name_from_winit,
+        named_key_from_logical, scrollback_action_for_key_event, should_forward_key_event,
+        terminal_key_from_named, ImeCommitPayload, LinuxKeyPress, ScrollbackAction,
+        MAX_IME_COMMIT_BYTES,
     };
+    use crate::input::keybind::KeyName;
     use crate::input::keyboard::TerminalKey;
     use winit::event::ElementState;
-    use winit::keyboard::{Key, ModifiersState, NamedKey};
+    use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey, SmolStr};
 
     fn press<'a>(
         named_key: Option<NamedKey>,
@@ -916,6 +1054,81 @@ mod tests {
                 false,
                 false,
             ),
+            None
+        );
+    }
+
+    #[test]
+    fn key_names_come_from_the_unshifted_character_or_the_physical_key() {
+        let character = |text: &str| Key::Character(SmolStr::new(text));
+        let code = |code: KeyCode| PhysicalKey::Code(code);
+        // Letters are lowercased; digits and punctuation stay as typed.
+        assert_eq!(
+            key_name_from_winit(&character("a"), code(KeyCode::KeyA)),
+            Some(KeyName::Char('a'))
+        );
+        assert_eq!(
+            key_name_from_winit(&character("D"), code(KeyCode::KeyD)),
+            Some(KeyName::Char('d'))
+        );
+        assert_eq!(
+            key_name_from_winit(&character("="), code(KeyCode::Equal)),
+            Some(KeyName::Char('='))
+        );
+        assert_eq!(
+            key_name_from_winit(&character("-"), code(KeyCode::Minus)),
+            Some(KeyName::Char('-'))
+        );
+        assert_eq!(
+            key_name_from_winit(&character("0"), code(KeyCode::Digit0)),
+            Some(KeyName::Char('0'))
+        );
+        assert_eq!(
+            key_name_from_winit(&character(" "), code(KeyCode::Space)),
+            Some(KeyName::Space)
+        );
+        // Non-Latin layouts (Cyrillic "ф" on the A key) fall back to the position.
+        assert_eq!(
+            key_name_from_winit(&character("ф"), code(KeyCode::KeyA)),
+            Some(KeyName::Char('a'))
+        );
+        assert_eq!(
+            key_name_from_winit(&Key::Dead(Some('´')), code(KeyCode::Equal)),
+            Some(KeyName::Char('='))
+        );
+        assert_eq!(
+            key_name_from_winit(&character("ф"), PhysicalKey::Code(KeyCode::Fn)),
+            None
+        );
+
+        let named = [
+            (NamedKey::ArrowUp, KeyName::Up),
+            (NamedKey::ArrowDown, KeyName::Down),
+            (NamedKey::ArrowLeft, KeyName::Left),
+            (NamedKey::ArrowRight, KeyName::Right),
+            (NamedKey::PageUp, KeyName::PageUp),
+            (NamedKey::PageDown, KeyName::PageDown),
+            (NamedKey::Home, KeyName::Home),
+            (NamedKey::End, KeyName::End),
+            (NamedKey::Tab, KeyName::Tab),
+            (NamedKey::Escape, KeyName::Escape),
+            (NamedKey::Enter, KeyName::Enter),
+            (NamedKey::Backspace, KeyName::Backspace),
+            (NamedKey::Space, KeyName::Space),
+            (NamedKey::Insert, KeyName::Insert),
+            (NamedKey::Delete, KeyName::Delete),
+            (NamedKey::F1, KeyName::F(1)),
+            (NamedKey::F12, KeyName::F(12)),
+        ];
+        for (named_key, expected) in named {
+            assert_eq!(
+                key_name_from_winit(&Key::Named(named_key), code(KeyCode::Fn)),
+                Some(expected),
+                "{named_key:?}"
+            );
+        }
+        assert_eq!(
+            key_name_from_winit(&Key::Named(NamedKey::CapsLock), code(KeyCode::CapsLock)),
             None
         );
     }
