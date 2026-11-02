@@ -340,6 +340,70 @@ pub(super) fn draw_grid_snapshot_with_images(
     );
 }
 
+/// Area of the frame one pane paints into, in physical pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PaneViewport {
+    pub(super) origin: (u32, u32),
+    pub(super) size: (u32, u32),
+}
+
+impl PaneViewport {
+    pub(super) fn full(frame_size: (u32, u32)) -> Self {
+        Self {
+            origin: (0, 0),
+            size: frame_size,
+        }
+    }
+
+    pub(super) fn covers_frame(self, frame_size: (u32, u32)) -> bool {
+        self.origin == (0, 0) && self.size == frame_size
+    }
+
+    /// Viewport clipped to the frame; `None` when nothing of it is visible.
+    pub(super) fn clipped_to(self, frame_size: (u32, u32)) -> Option<Self> {
+        let width = self.size.0.min(frame_size.0.checked_sub(self.origin.0)?);
+        let height = self.size.1.min(frame_size.1.checked_sub(self.origin.1)?);
+        (width > 0 && height > 0).then_some(Self {
+            origin: self.origin,
+            size: (width, height),
+        })
+    }
+}
+
+/// Run `paint` on a canvas covering `viewport`, clipped to it, and leave the
+/// result in `frame`. A pane covering the whole frame paints in place, which
+/// keeps the single-pane band path byte-identical; any other viewport paints
+/// a scratch canvas that is then copied into its rectangle.
+pub(super) fn paint_pane_viewport<F>(
+    frame: &mut [u32],
+    frame_size: (u32, u32),
+    viewport: PaneViewport,
+    paint: F,
+) where
+    F: FnOnce(&mut [u32], (u32, u32)),
+{
+    let Some(viewport) = viewport.clipped_to(frame_size) else {
+        return;
+    };
+    let frame_len = usize::try_from(u64::from(frame_size.0) * u64::from(frame_size.1));
+    if frame_len.is_ok_and(|len| len > frame.len()) {
+        return;
+    }
+    if viewport.covers_frame(frame_size) {
+        paint(frame, frame_size);
+        return;
+    }
+    let (width, height) = (viewport.size.0 as usize, viewport.size.1 as usize);
+    let mut canvas = vec![0u32; width * height];
+    paint(&mut canvas, viewport.size);
+    let stride = frame_size.0 as usize;
+    let left = viewport.origin.0 as usize;
+    for (row, source) in canvas.chunks_exact(width).enumerate() {
+        let start = (viewport.origin.1 as usize + row) * stride + left;
+        frame[start..start + width].copy_from_slice(source);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_grid_snapshot_in_band(
     frame: &mut [u32],

@@ -40,6 +40,128 @@ fn render_grid(grid: Grid, atlas: &mut GlyphAtlas) -> (Vec<u32>, (u16, u16)) {
 }
 
 #[test]
+fn pane_viewports_compose_single_pane_frames_side_by_side_with_a_divider() {
+    let mut atlas = test_atlas();
+    let grid_with = |columns: usize, row: usize, text: &str| {
+        let mut grid = Grid::new(columns, 3, 0);
+        for (column, character) in text.chars().enumerate() {
+            grid.set_cursor_pos(row, column);
+            grid.put_char(character);
+        }
+        grid
+    };
+    let (left_frame, cell) = render_grid(grid_with(6, 0, "left"), &mut atlas);
+    let (right_frame, _) = render_grid(grid_with(5, 1, "RIGHT"), &mut atlas);
+    let left_size = (6 * u32::from(cell.0), 3 * u32::from(cell.1));
+    let right_size = (5 * u32::from(cell.0), 3 * u32::from(cell.1));
+    let divider = 6u32;
+    let frame_size = (left_size.0 + divider + right_size.0, left_size.1 + 4);
+    let background = rgb_to_xrgb(
+        DEFAULT_BACKGROUND.0,
+        DEFAULT_BACKGROUND.1,
+        DEFAULT_BACKGROUND.2,
+    );
+    let mut frame = vec![background; (frame_size.0 * frame_size.1) as usize];
+    let divider_color = 0x00b5_312c;
+    fill_rect(
+        &mut frame,
+        frame_size,
+        (left_size.0 as i32, 0),
+        (divider, frame_size.1),
+        divider_color,
+        u8::MAX,
+    );
+    for (grid, origin, size) in [
+        (grid_with(6, 0, "left"), (0, 0), left_size),
+        (
+            grid_with(5, 1, "RIGHT"),
+            (left_size.0 + divider, 0),
+            right_size,
+        ),
+    ] {
+        let snapshot = snapshot_locked_grid(&grid);
+        paint_pane_viewport(
+            &mut frame,
+            frame_size,
+            PaneViewport { origin, size },
+            |canvas, canvas_size| {
+                canvas.fill(background);
+                draw_grid_snapshot(
+                    canvas,
+                    canvas_size,
+                    &mut atlas,
+                    test_colors(),
+                    cell,
+                    &snapshot,
+                    true,
+                );
+            },
+        );
+    }
+
+    let stride = frame_size.0 as usize;
+    for y in 0..left_size.1 as usize {
+        let row = &frame[y * stride..(y + 1) * stride];
+        let left_width = left_size.0 as usize;
+        assert_eq!(
+            &row[..left_width],
+            &left_frame[y * left_width..(y + 1) * left_width],
+            "left pane row {y}"
+        );
+        assert!(
+            row[left_width..left_width + divider as usize]
+                .iter()
+                .all(|&pixel| pixel == divider_color),
+            "divider row {y}"
+        );
+        let right_width = right_size.0 as usize;
+        assert_eq!(
+            &row[left_width + divider as usize..],
+            &right_frame[y * right_width..(y + 1) * right_width],
+            "right pane row {y}"
+        );
+    }
+    let bottom = &frame[left_size.1 as usize * stride..];
+    assert!(bottom[..left_size.0 as usize]
+        .iter()
+        .all(|&pixel| pixel == background));
+    assert_ne!(left_frame, right_frame);
+    assert!(left_frame.iter().any(|&pixel| pixel != background));
+}
+
+#[test]
+fn pane_viewport_outside_or_larger_than_the_frame_is_clipped() {
+    let frame_size = (4, 3);
+    let mut frame = vec![0u32; 12];
+    paint_pane_viewport(
+        &mut frame,
+        frame_size,
+        PaneViewport {
+            origin: (2, 1),
+            size: (10, 10),
+        },
+        |canvas, size| {
+            assert_eq!(size, (2, 2));
+            canvas.fill(7);
+        },
+    );
+    assert_eq!(frame, [0, 0, 0, 0, 0, 0, 7, 7, 0, 0, 7, 7]);
+    paint_pane_viewport(
+        &mut frame,
+        frame_size,
+        PaneViewport {
+            origin: (4, 0),
+            size: (1, 1),
+        },
+        |_, _| panic!("a viewport outside the frame must not paint"),
+    );
+    assert_eq!(
+        PaneViewport::full(frame_size).clipped_to(frame_size),
+        Some(PaneViewport::full(frame_size))
+    );
+}
+
+#[test]
 fn converts_rgb_to_softbuffer_xrgb() {
     assert_eq!(rgb_to_xrgb(0x1a, 0x2b, 0x3c), 0x001a_2b3c);
     assert_eq!(rgb_to_xrgb(0xff, 0xff, 0xff) >> 24, 0);

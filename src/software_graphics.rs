@@ -1,24 +1,23 @@
+//! Image compositing helpers for the software renderer: which placements of
+//! a grid are visible, in what order they draw, and which animations need a
+//! frame. Decoding the protocols lives in `pane_reader::apply_graphics_event`.
+
 use crate::config::ImagesConfig;
-use crate::graphics::{
-    retain_unreferenced_image_ids, ImagePlacement, InlineRenderSize, PlacementMode,
-};
+use crate::graphics::{retain_unreferenced_image_ids, ImageId, SixelPlacement};
 use crate::grid::{Grid, TerminalEvent};
+use crate::pane_reader::{apply_graphics_event, GraphicsPolicy};
 use crate::renderer::image_animation::AnimationUpdate;
-use crate::renderer::image_store::{ImageFormat, ImageStore};
+use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-const MAX_PLACEMENTS: usize = 4096;
+/// Placements kept per grid; tiny repeated placements evict the oldest.
+pub(crate) const MAX_PLACEMENTS: usize = 4096;
 // Snapshot culling uses bounded metadata and at most this many rectangle tests
 // per placement, even for a screen containing thousands of unrelated images.
 const MAX_OCCLUDERS: usize = 64;
-
-pub(crate) struct SoftwareGraphics {
-    store: ImageStore,
-    kitty: KittyHandler,
-}
 
 pub(crate) struct ImageSnapshot {
     pub(crate) pixels: Arc<[u8]>,
@@ -105,6 +104,15 @@ fn cull_covered_images(images: &mut Vec<ImageSnapshot>) {
     images.reverse();
 }
 
+/// One grid's protocol state with its own cache: the reader decodes with
+/// `apply_graphics_event` and prunes cache deletions against this grid's
+/// placements.
+pub(crate) struct SoftwareGraphics {
+    pub(crate) store: ImageStore,
+    pub(crate) kitty: KittyHandler,
+    policy: GraphicsPolicy,
+}
+
 impl SoftwareGraphics {
     pub(crate) fn new(config: &ImagesConfig) -> Self {
         Self {
@@ -113,40 +121,32 @@ impl SoftwareGraphics {
                 config.kitty.max_image_size_mb,
                 config.kitty.allow_file_transfer,
             )),
+            policy: GraphicsPolicy {
+                kitty_enabled: config.kitty_graphics_enabled(),
+                sixel_enabled: config.sixel_graphics_enabled(),
+                sixel_placement: SixelPlacement::NativePixels,
+                placement_limit: Some(MAX_PLACEMENTS),
+            },
         }
     }
 
     /// Called under the grid lock, before decoding any bytes after the image.
     pub(crate) fn process(&mut self, event: TerminalEvent, grid: &mut Grid) -> Option<Vec<u8>> {
-        let cell_width = f32::from(grid.cell_pixel_width.max(1));
-        let cell_height = f32::from(grid.cell_pixel_height.max(1));
+        let cell_size = (
+            f32::from(grid.cell_pixel_width),
+            f32::from(grid.cell_pixel_height),
+        );
         let response = match event {
             TerminalEvent::Response(response) => Some(response),
-            TerminalEvent::Notification { .. }
-            | TerminalEvent::Bell
-            | TerminalEvent::ClipboardWrite(_) => None,
-            TerminalEvent::KittyGraphics {
-                command,
-                cursor_row,
-                cursor_col,
-            } => {
-                let outcome = self.kitty.process(
-                    command,
+            event => {
+                let outcome = apply_graphics_event(
+                    grid,
+                    &mut self.kitty,
                     &mut self.store,
-                    cursor_row,
-                    cursor_col,
-                    cell_width,
-                    cell_height,
-                    grid.cols(),
-                    grid.rows(),
-                    &mut grid.image_placements,
+                    event,
+                    cell_size,
+                    &self.policy,
                 );
-                if let Some(image_id) = outcome.retransmitted_image_id {
-                    grid.remove_hidden_primary_kitty_placements(image_id);
-                }
-                if let Some(advance) = outcome.advance {
-                    grid.advance_image_cursor(advance.cols, advance.rows);
-                }
                 let mut candidates = outcome.hard_delete_candidates;
                 retain_unreferenced_image_ids(&mut candidates, grid.all_image_placements());
                 for image_id in candidates {
@@ -154,128 +154,101 @@ impl SoftwareGraphics {
                 }
                 outcome.response
             }
-            TerminalEvent::SixelGraphics {
-                image,
-                cursor_row,
-                cursor_col,
-            } => {
-                let columns = image
-                    .width
-                    .div_ceil(u32::from(grid.cell_pixel_width.max(1)));
-                let rows = image
-                    .height
-                    .div_ceil(u32::from(grid.cell_pixel_height.max(1)));
-                if let Some(image_id) = self.store.store(
-                    &image.pixels,
-                    image.width,
-                    image.height,
-                    ImageFormat::Rgba,
-                    None,
-                ) {
-                    grid.image_placements.push(ImagePlacement {
-                        image_id,
-                        placement_id: 0,
-                        client_placement_id: None,
-                        mode: PlacementMode::Inline {
-                            row: cursor_row as _,
-                            col: cursor_col,
-                            cols: columns,
-                            rows,
-                            x_offset: 0,
-                            y_offset: 0,
-                            render_size: InlineRenderSize::NativePixels {
-                                width: image.width,
-                                height: image.height,
-                            },
-                        },
-                        z_index: 0,
-                    });
-                }
-                for _ in 0..rows {
-                    grid.newline();
-                }
-                None
-            }
         };
-        // Tiny repeated placements must not grow metadata without bound.
-        grid.image_placements
-            .retain(|placement| self.store.get(placement.image_id).is_some());
-        let excess = grid.image_placements.len().saturating_sub(MAX_PLACEMENTS);
-        grid.image_placements.drain(..excess);
         response
     }
 
-    /// Shares immutable pixels; rendering never holds the PTY/grid/cache locks.
     pub(crate) fn snapshot(&self, grid: &Grid, cell_size: (u16, u16)) -> Vec<ImageSnapshot> {
-        // Translate once per snapshot; scanning the client registry for each placement
-        // would make rendering quadratic. Sixel images have no client ID and retain
-        // their cache allocation order for equal-z overlaps.
-        let client_ids: HashMap<_, _> = self.kitty.image_client_ids().collect();
-        let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
-        let viewport_width = grid.cols() as f32 * cell_width;
-        let viewport_height = grid.rows() as f32 * cell_height;
-        let mut images: Vec<_> = grid
-            .image_placements
-            .iter()
-            .filter_map(|placement| {
-                let stored = self.store.get(placement.image_id)?;
-                let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
-                let y = y + grid.scroll_offset as f32 * cell_height;
-                if x >= viewport_width
-                    || y >= viewport_height
-                    || x + width <= 0.0
-                    || y + height <= 0.0
-                {
-                    return None;
-                }
-                Some(ImageSnapshot {
-                    pixels: stored.pixels.clone(),
-                    size: (stored.width, stored.height),
-                    rectangle: (x, y, width, height),
-                    z_index: placement.z_index,
-                    image_id: placement.image_id,
-                    opaque: stored.opaque,
-                })
-            })
-            .collect();
-        images.sort_by_key(|image| {
-            let order_id = client_ids
-                .get(&image.image_id)
-                .map(|id| u64::from(*id))
-                .unwrap_or(image.image_id);
-            (image.z_index, order_id)
-        });
-        // The three image/text drawing groups preserve this image order. A
-        // later fully opaque canvas replaces all earlier contributions under
-        // its coverage, including across a text/background drawing boundary.
-        // Remove only redundant draw work, retaining cache and placements so
-        // deleting/editing the covering image reveals previous content again.
-        cull_covered_images(&mut images);
-        images
+        snapshot_images(&self.kitty, &self.store, grid, cell_size)
     }
 
-    /// Only visible animations schedule work; static and hidden images stay idle.
     pub(crate) fn advance_animations(
         &mut self,
         grid: &Grid,
         cell_size: (u16, u16),
         now: Instant,
     ) -> AnimationUpdate {
-        let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
-        let viewport_width = grid.cols() as f32 * cell_width;
-        let viewport_height = grid.rows() as f32 * cell_height;
-        let visible: HashSet<_> = grid
-            .image_placements
-            .iter()
-            .filter_map(|placement| {
-                let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
-                let y = y + grid.scroll_offset as f32 * cell_height;
-                (x < viewport_width && y < viewport_height && x + width > 0.0 && y + height > 0.0)
-                    .then_some(placement.image_id)
-            })
-            .collect();
-        self.store.advance_animations(now, &visible)
+        advance_animations(&mut self.store, [grid], cell_size, now)
     }
+}
+
+/// Shares immutable pixels; rendering never holds the PTY/grid/cache locks.
+pub(crate) fn snapshot_images(
+    kitty: &KittyHandler,
+    store: &ImageStore,
+    grid: &Grid,
+    cell_size: (u16, u16),
+) -> Vec<ImageSnapshot> {
+    // Translate once per snapshot; scanning the client registry for each placement
+    // would make rendering quadratic. Sixel images have no client ID and retain
+    // their cache allocation order for equal-z overlaps.
+    let client_ids: HashMap<_, _> = kitty.image_client_ids().collect();
+    let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
+    let viewport_width = grid.cols() as f32 * cell_width;
+    let viewport_height = grid.rows() as f32 * cell_height;
+    let mut images: Vec<_> = grid
+        .image_placements
+        .iter()
+        .filter_map(|placement| {
+            let stored = store.get(placement.image_id)?;
+            let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
+            let y = y + grid.scroll_offset as f32 * cell_height;
+            if x >= viewport_width || y >= viewport_height || x + width <= 0.0 || y + height <= 0.0
+            {
+                return None;
+            }
+            Some(ImageSnapshot {
+                pixels: stored.pixels.clone(),
+                size: (stored.width, stored.height),
+                rectangle: (x, y, width, height),
+                z_index: placement.z_index,
+                image_id: placement.image_id,
+                opaque: stored.opaque,
+            })
+        })
+        .collect();
+    images.sort_by_key(|image| {
+        let order_id = client_ids
+            .get(&image.image_id)
+            .map(|id| u64::from(*id))
+            .unwrap_or(image.image_id);
+        (image.z_index, order_id)
+    });
+    // The three image/text drawing groups preserve this image order. A
+    // later fully opaque canvas replaces all earlier contributions under
+    // its coverage, including across a text/background drawing boundary.
+    // Remove only redundant draw work, retaining cache and placements so
+    // deleting/editing the covering image reveals previous content again.
+    cull_covered_images(&mut images);
+    images
+}
+
+/// Images with any pixel inside the grid's viewport.
+fn visible_image_ids(grid: &Grid, cell_size: (u16, u16), visible: &mut HashSet<ImageId>) {
+    let (cell_width, cell_height) = (f32::from(cell_size.0), f32::from(cell_size.1));
+    let viewport_width = grid.cols() as f32 * cell_width;
+    let viewport_height = grid.rows() as f32 * cell_height;
+    visible.extend(grid.image_placements.iter().filter_map(|placement| {
+        let (x, y, width, height) = placement.mode.pixel_rect(cell_width, cell_height);
+        let y = y + grid.scroll_offset as f32 * cell_height;
+        (x < viewport_width && y < viewport_height && x + width > 0.0 && y + height > 0.0)
+            .then_some(placement.image_id)
+    }));
+}
+
+/// Only animations visible in some grid schedule work; static and hidden
+/// images stay idle.
+pub(crate) fn advance_animations<'a>(
+    store: &mut ImageStore,
+    grids: impl IntoIterator<Item = &'a Grid>,
+    cell_size: (u16, u16),
+    now: Instant,
+) -> AnimationUpdate {
+    let mut visible = HashSet::new();
+    for grid in grids {
+        visible_image_ids(grid, cell_size, &mut visible);
+    }
+    store.advance_animations(now, &visible)
 }
 
 #[cfg(test)]

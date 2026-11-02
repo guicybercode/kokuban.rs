@@ -2,10 +2,12 @@
 //! area reported to the input method, and the preedit layout over the grid.
 
 use super::draw::{cell_origin, GridSnapshot};
+#[cfg(test)]
 use super::GridAccessError;
 use crate::grid::cell::CellFlags;
 use crate::grid::Grid;
 use crate::input::linux::{ime_commit_payload, ImeCommitPayload};
+#[cfg(test)]
 use std::sync::Mutex;
 use unicode_width::UnicodeWidthChar;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -137,11 +139,17 @@ pub(super) fn replace_ime_preedit(
     true
 }
 
+#[cfg(test)]
 pub(super) fn reveal_ime_input_viewport(grid: &Mutex<Grid>) -> Result<bool, GridAccessError> {
     let mut grid = grid.lock().map_err(|_| GridAccessError::Poisoned)?;
+    Ok(reveal_ime_input_viewport_locked(&mut grid))
+}
+
+/// Scroll the pane to its input line before composing; true when it moved.
+pub(super) fn reveal_ime_input_viewport_locked(grid: &mut Grid) -> bool {
     let changed = grid.scroll_offset != 0;
     grid.scroll_to_bottom();
-    Ok(changed)
+    changed
 }
 
 pub(super) fn ime_cursor_area(
