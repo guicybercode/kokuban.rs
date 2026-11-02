@@ -198,12 +198,11 @@ pub(crate) fn retain_unreferenced_image_ids<'a>(
 
 /// How a Sixel image is sized when drawn: scaled to the cells it covers
 /// (Metal) or kept at its native pixel size (software rasterizer).
-// Each window constructs one variant; the Linux window adopts the shared
-// reader (and native sizing) next.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SixelPlacement {
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     CellAnchored,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     NativePixels,
 }
 

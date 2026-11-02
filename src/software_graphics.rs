@@ -2,13 +2,21 @@
 //! a grid are visible, in what order they draw, and which animations need a
 //! frame. Decoding the protocols lives in `pane_reader::apply_graphics_event`.
 
+#[cfg(test)]
 use crate::config::ImagesConfig;
-use crate::graphics::{retain_unreferenced_image_ids, ImageId, SixelPlacement};
-use crate::grid::{Grid, TerminalEvent};
+use crate::graphics::ImageId;
+#[cfg(test)]
+use crate::graphics::{retain_unreferenced_image_ids, SixelPlacement};
+use crate::grid::Grid;
+#[cfg(test)]
+use crate::grid::TerminalEvent;
+#[cfg(test)]
 use crate::pane_reader::{apply_graphics_event, GraphicsPolicy};
 use crate::renderer::image_animation::AnimationUpdate;
 use crate::renderer::image_store::ImageStore;
-use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
+use crate::renderer::kitty_handler::KittyHandler;
+#[cfg(test)]
+use crate::renderer::kitty_handler::KittyHandlerOptions;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
@@ -104,15 +112,17 @@ fn cull_covered_images(images: &mut Vec<ImageSnapshot>) {
     images.reverse();
 }
 
-/// One grid's protocol state with its own cache: the reader decodes with
-/// `apply_graphics_event` and prunes cache deletions against this grid's
-/// placements.
+/// One grid's protocol state with its own cache, as the window wires them:
+/// the reader decodes with `apply_graphics_event` and prunes cache deletions
+/// against this grid's placements.
+#[cfg(test)]
 pub(crate) struct SoftwareGraphics {
     pub(crate) store: ImageStore,
     pub(crate) kitty: KittyHandler,
     policy: GraphicsPolicy,
 }
 
+#[cfg(test)]
 impl SoftwareGraphics {
     pub(crate) fn new(config: &ImagesConfig) -> Self {
         Self {

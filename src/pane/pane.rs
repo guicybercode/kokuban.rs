@@ -94,44 +94,45 @@ impl Pane {
     }
 
     pub fn queue_input(&self, bytes: Vec<u8>) {
-        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::FailPane);
+        self.input().queue_input(bytes);
     }
 
+    // The Linux window enqueues motion through `PaneInput` directly.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn queue_motion_input(&self, bytes: Vec<u8>) {
-        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal);
+        let _ = self.input().queue_nonfatal_input(bytes);
     }
 
     pub fn queue_paste_input(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
-        self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal)
+        self.input().queue_nonfatal_input(bytes)
     }
 
     pub fn max_nonfatal_input_bytes(&self) -> usize {
         self.writer.max_nonfatal_input_bytes()
     }
 
-    fn queue_input_with_policy(
-        &self,
-        bytes: Vec<u8>,
-        full_policy: FullQueuePolicy,
-    ) -> Result<(), TerminalWriteQueueError> {
-        if self.input_failed.load(Ordering::Acquire) {
-            return Err(TerminalWriteQueueError::Disconnected);
+    /// The input queue alone, so the grid can be borrowed mutably alongside
+    /// it (mode checks and the enqueue happen in one locked step).
+    pub fn input(&self) -> PaneInput<'_> {
+        PaneInput {
+            id: self.id,
+            writer: &self.writer,
+            input_failed: &self.input_failed,
+            on_input_failed: &self.on_input_failed,
         }
+    }
 
-        let enqueue_result = match full_policy {
-            FullQueuePolicy::FailPane => self.writer.enqueue(bytes),
-            FullQueuePolicy::NonFatal => self.writer.enqueue_nonfatal(bytes),
+    /// Grid and input queue borrowed apart.
+    // The macOS window holds the whole pane while it dispatches.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub fn grid_and_input(&mut self) -> (&mut Grid, PaneInput<'_>) {
+        let input = PaneInput {
+            id: self.id,
+            writer: &self.writer,
+            input_failed: &self.input_failed,
+            on_input_failed: &self.on_input_failed,
         };
-        let result = record_enqueue_result(
-            self.input_failed.as_ref(),
-            self.id,
-            enqueue_result,
-            full_policy,
-        );
-        if self.input_failed.load(Ordering::Acquire) {
-            (self.on_input_failed)();
-        }
-        result
+        (&mut self.grid, input)
     }
 
     pub fn input_failed(&self) -> bool {
@@ -196,6 +197,47 @@ impl Pane {
         ) {
             log::error!("Failed to resize PTY for pane {}: {error}", self.id);
         }
+    }
+}
+
+/// A pane's input queue without its grid.
+pub struct PaneInput<'a> {
+    id: PaneId,
+    writer: &'a TerminalWriter,
+    input_failed: &'a AtomicBool,
+    on_input_failed: &'a InputFailureNotifier,
+}
+
+impl PaneInput<'_> {
+    /// Lossless input: a full or closed queue fails the pane.
+    pub fn queue_input(&self, bytes: Vec<u8>) {
+        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::FailPane);
+    }
+
+    /// Coalescible input (mouse motion, pastes): a full queue only reports
+    /// `Full`; a closed queue still fails the pane.
+    pub fn queue_nonfatal_input(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
+        self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal)
+    }
+
+    fn queue_input_with_policy(
+        &self,
+        bytes: Vec<u8>,
+        full_policy: FullQueuePolicy,
+    ) -> Result<(), TerminalWriteQueueError> {
+        if self.input_failed.load(Ordering::Acquire) {
+            return Err(TerminalWriteQueueError::Disconnected);
+        }
+
+        let enqueue_result = match full_policy {
+            FullQueuePolicy::FailPane => self.writer.enqueue(bytes),
+            FullQueuePolicy::NonFatal => self.writer.enqueue_nonfatal(bytes),
+        };
+        let result = record_enqueue_result(self.input_failed, self.id, enqueue_result, full_policy);
+        if self.input_failed.load(Ordering::Acquire) {
+            (self.on_input_failed)();
+        }
+        result
     }
 }
 

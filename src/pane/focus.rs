@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) const FOCUS_IN_REPORT: &[u8] = b"\x1b[I";
 pub(crate) const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 
+// The Linux window reports window focus through `dispatch::dispatch_focus_event_locked`.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) fn focus_report_bytes(focused: bool) -> &'static [u8] {
     if focused {
         FOCUS_IN_REPORT
