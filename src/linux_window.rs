@@ -37,6 +37,7 @@ mod clipboard;
 mod damage;
 mod dispatch;
 mod draw;
+#[cfg(feature = "gpu")]
 mod gpu;
 mod ime;
 mod pointer;

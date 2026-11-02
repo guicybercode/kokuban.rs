@@ -2,10 +2,12 @@
 //! [`SceneFrame`] (grid snapshot, images, IME preedit) and hands it to a
 //! [`FramePresenter`], which owns the surface and decides how pixels reach the
 //! window: the softbuffer CPU path that shipped before the GPU spike, or the
-//! wgpu presenter in `gpu.rs` when `[render] backend` selects it.
+//! wgpu presenter in `gpu.rs` when the crate is built with `--features gpu`
+//! and `[render] backend` selects it.
 
 use super::damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
 use super::draw::{draw_grid_snapshot_in_band, draw_ime_preedit, GridSnapshot};
+#[cfg(feature = "gpu")]
 use super::gpu::{WgpuOptions, WgpuPresenter};
 use super::ime::ImePreeditLayout;
 use crate::config::RenderBackend;
@@ -205,16 +207,33 @@ impl FramePresenter for SoftwarePresenter {
 /// lavapipe, SwiftShader) would be slower than the tuned software path and are
 /// what CI offers, so they fall back. `gpu` keeps whatever adapter exists,
 /// which is how the manual GPU workflow exercises the pipeline on Mesa.
+/// Without the `gpu` Cargo feature, `gpu` fails fast and `auto` is software.
 pub(super) fn create_presenter(
     backend: RenderBackend,
     window: Arc<Window>,
     readback_first_frame: bool,
 ) -> Result<Box<dyn FramePresenter>, String> {
+    #[cfg(not(feature = "gpu"))]
+    let _ = readback_first_frame;
     let (presenter, reason): (Box<dyn FramePresenter>, String) = match backend {
         RenderBackend::Software => (
             Box::new(SoftwarePresenter::new(window)?),
             "configured".to_string(),
         ),
+        #[cfg(not(feature = "gpu"))]
+        RenderBackend::Gpu => {
+            return Err(
+                "kokuban was built without the gpu feature; rebuild with --features gpu to use \
+                 [render] backend = \"gpu\""
+                    .to_string(),
+            );
+        }
+        #[cfg(not(feature = "gpu"))]
+        RenderBackend::Auto => (
+            Box::new(SoftwarePresenter::new(window)?),
+            "built without the gpu feature".to_string(),
+        ),
+        #[cfg(feature = "gpu")]
         RenderBackend::Gpu => {
             let presenter = WgpuPresenter::new(
                 window,
@@ -232,6 +251,7 @@ pub(super) fn create_presenter(
             let description = presenter.describe();
             (Box::new(presenter), description)
         }
+        #[cfg(feature = "gpu")]
         RenderBackend::Auto => match WgpuPresenter::new(
             window.clone(),
             WgpuOptions {

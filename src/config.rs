@@ -206,13 +206,15 @@ impl Default for ClipboardConfig {
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RenderBackend {
-    /// Try the GPU presenter and fall back to software when no real GPU is
-    /// available (missing drivers, CPU rasterizers such as llvmpipe/lavapipe).
-    #[default]
+    /// Try the GPU presenter (needs the `gpu` Cargo feature) and fall back to
+    /// software when no real GPU is available (missing drivers, CPU
+    /// rasterizers such as llvmpipe/lavapipe).
     Auto,
-    /// Require the GPU presenter; launch fails when it cannot be created.
+    /// Require the GPU presenter; launch fails when it cannot be created or
+    /// the binary was built without the `gpu` feature.
     Gpu,
-    /// Never touch the GPU; the softbuffer CPU presenter used before the spike.
+    /// Never touch the GPU; the softbuffer CPU presenter. The default.
+    #[default]
     Software,
 }
 
@@ -264,7 +266,7 @@ pub fn render_backend_from_env(configured: RenderBackend, env: Option<&str>) -> 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct RenderConfig {
-    /// Linux only: `auto` (default), `gpu` or `software`.
+    /// Linux only: `software` (default), `auto` or `gpu`.
     pub backend: RenderBackend,
 }
 
@@ -844,15 +846,15 @@ mod tests {
     }
 
     #[test]
-    fn render_backend_defaults_to_auto_and_parses_the_documented_values() {
-        assert_eq!(Config::default().render.backend, RenderBackend::Auto);
-        let parsed: Config = toml::from_str("[render]\nbackend = \"software\"\n").unwrap();
-        assert_eq!(parsed.render.backend, RenderBackend::Software);
+    fn render_backend_defaults_to_software_and_parses_the_documented_values() {
+        assert_eq!(Config::default().render.backend, RenderBackend::Software);
+        let parsed: Config = toml::from_str("[render]\nbackend = \"auto\"\n").unwrap();
+        assert_eq!(parsed.render.backend, RenderBackend::Auto);
         let parsed: Config = toml::from_str("[render]\nbackend = \"gpu\"\n").unwrap();
         assert_eq!(parsed.render.backend, RenderBackend::Gpu);
         assert!(toml::from_str::<Config>("[render]\nbackend = \"metal\"\n").is_err());
         let shipped: Config = toml::from_str(include_str!("../kokuban.toml")).unwrap();
-        assert_eq!(shipped.render.backend, RenderBackend::Auto);
+        assert_eq!(shipped.render.backend, RenderBackend::Software);
     }
 
     #[test]

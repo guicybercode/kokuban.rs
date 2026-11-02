@@ -66,13 +66,13 @@ jobs:
           dpkg-query -W libegl1 libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers weston xvfb \
             > "$RUNNER_TEMP/gpu-smoke/packages.txt"
 
-      - name: Build the candidate (debug for smokes, release for size)
+      - name: Build the candidate with the gpu feature (debug for smokes, release for size)
         shell: bash
         run: |
-          cargo build --locked
-          cargo build --locked --release
+          cargo build --locked --features gpu
+          cargo build --locked --release --features gpu
           ls -l target/release/kokuban | tee "$RUNNER_TEMP/gpu-smoke/candidate-binary.txt"
-          cargo tree --locked -e normal --prefix none | sort -u > "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
+          cargo tree --locked --features gpu -e normal --prefix none | sort -u > "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
           wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
 
       - name: Report Vulkan and GL adapters under Xvfb
@@ -200,11 +200,20 @@ jobs:
             cargo build --locked --release
             ls -l target/release/kokuban | tee "$RUNNER_TEMP/gpu-smoke/baseline-binary.txt"
           )
+          # The candidate without the feature must match the baseline footprint.
+          cargo tree --locked -e normal --prefix none | sort -u > "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/target-nogpu" cargo build --locked --release
+          ls -l "$RUNNER_TEMP/target-nogpu/release/kokuban" | tee "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-binary.txt"
           {
             echo "baseline $baseline: $(wc -l < "$RUNNER_TEMP/gpu-smoke/baseline-tree.txt") crates, $(stat -c %s "$RUNNER_TEMP/baseline-src/target/release/kokuban") bytes"
-            echo "candidate ${GITHUB_SHA}: $(wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt") crates, $(stat -c %s target/release/kokuban) bytes"
-            echo "new crates:"
-            comm -13 "$RUNNER_TEMP/gpu-smoke/baseline-tree.txt" "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
+            echo "candidate ${GITHUB_SHA} without gpu feature: $(wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt") crates, $(stat -c %s "$RUNNER_TEMP/target-nogpu/release/kokuban") bytes"
+            echo "candidate ${GITHUB_SHA} with --features gpu: $(wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt") crates, $(stat -c %s target/release/kokuban) bytes"
+            echo "crates added by --features gpu:"
+            comm -13 "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt" "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
+            if grep -Eq '^(wgpu|naga|ash|glow)' "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt"; then
+              echo "GPU crates leaked into the build without the gpu feature"
+              exit 1
+            fi
           } | tee "$RUNNER_TEMP/gpu-smoke/footprint.txt"
 
       - name: Upload GPU smoke logs
