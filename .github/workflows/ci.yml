@@ -189,6 +189,14 @@ jobs:
             timeout --kill-after=5s 40s python3 scripts/linux-launch-smoke.py \
               "$PWD/target/debug/kokuban"
 
+      - name: Verify pane splits and closes under Xvfb
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=5s 60s python3 scripts/linux-panes-smoke.py \
+              "$PWD/target/debug/kokuban"
+
       - name: Verify native Wayland frame and command launch
         if: runner.os == 'Linux'
         shell: bash

@@ -1,6 +1,5 @@
 use super::reader::ReaderWake;
 use super::render_scheduler::RenderScheduler;
-use super::PaneCleanup;
 use crate::app::confirm::{self, ConfirmAction, ConfirmDialog, ConfirmResult};
 use crate::config::OptionAsAlt;
 use crate::glyph_atlas::GlyphAtlas;
@@ -17,6 +16,10 @@ use crate::input::mouse::{
 use crate::layout::{PaneId, PixelRect};
 use crate::notifications::NotificationController;
 use crate::pane::actions::{apply_pane_action, PaneActionHost, ZoomDirection};
+use crate::pane::cleanup::PaneCleanup;
+use crate::pane::focus::{
+    dispatch_pane_focus_transition_locked, focus_report_bytes, publish_focused_window_title,
+};
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData, StatusBarLayout};
@@ -27,7 +30,7 @@ use crate::selection::GridPoint;
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
 use crate::update::{self, SharedUpdateStatus, UpdateStatus};
-use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
+use crate::window_title::{sync_pending_window_title_with, WindowTitleMailbox, WINDOW_TITLE};
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, ProtocolObject};
@@ -43,8 +46,6 @@ use std::sync::{Arc, Mutex};
 
 const BRACKETED_PASTE_START: &[u8] = b"\x1b[200~";
 const BRACKETED_PASTE_END: &[u8] = b"\x1b[201~";
-const FOCUS_IN_REPORT: &[u8] = b"\x1b[I";
-const FOCUS_OUT_REPORT: &[u8] = b"\x1b[O";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClipboardPasteError {
@@ -355,81 +356,8 @@ impl ViewState {
     }
 }
 
-// Keep AppKit title updates independent from the potentially long-held PaneTree lock.
-pub(super) struct WindowTitleMailbox {
-    desired_title: Mutex<String>,
-    pending: AtomicBool,
-}
-
-impl WindowTitleMailbox {
-    pub(super) fn new() -> Self {
-        Self {
-            desired_title: Mutex::new(WINDOW_TITLE.to_string()),
-            pending: AtomicBool::new(true),
-        }
-    }
-
-    /// Title requested with `--title`; OSC 0/2 updates replace it as usual.
-    pub(super) fn set_initial_title(&self, title: &str) {
-        self.publish(title);
-    }
-
-    fn publish(&self, raw_title: &str) -> bool {
-        let next_title = normalized_window_title(raw_title);
-        let mut desired_title = self
-            .desired_title
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if desired_title.as_str() == next_title.as_ref() {
-            return false;
-        }
-
-        desired_title.clear();
-        desired_title.push_str(next_title.as_ref());
-        drop(desired_title);
-        self.pending.store(true, Ordering::Release);
-        true
-    }
-
-    fn has_pending_update(&self) -> bool {
-        self.pending.load(Ordering::Acquire)
-    }
-
-    fn take_pending_title(&self) -> Option<String> {
-        if !self.pending.swap(false, Ordering::AcqRel) {
-            return None;
-        }
-
-        Some(
-            self.desired_title
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .clone(),
-        )
-    }
-}
-
-pub(super) fn publish_focused_window_title(
-    tree: &PaneTree,
-    window_title: &WindowTitleMailbox,
-) -> bool {
-    let title = tree
-        .focused_pane()
-        .map(|pane| pane.grid.title())
-        .unwrap_or_default();
-    window_title.publish(title)
-}
-
 thread_local! {
     static VIEW_STATE: RefCell<Option<ViewState>> = const { RefCell::new(None) };
-}
-
-fn focus_report_bytes(focused: bool) -> &'static [u8] {
-    if focused {
-        FOCUS_IN_REPORT
-    } else {
-        FOCUS_OUT_REPORT
-    }
 }
 
 fn record_window_focus_change(last_window_focus: &mut Option<bool>, focused: bool) -> bool {
@@ -462,62 +390,6 @@ where
         return false;
     };
     dispatch(&source, bytes)
-}
-
-fn dispatch_pane_focus_transition_with<T, Enabled, Dispatch>(
-    window_is_key: bool,
-    previous_focus: Option<PaneId>,
-    current_focus: Option<PaneId>,
-    previous_pane: Option<&T>,
-    current_pane: Option<&T>,
-    focus_events_enabled: Enabled,
-    mut dispatch: Dispatch,
-) -> bool
-where
-    Enabled: Fn(&T) -> bool,
-    Dispatch: FnMut(&T, Vec<u8>),
-{
-    if !window_is_key || previous_focus == current_focus {
-        return false;
-    }
-
-    let mut dispatched = false;
-    if let Some(previous_pane) = previous_pane.filter(|pane| focus_events_enabled(pane)) {
-        dispatch(previous_pane, FOCUS_OUT_REPORT.to_vec());
-        dispatched = true;
-    }
-    if let Some(current_pane) = current_pane.filter(|pane| focus_events_enabled(pane)) {
-        dispatch(current_pane, FOCUS_IN_REPORT.to_vec());
-        dispatched = true;
-    }
-    dispatched
-}
-
-/// The caller must hold the mutex that owns `tree` for the full call. This
-/// serializes pane selection, per-pane mode checks, and nonblocking enqueues.
-pub(super) fn dispatch_pane_focus_transition_locked(
-    tree: &PaneTree,
-    window_is_key: &AtomicBool,
-    previous_focus: Option<PaneId>,
-    detached_previous: Option<&Pane>,
-) -> bool {
-    let current_focus = tree.focused_pane().map(|pane| pane.id);
-    let previous_pane = previous_focus.and_then(|previous_focus| {
-        detached_previous
-            .filter(|pane| pane.id == previous_focus)
-            .or_else(|| tree.pane(previous_focus))
-    });
-    let current_pane = current_focus.and_then(|current_focus| tree.pane(current_focus));
-
-    dispatch_pane_focus_transition_with(
-        window_is_key.load(Ordering::Acquire),
-        previous_focus,
-        current_focus,
-        previous_pane,
-        current_pane,
-        |pane| pane.grid.focus_events,
-        |pane, bytes| pane.queue_input(bytes),
-    )
 }
 
 fn dispatch_window_focus_transition(focused: bool) {
@@ -2153,20 +2025,6 @@ pub fn render_if_dirty(dirty: &AtomicBool) {
     }
 }
 
-fn sync_pending_window_title_with<F>(
-    window_title: &WindowTitleMailbox,
-    applied_title: &mut String,
-    set_title: F,
-) -> bool
-where
-    F: FnOnce(&str),
-{
-    let Some(title) = window_title.take_pending_title() else {
-        return false;
-    };
-    sync_window_title_with(applied_title, &title, set_title)
-}
-
 pub fn sync_window_title(window_number: NSInteger) {
     let Some(mtm) = MainThreadMarker::new() else {
         log::error!("refusing to update the macOS window title outside the main thread");
@@ -2372,13 +2230,11 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
 mod tests {
     use super::search_key_from_mac_event;
     use super::{
-        bracketed_paste_len, dispatch_pane_focus_transition_with,
-        dispatch_window_focus_transition_with, encode_clipboard_paste,
+        bracketed_paste_len, dispatch_window_focus_transition_with, encode_clipboard_paste,
         encode_macos_forwarded_wheel, focus_report_bytes, mac_key_equivalent_route,
-        mac_scroll_phase, mac_scrollback_action, sync_pending_window_title_with,
-        ClipboardPasteError, MacKeyEquivalentRoute, MacScrollPhase, MacScrollSample,
-        MacScrollState, MacScrollbackAction, WindowTitleMailbox, BRACKETED_PASTE_END,
-        BRACKETED_PASTE_START, WINDOW_TITLE,
+        mac_scroll_phase, mac_scrollback_action, ClipboardPasteError, MacKeyEquivalentRoute,
+        MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction, BRACKETED_PASTE_END,
+        BRACKETED_PASTE_START,
     };
     use crate::grid::MouseEncoding;
     use crate::input::keybind::KeyModifiers;
@@ -2387,14 +2243,14 @@ mod tests {
     };
     use crate::input::mouse::MouseWheelRoute;
     use crate::layout::PaneId;
+    use crate::pane::focus::dispatch_pane_focus_transition_with;
     use objc2::AnyThread;
     use objc2_app_kit::{NSEventModifierFlags, NSEventPhase};
     use objc2_foundation::NSString;
-    use std::cell::{Cell, RefCell};
+    use std::cell::RefCell;
     use std::ptr::NonNull;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
-    use std::thread;
+    use std::sync::Mutex;
 
     #[test]
     fn ime_text_accepts_plain_and_attributed_strings() {
@@ -3262,136 +3118,6 @@ mod tests {
             .as_deref(),
             Some(b"\x1bOB\x1bOB".as_slice()),
         );
-    }
-
-    #[test]
-    fn window_title_sync_skips_work_without_a_pending_update() {
-        let window_title = WindowTitleMailbox::new();
-        let mut applied_title = WINDOW_TITLE.to_string();
-        let setters = Cell::new(0);
-
-        assert!(!sync_pending_window_title_with(
-            &window_title,
-            &mut applied_title,
-            |_| setters.set(setters.get() + 1),
-        ));
-        assert!(!window_title.has_pending_update());
-
-        assert!(!sync_pending_window_title_with(
-            &window_title,
-            &mut applied_title,
-            |_| setters.set(setters.get() + 1),
-        ));
-        assert_eq!(setters.get(), 0);
-    }
-
-    #[test]
-    fn window_title_mailbox_coalesces_to_the_latest_normalized_value() {
-        let window_title = WindowTitleMailbox::new();
-        let mut applied_title = WINDOW_TITLE.to_string();
-        let applied = RefCell::new(Vec::new());
-
-        assert!(window_title.publish("first"));
-        assert!(window_title.publish("latest\n"));
-        assert!(!window_title.publish("latest"));
-        assert!(sync_pending_window_title_with(
-            &window_title,
-            &mut applied_title,
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-
-        assert!(!window_title.has_pending_update());
-        assert_eq!(applied.into_inner(), ["latest"]);
-    }
-
-    #[test]
-    fn window_title_update_after_take_remains_pending_for_the_next_tick() {
-        let window_title = WindowTitleMailbox::new();
-        let mut applied_title = WINDOW_TITLE.to_string();
-        let applied = RefCell::new(Vec::new());
-
-        window_title.publish("first");
-        let first = window_title
-            .take_pending_title()
-            .expect("the first update should be pending");
-        assert!(!window_title.has_pending_update());
-
-        window_title.publish("latest");
-        assert!(window_title.has_pending_update());
-        assert!(crate::window_title::sync_window_title_with(
-            &mut applied_title,
-            &first,
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert!(sync_pending_window_title_with(
-            &window_title,
-            &mut applied_title,
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert!(!window_title.has_pending_update());
-        assert_eq!(applied.into_inner(), ["first", "latest"]);
-    }
-
-    #[test]
-    fn window_title_publish_between_swap_and_clone_keeps_the_latest_value_pending() {
-        let window_title = Arc::new(WindowTitleMailbox::new());
-        let mut applied_title = WINDOW_TITLE.to_string();
-        let applied = RefCell::new(Vec::new());
-
-        window_title.publish("first");
-        let mut desired_title = window_title
-            .desired_title
-            .lock()
-            .expect("the title mailbox should lock");
-        let consumer = window_title.clone();
-        let take = thread::spawn(move || consumer.take_pending_title());
-
-        while window_title.has_pending_update() {
-            thread::yield_now();
-        }
-
-        desired_title.clear();
-        desired_title.push_str("latest");
-        drop(desired_title);
-        window_title.pending.store(true, Ordering::Release);
-
-        let taken = take
-            .join()
-            .expect("the title consumer should not panic")
-            .expect("the raced title should be available");
-        assert_eq!(taken, "latest");
-        assert!(window_title.has_pending_update());
-
-        assert!(crate::window_title::sync_window_title_with(
-            &mut applied_title,
-            &taken,
-            |title| applied.borrow_mut().push(title.to_string()),
-        ));
-        assert!(!sync_pending_window_title_with(
-            window_title.as_ref(),
-            &mut applied_title,
-            |_| panic!("the redundant pending update must be deduplicated"),
-        ));
-        assert!(!window_title.has_pending_update());
-        assert_eq!(applied.into_inner(), ["latest"]);
-    }
-
-    #[test]
-    fn window_title_setter_runs_after_the_mailbox_lock_is_released() {
-        let window_title = WindowTitleMailbox::new();
-        let mut applied_title = WINDOW_TITLE.to_string();
-
-        window_title.publish("main thread");
-        assert!(sync_pending_window_title_with(
-            &window_title,
-            &mut applied_title,
-            |_| {
-                assert!(
-                    window_title.desired_title.try_lock().is_ok(),
-                    "the title mailbox must be unlocked before calling AppKit"
-                );
-            },
-        ));
     }
 
     #[test]
