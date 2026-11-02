@@ -56,8 +56,6 @@ pub(crate) struct WindowTitleMailbox {
     pending: AtomicBool,
 }
 
-// The Linux window adopts the mailbox with the shared pane reader.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 impl WindowTitleMailbox {
     pub(crate) fn new() -> Self {
         Self {
@@ -88,6 +86,7 @@ impl WindowTitleMailbox {
         true
     }
 
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) fn has_pending_update(&self) -> bool {
         self.pending.load(Ordering::Acquire)
     }

@@ -1,4 +1,4 @@
-use super::keybind::KeyName;
+use super::keybind::{KeyModifiers, KeyName};
 use super::keyboard::{
     encode_key_kitty_disambiguate, encode_terminal_key_with_modifiers, KittyKey, TerminalKey,
     TerminalKeyModifiers,
@@ -197,8 +197,6 @@ fn encode_key_press_kitty(
 /// the key without modifiers (`KeyEvent::key_without_modifiers`), so Shift
 /// never changes the character; non-Latin layouts fall back to the physical
 /// key's QWERTY position.
-// The Linux window dispatches keybinds once its pane port lands.
-#[allow(dead_code)]
 pub(crate) fn key_name_from_winit(logical: &Key, physical: PhysicalKey) -> Option<KeyName> {
     match logical {
         Key::Named(named) => key_name_from_named(*named),
@@ -209,6 +207,25 @@ pub(crate) fn key_name_from_winit(logical: &Key, physical: PhysicalKey) -> Optio
             .or_else(|| key_name_from_physical(physical)),
         Key::Unidentified(_) | Key::Dead(_) => key_name_from_physical(physical),
     }
+}
+
+/// Modifier set of a winit event for keybind lookup (Super is the window
+/// manager's key; it still has to match bindings that name it).
+pub(crate) fn key_modifiers_from_winit(modifiers: ModifiersState) -> KeyModifiers {
+    let mut result = KeyModifiers::empty();
+    if modifiers.control_key() {
+        result |= KeyModifiers::CTRL;
+    }
+    if modifiers.shift_key() {
+        result |= KeyModifiers::SHIFT;
+    }
+    if modifiers.alt_key() {
+        result |= KeyModifiers::ALT;
+    }
+    if modifiers.super_key() {
+        result |= KeyModifiers::SUPER;
+    }
+    result
 }
 
 fn key_name_from_named(named: NamedKey) -> Option<KeyName> {
@@ -403,13 +420,14 @@ fn terminal_key_from_named(named_key: NamedKey, has_shift: bool) -> Option<Termi
 
 #[cfg(test)]
 mod tests {
+    use super::key_modifiers_from_winit;
     use super::{
         encode_key_press, ime_commit_payload_with_limit, key_name_from_winit,
         named_key_from_logical, scrollback_action_for_key_event, should_forward_key_event,
         terminal_key_from_named, ImeCommitPayload, LinuxKeyPress, ScrollbackAction,
         MAX_IME_COMMIT_BYTES,
     };
-    use crate::input::keybind::KeyName;
+    use crate::input::keybind::{KeyModifiers, KeyName};
     use crate::input::keyboard::TerminalKey;
     use winit::event::ElementState;
     use winit::keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey, SmolStr};
@@ -1130,6 +1148,24 @@ mod tests {
         assert_eq!(
             key_name_from_winit(&Key::Named(NamedKey::CapsLock), code(KeyCode::CapsLock)),
             None
+        );
+    }
+
+    #[test]
+    fn winit_modifiers_map_to_keybind_modifiers() {
+        assert_eq!(
+            key_modifiers_from_winit(ModifiersState::empty()),
+            KeyModifiers::empty()
+        );
+        assert_eq!(
+            key_modifiers_from_winit(
+                ModifiersState::CONTROL | ModifiersState::SHIFT | ModifiersState::ALT
+            ),
+            KeyModifiers::CTRL | KeyModifiers::SHIFT | KeyModifiers::ALT
+        );
+        assert_eq!(
+            key_modifiers_from_winit(ModifiersState::SUPER),
+            KeyModifiers::SUPER
         );
     }
 }

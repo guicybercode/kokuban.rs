@@ -348,6 +348,7 @@ pub(super) struct PaneViewport {
 }
 
 impl PaneViewport {
+    #[cfg(test)]
     pub(super) fn full(frame_size: (u32, u32)) -> Self {
         Self {
             origin: (0, 0),
