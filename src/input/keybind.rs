@@ -4,7 +4,7 @@
 //! traduz o evento nativo para `KeyName` (`input::macos::key_name_from_key_code`,
 //! `input::linux::key_name_from_winit`) e consulta o `KeybindMap`.
 
-use crate::config::KeybindConfig;
+use crate::config::{Config, KeybindConfig, LinuxKeybindConfig};
 use bitflags::bitflags;
 use std::fmt;
 
@@ -222,41 +222,87 @@ pub enum PaneAction {
     FocusAttention,
 }
 
+/// Number of configurable pane actions.
+pub const PANE_ACTION_COUNT: usize = 18;
+
+/// A configuration table of pane keybinds (`[keybind]` or `[keybind.linux]`).
+pub trait PaneKeybindTable {
+    /// Each action with its configured chord, unparsed.
+    fn bindings(&self) -> [(&str, PaneAction); PANE_ACTION_COUNT];
+    /// Pane resize step, in pixels.
+    fn resize_step(&self) -> f32;
+}
+
+macro_rules! impl_pane_keybind_table {
+    ($config:ty) => {
+        impl PaneKeybindTable for $config {
+            fn bindings(&self) -> [(&str, PaneAction); PANE_ACTION_COUNT] {
+                [
+                    (&self.split_vertical, PaneAction::SplitVertical),
+                    (&self.split_horizontal, PaneAction::SplitHorizontal),
+                    (&self.close_pane, PaneAction::ClosePane),
+                    (&self.focus_left, PaneAction::FocusLeft),
+                    (&self.focus_down, PaneAction::FocusDown),
+                    (&self.focus_up, PaneAction::FocusUp),
+                    (&self.focus_right, PaneAction::FocusRight),
+                    (&self.resize_left, PaneAction::ResizeLeft),
+                    (&self.resize_down, PaneAction::ResizeDown),
+                    (&self.resize_up, PaneAction::ResizeUp),
+                    (&self.resize_right, PaneAction::ResizeRight),
+                    (&self.zoom_in, PaneAction::ZoomIn),
+                    (&self.zoom_out, PaneAction::ZoomOut),
+                    (&self.zoom_reset, PaneAction::ZoomReset),
+                    (&self.prev_prompt, PaneAction::PrevPrompt),
+                    (&self.next_prompt, PaneAction::NextPrompt),
+                    (&self.search, PaneAction::Search),
+                    (&self.focus_attention, PaneAction::FocusAttention),
+                ]
+            }
+
+            fn resize_step(&self) -> f32 {
+                self.resize.step as f32
+            }
+        }
+    };
+}
+
+impl_pane_keybind_table!(KeybindConfig);
+impl_pane_keybind_table!(LinuxKeybindConfig);
+
+/// The keybind table of the running platform: `[keybind]` on macOS,
+/// `[keybind.linux]` on Linux.
+pub fn platform_table(config: &Config) -> &dyn PaneKeybindTable {
+    if cfg!(target_os = "linux") {
+        &config.keybind.linux
+    } else {
+        &config.keybind
+    }
+}
+
 pub struct KeybindMap {
     bindings: Vec<(KeyBind, PaneAction)>,
 }
 
 impl KeybindMap {
-    pub fn from_config(config: &KeybindConfig) -> Self {
-        let entries = [
-            (&config.split_vertical, PaneAction::SplitVertical),
-            (&config.split_horizontal, PaneAction::SplitHorizontal),
-            (&config.close_pane, PaneAction::ClosePane),
-            (&config.focus_left, PaneAction::FocusLeft),
-            (&config.focus_down, PaneAction::FocusDown),
-            (&config.focus_up, PaneAction::FocusUp),
-            (&config.focus_right, PaneAction::FocusRight),
-            (&config.resize_left, PaneAction::ResizeLeft),
-            (&config.resize_down, PaneAction::ResizeDown),
-            (&config.resize_up, PaneAction::ResizeUp),
-            (&config.resize_right, PaneAction::ResizeRight),
-            (&config.zoom_in, PaneAction::ZoomIn),
-            (&config.zoom_out, PaneAction::ZoomOut),
-            (&config.zoom_reset, PaneAction::ZoomReset),
-            (&config.prev_prompt, PaneAction::PrevPrompt),
-            (&config.next_prompt, PaneAction::NextPrompt),
-            (&config.search, PaneAction::Search),
-            (&config.focus_attention, PaneAction::FocusAttention),
-        ];
+    /// Bindings of the platform's table (see `platform_table`).
+    pub fn from_platform_config(config: &Config) -> Self {
+        Self::from_table(platform_table(config))
+    }
 
+    pub fn from_table(table: &dyn PaneKeybindTable) -> Self {
         let mut bindings = Vec::new();
-        for (key_str, action) in entries {
+        for (key_str, action) in table.bindings() {
             match parse_keybind(key_str) {
                 Some(kb) => bindings.push((kb, action)),
                 None => log::warn!("Ignoring unrecognized keybind {key_str:?} for {action:?}"),
             }
         }
         Self { bindings }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.bindings.len()
     }
 
     pub fn lookup(&self, key: KeyName, modifiers: KeyModifiers) -> Option<PaneAction> {
@@ -307,8 +353,11 @@ pub fn parse_keybind(s: &str) -> Option<KeyBind> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_keybind, KeyBind, KeyModifiers, KeyName, KeybindMap, PaneAction};
-    use crate::config::KeybindConfig;
+    use super::{
+        parse_keybind, platform_table, KeyBind, KeyModifiers, KeyName, KeybindMap, PaneAction,
+        PANE_ACTION_COUNT,
+    };
+    use crate::config::{Config, KeybindConfig, LinuxKeybindConfig};
 
     fn bind(key: KeyName, modifiers: KeyModifiers) -> Option<KeyBind> {
         Some(KeyBind { key, modifiers })
@@ -396,7 +445,7 @@ mod tests {
 
     #[test]
     fn default_focus_attention_binding_resolves() {
-        let map = KeybindMap::from_config(&KeybindConfig::default());
+        let map = KeybindMap::from_table(&KeybindConfig::default());
         assert_eq!(
             map.lookup(
                 KeyName::Char('a'),
@@ -430,7 +479,7 @@ mod tests {
             zoom_out: "ctrl+shift+-".to_string(),
             ..KeybindConfig::default()
         };
-        let map = KeybindMap::from_config(&config);
+        let map = KeybindMap::from_table(&config);
         let cs = KeyModifiers::CTRL | KeyModifiers::SHIFT;
         // Linux reports the unshifted key, macOS the shifted character.
         assert_eq!(map.lookup(KeyName::Char('='), cs), Some(PaneAction::ZoomIn));
@@ -458,5 +507,87 @@ mod tests {
         assert_eq!(KeyName::from_char('\r'), None);
         assert_eq!(KeyName::from_char('é'), None);
         assert_eq!(KeyName::from_char('\u{F700}'), None);
+    }
+
+    #[test]
+    fn every_default_binding_parses_on_both_platforms() {
+        assert_eq!(
+            KeybindMap::from_table(&KeybindConfig::default()).len(),
+            PANE_ACTION_COUNT
+        );
+        assert_eq!(
+            KeybindMap::from_table(&LinuxKeybindConfig::default()).len(),
+            PANE_ACTION_COUNT
+        );
+    }
+
+    #[test]
+    fn linux_defaults_resolve_and_avoid_the_fixed_clipboard_and_scrollback_chords() {
+        let map = KeybindMap::from_table(&LinuxKeybindConfig::default());
+        let cs = KeyModifiers::CTRL | KeyModifiers::SHIFT;
+        let cas = cs | KeyModifiers::ALT;
+        let expected = [
+            (KeyName::Char('d'), cs, PaneAction::SplitVertical),
+            (KeyName::Char('e'), cs, PaneAction::SplitHorizontal),
+            (KeyName::Char('w'), cs, PaneAction::ClosePane),
+            (KeyName::Char('h'), cs, PaneAction::FocusLeft),
+            (KeyName::Char('j'), cs, PaneAction::FocusDown),
+            (KeyName::Char('k'), cs, PaneAction::FocusUp),
+            (KeyName::Char('l'), cs, PaneAction::FocusRight),
+            (KeyName::Char('h'), cas, PaneAction::ResizeLeft),
+            (KeyName::Char('j'), cas, PaneAction::ResizeDown),
+            (KeyName::Char('k'), cas, PaneAction::ResizeUp),
+            (KeyName::Char('l'), cas, PaneAction::ResizeRight),
+            // winit reports the unshifted key for Ctrl+Shift+=.
+            (KeyName::Char('='), cs, PaneAction::ZoomIn),
+            (KeyName::Char('+'), cs, PaneAction::ZoomIn),
+            (KeyName::Char('-'), cs, PaneAction::ZoomOut),
+            (KeyName::Char('0'), cs, PaneAction::ZoomReset),
+            (KeyName::Up, cs, PaneAction::PrevPrompt),
+            (KeyName::Down, cs, PaneAction::NextPrompt),
+            (KeyName::Char('f'), cs, PaneAction::Search),
+            (KeyName::Char('n'), cs, PaneAction::FocusAttention),
+        ];
+        for (key, modifiers, action) in expected {
+            assert_eq!(map.lookup(key, modifiers), Some(action), "{key:?}");
+        }
+
+        // Fixed Linux chords (`linux_window::clipboard`, `input::linux`) must
+        // never be shadowed by a default pane binding.
+        let fixed = [
+            (KeyName::Char('c'), cs),
+            (KeyName::Char('v'), cs),
+            (KeyName::Char('a'), cs),
+            (KeyName::Insert, KeyModifiers::CTRL),
+            (KeyName::Insert, KeyModifiers::SHIFT),
+            (KeyName::PageUp, KeyModifiers::SHIFT),
+            (KeyName::PageDown, KeyModifiers::SHIFT),
+            (KeyName::Home, KeyModifiers::SHIFT),
+            (KeyName::End, KeyModifiers::SHIFT),
+        ];
+        for (key, modifiers) in fixed {
+            assert_eq!(
+                map.lookup(key, modifiers),
+                None,
+                "{key:?}+{modifiers:?} is a fixed chord"
+            );
+        }
+    }
+
+    #[test]
+    fn platform_table_picks_the_running_platform_section() {
+        let config = Config::default();
+        let table = platform_table(&config);
+        let (split, _) = table.bindings()[0];
+        if cfg!(target_os = "linux") {
+            assert_eq!(split, "ctrl+shift+d");
+        } else {
+            assert_eq!(split, "cmd+d");
+        }
+        assert_eq!(table.resize_step(), 20.0);
+        assert_eq!(
+            KeybindMap::from_platform_config(&config).len(),
+            PANE_ACTION_COUNT
+        );
     }
 }

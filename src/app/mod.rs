@@ -7,7 +7,7 @@ use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
 use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
 use crate::grid::Grid;
-use crate::input::keybind::KeybindMap;
+use crate::input::keybind::{platform_table, KeybindMap};
 use crate::launch_options::LaunchOptions;
 use crate::layout::PixelRect;
 use crate::pane::pane::Pane;
@@ -226,8 +226,8 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         hanko_red: ColorConfig::parse_hex(&config.theme.chrome.hanko_red),
     };
 
-    let keybinds = KeybindMap::from_config(&config.keybind);
-    let resize_step = config.keybind.resize.step as f32;
+    let keybinds = KeybindMap::from_platform_config(&config);
+    let resize_step = platform_table(&config).resize_step();
 
     // Create shared image store for Kitty/Sixel image rendering
     let image_store = Arc::new(Mutex::new(ImageStore::new(

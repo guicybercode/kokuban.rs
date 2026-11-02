@@ -51,3 +51,30 @@ The pane, resize, zoom, prompt-navigation, search and attention bindings in the 
 
 
 The pane, zoom, prompt and search bindings apply to macOS and can be remapped under `[keybind]`; the Linux clipboard and scrollback inputs above are fixed.
+
+## Linux (from v0.5)
+
+The Linux window port of the pane table is in progress. The table below is the `[keybind.linux]` section of `kokuban.toml`, already parsed and validated today, that the Linux window will dispatch once the port lands. Super is left to the window manager, and none of the defaults collides with the fixed `Ctrl+Shift+C/V/A`, `Ctrl+Insert`, `Shift+Insert` and `Shift+PageUp/PageDown/Home/End` inputs above.
+
+| Action              | Default Linux keybind   |
+|---------------------|-------------------------|
+| Split vertical      | `Ctrl+Shift+D`          |
+| Split horizontal    | `Ctrl+Shift+E`          |
+| Close pane          | `Ctrl+Shift+W`          |
+| Focus left pane     | `Ctrl+Shift+H`          |
+| Focus down pane     | `Ctrl+Shift+J`          |
+| Focus up pane       | `Ctrl+Shift+K`          |
+| Focus right pane    | `Ctrl+Shift+L`          |
+| Resize left         | `Ctrl+Alt+Shift+H`      |
+| Resize down         | `Ctrl+Alt+Shift+J`      |
+| Resize up           | `Ctrl+Alt+Shift+K`      |
+| Resize right        | `Ctrl+Alt+Shift+L`      |
+| Zoom in             | `Ctrl+Shift++` (`ctrl+shift+plus` or `ctrl+shift+=`) |
+| Zoom out            | `Ctrl+Shift+-` (`ctrl+shift+minus`) |
+| Reset zoom          | `Ctrl+Shift+0`          |
+| Previous prompt     | `Ctrl+Shift+↑`          |
+| Next prompt         | `Ctrl+Shift+↓`          |
+| Search scrollback   | `Ctrl+Shift+F`          |
+| Jump to pane with attention | `Ctrl+Shift+N`  |
+
+Key names are shared by both platforms: a single character, `plus`/`minus`, `f1`..`f12`, `up`/`down`/`left`/`right`, `pageup`/`pagedown`, `home`/`end`, `tab`, `esc`, `enter`, `backspace`, `space`, `insert`, `delete`; modifiers are `ctrl`, `alt`, `shift` and `super` (`cmd` on macOS). With `shift` held, punctuation matches either spelling of the key (`=`/`+`, `-`/`_`).
