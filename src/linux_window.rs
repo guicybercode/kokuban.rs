@@ -51,16 +51,20 @@ use clipboard::{
 };
 use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
 use dispatch::{
-    dispatch_encoded_terminal_input_with, dispatch_focus_event_with, dispatch_keyboard_input_with,
-    dispatch_mouse_button_and_motion_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
-    modifiers_after_focus_change, record_window_focus_change, KeyboardInputError,
-    KeyboardInputOutcome, MouseMotionDispatchOutcome,
+    dispatch_encoded_terminal_input_locked, dispatch_focus_event_locked,
+    dispatch_keyboard_input_locked, dispatch_mouse_button_and_motion_locked,
+    dispatch_mouse_motion_locked, dispatch_mouse_wheel_locked, modifiers_after_focus_change,
+    record_window_focus_change, KeyboardInputError, KeyboardInputOutcome,
+    MouseMotionDispatchOutcome,
 };
-use draw::{draw_grid_snapshot_in_band, draw_ime_preedit, rgb_to_xrgb, snapshot_locked_grid};
+use draw::{
+    draw_grid_snapshot_in_band, draw_ime_preedit, paint_pane_viewport, rgb_to_xrgb,
+    snapshot_locked_grid, PaneViewport,
+};
 use ime::{
     ime_cursor_area, ime_payload_from_event, ime_preedit_payload, layout_ime_preedit_for_snapshot,
-    replace_ime_preedit, reveal_ime_input_viewport, sync_ime_cursor_area_with, ImeCursorArea,
-    ImePreedit, ImePreeditPayload,
+    replace_ime_preedit, reveal_ime_input_viewport_locked, sync_ime_cursor_area_with,
+    ImeCursorArea, ImePreedit, ImePreeditPayload,
 };
 use pointer::{mouse_button_code_from_winit, PointerRouteState};
 use sizing::{
@@ -641,33 +645,42 @@ impl LinuxWindow {
             has_overlays,
             glyph_atlas,
         );
-        if !damage.is_empty() {
-            let start = damage.start as usize * width.get() as usize;
-            let end = damage.end as usize * width.get() as usize;
-            buffer[start..end].fill(self.background);
-            draw_grid_snapshot_in_band(
-                &mut buffer,
-                frame_size,
-                glyph_atlas,
-                &self.colors,
-                cell_dimensions,
-                &snapshot,
-                preedit_layout.is_none(),
-                &images,
-                damage,
-            );
-        }
-        if let Some(layout) = preedit_layout.as_ref() {
-            draw_ime_preedit(
-                &mut buffer,
-                (width.get(), height.get()),
-                glyph_atlas,
-                &self.colors,
-                cell_dimensions,
-                &snapshot,
-                layout,
-            );
-        }
+        let background = self.background;
+        let colors = &self.colors;
+        paint_pane_viewport(
+            &mut buffer,
+            frame_size,
+            PaneViewport::full(frame_size),
+            |canvas, canvas_size| {
+                if !damage.is_empty() {
+                    let start = damage.start as usize * canvas_size.0 as usize;
+                    let end = damage.end as usize * canvas_size.0 as usize;
+                    canvas[start..end].fill(background);
+                    draw_grid_snapshot_in_band(
+                        canvas,
+                        canvas_size,
+                        glyph_atlas,
+                        colors,
+                        cell_dimensions,
+                        &snapshot,
+                        preedit_layout.is_none(),
+                        &images,
+                        damage,
+                    );
+                }
+                if let Some(layout) = preedit_layout.as_ref() {
+                    draw_ime_preedit(
+                        canvas,
+                        canvas_size,
+                        glyph_atlas,
+                        colors,
+                        cell_dimensions,
+                        &snapshot,
+                        layout,
+                    );
+                }
+            },
+        );
         let terminal_content_visible =
             !self.exit_after_first_frame || buffer.iter().any(|&pixel| pixel != self.background);
         window.pre_present_notify();
@@ -688,6 +701,12 @@ impl LinuxWindow {
             |area| window.set_ime_cursor_area(area.position, area.size),
         );
         Ok(Some(terminal_content_visible))
+    }
+
+    fn lock_grid(&self) -> Result<std::sync::MutexGuard<'_, Grid>, KeyboardInputError> {
+        self.grid
+            .lock()
+            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))
     }
 
     fn clear_selection(&mut self) {
@@ -1072,21 +1091,22 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     }
                     return;
                 }
-                let grid = self.grid.as_ref();
                 let writer = self.writer.as_ref();
-                let result = dispatch_mouse_motion_with(
-                    grid,
-                    position,
-                    self.cell_dimensions,
-                    active_button,
-                    self.modifiers,
-                    self.pointer_route.motion_state.last_cell,
-                    |bytes| {
-                        writer
-                            .ok_or(TerminalWriteQueueError::Disconnected)?
-                            .enqueue_nonfatal(bytes)
-                    },
-                );
+                let result = self.lock_grid().and_then(|grid| {
+                    dispatch_mouse_motion_locked(
+                        &grid,
+                        position,
+                        self.cell_dimensions,
+                        active_button,
+                        self.modifiers,
+                        self.pointer_route.motion_state.last_cell,
+                        |bytes| {
+                            writer
+                                .ok_or(TerminalWriteQueueError::Disconnected)?
+                                .enqueue_nonfatal(bytes)
+                        },
+                    )
+                });
                 self.handle_mouse_motion_result(event_loop, result);
             }
             WindowEvent::CursorLeft { device_id } => {
@@ -1182,21 +1202,30 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     );
                     return;
                 }
-                let result = dispatch_mouse_button_and_motion_with(
-                    self.grid.as_ref(),
-                    self.pointer_route.position_for(device_id),
-                    cell_dimensions,
-                    state,
-                    button,
-                    self.modifiers,
-                    &mut self.pointer_route.motion_state,
-                    |bytes| {
-                        self.writer
-                            .as_ref()
-                            .ok_or(TerminalWriteQueueError::Disconnected)?
-                            .enqueue(bytes)
-                    },
-                );
+                let writer = self.writer.as_ref();
+                let pointer_position = self.pointer_route.position_for(device_id);
+                let modifiers = self.modifiers;
+                let motion_state = &mut self.pointer_route.motion_state;
+                let result = self
+                    .grid
+                    .lock()
+                    .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))
+                    .and_then(|mut grid| {
+                        dispatch_mouse_button_and_motion_locked(
+                            &mut grid,
+                            pointer_position,
+                            cell_dimensions,
+                            state,
+                            button,
+                            modifiers,
+                            motion_state,
+                            |bytes| {
+                                writer
+                                    .ok_or(TerminalWriteQueueError::Disconnected)?
+                                    .enqueue(bytes)
+                            },
+                        )
+                    });
                 let forwarded = matches!(
                     &result,
                     Ok(KeyboardInputOutcome::Forwarded {
@@ -1224,21 +1253,30 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 else {
                     return;
                 };
-                let result = dispatch_mouse_wheel_with(
-                    self.grid.as_ref(),
-                    pointer_position,
-                    self.cell_dimensions,
-                    delta,
-                    phase,
-                    self.modifiers,
-                    &mut self.pointer_route.wheel_state,
-                    |bytes| {
-                        self.writer
-                            .as_ref()
-                            .ok_or(TerminalWriteQueueError::Disconnected)?
-                            .enqueue(bytes)
-                    },
-                );
+                let writer = self.writer.as_ref();
+                let cell_dimensions = self.cell_dimensions;
+                let modifiers = self.modifiers;
+                let wheel_state = &mut self.pointer_route.wheel_state;
+                let result = self
+                    .grid
+                    .lock()
+                    .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))
+                    .and_then(|mut grid| {
+                        dispatch_mouse_wheel_locked(
+                            &mut grid,
+                            pointer_position,
+                            cell_dimensions,
+                            delta,
+                            phase,
+                            modifiers,
+                            wheel_state,
+                            |bytes| {
+                                writer
+                                    .ok_or(TerminalWriteQueueError::Disconnected)?
+                                    .enqueue(bytes)
+                            },
+                        )
+                    });
                 self.handle_terminal_input_result(event_loop, result);
             }
             WindowEvent::Focused(focused) => {
@@ -1255,11 +1293,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if focus_changed
                     && terminal_accepts_input(event_loop.exiting(), self.reader_status.as_ref())
                 {
-                    let result = dispatch_focus_event_with(self.grid.as_ref(), focused, |bytes| {
-                        self.writer
-                            .as_ref()
-                            .ok_or(TerminalWriteQueueError::Disconnected)?
-                            .enqueue(bytes)
+                    let writer = self.writer.as_ref();
+                    let result = self.lock_grid().and_then(|grid| {
+                        dispatch_focus_event_locked(&grid, focused, |bytes| {
+                            writer
+                                .ok_or(TerminalWriteQueueError::Disconnected)?
+                                .enqueue(bytes)
+                        })
                     });
                     self.handle_terminal_input_result(event_loop, result);
                 }
@@ -1286,7 +1326,10 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 let next = match ime_preedit_payload(text, cursor) {
                     ImePreeditPayload::Clear => None,
                     ImePreeditPayload::Text(preedit) => {
-                        let viewport_changed = match reveal_ime_input_viewport(self.grid.as_ref()) {
+                        let revealed = self
+                            .lock_grid()
+                            .map(|mut grid| reveal_ime_input_viewport_locked(&mut grid));
+                        let viewport_changed = match revealed {
                             Ok(changed) => changed,
                             Err(error) => {
                                 self.fail(event_loop, error.to_string());
@@ -1333,16 +1376,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                         return;
                     }
                 };
-                let result = dispatch_encoded_terminal_input_with(
-                    self.grid.as_ref(),
-                    Some(bytes),
-                    |bytes| {
-                        self.writer
-                            .as_ref()
+                let writer = self.writer.as_ref();
+                let result = self.lock_grid().and_then(|mut grid| {
+                    dispatch_encoded_terminal_input_locked(&mut grid, Some(bytes), |bytes| {
+                        writer
                             .ok_or(TerminalWriteQueueError::Disconnected)?
                             .enqueue(bytes)
-                    },
-                );
+                    })
+                });
                 if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) {
                     self.clear_selection();
                 }
@@ -1374,21 +1415,27 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 if scrollback_action.is_none() && key_press.is_none() {
                     return;
                 }
-                let result = dispatch_keyboard_input_with(
-                    self.grid.as_ref(),
-                    scrollback_action,
-                    |application_cursor_keys, kitty_disambiguate| {
-                        key_press.and_then(|key_press| {
-                            encode_key_press(key_press, application_cursor_keys, kitty_disambiguate)
-                        })
-                    },
-                    |bytes| {
-                        self.writer
-                            .as_ref()
-                            .ok_or(TerminalWriteQueueError::Disconnected)?
-                            .enqueue(bytes)
-                    },
-                );
+                let writer = self.writer.as_ref();
+                let result = self.lock_grid().and_then(|mut grid| {
+                    dispatch_keyboard_input_locked(
+                        &mut grid,
+                        scrollback_action,
+                        |application_cursor_keys, kitty_disambiguate| {
+                            key_press.and_then(|key_press| {
+                                encode_key_press(
+                                    key_press,
+                                    application_cursor_keys,
+                                    kitty_disambiguate,
+                                )
+                            })
+                        },
+                        |bytes| {
+                            writer
+                                .ok_or(TerminalWriteQueueError::Disconnected)?
+                                .enqueue(bytes)
+                        },
+                    )
+                });
                 if matches!(result, Ok(KeyboardInputOutcome::Forwarded { .. })) {
                     self.clear_selection();
                 }
