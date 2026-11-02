@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 const REPOSITORY: &str = "https://github.com/guicybercode/kokuban.rs";
 const CHECK_TIMEOUT_SECONDS: &str = "15";
@@ -118,9 +118,43 @@ pub enum InstallKind {
     AppBundle(PathBuf),
     /// A standalone executable, replaced from the release archive.
     Standalone(PathBuf),
+    /// Installed by Homebrew, which records the installed version itself;
+    /// only `brew upgrade` may replace it.
+    Homebrew { path: PathBuf, cask: bool },
+}
+
+impl InstallKind {
+    /// Command that installs a newer release over this installation.
+    pub fn upgrade_command(&self) -> &'static str {
+        match self {
+            Self::Homebrew { cask: true, .. } => "brew upgrade --cask kokuban",
+            Self::Homebrew { cask: false, .. } => "brew upgrade kokuban.rs",
+            Self::AppBundle(_) | Self::Standalone(_) => "kokuban --update",
+        }
+    }
 }
 
 pub fn install_kind(executable: &Path) -> InstallKind {
+    install_kind_with(executable, homebrew_caskroom_has_kokuban)
+}
+
+/// `caskroom_has_kokuban` is consulted only for an app bundle in an
+/// `Applications` folder, where `brew install --cask kokuban` puts it.
+fn install_kind_with(
+    executable: &Path,
+    caskroom_has_kokuban: impl FnOnce() -> bool,
+) -> InstallKind {
+    // Formulae install under <prefix>/Cellar; the caller canonicalized the
+    // path, so the <prefix>/bin symlink is already resolved.
+    if executable
+        .components()
+        .any(|component| component.as_os_str() == "Cellar")
+    {
+        return InstallKind::Homebrew {
+            path: executable.to_path_buf(),
+            cask: false,
+        };
+    }
     let macos = executable.parent();
     let contents = macos.and_then(Path::parent);
     let bundle = contents.and_then(Path::parent);
@@ -130,10 +164,44 @@ pub fn install_kind(executable: &Path) -> InstallKind {
                 && contents.file_name() == Some("Contents".as_ref())
                 && bundle.extension() == Some("app".as_ref()) =>
         {
-            InstallKind::AppBundle(bundle.to_path_buf())
+            let in_applications =
+                bundle.parent().and_then(Path::file_name) == Some("Applications".as_ref());
+            if in_applications && caskroom_has_kokuban() {
+                InstallKind::Homebrew {
+                    path: bundle.to_path_buf(),
+                    cask: true,
+                }
+            } else {
+                InstallKind::AppBundle(bundle.to_path_buf())
+            }
         }
         _ => InstallKind::Standalone(executable.to_path_buf()),
     }
+}
+
+/// Whether the Homebrew cask `kokuban` has an installed version.
+fn homebrew_caskroom_has_kokuban() -> bool {
+    let configured = std::env::var_os("HOMEBREW_PREFIX").map(PathBuf::from);
+    let defaults = ["/opt/homebrew", "/usr/local"].map(PathBuf::from);
+    configured
+        .into_iter()
+        .chain(defaults)
+        .any(|prefix| prefix.join("Caskroom").join("kokuban").is_dir())
+}
+
+/// Homebrew command that upgrades this installation, or `None` when
+/// `kokuban --update` applies. Resolved once from the running executable.
+pub fn upgrade_hint() -> Option<&'static str> {
+    static HINT: OnceLock<Option<&'static str>> = OnceLock::new();
+    *HINT.get_or_init(|| {
+        let executable = std::env::current_exe()
+            .and_then(|path| path.canonicalize())
+            .ok()?;
+        match install_kind(&executable) {
+            kind @ InstallKind::Homebrew { .. } => Some(kind.upgrade_command()),
+            InstallKind::AppBundle(_) | InstallKind::Standalone(_) => None,
+        }
+    })
 }
 
 fn run(program: &str, arguments: &[&std::ffi::OsStr]) -> Result<String, UpdateError> {
@@ -385,7 +453,13 @@ pub fn install(tag: &str) -> Result<PathBuf, UpdateError> {
         ));
     }
     let executable = std::env::current_exe()?.canonicalize()?;
-    match install_kind(&executable) {
+    let kind = install_kind(&executable);
+    let upgrade = kind.upgrade_command();
+    match kind {
+        InstallKind::Homebrew { path, .. } => Err(UpdateError::new(format!(
+            "{} is managed by Homebrew; run `{upgrade}`",
+            path.display()
+        ))),
         InstallKind::AppBundle(bundle) => replace_app_bundle(tag, &bundle).map(|()| bundle),
         InstallKind::Standalone(path) => replace_standalone(tag, &path).map(|()| path),
     }
@@ -410,7 +484,7 @@ impl UpdateStatus {
             Self::Idle => None,
             Self::Checking => Some("checking for updates…".to_string()),
             Self::UpToDate => Some(format!("v{} is up to date", current_version())),
-            Self::Available(tag) => Some(format!("{tag} available")),
+            Self::Available(tag) => Some(available_notice(tag, upgrade_hint())),
             Self::Installing(tag) => Some(format!("installing {tag}…")),
             Self::Installed(tag) => Some(format!("{tag} installed · reopen kokuban")),
             Self::Failed(_) => Some("update failed".to_string()),
@@ -427,11 +501,28 @@ impl UpdateStatus {
 
 pub type SharedUpdateStatus = Arc<Mutex<UpdateStatus>>;
 
+/// Status-bar text for an available release; a Homebrew install names the
+/// `brew upgrade` command that installs it.
+fn available_notice(tag: &str, hint: Option<&str>) -> String {
+    match hint {
+        Some(command) => format!("{tag} available · {command}"),
+        None => format!("{tag} available"),
+    }
+}
+
 /// Window title carrying the update notice, for windows without a status bar.
 #[cfg(any(target_os = "linux", test))]
 pub fn title_with_notice(title: &str, status: &UpdateStatus) -> String {
+    title_with_hint(title, status, upgrade_hint())
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn title_with_hint(title: &str, status: &UpdateStatus, hint: Option<&str>) -> String {
     match status.available_tag() {
-        Some(tag) => format!("{title} · {tag} available (kokuban --update)"),
+        Some(tag) => format!(
+            "{title} · {tag} available ({})",
+            hint.unwrap_or("kokuban --update")
+        ),
         None => title.to_string(),
     }
 }
@@ -522,8 +613,9 @@ pub fn run_check_command() -> ExitCode {
     match check() {
         Ok(Some(tag)) => {
             println!(
-                "kokuban {tag} is available (running {}); run `kokuban --update`",
-                current_version()
+                "kokuban {tag} is available (running {}); run `{}`",
+                current_version(),
+                upgrade_hint().unwrap_or("kokuban --update")
             );
             ExitCode::SUCCESS
         }
@@ -551,6 +643,12 @@ pub fn run_update_command() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(command) = upgrade_hint() {
+        eprintln!(
+            "kokuban: this installation is managed by Homebrew; run `{command}` to install {tag}"
+        );
+        return ExitCode::FAILURE;
+    }
     println!("Downloading kokuban {tag} for {}…", release_target());
     match install(&tag) {
         Ok(path) => {
@@ -675,6 +773,74 @@ mod tests {
                 InstallKind::Standalone(standalone.into())
             );
         }
+    }
+
+    #[test]
+    fn recognizes_homebrew_installs() {
+        let never = || false;
+        let always = || true;
+        for cellar in [
+            "/opt/homebrew/Cellar/kokuban.rs/0.4/bin/kokuban",
+            "/usr/local/Cellar/kokuban.rs/0.4/bin/kokuban",
+            "/home/linuxbrew/.linuxbrew/Cellar/kokuban.rs/0.4/bin/kokuban",
+        ] {
+            assert_eq!(
+                install_kind_with(Path::new(cellar), never),
+                InstallKind::Homebrew {
+                    path: cellar.into(),
+                    cask: false
+                }
+            );
+        }
+        let app = Path::new("/Applications/Kokuban.app/Contents/MacOS/kokuban");
+        assert_eq!(
+            install_kind_with(app, always),
+            InstallKind::Homebrew {
+                path: "/Applications/Kokuban.app".into(),
+                cask: true
+            }
+        );
+        assert_eq!(
+            install_kind_with(app, never),
+            InstallKind::AppBundle("/Applications/Kokuban.app".into())
+        );
+        // A copy outside Applications is not the cask's, whatever the Caskroom holds.
+        let copy = Path::new("/Users/me/Desktop/Kokuban.app/Contents/MacOS/kokuban");
+        assert_eq!(
+            install_kind_with(copy, always),
+            InstallKind::AppBundle("/Users/me/Desktop/Kokuban.app".into())
+        );
+        let homebrew = |cask| InstallKind::Homebrew {
+            path: PathBuf::new(),
+            cask,
+        };
+        assert_eq!(homebrew(false).upgrade_command(), "brew upgrade kokuban.rs");
+        assert_eq!(
+            homebrew(true).upgrade_command(),
+            "brew upgrade --cask kokuban"
+        );
+        assert_eq!(
+            InstallKind::Standalone(PathBuf::new()).upgrade_command(),
+            "kokuban --update"
+        );
+    }
+
+    #[test]
+    fn homebrew_installs_are_told_to_use_brew() {
+        assert_eq!(available_notice("v0.5", None), "v0.5 available");
+        assert_eq!(
+            available_notice("v0.5", Some("brew upgrade kokuban.rs")),
+            "v0.5 available · brew upgrade kokuban.rs"
+        );
+        let available = UpdateStatus::Available("v0.5".into());
+        assert_eq!(
+            title_with_hint("vim", &available, Some("brew upgrade kokuban.rs")),
+            "vim · v0.5 available (brew upgrade kokuban.rs)"
+        );
+        assert_eq!(
+            title_with_hint("vim", &available, None),
+            "vim · v0.5 available (kokuban --update)"
+        );
     }
 
     #[test]

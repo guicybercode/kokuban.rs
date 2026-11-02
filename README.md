@@ -10,10 +10,12 @@ https://github.com/user-attachments/assets/4769ed61-12ed-4bb9-817f-5f3ee06c3238
 
 ## Install
 
-**macOS (Homebrew)** (tap published with each release; see [docs/INSTALL.md](docs/INSTALL.md)):
+**Homebrew** (macOS Apple Silicon and Intel, Linux x86_64; see [docs/INSTALL.md](docs/INSTALL.md)):
 
 ```sh
-brew install --cask guicybercode/tap/kokuban
+brew tap guicybercode/kokuban && brew trust guicybercode/kokuban
+brew install kokuban.rs          # `kokuban` on your PATH
+brew install --cask kokuban      # or Kokuban.app in /Applications (macOS)
 ```
 
 **macOS (direct download, Apple Silicon)** — for Intel Macs replace `aarch64-apple-darwin` with `x86_64-apple-darwin`:
@@ -42,7 +44,7 @@ cargo build --release --locked
 ./target/release/kokuban
 ```
 
-**More.** Every release asset has a `.sha256` next to it; check it with `shasum -a 256 --check` (macOS) or `sha256sum --check` (Linux) before opening. The app is ad-hoc signed, so the first launch of `Kokuban.app` may need **Open** from the Finder context menu or approval in Privacy & Security. Later releases install themselves with `kokuban --update`. The release table, build dependencies, troubleshooting, the Linux desktop entry and the image examples are in [docs/INSTALL.md](docs/INSTALL.md).
+**More.** Every release asset has a `.sha256` next to it; check it with `shasum -a 256 --check` (macOS) or `sha256sum --check` (Linux) before opening. The app is ad-hoc signed, so the first launch of `Kokuban.app` may need **Open** from the Finder context menu or approval in Privacy & Security. Later releases install themselves with `kokuban --update` (Homebrew installs upgrade with `brew upgrade` instead). The release table, build dependencies, troubleshooting, the Linux desktop entry and the image examples are in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Features
 

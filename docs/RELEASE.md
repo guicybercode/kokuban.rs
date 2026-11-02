@@ -42,35 +42,36 @@ Check the release page lists ten assets (five packages, five checksums).
 `releases/latest` can keep pointing at the previous tag for about a minute; the
 in-app updater (`kokuban --update`) follows that redirect.
 
-## 4. Update the Homebrew cask
+## 4. Update the Homebrew tap
 
 ```sh
-scripts/update-homebrew-cask.sh vX.Y      # downloads both .dmg.sha256, rewrites the cask, prints the diff
-git add packaging/homebrew/Casks/kokuban.rb
-git commit -m "build: cask do Homebrew para a vX.Y"
+scripts/update-homebrew.sh vX.Y      # downloads the .sha256 files and the source archive, rewrites cask and formula, prints the diffs
+git add packaging/homebrew
+git commit -m "build: cask e formula do Homebrew para a vX.Y"
 git push
 ```
 
-Then copy the cask to the tap repository and push it:
+Then copy both files to the tap repository and push them (`--tap DIR` makes the copy):
 
 ```sh
-git clone https://github.com/guicybercode/homebrew-tap.git /tmp/homebrew-tap
-cp packaging/homebrew/Casks/kokuban.rb /tmp/homebrew-tap/Casks/
-git -C /tmp/homebrew-tap add Casks/kokuban.rb
-git -C /tmp/homebrew-tap commit -m "kokuban X.Y"
-git -C /tmp/homebrew-tap push
+git clone https://github.com/guicybercode/homebrew-kokuban.git /tmp/homebrew-kokuban
+scripts/update-homebrew.sh vX.Y --tap /tmp/homebrew-kokuban
+git -C /tmp/homebrew-kokuban add Casks/kokuban.rb Formula/kokuban.rs.rb
+git -C /tmp/homebrew-kokuban commit -m "kokuban X.Y"
+git -C /tmp/homebrew-kokuban push
 ```
 
-Verify from a clean state: `brew update && brew install --cask guicybercode/tap/kokuban`
-(or `brew upgrade --cask kokuban`), then `codesign -dv /Applications/Kokuban.app`.
-[packaging/homebrew/README.md](../packaging/homebrew/README.md) has the local-tap
-audit steps to run before pushing.
+The tap's `brew test-bot` workflow then audits and installs both packages on macOS (Apple Silicon
+and Intel) and Linux. Verify from a clean state: `brew update && brew install guicybercode/kokuban/kokuban.rs`
+(or `brew upgrade kokuban.rs`) and `kokuban --version`; for the app `brew install --cask guicybercode/kokuban/kokuban`
+then `codesign -dv /Applications/Kokuban.app`.
+[packaging/homebrew/README.md](../packaging/homebrew/README.md) has the local audit steps to run before pushing.
 
 ## Notarization (not yet done)
 
 The disk images are ad-hoc signed by `scripts/package-macos-dmg.sh`, so Gatekeeper
 asks users to confirm the first launch (see the cask caveat and
-[INSTALL.md](INSTALL.md#homebrew-macos)). Notarizing removes that prompt. It needs a paid
+[INSTALL.md](INSTALL.md#homebrew-macos-and-linux)). Notarizing removes that prompt. It needs a paid
 Apple Developer Program membership and these pieces:
 
 | Secret / value | What it is |

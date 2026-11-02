@@ -2,24 +2,32 @@
 
 This page keeps the full installation reference that used to live in the README: the release table, dependencies, checksum verification, updating, building from source, Omarchy commands, troubleshooting, the Linux desktop entry and the image examples. The README has the three-line summary.
 
-## Homebrew (macOS)
+## Homebrew (macOS and Linux)
 
-The cask lives in [`packaging/homebrew/Casks/kokuban.rb`](../packaging/homebrew/Casks/kokuban.rb) in this repository and is published to the `guicybercode/homebrew-tap` tap with each release. It installs `Kokuban.app` from the release disk image for your Mac (Apple Silicon or Intel) after checking the published SHA-256:
+The tap [`guicybercode/homebrew-kokuban`](https://github.com/guicybercode/homebrew-kokuban) carries two packages, both generated from [`packaging/homebrew/`](../packaging/homebrew/) in this repository and updated with each release:
+
+- the formula `kokuban.rs`: the `kokuban` executable. On macOS (Apple Silicon or Intel) it installs the release archive after checking the published SHA-256; on Linux x86_64 it builds the tagged source with Homebrew's Rust, because the release binary needs glibc 2.39.
+- the cask `kokuban` (macOS only): `Kokuban.app` from the release disk image, installed in `/Applications`.
 
 ```sh
-brew install --cask guicybercode/tap/kokuban   # taps guicybercode/tap on first use
-brew upgrade --cask kokuban                    # move to the latest release
-brew uninstall --cask kokuban                  # remove the app
-brew uninstall --cask --zap kokuban            # also remove ~/.config/kokuban
+brew tap guicybercode/kokuban
+brew trust guicybercode/kokuban        # Homebrew 7 loads third-party taps only after this
+brew install kokuban.rs                # `kokuban` on your PATH
+brew install --cask kokuban            # or the app bundle (macOS)
+brew upgrade kokuban.rs                # move to the latest release (`--cask kokuban` for the app)
+brew uninstall kokuban.rs              # remove it (`--cask kokuban` for the app)
+brew uninstall --cask --zap kokuban    # also remove ~/.config/kokuban
 ```
 
-The app is ad-hoc signed, not Developer ID signed or notarized, and Homebrew prints a caveat saying so. If macOS refuses the first launch, use **Open** from the Finder context menu or clear the quarantine flag:
+The executable and the app are ad-hoc signed, not Developer ID signed or notarized, and Homebrew prints a caveat saying so. If macOS refuses the first launch of the app, use **Open** from the Finder context menu or clear the quarantine flag:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Kokuban.app
 ```
 
-If you installed with Homebrew, upgrade with `brew upgrade --cask kokuban` rather than `kokuban --update`, so Homebrew's record of the installed version stays correct.
+On Linux the formula also installs the desktop entry and icon under Homebrew's `share/`; Kokuban still opens the system's X11 or Wayland libraries at run time and needs a monospace font (see the `apt install` line below).
+
+Installed with Homebrew, upgrade with `brew upgrade` rather than `kokuban --update`, so Homebrew's record of the installed version stays correct. From v0.5 on the updater recognizes a Homebrew install (an executable under `Cellar/`, or `Kokuban.app` in `/Applications` while the cask is installed) and only points to the `brew upgrade` command instead of replacing files.
 
 ## Run a downloaded release
 

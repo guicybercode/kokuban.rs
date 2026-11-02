@@ -16,10 +16,11 @@
 - `[input] option_as_alt = "both" | "left" | "right" | "none"` chooses which Option key acts as Meta on macOS; the other side composes accents and symbols.
 - `docs/KEYBINDS.md`, `docs/PERFORMANCE.md`, `docs/INSTALL.md`, a generated SVG of the four-terminal throughput comparison and a feature matrix against Terminal.app, kitty, Ghostty and Alacritty.
 - `scripts/compare-terminal-performance.py` runs on macOS: `--backend macos` (the default there) launches Kokuban, Alacritty, kitty, Ghostty and, with `--terminals ... terminal`, Terminal.app through AppleScript; the grid is verified without pixel-cell matching, Terminal.app CPU/RSS are application-level deltas, the output gains `summary.json` and per-terminal summaries, and `scripts/render-comparison-chart.py` accepts `--summary`, `--output`, `--title` and `--subtitle`.
-- Homebrew cask in `packaging/homebrew/Casks/kokuban.rb` (install with `brew install --cask guicybercode/tap/kokuban` once the tap is published), `scripts/update-homebrew-cask.sh` to point it at a new release, and the release checklist in `docs/RELEASE.md`.
+- Homebrew tap [`guicybercode/kokuban`](https://github.com/guicybercode/homebrew-kokuban): the formula `kokuban.rs` installs the `kokuban` executable (release archive on macOS Apple Silicon and Intel, source build on Linux x86_64) and the cask `kokuban` installs `Kokuban.app`; both live in `packaging/homebrew/`, `scripts/update-homebrew.sh` points them at a new release, and `docs/RELEASE.md` has the release checklist.
 
 ### Changed
 
+- `kokuban --update`, `--check-update` and the update notice recognize a Homebrew install (an executable under `Cellar/`, or `Kokuban.app` in `/Applications` while the cask is installed) and point to `brew upgrade kokuban.rs` or `brew upgrade --cask kokuban` instead of replacing files that Homebrew tracks.
 - A `kokuban.toml` in the launch directory can no longer run a program or open local files: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored there with a warning and are only read from the user configuration directory; appearance, window and keybind settings are still honored.
 - README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
