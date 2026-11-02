@@ -14,14 +14,14 @@ use crate::input::mouse::{
     encode_alternate_scroll_steps, encode_mouse_event, mouse_wheel_route, MouseWheelRoute,
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
 };
-use crate::layout::{PaneId, PixelRect, SplitDirection};
+use crate::layout::{PaneId, PixelRect};
 use crate::notifications::NotificationController;
+use crate::pane::actions::{apply_pane_action, PaneActionHost, ZoomDirection};
 use crate::pane::pane::Pane;
 use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::{FrameInputs, MetalRenderer};
-use crate::search::SearchState;
 use crate::selection::GridPoint;
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
@@ -1554,6 +1554,61 @@ fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) ->
     })
 }
 
+/// macOS side of `apply_pane_action`: viewport from the Metal layer, cell
+/// metrics from the atlas, zoom through `perform_zoom`, close confirmation
+/// through `ConfirmDialog`.
+struct MacPaneActionHost<'a> {
+    state: &'a mut ViewState,
+    cell_w: f32,
+    cell_h: f32,
+}
+
+impl PaneActionHost for MacPaneActionHost<'_> {
+    fn viewport(&self) -> PixelRect {
+        let size = self.state.metal_layer.drawableSize();
+        PixelRect {
+            x: 0.0,
+            y: 0.0,
+            width: size.width as f32,
+            height: size.height as f32,
+        }
+    }
+
+    fn cell_size(&self) -> (f32, f32) {
+        (self.cell_w, self.cell_h)
+    }
+
+    fn status_bar_height(&self) -> f32 {
+        self.state.status_bar_height
+    }
+
+    fn resize_step(&self) -> f32 {
+        self.state.resize_step
+    }
+
+    fn zoom(&mut self, tree: &mut PaneTree, direction: ZoomDirection) {
+        let state = &mut *self.state;
+        let new_size = match direction {
+            ZoomDirection::In => (state.font_size + state.zoom_step).min(state.max_font_size),
+            ZoomDirection::Out => (state.font_size - state.zoom_step).max(state.min_font_size),
+            ZoomDirection::Reset => state.base_font_size,
+        };
+        perform_zoom(state, tree, new_size);
+    }
+
+    fn confirm_close(&mut self, id: PaneId, pane: Option<&Pane>) -> bool {
+        if !self.state.confirm_on_close_pane {
+            return false;
+        }
+        // Get foreground process name for the dialog
+        let proc_name = pane.and_then(|p| confirm::foreground_process_name(p.pty.master_fd()));
+        self.state.confirm_dialog =
+            Some(ConfirmDialog::new(ConfirmAction::ClosePane(id), proc_name));
+        self.state.request_render();
+        true
+    }
+}
+
 fn handle_pane_action(action: PaneAction) {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
@@ -1567,234 +1622,48 @@ fn handle_pane_action(action: PaneAction) {
         let cell_h = atlas.cell_height;
         drop(atlas);
 
-        let mut tree = state.pane_tree.lock().unwrap();
-        let previous_focus = tree.focused_pane().map(|pane| pane.id);
-        let mut closed_pane = None;
+        let pane_tree = Arc::clone(&state.pane_tree);
+        let mut tree = pane_tree.lock().unwrap();
+        let outcome = {
+            let mut host = MacPaneActionHost {
+                state,
+                cell_w,
+                cell_h,
+            };
+            apply_pane_action(&mut tree, action, &mut host)
+        };
 
-        match action {
-            PaneAction::SplitVertical => {
-                if let Err(e) = tree.split(SplitDirection::Vertical, cell_w, cell_h) {
-                    log::error!("Failed to split vertical: {e}");
-                }
-                // Relayout
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::SplitHorizontal => {
-                if let Err(e) = tree.split(SplitDirection::Horizontal, cell_w, cell_h) {
-                    log::error!("Failed to split horizontal: {e}");
-                }
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::ClosePane => {
-                if state.confirm_on_close_pane {
-                    let id = tree.focused;
-                    // Get foreground process name for the dialog
-                    let proc_name = tree
-                        .pane(id)
-                        .and_then(|p| confirm::foreground_process_name(p.pty.master_fd()));
-                    drop(tree);
-                    state.confirm_dialog =
-                        Some(ConfirmDialog::new(ConfirmAction::ClosePane(id), proc_name));
-                    state.request_render();
-                    return;
-                }
-                // No confirmation — close immediately
-                let id = tree.focused;
-                let outcome = tree.close(id);
-                closed_pane = outcome.closed_pane;
-                if outcome.should_terminate {
-                    dispatch_pane_focus_transition_locked(
-                        &tree,
-                        state.window_is_key.as_ref(),
-                        previous_focus,
-                        closed_pane.as_ref(),
-                    );
-                    drop(tree);
-                    if let Some(pane) = closed_pane {
-                        state.pane_cleanup.retire(pane);
-                    }
-                    state.request_close();
-                    return;
-                }
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::FocusLeft => {
-                tree.focus_neighbor(SplitDirection::Vertical, false);
-            }
-            PaneAction::FocusRight => {
-                tree.focus_neighbor(SplitDirection::Vertical, true);
-            }
-            PaneAction::FocusAttention => {
-                if let Some(target) = tree.next_attention_pane() {
-                    tree.focused = target;
-                }
-            }
-            PaneAction::FocusUp => {
-                tree.focus_neighbor(SplitDirection::Horizontal, false);
-            }
-            PaneAction::FocusDown => {
-                tree.focus_neighbor(SplitDirection::Horizontal, true);
-            }
-            PaneAction::ResizeLeft => {
-                let delta = -(state.resize_step / cell_w) * 0.01;
-                tree.resize_focused(delta);
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::ResizeRight => {
-                let delta = (state.resize_step / cell_w) * 0.01;
-                tree.resize_focused(delta);
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::ResizeUp => {
-                let delta = -(state.resize_step / cell_h) * 0.01;
-                tree.resize_focused(delta);
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::ResizeDown => {
-                let delta = (state.resize_step / cell_h) * 0.01;
-                tree.resize_focused(delta);
-                let size = state.metal_layer.drawableSize();
-                let viewport = PixelRect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: size.width as f32,
-                    height: size.height as f32,
-                };
-                tree.relayout(viewport, cell_w, cell_h, state.status_bar_height);
-            }
-            PaneAction::ZoomIn => {
-                drop(tree);
-                let new_size = (state.font_size + state.zoom_step).min(state.max_font_size);
-                perform_zoom(state, new_size);
-                return;
-            }
-            PaneAction::ZoomOut => {
-                drop(tree);
-                let new_size = (state.font_size - state.zoom_step).max(state.min_font_size);
-                perform_zoom(state, new_size);
-                return;
-            }
-            PaneAction::ZoomReset => {
-                drop(tree);
-                perform_zoom(state, state.base_font_size);
-                return;
-            }
-            PaneAction::Search => {
-                if let Some(pane) = tree.focused_pane_mut() {
-                    if pane.search.is_none() {
-                        let mut search = SearchState::new(pane.last_search_query.clone());
-                        search.recompute(&pane.grid);
-                        search.scroll_to_current(&mut pane.grid);
-                        pane.search = Some(search);
-                    }
-                }
-            }
-            PaneAction::PrevPrompt => {
-                if let Some(pane) = tree.focused_pane_mut() {
-                    let current_abs = if pane.grid.scroll_offset > 0 {
-                        let sb_len = pane.grid.scrollback_len();
-                        sb_len.saturating_sub(pane.grid.scroll_offset)
-                    } else {
-                        pane.grid.current_absolute_row()
-                    };
-                    if let Some(target_row) = pane.grid.marks.prev_prompt(current_abs) {
-                        let sb_len = pane.grid.scrollback_len();
-                        let total_pushed = pane.grid.total_lines_pushed;
-                        // target_row is absolute. Convert to scroll_offset.
-                        // absolute row in scrollback = target_row, but scrollback may have evicted lines.
-                        // scrollback stores the last sb_len lines. The absolute range in scrollback is
-                        // [total_pushed - sb_len .. total_pushed). The visible buffer starts at total_pushed.
-                        let evicted = total_pushed.saturating_sub(sb_len);
-                        if target_row >= evicted {
-                            let sb_index = target_row - evicted;
-                            // scroll_offset = sb_len - sb_index (with 2 lines context)
-                            let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
-                            pane.grid.scroll_offset = offset.min(sb_len);
-                        }
-                    }
-                }
-            }
-            PaneAction::NextPrompt => {
-                if let Some(pane) = tree.focused_pane_mut() {
-                    let current_abs = if pane.grid.scroll_offset > 0 {
-                        let sb_len = pane.grid.scrollback_len();
-                        sb_len.saturating_sub(pane.grid.scroll_offset)
-                    } else {
-                        pane.grid.current_absolute_row()
-                    };
-                    if let Some(target_row) = pane.grid.marks.next_prompt(current_abs) {
-                        let sb_len = pane.grid.scrollback_len();
-                        let total_pushed = pane.grid.total_lines_pushed;
-                        let evicted = total_pushed.saturating_sub(sb_len);
-                        if target_row >= evicted && target_row < total_pushed {
-                            let sb_index = target_row - evicted;
-                            let offset = sb_len.saturating_sub(sb_index).saturating_sub(2);
-                            pane.grid.scroll_offset = offset.min(sb_len);
-                        } else {
-                            // Target is in the visible buffer or beyond — snap to bottom
-                            pane.grid.scroll_to_bottom();
-                        }
-                    } else {
-                        pane.grid.scroll_to_bottom();
-                    }
-                }
-            }
-        }
-
-        if tree.focused_pane().map(|pane| pane.id) != previous_focus {
+        if outcome.terminate {
             dispatch_pane_focus_transition_locked(
                 &tree,
                 state.window_is_key.as_ref(),
-                previous_focus,
-                closed_pane.as_ref(),
+                outcome.focus_changed_from,
+                outcome.closed_pane.as_ref(),
+            );
+            drop(tree);
+            if let Some(pane) = outcome.closed_pane {
+                state.pane_cleanup.retire(pane);
+            }
+            state.request_close();
+            return;
+        }
+        if !outcome.render {
+            // A confirm dialog took over, or the zoom already rendered.
+            return;
+        }
+
+        if let Some(previous_focus) = outcome.focus_changed_from {
+            dispatch_pane_focus_transition_locked(
+                &tree,
+                state.window_is_key.as_ref(),
+                Some(previous_focus),
+                outcome.closed_pane.as_ref(),
             );
             publish_focused_window_title(&tree, state.window_title.as_ref());
         }
         tree.clear_focused_attention();
         drop(tree);
-        if let Some(pane) = closed_pane {
+        if let Some(pane) = outcome.closed_pane {
             state.pane_cleanup.retire(pane);
         }
         // Splits and closes change the PTYs the reader must poll.
@@ -1889,7 +1758,8 @@ fn execute_confirm_action(state: &mut ViewState, action: ConfirmAction) {
     }
 }
 
-fn perform_zoom(state: &mut ViewState, new_size: f32) {
+/// The caller holds the pane tree lock (`tree`); the atlas is locked here.
+fn perform_zoom(state: &mut ViewState, tree: &mut PaneTree, new_size: f32) {
     if (new_size - state.font_size).abs() < 0.01 {
         return;
     }
@@ -1907,9 +1777,7 @@ fn perform_zoom(state: &mut ViewState, new_size: f32) {
     } else {
         0.0
     };
-    let mut tree = state.pane_tree.lock().unwrap();
-    update_pane_geometry(&mut tree, cell_w, cell_h, status_bar_height, drawable_size);
-    drop(tree);
+    update_pane_geometry(tree, cell_w, cell_h, status_bar_height, drawable_size);
     drop(atlas);
 
     state.font_size = new_size;
