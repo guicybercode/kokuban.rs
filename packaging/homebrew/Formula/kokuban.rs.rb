@@ -37,9 +37,13 @@ class KokubanRs < Formula
       (share/"applications").install "assets/io.github.guicybercode.kokuban.desktop"
       (share/"pixmaps").install "assets/kokuban-icon.png" => "io.github.guicybercode.kokuban.png"
       pkgshare.install "kokuban.toml"
-      doc.install Dir["*.md"], "CITATION.cff"
-      (doc/"docs").install "docs/INSTALL.md", "docs/KEYBINDS.md", "docs/OMARCHY.md",
-                           "docs/THIRD_PARTY.md", "docs/third-party-licenses"
+      doc.install Dir["*.md"], "CITATION.cff", "THIRD_PARTY_LICENSES"
+      # Not every tag ships the same user docs (v0.4 predates INSTALL.md and
+      # KEYBINDS.md), so install the ones this release has.
+      user_docs = %w[INSTALL.md KEYBINDS.md OMARCHY.md THIRD_PARTY.md third-party-licenses]
+                  .map { |name| "docs/#{name}" }
+                  .select { |path| File.exist?(path) }
+      (doc/"docs").install user_docs unless user_docs.empty?
     else
       bin.install "kokuban"
       pkgshare.install "kokuban.toml", "assets"
