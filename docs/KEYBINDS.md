@@ -1,6 +1,6 @@
 # Keybinds
 
-Kokuban ships with a small fixed set of clipboard and scrollback inputs on Linux and a configurable pane, zoom, prompt-navigation and search table on macOS. The macOS bindings live under `[keybind]` in `kokuban.toml`; see the [example configuration](../kokuban.toml) for the full list of actions and the key syntax.
+Kokuban ships with a small fixed set of clipboard and scrollback inputs on Linux and a configurable pane, zoom, prompt-navigation and search table on both platforms. The macOS bindings live under `[keybind]` in `kokuban.toml`, the Linux ones under `[keybind.linux]`; see the [example configuration](../kokuban.toml) for the full list of actions and the key syntax.
 
 Linux supports these clipboard and selection actions:
 
@@ -21,7 +21,7 @@ Omarchy maps `Super+C` and `Super+V` to the supported Insert shortcuts; see [Oma
 
 The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](TERMINAL_TEXT.md) and [Linux application validation](LINUX_APPS.md). OSC 52 remote clipboard commands remain pending.
 
-These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux provides terminal keyboard/IME and mouse input and scrollback; it does not yet implement this pane shortcut table.
+These are the macOS defaults for the pane, zoom, prompt-navigation and search actions; the Linux defaults follow in the next section.
 
 | Action              | Keybind             |
 |---------------------|---------------------|
@@ -50,11 +50,13 @@ These pane, zoom and prompt-navigation keybinds currently apply to macOS. Linux 
 The pane, resize, zoom, prompt-navigation, search and attention bindings in the macOS table are configurable; the search prompt, mouse clicks and `Esc` are fixed. A pane is marked with ● in its status bar after a BEL or a desktop notification arrives while it is not focused, and dividers touching it turn hanko red. Linux clipboard and scrollback shortcuts use their fixed input routes. On macOS, `Cmd+C` copies a selection or sends Ctrl+C when there is none; `Cmd+V` pastes.
 
 
-The pane, zoom, prompt and search bindings apply to macOS and can be remapped under `[keybind]`; the Linux clipboard and scrollback inputs above are fixed.
+The pane, zoom, prompt and search bindings can be remapped under `[keybind]` on macOS and `[keybind.linux]` on Linux; the clipboard and scrollback inputs above are fixed.
 
 ## Linux (from v0.5)
 
-The Linux window port of the pane table is in progress. The table below is the `[keybind.linux]` section of `kokuban.toml`, already parsed and validated today, that the Linux window will dispatch once the port lands. Super is left to the window manager, and none of the defaults collides with the fixed `Ctrl+Shift+C/V/A`, `Ctrl+Insert`, `Shift+Insert` and `Shift+PageUp/PageDown/Home/End` inputs above.
+The Linux window dispatches the `[keybind.linux]` table below: splits, close, focus, resize, zoom, prompt navigation, scrollback search and the attention jump, on the same pane tree as macOS. Super is left to the window manager, and none of the defaults collides with the fixed `Ctrl+Shift+C/V/A`, `Ctrl+Insert`, `Shift+Insert` and `Shift+PageUp/PageDown/Home/End` inputs above. A click focuses the pane under the pointer; dividers next to the focused pane, or to one that received a BEL or notification while unwatched, are drawn in hanko red.
+
+Still macOS-only: the status bar, so Linux shows neither the search prompt text (matches are highlighted in the pane while the search is open and keys go to the query), the ● attention mark nor the prompt indicator; and the close confirmation dialog, so `Ctrl+Shift+W` closes the pane immediately.
 
 | Action              | Default Linux keybind   |
 |---------------------|-------------------------|
@@ -75,6 +77,9 @@ The Linux window port of the pane table is in progress. The table below is the `
 | Previous prompt     | `Ctrl+Shift+↑`          |
 | Next prompt         | `Ctrl+Shift+↓`          |
 | Search scrollback   | `Ctrl+Shift+F`          |
+| Next / previous match (while searching) | `Enter` / `Shift+Enter` |
+| Close search        | `Esc`                   |
 | Jump to pane with attention | `Ctrl+Shift+N`  |
+| Open an OSC 8 hyperlink | `Ctrl` + left click |
 
 Key names are shared by both platforms: a single character, `plus`/`minus`, `f1`..`f12`, `up`/`down`/`left`/`right`, `pageup`/`pagedown`, `home`/`end`, `tab`, `esc`, `enter`, `backspace`, `space`, `insert`, `delete`; modifiers are `ctrl`, `alt`, `shift` and `super` (`cmd` on macOS). With `shift` held, punctuation matches either spelling of the key (`=`/`+`, `-`/`_`).
