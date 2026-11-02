@@ -87,8 +87,8 @@ use sizing::{
     atlas_cell_dimensions, configured_terminal_dimensions, create_glyph_atlas, drawable_dimensions,
     immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
     physical_size_for_terminal, replace_glyph_atlas_for_scale,
-    terminal_dimensions_from_locked_grid, GlyphAtlasRebuildError, INITIAL_CELL_HEIGHT,
-    INITIAL_CELL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+    terminal_dimensions_from_locked_grid, GlyphAtlasRebuildError, TerminalDimensions,
+    INITIAL_CELL_HEIGHT, INITIAL_CELL_WIDTH, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
 };
 use status::{combine_launch_results, terminal_accepts_input};
 
@@ -345,6 +345,7 @@ pub(crate) fn launch(
         idle: xrgb_from_hex(&chrome.sumi_ghost),
     };
     let mut application = LinuxWindow::new(LinuxWindowParams {
+        terminal_dimensions,
         colors,
         palette_overrides,
         font: FontSettings {
@@ -434,6 +435,7 @@ struct FontSettings {
 }
 
 struct LinuxWindowParams {
+    terminal_dimensions: TerminalDimensions,
     colors: TerminalColors,
     palette_overrides: PaletteOverrides,
     font: FontSettings,
@@ -500,6 +502,8 @@ struct LinuxWindow {
     theme_watcher: Option<ThemeWatcher>,
     font: FontSettings,
     base_font_size: f32,
+    /// `[window] columns`/`rows`: the first pane's grid and window size.
+    terminal_dimensions: TerminalDimensions,
     initial_size: LogicalSize<u32>,
     exit_after_first_frame: bool,
     first_frame_presented: bool,
@@ -735,6 +739,7 @@ impl LinuxWindow {
             theme_watcher: None,
             base_font_size: params.font.size,
             font: params.font,
+            terminal_dimensions: params.terminal_dimensions,
             initial_size: params.initial_size,
             exit_after_first_frame: params.exit_after_first_frame,
             first_frame_presented: false,
@@ -822,13 +827,10 @@ impl LinuxWindow {
         let scale_factor = window.scale_factor();
         let glyph_atlas = self.create_glyph_atlas(scale_factor)?;
         let cell_dimensions = atlas_cell_dimensions(&glyph_atlas)?;
-        let terminal_dimensions = {
-            let tree = lock_tree(&self.panes).map_err(|error| error.to_string())?;
-            let pane = tree
-                .focused_pane()
-                .ok_or_else(|| "the Linux window started without a pane".to_string())?;
-            terminal_dimensions_from_locked_grid(&pane.grid).map_err(|error| error.to_string())?
-        };
+        // The configured grid, not the pane's: a `-e` command can finish (and
+        // its pane close) before the compositor delivers `resumed`; the window
+        // still opens, presents its frame and exits cleanly.
+        let terminal_dimensions = self.terminal_dimensions;
         let requested_inner_size = physical_size_for_terminal(terminal_dimensions, cell_dimensions)
             .ok_or_else(|| {
                 format!(
@@ -1605,10 +1607,11 @@ impl LinuxWindow {
             "could not size the Linux window before glyph metrics were ready".to_string()
         })?;
         let tree = lock_tree(&self.panes).map_err(|error| error.to_string())?;
-        if tree.pane_ids().len() == 1 {
-            let pane = tree
-                .focused_pane()
-                .ok_or_else(|| "the Linux window has no pane to size".to_string())?;
+        let single_pane = match tree.pane_ids().as_slice() {
+            [id] => tree.pane(*id),
+            _ => None,
+        };
+        if let Some(pane) = single_pane {
             let terminal_dimensions = terminal_dimensions_from_locked_grid(&pane.grid)
                 .map_err(|error| error.to_string())?;
             return physical_size_for_terminal(terminal_dimensions, cell_dimensions).ok_or_else(
