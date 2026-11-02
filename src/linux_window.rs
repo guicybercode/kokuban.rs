@@ -2459,8 +2459,8 @@ mod tests {
     use super::{
         apply_search_to_snapshot, arm_grid_redraw, begin_grid_redraw, divider_rectangle,
         layout_viewport, pack_cell_dimensions, pane_action_ignores_repeat, pane_local_position,
-        pane_viewport, search_key_from_winit, terminal_color_query_value, unpack_cell_dimensions,
-        GridAccessError, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        pane_viewport, search_key_from_winit, sync_pane_metrics, terminal_color_query_value,
+        unpack_cell_dimensions, GridAccessError, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::grid::cell::Color;
     use crate::grid::Grid;
@@ -2468,7 +2468,11 @@ mod tests {
     use crate::layout::{DividerInfo, PixelRect, SplitDirection};
     use crate::linux_window::draw::PaneViewport;
     use crate::linux_window::test_support::test_colors;
+    use crate::pane::PaneTree;
+    use crate::parser::ansi::GraphicsSupport;
+    use crate::renderer::kitty_handler::KittyHandlerOptions;
     use crate::search::{SearchKey, SearchState};
+    use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, Mutex};
     use winit::dpi::{PhysicalPosition, PhysicalSize};
@@ -2659,5 +2663,58 @@ mod tests {
 
     fn snapshot_locked_grid_for_test(grid: &Grid) -> super::GridSnapshot {
         super::snapshot_locked_grid(grid)
+    }
+
+    #[test]
+    fn pane_metrics_reach_every_grid_and_pty_once_per_change() {
+        let mut tree = PaneTree::new(
+            80,
+            24,
+            100,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            Arc::new(|| {}),
+            &[],
+        )
+        .expect("pane metrics test should spawn its shell");
+        let viewport = layout_viewport(PhysicalSize::new(800, 480), (10, 20));
+        tree.relayout(viewport, 10.0, 20.0, 0.0);
+        let second = tree
+            .split(SplitDirection::Vertical, 10.0, 20.0)
+            .expect("split should spawn its shell");
+        tree.relayout(viewport, 10.0, 20.0, 0.0);
+        let mut applied = HashMap::new();
+
+        sync_pane_metrics(&mut tree, (10, 20), &mut applied).expect("PTY sizes should apply");
+
+        for id in [1, second] {
+            let pane = tree.pane(id).expect("both panes should exist");
+            assert_eq!(
+                (pane.grid.cell_pixel_width, pane.grid.cell_pixel_height),
+                (10, 20)
+            );
+            let (columns, rows) = (pane.grid.cols() as u16, pane.grid.rows() as u16);
+            assert_eq!(applied[&id], (columns, rows, columns * 10, rows * 20));
+            assert!(columns < 80, "split panes share the viewport width");
+        }
+
+        // A new cell size with the same grid still reaches the PTY.
+        sync_pane_metrics(&mut tree, (12, 24), &mut applied).expect("PTY sizes should apply");
+        let pane = tree.pane(second).unwrap();
+        assert_eq!(applied[&second].2, pane.grid.cols() as u16 * 12);
+
+        tree.close(second)
+            .closed_pane
+            .expect("the split pane should detach")
+            .retire();
+        sync_pane_metrics(&mut tree, (12, 24), &mut applied).expect("PTY sizes should apply");
+        assert_eq!(applied.len(), 1, "closed panes leave the bookkeeping");
+        tree.close(1)
+            .closed_pane
+            .expect("the last pane should detach")
+            .retire();
     }
 }
