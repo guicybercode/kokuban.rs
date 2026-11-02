@@ -29,6 +29,14 @@ pub(crate) struct ImageSnapshot {
     opaque: bool,
 }
 
+impl ImageSnapshot {
+    /// Stable identity of the decoded image behind this placement; the GPU
+    /// presenter keys its texture cache on it together with the pixel buffer.
+    pub(crate) fn image_id(&self) -> u64 {
+        self.image_id
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct PixelCoverage {
     left: u32,
