@@ -1,3 +1,6 @@
+pub mod actions;
+pub mod cleanup;
+pub mod focus;
 // `pane::pane::Pane` is the leaf; the parent module owns the tree.
 #[allow(clippy::module_inception)]
 pub mod pane;
@@ -300,7 +303,12 @@ impl PaneTree {
                 let grid_height = (rect.height - status_bar_height).max(cell_h);
                 let cols = (rect.width / cell_w).floor() as usize;
                 let rows = (grid_height / cell_h).floor() as usize;
-                pane.resize_grid(cols.max(MIN_PANE_COLS), rows.max(MIN_PANE_ROWS));
+                pane.resize_grid(
+                    cols.max(MIN_PANE_COLS),
+                    rows.max(MIN_PANE_ROWS),
+                    cell_w,
+                    cell_h,
+                );
             }
         }
     }

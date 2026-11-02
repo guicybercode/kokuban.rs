@@ -5,19 +5,18 @@ pub mod window;
 
 use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::{GlyphAtlas, GlyphAtlasError};
-use crate::graphics::{ImageId, ImagePlacement, InlineRenderSize, PlacementMode};
-use crate::grid::Grid;
-use crate::input::keybind::KeybindMap;
+use crate::graphics::SixelPlacement;
+use crate::input::keybind::{platform_table, KeybindMap};
 use crate::launch_options::LaunchOptions;
 use crate::layout::PixelRect;
-use crate::pane::pane::Pane;
+use crate::pane::cleanup::PaneCleanup;
 use crate::pane::PaneTree;
+use crate::pane_reader::GraphicsPolicy;
 use crate::parser::ansi::GraphicsSupport;
-use crate::parser::sixel::SixelImage;
 use crate::render_scene::{ChromeColors, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::kitty_handler::KittyHandlerOptions;
-use crate::window_title::WINDOW_TITLE;
+use crate::window_title::{WindowTitleMailbox, WINDOW_TITLE};
 
 use objc2::{runtime::ProtocolObject, MainThreadMarker, Message};
 use objc2_app_kit::*;
@@ -25,73 +24,9 @@ use objc2_foundation::*;
 use objc2_metal::{MTLCreateSystemDefaultDevice, MTLDevice};
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::JoinHandle;
+use std::sync::{Arc, Mutex};
 
 use window::{create_terminal_view, TerminalViewParams};
-
-enum CleanupCommand<T> {
-    Retire(Box<T>),
-    Shutdown,
-}
-
-#[derive(Clone)]
-pub(super) struct PaneCleanup {
-    sender: mpsc::Sender<CleanupCommand<Pane>>,
-    fallback: Arc<Mutex<Vec<Pane>>>,
-}
-
-impl PaneCleanup {
-    fn spawn() -> (Self, JoinHandle<()>) {
-        let (sender, receiver) = mpsc::channel();
-        let fallback = Arc::new(Mutex::new(Vec::new()));
-        let handle = std::thread::Builder::new()
-            .name("pane-cleanup".to_string())
-            .spawn(move || run_cleanup(receiver, Pane::retire))
-            .expect("Failed to spawn pane cleanup thread");
-
-        (Self { sender, fallback }, handle)
-    }
-
-    pub(super) fn retire(&self, pane: Pane) {
-        if let Err(error) = self.sender.send(CleanupCommand::Retire(Box::new(pane))) {
-            let CleanupCommand::Retire(pane) = error.0 else {
-                unreachable!("retire sends only retire commands");
-            };
-            log::error!("Pane cleanup worker is unavailable; deferring local cleanup");
-            match self.fallback.lock() {
-                Ok(mut fallback) => fallback.push(*pane),
-                Err(poisoned) => poisoned.into_inner().push(*pane),
-            }
-        }
-    }
-
-    fn shutdown(&self) {
-        if self.sender.send(CleanupCommand::Shutdown).is_err() {
-            log::warn!("Pane cleanup worker stopped before shutdown");
-        }
-    }
-
-    fn take_fallback(&self) -> Vec<Pane> {
-        let mut fallback = match self.fallback.lock() {
-            Ok(fallback) => fallback,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        std::mem::take(&mut *fallback)
-    }
-}
-
-fn run_cleanup<T, F>(receiver: mpsc::Receiver<CleanupCommand<T>>, mut retire: F)
-where
-    F: FnMut(T),
-{
-    while let Ok(command) = receiver.recv() {
-        match command {
-            CleanupCommand::Retire(value) => retire(*value),
-            CleanupCommand::Shutdown => break,
-        }
-    }
-}
 
 fn snapshot_then_lock<'a, First, Second, Snapshot, F>(
     first: &Mutex<First>,
@@ -106,39 +41,6 @@ where
     let second_guard = second.lock().unwrap();
     drop(first_guard);
     (snapshot, second_guard)
-}
-
-fn process_sixel_event<F>(
-    grid: &mut Grid,
-    image: &SixelImage,
-    cursor: (usize, usize),
-    cell_size: (f32, f32),
-    store_image: F,
-) where
-    F: FnOnce(&SixelImage) -> Option<ImageId>,
-{
-    let display_cols = ((image.width as f32) / cell_size.0).ceil() as u32;
-    let display_rows = ((image.height as f32) / cell_size.1).ceil() as u32;
-    if let Some(image_id) = store_image(image) {
-        grid.image_placements.push(ImagePlacement {
-            image_id,
-            placement_id: 0,
-            client_placement_id: None,
-            mode: PlacementMode::Inline {
-                row: cursor.0 as i64,
-                col: cursor.1,
-                cols: display_cols,
-                rows: display_rows,
-                x_offset: 0,
-                y_offset: 0,
-                render_size: InlineRenderSize::CellAnchored,
-            },
-            z_index: 0,
-        });
-    }
-    for _ in 0..display_rows {
-        grid.newline();
-    }
 }
 
 pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasError> {
@@ -201,7 +103,7 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
     let atlas = Arc::new(Mutex::new(atlas));
 
     let dirty = Arc::new(AtomicBool::new(true));
-    let window_title = Arc::new(window::WindowTitleMailbox::new());
+    let window_title = Arc::new(WindowTitleMailbox::new());
     if let Some(title) = &options.title {
         window_title.set_initial_title(title);
     }
@@ -226,8 +128,8 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         hanko_red: ColorConfig::parse_hex(&config.theme.chrome.hanko_red),
     };
 
-    let keybinds = KeybindMap::from_config(&config.keybind);
-    let resize_step = config.keybind.resize.step as f32;
+    let keybinds = KeybindMap::from_platform_config(&config);
+    let resize_step = platform_table(&config).resize_step();
 
     // Create shared image store for Kitty/Sixel image rendering
     let image_store = Arc::new(Mutex::new(ImageStore::new(
@@ -410,11 +312,19 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         window_title: window_title.clone(),
         window_is_key: window_is_key.clone(),
         should_close: should_close.clone(),
-        pane_cleanup: pane_cleanup.clone(),
-        kitty_enabled,
-        sixel_enabled,
+        graphics: GraphicsPolicy {
+            kitty_enabled,
+            sixel_enabled,
+            sixel_placement: SixelPlacement::CellAnchored,
+            placement_limit: None,
+        },
         notifications: notifications.clone(),
         osc52_write: config.clipboard.osc52_write,
+    };
+    let reader_host = reader::MacReaderHost {
+        atlas: reader_atlas,
+        render_scheduler: reader_render_scheduler,
+        pane_cleanup: pane_cleanup.clone(),
         clipboard_write: clipboard_write.clone(),
     };
 
@@ -422,11 +332,10 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         .name("pty-reader".to_string())
         .spawn(move || {
             reader::run_reader(
-                reader_atlas.as_ref(),
                 reader_tree.as_ref(),
-                &reader_render_scheduler,
                 reader_thread_wake.as_ref(),
                 &reader_shared,
+                &reader_host,
             );
         })
         .expect("Failed to spawn PTY reader thread");
@@ -510,30 +419,9 @@ fn setup_menu_bar(app: &NSApplication, mtm: MainThreadMarker) {
 
 #[cfg(test)]
 mod tests {
-    use super::{process_sixel_event, run_cleanup, snapshot_then_lock, CleanupCommand};
-    use crate::graphics::PlacementMode;
-    use crate::grid::Grid;
-    use crate::parser::sixel::SixelImage;
+    use super::snapshot_then_lock;
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
-
-    struct LockingDropProbe {
-        lock: Arc<Mutex<()>>,
-        started: mpsc::Sender<std::thread::ThreadId>,
-        finished: mpsc::Sender<()>,
-    }
-
-    impl Drop for LockingDropProbe {
-        fn drop(&mut self) {
-            self.started
-                .send(std::thread::current().id())
-                .expect("cleanup test should observe the retire thread");
-            let _guard = self.lock.lock().unwrap();
-            self.finished
-                .send(())
-                .expect("cleanup test should observe retirement completion");
-        }
-    }
 
     #[test]
     fn metric_snapshot_stays_locked_until_the_tree_is_acquired() {
@@ -645,111 +533,5 @@ mod tests {
         );
         zoom.join().unwrap();
         reader.join().unwrap();
-    }
-
-    #[test]
-    fn sixel_placement_uses_the_event_cursor_snapshot() {
-        let mut grid = Grid::new(12, 6, 0);
-        grid.cursor_row = 4;
-        grid.cursor_col = 7;
-        let image = SixelImage {
-            width: 1,
-            height: 6,
-            pixels: vec![0; 24],
-        };
-
-        process_sixel_event(&mut grid, &image, (1, 2), (8.0, 16.0), |_| Some(9));
-
-        assert_eq!((grid.cursor_row, grid.cursor_col), (5, 7));
-        let placement = grid.image_placements.pop().unwrap();
-        match placement.mode {
-            PlacementMode::Inline {
-                row,
-                col,
-                cols,
-                rows,
-                ..
-            } => {
-                assert_eq!((row, col), (1, 2));
-                assert_ne!((row, col), (grid.cursor_row as i64, grid.cursor_col));
-                assert_eq!((cols, rows), (1, 1));
-            }
-        }
-    }
-
-    #[test]
-    fn sixel_at_bottom_scrolls_its_placement_with_cursor_advance() {
-        let mut grid = Grid::new(12, 4, 10);
-        grid.set_cursor_pos(2, 1);
-        let image = SixelImage {
-            width: 8,
-            height: 32,
-            pixels: vec![0; 8 * 32 * 4],
-        };
-
-        process_sixel_event(&mut grid, &image, (2, 1), (8.0, 16.0), |_| Some(9));
-
-        assert_eq!((grid.cursor_row, grid.cursor_col), (3, 1));
-        assert_eq!(grid.scrollback_len(), 1);
-        assert_eq!(
-            grid.image_placements[0].mode.pixel_rect(8.0, 16.0),
-            (8.0, 16.0, 8.0, 32.0)
-        );
-        grid.newline();
-        assert_eq!(
-            grid.image_placements[0].mode.pixel_rect(8.0, 16.0),
-            (8.0, 0.0, 8.0, 32.0)
-        );
-    }
-
-    #[test]
-    fn sixel_store_rejection_still_advances_the_protocol_cursor() {
-        let mut grid = Grid::new(12, 6, 0);
-        grid.cursor_row = 1;
-        grid.cursor_col = 2;
-        let image = SixelImage {
-            width: 1,
-            height: 6,
-            pixels: vec![0; 24],
-        };
-
-        process_sixel_event(&mut grid, &image, (1, 2), (8.0, 16.0), |_| None);
-
-        assert!(grid.image_placements.is_empty());
-        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 2));
-    }
-
-    #[test]
-    fn cleanup_retires_before_shutdown_without_blocking_the_callers_lock() {
-        let (sender, receiver) = mpsc::channel();
-        let (started_sender, started_receiver) = mpsc::channel();
-        let (finished_sender, finished_receiver) = mpsc::channel();
-        let lock = Arc::new(Mutex::new(()));
-        let caller_guard = lock.lock().unwrap();
-        let caller_thread = std::thread::current().id();
-        let worker = std::thread::spawn(move || run_cleanup(receiver, drop));
-
-        sender
-            .send(CleanupCommand::Retire(Box::new(LockingDropProbe {
-                lock: lock.clone(),
-                started: started_sender,
-                finished: finished_sender,
-            })))
-            .unwrap();
-        sender.send(CleanupCommand::Shutdown).unwrap();
-
-        let retire_thread = started_receiver
-            .recv_timeout(Duration::from_secs(1))
-            .expect("retirement should start on the cleanup worker");
-        assert_ne!(retire_thread, caller_thread);
-        assert!(finished_receiver.try_recv().is_err());
-
-        drop(caller_guard);
-        finished_receiver
-            .recv_timeout(Duration::from_secs(1))
-            .expect("retirement should finish after the caller releases its lock");
-        worker
-            .join()
-            .expect("cleanup worker should process shutdown");
     }
 }

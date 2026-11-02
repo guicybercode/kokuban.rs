@@ -250,6 +250,34 @@ pub struct KeybindConfig {
     /// Jump to the next pane flagged with attention (BEL / notification).
     pub focus_attention: String,
     pub resize: ResizeConfig,
+    /// `[keybind.linux]`: the same actions with Linux defaults (Ctrl+Shift).
+    pub linux: LinuxKeybindConfig,
+}
+
+/// Pane keybinds used on Linux, where Super belongs to the window manager and
+/// Ctrl+Shift+C/V/A, Ctrl+Insert and Shift+Insert are fixed clipboard chords.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct LinuxKeybindConfig {
+    pub split_vertical: String,
+    pub split_horizontal: String,
+    pub close_pane: String,
+    pub focus_left: String,
+    pub focus_down: String,
+    pub focus_up: String,
+    pub focus_right: String,
+    pub resize_left: String,
+    pub resize_down: String,
+    pub resize_up: String,
+    pub resize_right: String,
+    pub zoom_in: String,
+    pub zoom_out: String,
+    pub zoom_reset: String,
+    pub prev_prompt: String,
+    pub next_prompt: String,
+    pub search: String,
+    pub focus_attention: String,
+    pub resize: ResizeConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -430,6 +458,33 @@ impl Default for KeybindConfig {
             search: "cmd+f".to_string(),
             focus_attention: "cmd+shift+a".to_string(),
             resize: ResizeConfig::default(),
+            linux: LinuxKeybindConfig::default(),
+        }
+    }
+}
+
+impl Default for LinuxKeybindConfig {
+    fn default() -> Self {
+        Self {
+            split_vertical: "ctrl+shift+d".to_string(),
+            split_horizontal: "ctrl+shift+e".to_string(),
+            close_pane: "ctrl+shift+w".to_string(),
+            focus_left: "ctrl+shift+h".to_string(),
+            focus_down: "ctrl+shift+j".to_string(),
+            focus_up: "ctrl+shift+k".to_string(),
+            focus_right: "ctrl+shift+l".to_string(),
+            resize_left: "ctrl+alt+shift+h".to_string(),
+            resize_down: "ctrl+alt+shift+j".to_string(),
+            resize_up: "ctrl+alt+shift+k".to_string(),
+            resize_right: "ctrl+alt+shift+l".to_string(),
+            zoom_in: "ctrl+shift+plus".to_string(),
+            zoom_out: "ctrl+shift+minus".to_string(),
+            zoom_reset: "ctrl+shift+0".to_string(),
+            prev_prompt: "ctrl+shift+up".to_string(),
+            next_prompt: "ctrl+shift+down".to_string(),
+            search: "ctrl+shift+f".to_string(),
+            focus_attention: "ctrl+shift+n".to_string(),
+            resize: ResizeConfig::default(),
         }
     }
 }
@@ -572,6 +627,32 @@ mod tests {
         ));
         std::fs::create_dir(&directory).unwrap();
         directory
+    }
+
+    #[test]
+    fn linux_keybinds_are_a_nested_table_with_their_own_defaults() {
+        let config: Config = toml::from_str(
+            r#"
+[keybind]
+split_vertical = "cmd+shift+v"
+
+[keybind.linux]
+split_vertical = "ctrl+shift+t"
+
+[keybind.linux.resize]
+step = 5
+"#,
+        )
+        .unwrap();
+        assert_eq!(config.keybind.split_vertical, "cmd+shift+v");
+        assert_eq!(config.keybind.linux.split_vertical, "ctrl+shift+t");
+        assert_eq!(config.keybind.linux.split_horizontal, "ctrl+shift+e");
+        assert_eq!(config.keybind.linux.resize.step, 5);
+        assert_eq!(config.keybind.resize.step, 20);
+        // Untouched sections keep the Linux defaults.
+        let defaults: Config = toml::from_str("").unwrap();
+        assert_eq!(defaults.keybind.linux.zoom_in, "ctrl+shift+plus");
+        assert_eq!(defaults.keybind.linux.focus_attention, "ctrl+shift+n");
     }
 
     #[test]

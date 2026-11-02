@@ -3,7 +3,7 @@ use crate::layout::{PaneId, PixelRect};
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
-use crate::search::SearchState;
+use crate::search::{SearchKey, SearchKeyOutcome, SearchState};
 use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
@@ -94,44 +94,45 @@ impl Pane {
     }
 
     pub fn queue_input(&self, bytes: Vec<u8>) {
-        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::FailPane);
+        self.input().queue_input(bytes);
     }
 
+    // The Linux window enqueues motion through `PaneInput` directly.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn queue_motion_input(&self, bytes: Vec<u8>) {
-        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal);
+        let _ = self.input().queue_nonfatal_input(bytes);
     }
 
     pub fn queue_paste_input(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
-        self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal)
+        self.input().queue_nonfatal_input(bytes)
     }
 
     pub fn max_nonfatal_input_bytes(&self) -> usize {
         self.writer.max_nonfatal_input_bytes()
     }
 
-    fn queue_input_with_policy(
-        &self,
-        bytes: Vec<u8>,
-        full_policy: FullQueuePolicy,
-    ) -> Result<(), TerminalWriteQueueError> {
-        if self.input_failed.load(Ordering::Acquire) {
-            return Err(TerminalWriteQueueError::Disconnected);
+    /// The input queue alone, so the grid can be borrowed mutably alongside
+    /// it (mode checks and the enqueue happen in one locked step).
+    pub fn input(&self) -> PaneInput<'_> {
+        PaneInput {
+            id: self.id,
+            writer: &self.writer,
+            input_failed: &self.input_failed,
+            on_input_failed: &self.on_input_failed,
         }
+    }
 
-        let enqueue_result = match full_policy {
-            FullQueuePolicy::FailPane => self.writer.enqueue(bytes),
-            FullQueuePolicy::NonFatal => self.writer.enqueue_nonfatal(bytes),
+    /// Grid and input queue borrowed apart.
+    // The macOS window holds the whole pane while it dispatches.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub fn grid_and_input(&mut self) -> (&mut Grid, PaneInput<'_>) {
+        let input = PaneInput {
+            id: self.id,
+            writer: &self.writer,
+            input_failed: &self.input_failed,
+            on_input_failed: &self.on_input_failed,
         };
-        let result = record_enqueue_result(
-            self.input_failed.as_ref(),
-            self.id,
-            enqueue_result,
-            full_policy,
-        );
-        if self.input_failed.load(Ordering::Acquire) {
-            (self.on_input_failed)();
-        }
-        result
+        (&mut self.grid, input)
     }
 
     pub fn input_failed(&self) -> bool {
@@ -156,7 +157,22 @@ impl Pane {
         }
     }
 
-    pub fn resize_grid(&mut self, cols: usize, rows: usize) {
+    /// Entrega uma tecla à busca aberta deste painel. `None` quando não há
+    /// busca aberta (a tecla segue para o shell). Ao fechar, guarda a
+    /// consulta em `last_search_query`.
+    pub fn handle_search_key(&mut self, key: SearchKey) -> Option<SearchKeyOutcome> {
+        let search = self.search.as_mut()?;
+        let outcome = search.handle_key(key, &mut self.grid);
+        if let SearchKeyOutcome::Close { last_query } = &outcome {
+            self.last_search_query = last_query.clone();
+            self.search = None;
+        }
+        Some(outcome)
+    }
+
+    /// Resize the grid and the PTY together; `cell_w`/`cell_h` (physical
+    /// pixels) fill the `TIOCSWINSZ` pixel fields so programs can size images.
+    pub fn resize_grid(&mut self, cols: usize, rows: usize, cell_w: f32, cell_h: f32) {
         let current_cols = self.grid.cols();
         let current_rows = self.grid.rows();
         let pty = Arc::clone(&self.pty);
@@ -165,7 +181,14 @@ impl Pane {
             current_rows,
             cols,
             rows,
-            move |pty_cols, pty_rows| pty.resize(pty_cols, pty_rows),
+            move |pty_cols, pty_rows| {
+                pty.resize_with_pixels(
+                    pty_cols,
+                    pty_rows,
+                    pixel_extent(pty_cols, cell_w),
+                    pixel_extent(pty_rows, cell_h),
+                )
+            },
             |grid_cols, grid_rows| {
                 self.grid.resize(grid_cols, grid_rows);
                 // Reflow changes retained-row coordinates, as on the Linux path.
@@ -174,6 +197,58 @@ impl Pane {
         ) {
             log::error!("Failed to resize PTY for pane {}: {error}", self.id);
         }
+    }
+}
+
+/// A pane's input queue without its grid.
+pub struct PaneInput<'a> {
+    id: PaneId,
+    writer: &'a TerminalWriter,
+    input_failed: &'a AtomicBool,
+    on_input_failed: &'a InputFailureNotifier,
+}
+
+impl PaneInput<'_> {
+    /// Lossless input: a full or closed queue fails the pane.
+    pub fn queue_input(&self, bytes: Vec<u8>) {
+        let _ = self.queue_input_with_policy(bytes, FullQueuePolicy::FailPane);
+    }
+
+    /// Coalescible input (mouse motion, pastes): a full queue only reports
+    /// `Full`; a closed queue still fails the pane.
+    pub fn queue_nonfatal_input(&self, bytes: Vec<u8>) -> Result<(), TerminalWriteQueueError> {
+        self.queue_input_with_policy(bytes, FullQueuePolicy::NonFatal)
+    }
+
+    fn queue_input_with_policy(
+        &self,
+        bytes: Vec<u8>,
+        full_policy: FullQueuePolicy,
+    ) -> Result<(), TerminalWriteQueueError> {
+        if self.input_failed.load(Ordering::Acquire) {
+            return Err(TerminalWriteQueueError::Disconnected);
+        }
+
+        let enqueue_result = match full_policy {
+            FullQueuePolicy::FailPane => self.writer.enqueue(bytes),
+            FullQueuePolicy::NonFatal => self.writer.enqueue_nonfatal(bytes),
+        };
+        let result = record_enqueue_result(self.input_failed, self.id, enqueue_result, full_policy);
+        if self.input_failed.load(Ordering::Acquire) {
+            (self.on_input_failed)();
+        }
+        result
+    }
+}
+
+/// Pixel size of `cells` cells of `cell_size` physical pixels, saturated to
+/// the `winsize` range; non-finite or negative sizes report zero.
+fn pixel_extent(cells: u16, cell_size: f32) -> u16 {
+    let pixels = f32::from(cells) * cell_size;
+    if pixels.is_finite() && pixels > 0.0 {
+        pixels.round().min(f32::from(u16::MAX)) as u16
+    } else {
+        0
     }
 }
 
@@ -259,14 +334,25 @@ fn mark_input_failed(input_failed: &AtomicBool, pane_id: PaneId, message: &str) 
 #[cfg(test)]
 mod tests {
     use super::{
-        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane, TerminalWriteQueueError,
-        WriterExit,
+        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane, SearchKey,
+        SearchKeyOutcome, SearchState, TerminalWriteQueueError, WriterExit,
     };
     use crate::parser::ansi::GraphicsSupport;
     use crate::renderer::kitty_handler::KittyHandlerOptions;
     use std::cell::{Cell, RefCell};
     use std::io;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn pixel_extent_rounds_and_saturates() {
+        assert_eq!(super::pixel_extent(80, 10.4), 832);
+        assert_eq!(super::pixel_extent(24, 20.6), 494);
+        assert_eq!(super::pixel_extent(0, 10.0), 0);
+        assert_eq!(super::pixel_extent(10, 0.0), 0);
+        assert_eq!(super::pixel_extent(10, -1.0), 0);
+        assert_eq!(super::pixel_extent(10, f32::NAN), 0);
+        assert_eq!(super::pixel_extent(u16::MAX, 10.0), u16::MAX);
+    }
 
     #[test]
     fn pty_resize_completes_before_grid_commit() {
@@ -465,6 +551,42 @@ mod tests {
             Err(TerminalWriteQueueError::Disconnected),
         );
         assert!(failed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn search_keys_reach_only_an_open_search_and_escape_remembers_the_query() {
+        let mut pane = Pane::new(
+            17,
+            80,
+            24,
+            1_000,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            std::sync::Arc::new(|| {}),
+            &[],
+        )
+        .expect("search key test should spawn its shell");
+        assert_eq!(pane.handle_search_key(SearchKey::Char('x')), None);
+
+        pane.search = Some(SearchState::new(String::new()));
+        assert_eq!(
+            pane.handle_search_key(SearchKey::Char('q')),
+            Some(SearchKeyOutcome::Changed)
+        );
+        assert_eq!(pane.search.as_ref().unwrap().query, "q");
+        assert_eq!(
+            pane.handle_search_key(SearchKey::Escape),
+            Some(SearchKeyOutcome::Close {
+                last_query: "q".to_string()
+            })
+        );
+        assert!(pane.search.is_none());
+        assert_eq!(pane.last_search_query, "q");
+        assert_eq!(pane.handle_search_key(SearchKey::Enter), None);
+        pane.retire();
     }
 
     #[test]

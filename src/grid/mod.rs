@@ -450,7 +450,8 @@ impl Grid {
     pub(crate) fn title(&self) -> &str {
         &self.title
     }
-    #[cfg(any(target_os = "macos", test))]
+    // The Linux window compares titles by value; the macOS reader uses the revision.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) fn title_revision(&self) -> u64 {
         self.title_revision
     }

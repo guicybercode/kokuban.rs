@@ -102,3 +102,32 @@ focus_attention  = "cmd+shift+a"
 
 [keybind.resize]
 step = 20
+
+# Linux uses its own table (Super belongs to the window manager, and
+# Ctrl+Shift+C/V/A, Ctrl+Insert and Shift+Insert stay clipboard chords).
+# Key names: a single character, `plus`/`minus`, `f1`..`f12`, `up`, `down`,
+# `left`, `right`, `pageup`, `pagedown`, `home`, `end`, `tab`, `esc`, `enter`,
+# `backspace`, `space`, `insert`, `delete`; modifiers `ctrl`, `alt`, `shift`,
+# `super`. These are the defaults:
+# [keybind.linux]
+# split_vertical   = "ctrl+shift+d"
+# split_horizontal = "ctrl+shift+e"
+# close_pane       = "ctrl+shift+w"
+# focus_left       = "ctrl+shift+h"
+# focus_down       = "ctrl+shift+j"
+# focus_up         = "ctrl+shift+k"
+# focus_right      = "ctrl+shift+l"
+# resize_left      = "ctrl+alt+shift+h"
+# resize_down      = "ctrl+alt+shift+j"
+# resize_up        = "ctrl+alt+shift+k"
+# resize_right     = "ctrl+alt+shift+l"
+# zoom_in          = "ctrl+shift+plus"   # "ctrl+shift+=" also works
+# zoom_out         = "ctrl+shift+minus"
+# zoom_reset       = "ctrl+shift+0"
+# prev_prompt      = "ctrl+shift+up"
+# next_prompt      = "ctrl+shift+down"
+# search           = "ctrl+shift+f"
+# focus_attention  = "ctrl+shift+n"
+#
+# [keybind.linux.resize]
+# step = 20

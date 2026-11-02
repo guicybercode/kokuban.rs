@@ -109,7 +109,8 @@ impl SelectionState {
     }
 
     /// Extract selected text from the grid.
-    #[cfg(any(target_os = "macos", test))]
+    // The Linux clipboard copies through `get_text_with_limit` directly.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn get_text(&self, grid: &Grid) -> String {
         self.get_text_with_limit(grid, usize::MAX)
             .unwrap_or_default()

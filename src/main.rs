@@ -8,37 +8,32 @@ mod glyph_atlas;
 mod graphics;
 mod grid;
 mod input;
-mod notifications;
-// Pane layout, search and the render scene are consumed by the macOS window only.
 mod launch_options;
-#[cfg(any(target_os = "macos", test))]
 mod layout;
 #[cfg(target_os = "linux")]
 mod linux_clipboard;
 #[cfg(target_os = "linux")]
 mod linux_window;
+mod notifications;
 #[cfg(target_os = "linux")]
 mod omarchy_theme;
 mod palette;
-#[cfg(target_os = "macos")]
 mod pane;
+mod pane_reader;
 mod parser;
 mod pty;
-#[cfg(target_os = "macos")]
+// Status bar and confirm overlay geometry; the Linux window adopts it in B2.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod render_scene;
 mod renderer;
-#[cfg(any(target_os = "macos", test))]
 mod search;
 mod selection;
 #[cfg(target_os = "linux")]
 mod software_graphics;
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 mod software_raster;
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod terminal_colors;
 mod terminal_decoder;
-#[cfg_attr(target_os = "macos", allow(dead_code))]
-mod terminal_reader;
 mod terminal_writer;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod update;

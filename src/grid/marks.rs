@@ -33,7 +33,8 @@ impl MarkIndex {
     }
 
     /// Find the nearest PromptStart mark ABOVE (strictly less than) the given row.
-    #[cfg(any(target_os = "macos", test))]
+    // Prompt navigation is dispatched by the macOS window until the Linux pane port.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn prev_prompt(&self, current_row: usize) -> Option<usize> {
         // marks are in insertion order (monotonically increasing)
         // binary search for the last mark < current_row
@@ -48,7 +49,7 @@ impl MarkIndex {
     }
 
     /// Find the nearest PromptStart mark BELOW (strictly greater than) the given row.
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn next_prompt(&self, current_row: usize) -> Option<usize> {
         for mark in &self.marks {
             if mark.absolute_row > current_row && mark.kind == PromptMarkKind::PromptStart {
@@ -59,7 +60,8 @@ impl MarkIndex {
     }
 
     /// Get all PromptStart absolute rows that are currently visible.
-    #[cfg(any(target_os = "macos", test))]
+    // Only the macOS status bar draws prompt indicators so far.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn visible_prompt_rows(
         &self,
         scroll_offset: usize,

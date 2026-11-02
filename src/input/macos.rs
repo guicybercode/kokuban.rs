@@ -1,4 +1,4 @@
-use super::keybind::KeyModifiers;
+use super::keybind::{KeyModifiers, KeyName};
 use super::keyboard::{
     encode_key_kitty_disambiguate, encode_terminal_key_with_modifiers, KittyKey, TerminalKey,
     TerminalKeyModifiers,
@@ -142,7 +142,7 @@ pub(crate) fn mouse_button_with_appkit_modifiers(
 pub(crate) fn key_modifiers_from_appkit(modifiers: NSEventModifierFlags) -> KeyModifiers {
     let mut key_modifiers = KeyModifiers::empty();
     if modifiers.contains(NSEventModifierFlags::Command) {
-        key_modifiers.insert(KeyModifiers::CMD);
+        key_modifiers.insert(KeyModifiers::SUPER);
     }
     if modifiers.contains(NSEventModifierFlags::Shift) {
         key_modifiers.insert(KeyModifiers::SHIFT);
@@ -213,6 +213,110 @@ fn encode_macos_kitty_key(
     )
 }
 
+/// Logical key of a macOS key event, for keybind lookup. Named keys come from
+/// the virtual key code; letters, digits and punctuation from
+/// `charactersIgnoringModifiers` (so they follow the keyboard layout), with the
+/// ANSI key code table as a fallback for dead keys and empty strings.
+pub(crate) fn key_name_from_key_code(
+    code: u16,
+    characters_ignoring_modifiers: Option<&str>,
+) -> Option<KeyName> {
+    if let Some(named) = named_key_from_key_code(code) {
+        return Some(named);
+    }
+    characters_ignoring_modifiers
+        .and_then(|characters| characters.chars().next())
+        .and_then(KeyName::from_char)
+        .or_else(|| ansi_key_from_key_code(code).map(KeyName::Char))
+}
+
+fn named_key_from_key_code(code: u16) -> Option<KeyName> {
+    Some(match code {
+        36 | 76 => KeyName::Enter,
+        48 => KeyName::Tab,
+        49 => KeyName::Space,
+        51 => KeyName::Backspace,
+        53 => KeyName::Escape,
+        114 => KeyName::Insert,
+        115 => KeyName::Home,
+        116 => KeyName::PageUp,
+        117 => KeyName::Delete,
+        119 => KeyName::End,
+        121 => KeyName::PageDown,
+        123 => KeyName::Left,
+        124 => KeyName::Right,
+        125 => KeyName::Down,
+        126 => KeyName::Up,
+        122 => KeyName::F(1),
+        120 => KeyName::F(2),
+        99 => KeyName::F(3),
+        118 => KeyName::F(4),
+        96 => KeyName::F(5),
+        97 => KeyName::F(6),
+        98 => KeyName::F(7),
+        100 => KeyName::F(8),
+        101 => KeyName::F(9),
+        109 => KeyName::F(10),
+        103 => KeyName::F(11),
+        111 => KeyName::F(12),
+        _ => return None,
+    })
+}
+
+/// Unshifted character of an ANSI (US) key code.
+fn ansi_key_from_key_code(code: u16) -> Option<char> {
+    Some(match code {
+        0 => 'a',
+        1 => 's',
+        2 => 'd',
+        3 => 'f',
+        4 => 'h',
+        5 => 'g',
+        6 => 'z',
+        7 => 'x',
+        8 => 'c',
+        9 => 'v',
+        11 => 'b',
+        12 => 'q',
+        13 => 'w',
+        14 => 'e',
+        15 => 'r',
+        16 => 'y',
+        17 => 't',
+        18 => '1',
+        19 => '2',
+        20 => '3',
+        21 => '4',
+        22 => '6',
+        23 => '5',
+        24 => '=',
+        25 => '9',
+        26 => '7',
+        27 => '-',
+        28 => '8',
+        29 => '0',
+        30 => ']',
+        31 => 'o',
+        32 => 'u',
+        33 => '[',
+        34 => 'i',
+        35 => 'p',
+        37 => 'l',
+        38 => 'j',
+        39 => '\'',
+        40 => 'k',
+        41 => ';',
+        42 => '\\',
+        43 => ',',
+        44 => '/',
+        45 => 'n',
+        46 => 'm',
+        47 => '.',
+        50 => '`',
+        _ => return None,
+    })
+}
+
 pub(crate) fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Option<TerminalKey> {
     match key_code {
         36 => Some(TerminalKey::Enter),
@@ -249,10 +353,12 @@ pub(crate) fn terminal_key_from_key_code(key_code: u16, has_shift: bool) -> Opti
 mod tests {
     use super::{
         encode_macos_kitty_key, encode_macos_terminal_key, encode_macos_text_input,
-        key_modifiers_from_appkit, mouse_button_with_appkit_modifiers, terminal_key_from_key_code,
+        key_modifiers_from_appkit, key_name_from_key_code, mouse_button_with_appkit_modifiers,
+        terminal_key_from_key_code,
     };
     use super::{option_acts_as_meta, LEFT_OPTION_DEVICE_BIT, RIGHT_OPTION_DEVICE_BIT};
     use crate::config::OptionAsAlt;
+    use crate::input::keybind::KeyName;
 
     #[test]
     fn kitty_disambiguate_routes_macos_keys_through_csi_u() {
@@ -459,7 +565,7 @@ mod tests {
             let mut appkit = irrelevant;
             let mut expected = KeyModifiers::empty();
             for (bit, appkit_flag, key_modifier) in [
-                (0, NSEventModifierFlags::Command, KeyModifiers::CMD),
+                (0, NSEventModifierFlags::Command, KeyModifiers::SUPER),
                 (1, NSEventModifierFlags::Shift, KeyModifiers::SHIFT),
                 (2, NSEventModifierFlags::Control, KeyModifiers::CTRL),
                 (3, NSEventModifierFlags::Option, KeyModifiers::ALT),
@@ -528,5 +634,99 @@ mod tests {
             ),
             93,
         );
+    }
+
+    #[test]
+    fn key_names_follow_characters_for_text_and_key_codes_for_named_keys() {
+        // Letters and digits come from the layout-aware characters, lowercased.
+        assert_eq!(
+            key_name_from_key_code(0, Some("a")),
+            Some(KeyName::Char('a'))
+        );
+        assert_eq!(
+            key_name_from_key_code(0, Some("A")),
+            Some(KeyName::Char('a'))
+        );
+        assert_eq!(
+            key_name_from_key_code(12, Some("q")),
+            Some(KeyName::Char('q'))
+        );
+        assert_eq!(
+            key_name_from_key_code(18, Some("1")),
+            Some(KeyName::Char('1'))
+        );
+        assert_eq!(
+            key_name_from_key_code(24, Some("=")),
+            Some(KeyName::Char('='))
+        );
+        // Shift+= reports "+"; the keybind map aliases it back to "=".
+        assert_eq!(
+            key_name_from_key_code(24, Some("+")),
+            Some(KeyName::Char('+'))
+        );
+        assert_eq!(
+            key_name_from_key_code(27, Some("-")),
+            Some(KeyName::Char('-'))
+        );
+        assert_eq!(
+            key_name_from_key_code(29, Some("0")),
+            Some(KeyName::Char('0'))
+        );
+        // Dead keys and empty strings fall back to the ANSI position.
+        assert_eq!(key_name_from_key_code(0, None), Some(KeyName::Char('a')));
+        assert_eq!(
+            key_name_from_key_code(0, Some("")),
+            Some(KeyName::Char('a'))
+        );
+        assert_eq!(
+            key_name_from_key_code(24, Some("´")),
+            Some(KeyName::Char('='))
+        );
+        assert_eq!(
+            key_name_from_key_code(50, Some("")),
+            Some(KeyName::Char('`'))
+        );
+        // Unknown code without ASCII text: no key.
+        assert_eq!(key_name_from_key_code(200, Some("é")), None);
+        assert_eq!(key_name_from_key_code(200, None), None);
+
+        // Named keys ignore the private-use characters AppKit sends.
+        let named = [
+            (126, "\u{F700}", KeyName::Up),
+            (125, "\u{F701}", KeyName::Down),
+            (123, "\u{F702}", KeyName::Left),
+            (124, "\u{F703}", KeyName::Right),
+            (116, "\u{F72C}", KeyName::PageUp),
+            (121, "\u{F72D}", KeyName::PageDown),
+            (115, "\u{F729}", KeyName::Home),
+            (119, "\u{F72B}", KeyName::End),
+            (48, "\t", KeyName::Tab),
+            (53, "\x1b", KeyName::Escape),
+            (36, "\r", KeyName::Enter),
+            (76, "\x03", KeyName::Enter),
+            (51, "\x7f", KeyName::Backspace),
+            (49, " ", KeyName::Space),
+            (114, "\u{F746}", KeyName::Insert),
+            (117, "\u{F728}", KeyName::Delete),
+            (122, "\u{F704}", KeyName::F(1)),
+            (120, "\u{F705}", KeyName::F(2)),
+            (99, "\u{F706}", KeyName::F(3)),
+            (118, "\u{F707}", KeyName::F(4)),
+            (96, "\u{F708}", KeyName::F(5)),
+            (97, "\u{F709}", KeyName::F(6)),
+            (98, "\u{F70A}", KeyName::F(7)),
+            (100, "\u{F70B}", KeyName::F(8)),
+            (101, "\u{F70C}", KeyName::F(9)),
+            (109, "\u{F70D}", KeyName::F(10)),
+            (103, "\u{F70E}", KeyName::F(11)),
+            (111, "\u{F70F}", KeyName::F(12)),
+        ];
+        for (code, characters, expected) in named {
+            assert_eq!(
+                key_name_from_key_code(code, Some(characters)),
+                Some(expected),
+                "key code {code}"
+            );
+        }
     }
 }

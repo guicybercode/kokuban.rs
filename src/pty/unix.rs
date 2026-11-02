@@ -216,6 +216,7 @@ impl Pty {
 
     /// Block until PTY output/EOF or cancellation, without periodic wakeups.
     /// Cancellation readiness takes precedence and returns `false`.
+    #[allow(dead_code)]
     pub(crate) fn wait_readable_or_cancelled(
         &self,
         cancellation: BorrowedFd<'_>,
@@ -275,13 +276,8 @@ impl Pty {
         }
     }
 
-    #[cfg(any(target_os = "macos", test))]
-    pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
-        self.resize_with_pixels(cols, rows, 0, 0)
-    }
-
     /// Report the drawable terminal area, in physical pixels, along with its grid.
-    /// Callers without pixel metrics can continue using `resize`.
+    /// Callers without pixel metrics pass zero for both pixel fields.
     pub fn resize_with_pixels(
         &self,
         cols: u16,
@@ -414,6 +410,7 @@ enum ReadPollResult {
     Events(Option<PollFlags>),
 }
 
+#[allow(dead_code)]
 fn wait_readable_or_cancelled_with<P>(mut poll_once: P) -> std::io::Result<bool>
 where
     P: FnMut(PollTimeout) -> nix::Result<[Option<PollFlags>; 2]>,
@@ -435,7 +432,6 @@ where
 }
 
 /// Readiness reported by [`wait_any_readable_or_woken`].
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct PtyReadiness {
     /// The wake descriptor is readable or hung up.
@@ -447,7 +443,6 @@ pub(crate) struct PtyReadiness {
 }
 
 /// Block without a timeout until any PTY has output/EOF or `wake` is readable.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) fn wait_any_readable_or_woken(
     ptys: &[&Pty],
     wake: BorrowedFd<'_>,
@@ -463,7 +458,6 @@ pub(crate) fn wait_any_readable_or_woken(
     })
 }
 
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 fn wait_any_readable_or_woken_with<P>(
     pty_count: usize,
     mut poll_once: P,
@@ -1254,9 +1248,8 @@ mod tests {
         assert_eq!(size(), (80, 24, 809, 499));
         pty.resize_with_pixels(100, 30, 1000, 600).unwrap();
         assert_eq!(size(), (100, 30, 1000, 600));
-        // The existing API keeps its zero-pixel contract for callers that
-        // have not yet integrated physical renderer dimensions.
-        pty.resize(90, 25).unwrap();
+        // Zero pixel fields stay allowed for callers without pixel metrics.
+        pty.resize_with_pixels(90, 25, 0, 0).unwrap();
         assert_eq!(size(), (90, 25, 0, 0));
     }
 

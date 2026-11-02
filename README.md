@@ -55,9 +55,9 @@ cargo build --release --locked
 - **Graphics protocols**: static Kitty PNG/RGB/RGBA images and Sixel on both platforms; bounded native Kitty animation on Linux.
 - **Chalkboard theme**: green board, chalk text and one hanko-red accent as the factory default.
 - **Omarchy integration (Linux)**: launcher arguments, existing copy/paste shortcuts, live system palette and the system monospace font.
-- **Panes, zoom and prompt marks (macOS)**: vim-style splits, per-session font zoom, command-boundary navigation and a status bar.
+- **Panes, zoom and prompt marks**: vim-style splits, per-session font zoom and command-boundary navigation on both platforms; the status bar is macOS-only for now.
 - **Selection and clipboard**: mouse selection on both platforms; asynchronous system clipboard on Linux.
-- **Daily-driver basics**: scrollback search (`Cmd+F`), clickable OSC 8 links, OSC 52 clipboard writes over SSH and tmux, the kitty keyboard protocol for Neovim and Helix, and a per-pane attention mark with `Cmd+Shift+A` to jump to it.
+- **Daily-driver basics**: scrollback search (`Cmd+F`, `Ctrl+Shift+F` on Linux), clickable OSC 8 links, OSC 52 clipboard writes over SSH and tmux, the kitty keyboard protocol for Neovim and Helix, and a per-pane attention mark with `Cmd+Shift+A` (`Ctrl+Shift+N` on Linux) to jump to it.
 - **Self-update**: `kokuban --update` downloads, verifies and replaces the running release.
 - **Configuration**: local or XDG TOML for fonts, colors, images and keybinds.
 
@@ -68,9 +68,11 @@ macOS is the primary desktop target; Linux follows the Omarchy roadmap and share
 | | macOS | Linux |
 |---|---|---|
 | Renderer | Metal GPU | Software rasterizer (winit + softbuffer, X11/Wayland) |
-| Panes, zoom, status bar, prompt marks | Yes | No |
-| Scrollback search | Yes (`Cmd+F`) | No |
-| Attention mark | Yes (`Cmd+Shift+A`) | No |
+| Panes (split, focus, resize, close) and font zoom | Yes | Yes (`[keybind.linux]`) |
+| Status bar and close confirmation | Yes | No (next) |
+| Prompt marks | Indicator and navigation | Navigation only |
+| Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Matches highlighted (`Ctrl+Shift+F`); no prompt text yet |
+| Attention mark | ● and red dividers (`Cmd+Shift+A`) | Red dividers (`Ctrl+Shift+N`); no ● yet |
 | IME / text composition | In progress | Yes (preedit) |
 | Kitty animation | No (static images only) | Yes (bounded cache; mpv video) |
 | Omarchy integration | n/a | Yes |

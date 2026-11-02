@@ -196,6 +196,58 @@ pub(crate) fn retain_unreferenced_image_ids<'a>(
     }
 }
 
+/// How a Sixel image is sized when drawn: scaled to the cells it covers
+/// (Metal) or kept at its native pixel size (software rasterizer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SixelPlacement {
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    CellAnchored,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    NativePixels,
+}
+
+/// Place a decoded Sixel image at `cursor` (row, column) and move the cursor
+/// below it, as the protocol requires, whether or not the store accepted it.
+pub(crate) fn process_sixel_event<F>(
+    grid: &mut crate::grid::Grid,
+    image: &crate::parser::sixel::SixelImage,
+    cursor: (usize, usize),
+    cell_size: (f32, f32),
+    placement: SixelPlacement,
+    store_image: F,
+) where
+    F: FnOnce(&crate::parser::sixel::SixelImage) -> Option<ImageId>,
+{
+    let display_cols = ((image.width as f32) / cell_size.0).ceil() as u32;
+    let display_rows = ((image.height as f32) / cell_size.1).ceil() as u32;
+    if let Some(image_id) = store_image(image) {
+        grid.image_placements.push(ImagePlacement {
+            image_id,
+            placement_id: 0,
+            client_placement_id: None,
+            mode: PlacementMode::Inline {
+                row: cursor.0 as i64,
+                col: cursor.1,
+                cols: display_cols,
+                rows: display_rows,
+                x_offset: 0,
+                y_offset: 0,
+                render_size: match placement {
+                    SixelPlacement::CellAnchored => InlineRenderSize::CellAnchored,
+                    SixelPlacement::NativePixels => InlineRenderSize::NativePixels {
+                        width: image.width,
+                        height: image.height,
+                    },
+                },
+            },
+            z_index: 0,
+        });
+    }
+    for _ in 0..display_rows {
+        grid.newline();
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PlacementMode {
     Inline {
@@ -523,9 +575,12 @@ impl PlacementMode {
 mod tests {
     use super::{
         aspect_ratio_cell_count, next_available_image_id, placement_cell_count,
-        resolve_kitty_placement_layout, retain_unreferenced_image_ids, ClientImageRegistry,
-        ImageNumberRegistry, ImagePlacement, InlineRenderSize, KittyPlacementLayout, PlacementMode,
+        process_sixel_event, resolve_kitty_placement_layout, retain_unreferenced_image_ids,
+        ClientImageRegistry, ImageNumberRegistry, ImagePlacement, InlineRenderSize,
+        KittyPlacementLayout, PlacementMode, SixelPlacement,
     };
+    use crate::grid::Grid;
+    use crate::parser::sixel::SixelImage;
     use std::collections::HashSet;
 
     #[test]
@@ -971,5 +1026,130 @@ mod tests {
         );
 
         assert_eq!(candidates, HashSet::from([10]));
+    }
+
+    fn sixel(width: u32, height: u32) -> SixelImage {
+        SixelImage {
+            width,
+            height,
+            pixels: vec![0; (width * height * 4) as usize],
+        }
+    }
+
+    #[test]
+    fn sixel_placement_uses_the_event_cursor_snapshot() {
+        let mut grid = Grid::new(12, 6, 0);
+        grid.cursor_row = 4;
+        grid.cursor_col = 7;
+        let image = sixel(1, 6);
+
+        process_sixel_event(
+            &mut grid,
+            &image,
+            (1, 2),
+            (8.0, 16.0),
+            SixelPlacement::CellAnchored,
+            |_| Some(9),
+        );
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (5, 7));
+        let placement = grid.image_placements.pop().unwrap();
+        match placement.mode {
+            PlacementMode::Inline {
+                row,
+                col,
+                cols,
+                rows,
+                render_size,
+                ..
+            } => {
+                assert_eq!((row, col), (1, 2));
+                assert_ne!((row, col), (grid.cursor_row as i64, grid.cursor_col));
+                assert_eq!((cols, rows), (1, 1));
+                assert_eq!(render_size, InlineRenderSize::CellAnchored);
+            }
+        }
+    }
+
+    #[test]
+    fn sixel_native_pixels_keep_the_image_size_in_the_placement() {
+        let mut grid = Grid::new(12, 6, 0);
+        let image = sixel(9, 17);
+
+        process_sixel_event(
+            &mut grid,
+            &image,
+            (0, 0),
+            (4.0, 8.0),
+            SixelPlacement::NativePixels,
+            |_| Some(3),
+        );
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (3, 0));
+        match grid.image_placements[0].mode {
+            PlacementMode::Inline {
+                cols,
+                rows,
+                render_size,
+                ..
+            } => {
+                assert_eq!((cols, rows), (3, 3));
+                assert_eq!(
+                    render_size,
+                    InlineRenderSize::NativePixels {
+                        width: 9,
+                        height: 17
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sixel_at_bottom_scrolls_its_placement_with_cursor_advance() {
+        let mut grid = Grid::new(12, 4, 10);
+        grid.set_cursor_pos(2, 1);
+        let image = sixel(8, 32);
+
+        process_sixel_event(
+            &mut grid,
+            &image,
+            (2, 1),
+            (8.0, 16.0),
+            SixelPlacement::CellAnchored,
+            |_| Some(9),
+        );
+
+        assert_eq!((grid.cursor_row, grid.cursor_col), (3, 1));
+        assert_eq!(grid.scrollback_len(), 1);
+        assert_eq!(
+            grid.image_placements[0].mode.pixel_rect(8.0, 16.0),
+            (8.0, 16.0, 8.0, 32.0)
+        );
+        grid.newline();
+        assert_eq!(
+            grid.image_placements[0].mode.pixel_rect(8.0, 16.0),
+            (8.0, 0.0, 8.0, 32.0)
+        );
+    }
+
+    #[test]
+    fn sixel_store_rejection_still_advances_the_protocol_cursor() {
+        let mut grid = Grid::new(12, 6, 0);
+        grid.cursor_row = 1;
+        grid.cursor_col = 2;
+        let image = sixel(1, 6);
+
+        process_sixel_event(
+            &mut grid,
+            &image,
+            (1, 2),
+            (8.0, 16.0),
+            SixelPlacement::CellAnchored,
+            |_| None,
+        );
+
+        assert!(grid.image_placements.is_empty());
+        assert_eq!((grid.cursor_row, grid.cursor_col), (2, 2));
     }
 }

@@ -1,6 +1,7 @@
-//! Keyboard, mouse, focus and encoded-input dispatch: each `*_with` function
-//! locks the grid only to read its mode flags, then hands the bytes to an
-//! injected writer so the callers (and tests) choose the transport.
+//! Keyboard, mouse, focus and encoded-input dispatch: each `*_locked`
+//! function reads the grid's mode flags under the caller's lock, then hands
+//! the bytes to an injected writer so the callers (and tests) choose the
+//! transport. The `*_with` wrappers lock a bare grid for the tests.
 
 use super::pointer::{
     accumulate_wheel_steps, apply_wheel_scrollback, mouse_button_code_from_winit,
@@ -16,6 +17,7 @@ use crate::input::mouse::{
     MAX_WHEEL_STEPS_PER_EVENT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP,
 };
 use crate::terminal_writer::TerminalWriteQueueError;
+#[cfg(test)]
 use std::sync::Mutex;
 use thiserror::Error;
 use winit::dpi::PhysicalPosition;
@@ -64,6 +66,26 @@ impl KeyboardInputOutcome {
     }
 }
 
+/// The caller holds the lock that owns `grid` (the pane tree on Linux).
+pub(super) fn dispatch_keyboard_input_locked<E, W>(
+    grid: &mut Grid,
+    scrollback_action: Option<ScrollbackAction>,
+    encode: E,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    E: FnOnce(bool, bool) -> Option<Vec<u8>>,
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    if let Some(action) = scrollback_action {
+        let viewport_changed = apply_scrollback_action(grid, action);
+        return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
+    }
+    let bytes = encode(grid.application_cursor_keys, grid.kitty_disambiguate());
+    dispatch_encoded_terminal_input_locked(grid, bytes, write)
+}
+
+#[cfg(test)]
 pub(super) fn dispatch_keyboard_input_with<E, W>(
     grid: &Mutex<Grid>,
     scrollback_action: Option<ScrollbackAction>,
@@ -74,23 +96,14 @@ where
     E: FnOnce(bool, bool) -> Option<Vec<u8>>,
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
-    let (application_cursor_keys, kitty_disambiguate) = {
-        let mut grid = grid
-            .lock()
-            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
+    let mut grid = lock_grid(grid)?;
+    dispatch_keyboard_input_locked(&mut grid, scrollback_action, encode, write)
+}
 
-        if let Some(action) = scrollback_action {
-            let viewport_changed = apply_scrollback_action(&mut grid, action);
-            return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
-        }
-
-        (grid.application_cursor_keys, grid.kitty_disambiguate())
-    };
-    dispatch_encoded_terminal_input_with(
-        grid,
-        encode(application_cursor_keys, kitty_disambiguate),
-        write,
-    )
+#[cfg(test)]
+fn lock_grid(grid: &Mutex<Grid>) -> Result<std::sync::MutexGuard<'_, Grid>, KeyboardInputError> {
+    grid.lock()
+        .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))
 }
 
 #[cfg(test)]
@@ -106,8 +119,9 @@ fn dispatch_mouse_button_with<W>(
 where
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
-    dispatch_mouse_button_inner_with(
-        grid,
+    let mut grid = lock_grid(grid)?;
+    dispatch_mouse_button_inner_locked(
+        &mut grid,
         pointer_position,
         cell_dimensions,
         state,
@@ -118,6 +132,7 @@ where
     )
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_mouse_button_and_motion_with<W>(
     grid: &Mutex<Grid>,
@@ -132,7 +147,34 @@ pub(super) fn dispatch_mouse_button_and_motion_with<W>(
 where
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
-    dispatch_mouse_button_inner_with(
+    let mut grid = lock_grid(grid)?;
+    dispatch_mouse_button_and_motion_locked(
+        &mut grid,
+        pointer_position,
+        cell_dimensions,
+        state,
+        button,
+        modifiers,
+        motion_state,
+        write,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn dispatch_mouse_button_and_motion_locked<W>(
+    grid: &mut Grid,
+    pointer_position: Option<PhysicalPosition<f64>>,
+    cell_dimensions: Option<(u16, u16)>,
+    state: ElementState,
+    button: MouseButton,
+    modifiers: ModifiersState,
+    motion_state: &mut MouseMotionState,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    dispatch_mouse_button_inner_locked(
         grid,
         pointer_position,
         cell_dimensions,
@@ -145,8 +187,8 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn dispatch_mouse_button_inner_with<W>(
-    grid: &Mutex<Grid>,
+fn dispatch_mouse_button_inner_locked<W>(
+    grid: &mut Grid,
     pointer_position: Option<PhysicalPosition<f64>>,
     cell_dimensions: Option<(u16, u16)>,
     state: ElementState,
@@ -172,21 +214,16 @@ where
         });
     };
 
-    let (mouse_tracking, mouse_encoding, terminal_dimensions) = {
-        let grid = grid
-            .lock()
-            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
-        if grid.mouse_tracking == MouseTracking::None && motion_state.is_none() {
-            return Ok(KeyboardInputOutcome::Ignored {
-                viewport_changed: false,
-            });
-        }
-        (
-            grid.mouse_tracking,
-            grid.mouse_encoding,
-            terminal_dimensions_from_locked_grid(&grid)?,
-        )
-    };
+    if grid.mouse_tracking == MouseTracking::None && motion_state.is_none() {
+        return Ok(KeyboardInputOutcome::Ignored {
+            viewport_changed: false,
+        });
+    }
+    let (mouse_tracking, mouse_encoding, terminal_dimensions) = (
+        grid.mouse_tracking,
+        grid.mouse_encoding,
+        terminal_dimensions_from_locked_grid(grid)?,
+    );
 
     let Some((column, row)) = terminal_cell_at_mouse_button(
         pointer_position,
@@ -222,8 +259,33 @@ where
     })
 }
 
+#[cfg(test)]
 pub(super) fn dispatch_mouse_motion_with<W>(
     grid: &Mutex<Grid>,
+    pointer_position: PhysicalPosition<f64>,
+    cell_dimensions: Option<(u16, u16)>,
+    active_button: Option<u8>,
+    modifiers: ModifiersState,
+    last_cell: Option<(usize, usize)>,
+    write: W,
+) -> Result<MouseMotionDispatchOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let grid = lock_grid(grid)?;
+    dispatch_mouse_motion_locked(
+        &grid,
+        pointer_position,
+        cell_dimensions,
+        active_button,
+        modifiers,
+        last_cell,
+        write,
+    )
+}
+
+pub(super) fn dispatch_mouse_motion_locked<W>(
+    grid: &Grid,
     pointer_position: PhysicalPosition<f64>,
     cell_dimensions: Option<(u16, u16)>,
     active_button: Option<u8>,
@@ -237,16 +299,11 @@ where
     let Some(cell_dimensions) = cell_dimensions else {
         return Ok(MouseMotionDispatchOutcome::Ignored);
     };
-    let (mouse_tracking, mouse_encoding, terminal_dimensions) = {
-        let grid = grid
-            .lock()
-            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
-        (
-            grid.mouse_tracking,
-            grid.mouse_encoding,
-            terminal_dimensions_from_locked_grid(&grid)?,
-        )
-    };
+    let (mouse_tracking, mouse_encoding, terminal_dimensions) = (
+        grid.mouse_tracking,
+        grid.mouse_encoding,
+        terminal_dimensions_from_locked_grid(grid)?,
+    );
     let Some(cell) = terminal_cell_at_mouse_motion(
         pointer_position,
         cell_dimensions,
@@ -282,6 +339,7 @@ where
     }
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_mouse_wheel_with<W>(
     grid: &Mutex<Grid>,
@@ -296,11 +354,35 @@ pub(super) fn dispatch_mouse_wheel_with<W>(
 where
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
+    let mut grid = lock_grid(grid)?;
+    dispatch_mouse_wheel_locked(
+        &mut grid,
+        pointer_position,
+        cell_dimensions,
+        delta,
+        phase,
+        modifiers,
+        state,
+        write,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn dispatch_mouse_wheel_locked<W>(
+    grid: &mut Grid,
+    pointer_position: Option<PhysicalPosition<f64>>,
+    cell_dimensions: Option<(u16, u16)>,
+    delta: MouseScrollDelta,
+    phase: TouchPhase,
+    modifiers: ModifiersState,
+    state: &mut MouseWheelState,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
     let (steps, route, terminal_dimensions) = {
-        let mut grid = grid
-            .lock()
-            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
-        let route = mouse_wheel_route(&grid);
+        let route = mouse_wheel_route(grid);
         if state.last_route.replace(route) != Some(route) || phase == TouchPhase::Started {
             state.line_remainder = 0.0;
         }
@@ -320,11 +402,11 @@ where
 
         let terminal_dimensions = match route {
             MouseWheelRoute::Scrollback => {
-                let viewport_changed = apply_wheel_scrollback(&mut grid, steps);
+                let viewport_changed = apply_wheel_scrollback(grid, steps);
                 return Ok(KeyboardInputOutcome::Scrollback { viewport_changed });
             }
             MouseWheelRoute::AlternateScroll { .. } => None,
-            MouseWheelRoute::Terminal(_) => Some(terminal_dimensions_from_locked_grid(&grid)?),
+            MouseWheelRoute::Terminal(_) => Some(terminal_dimensions_from_locked_grid(grid)?),
         };
 
         (steps, route, terminal_dimensions)
@@ -344,7 +426,7 @@ where
     }
 
     let MouseWheelRoute::Terminal(mouse_encoding) = route else {
-        unreachable!("scrollback wheel input returns while the Grid lock is held");
+        unreachable!("scrollback wheel input returns before any report is written");
     };
     let terminal_dimensions =
         terminal_dimensions.expect("terminal mouse reporting should snapshot Grid dimensions");
@@ -395,6 +477,7 @@ pub(super) fn record_window_focus_change(
     last_window_focus.replace(focused) != Some(focused)
 }
 
+#[cfg(test)]
 pub(super) fn dispatch_focus_event_with<W>(
     grid: &Mutex<Grid>,
     focused: bool,
@@ -403,11 +486,19 @@ pub(super) fn dispatch_focus_event_with<W>(
 where
     W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
 {
-    let focus_events = grid
-        .lock()
-        .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?
-        .focus_events;
-    if !focus_events {
+    let grid = lock_grid(grid)?;
+    dispatch_focus_event_locked(&grid, focused, write)
+}
+
+pub(super) fn dispatch_focus_event_locked<W>(
+    grid: &Grid,
+    focused: bool,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    if !grid.focus_events {
         return Ok(KeyboardInputOutcome::Ignored {
             viewport_changed: false,
         });
@@ -419,8 +510,21 @@ where
     })
 }
 
+#[cfg(test)]
 pub(super) fn dispatch_encoded_terminal_input_with<W>(
     grid: &Mutex<Grid>,
+    bytes: Option<Vec<u8>>,
+    write: W,
+) -> Result<KeyboardInputOutcome, KeyboardInputError>
+where
+    W: FnOnce(Vec<u8>) -> Result<(), TerminalWriteQueueError>,
+{
+    let mut grid = lock_grid(grid)?;
+    dispatch_encoded_terminal_input_locked(&mut grid, bytes, write)
+}
+
+pub(super) fn dispatch_encoded_terminal_input_locked<W>(
+    grid: &mut Grid,
     bytes: Option<Vec<u8>>,
     write: W,
 ) -> Result<KeyboardInputOutcome, KeyboardInputError>
@@ -432,14 +536,8 @@ where
             viewport_changed: false,
         });
     };
-    let viewport_changed = {
-        let mut grid = grid
-            .lock()
-            .map_err(|_| KeyboardInputError::Grid(GridAccessError::Poisoned))?;
-        let viewport_changed = grid.scroll_offset != 0;
-        grid.scroll_to_bottom();
-        viewport_changed
-    };
+    let viewport_changed = grid.scroll_offset != 0;
+    grid.scroll_to_bottom();
     write(bytes)?;
     Ok(KeyboardInputOutcome::Forwarded { viewport_changed })
 }
