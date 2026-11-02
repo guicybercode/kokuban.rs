@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 pub(crate) const WINDOW_TITLE: &str = "黒板kokuban";
 const MAX_WINDOW_TITLE_BYTES: usize = 1024;
@@ -46,12 +48,90 @@ pub(crate) fn normalized_window_title(title: &str) -> Cow<'_, str> {
     }
 }
 
+/// Title the focused pane asked for, published off the main thread and
+/// applied on it. Keeps native title updates independent from the pane
+/// tree lock, which can be held for a long time while decoding output.
+pub(crate) struct WindowTitleMailbox {
+    desired_title: Mutex<String>,
+    pending: AtomicBool,
+}
+
+// The Linux window adopts the mailbox with the shared pane reader.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+impl WindowTitleMailbox {
+    pub(crate) fn new() -> Self {
+        Self {
+            desired_title: Mutex::new(WINDOW_TITLE.to_string()),
+            pending: AtomicBool::new(true),
+        }
+    }
+
+    /// Title requested with `--title`; OSC 0/2 updates replace it as usual.
+    pub(crate) fn set_initial_title(&self, title: &str) {
+        self.publish(title);
+    }
+
+    pub(crate) fn publish(&self, raw_title: &str) -> bool {
+        let next_title = normalized_window_title(raw_title);
+        let mut desired_title = self
+            .desired_title
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if desired_title.as_str() == next_title.as_ref() {
+            return false;
+        }
+
+        desired_title.clear();
+        desired_title.push_str(next_title.as_ref());
+        drop(desired_title);
+        self.pending.store(true, Ordering::Release);
+        true
+    }
+
+    pub(crate) fn has_pending_update(&self) -> bool {
+        self.pending.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn take_pending_title(&self) -> Option<String> {
+        if !self.pending.swap(false, Ordering::AcqRel) {
+            return None;
+        }
+
+        Some(
+            self.desired_title
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone(),
+        )
+    }
+}
+
+/// Apply the mailbox's pending title through `set_title`, if any changed.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+pub(crate) fn sync_pending_window_title_with<F>(
+    window_title: &WindowTitleMailbox,
+    applied_title: &mut String,
+    set_title: F,
+) -> bool
+where
+    F: FnOnce(&str),
+{
+    let Some(title) = window_title.take_pending_title() else {
+        return false;
+    };
+    sync_window_title_with(applied_title, &title, set_title)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        normalized_window_title, sync_window_title_with, MAX_WINDOW_TITLE_BYTES, WINDOW_TITLE,
+        normalized_window_title, sync_pending_window_title_with, sync_window_title_with,
+        WindowTitleMailbox, MAX_WINDOW_TITLE_BYTES, WINDOW_TITLE,
     };
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn sync_applies_osc_changes_once_and_restores_the_default() {
@@ -139,5 +219,135 @@ mod tests {
             normalized_window_title(&first_suffix),
             normalized_window_title(&second_suffix)
         );
+    }
+
+    #[test]
+    fn window_title_sync_skips_work_without_a_pending_update() {
+        let window_title = WindowTitleMailbox::new();
+        let mut applied_title = WINDOW_TITLE.to_string();
+        let setters = Cell::new(0);
+
+        assert!(!sync_pending_window_title_with(
+            &window_title,
+            &mut applied_title,
+            |_| setters.set(setters.get() + 1),
+        ));
+        assert!(!window_title.has_pending_update());
+
+        assert!(!sync_pending_window_title_with(
+            &window_title,
+            &mut applied_title,
+            |_| setters.set(setters.get() + 1),
+        ));
+        assert_eq!(setters.get(), 0);
+    }
+
+    #[test]
+    fn window_title_mailbox_coalesces_to_the_latest_normalized_value() {
+        let window_title = WindowTitleMailbox::new();
+        let mut applied_title = WINDOW_TITLE.to_string();
+        let applied = RefCell::new(Vec::new());
+
+        assert!(window_title.publish("first"));
+        assert!(window_title.publish("latest\n"));
+        assert!(!window_title.publish("latest"));
+        assert!(sync_pending_window_title_with(
+            &window_title,
+            &mut applied_title,
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+
+        assert!(!window_title.has_pending_update());
+        assert_eq!(applied.into_inner(), ["latest"]);
+    }
+
+    #[test]
+    fn window_title_update_after_take_remains_pending_for_the_next_tick() {
+        let window_title = WindowTitleMailbox::new();
+        let mut applied_title = WINDOW_TITLE.to_string();
+        let applied = RefCell::new(Vec::new());
+
+        window_title.publish("first");
+        let first = window_title
+            .take_pending_title()
+            .expect("the first update should be pending");
+        assert!(!window_title.has_pending_update());
+
+        window_title.publish("latest");
+        assert!(window_title.has_pending_update());
+        assert!(sync_window_title_with(
+            &mut applied_title,
+            &first,
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert!(sync_pending_window_title_with(
+            &window_title,
+            &mut applied_title,
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert!(!window_title.has_pending_update());
+        assert_eq!(applied.into_inner(), ["first", "latest"]);
+    }
+
+    #[test]
+    fn window_title_publish_between_swap_and_clone_keeps_the_latest_value_pending() {
+        let window_title = Arc::new(WindowTitleMailbox::new());
+        let mut applied_title = WINDOW_TITLE.to_string();
+        let applied = RefCell::new(Vec::new());
+
+        window_title.publish("first");
+        let mut desired_title = window_title
+            .desired_title
+            .lock()
+            .expect("the title mailbox should lock");
+        let consumer = window_title.clone();
+        let take = thread::spawn(move || consumer.take_pending_title());
+
+        while window_title.has_pending_update() {
+            thread::yield_now();
+        }
+
+        desired_title.clear();
+        desired_title.push_str("latest");
+        drop(desired_title);
+        window_title.pending.store(true, Ordering::Release);
+
+        let taken = take
+            .join()
+            .expect("the title consumer should not panic")
+            .expect("the raced title should be available");
+        assert_eq!(taken, "latest");
+        assert!(window_title.has_pending_update());
+
+        assert!(sync_window_title_with(
+            &mut applied_title,
+            &taken,
+            |title| applied.borrow_mut().push(title.to_string()),
+        ));
+        assert!(!sync_pending_window_title_with(
+            window_title.as_ref(),
+            &mut applied_title,
+            |_| panic!("the redundant pending update must be deduplicated"),
+        ));
+        assert!(!window_title.has_pending_update());
+        assert_eq!(applied.into_inner(), ["latest"]);
+    }
+
+    #[test]
+    fn window_title_setter_runs_after_the_mailbox_lock_is_released() {
+        let window_title = WindowTitleMailbox::new();
+        let mut applied_title = WINDOW_TITLE.to_string();
+
+        window_title.publish("main thread");
+        assert!(sync_pending_window_title_with(
+            &window_title,
+            &mut applied_title,
+            |_| {
+                assert!(
+                    window_title.desired_title.try_lock().is_ok(),
+                    "the title mailbox must be unlocked before calling AppKit"
+                );
+            },
+        ));
     }
 }
