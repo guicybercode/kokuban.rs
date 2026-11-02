@@ -204,7 +204,13 @@ class PanesSmoke:
         if self.terminal.poll() is not None:
             raise AssertionError("the window exited while a pane was still open")
 
-        self.key("ctrl+shift+w")
+        # The window closes on the key press, so the key-up of this last chord
+        # can fail to reach it; the clean exit status is the assertion.
+        subprocess.run(
+            ["xdotool", "key", "--window", self.window, "--clearmodifiers", "--delay", "40",
+             "ctrl+shift+w"],
+            capture_output=True, timeout=3, check=False,
+        )
         try:
             status = self.terminal.wait(timeout=8)
         except subprocess.TimeoutExpired as error:
