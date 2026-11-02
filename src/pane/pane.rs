@@ -3,7 +3,7 @@ use crate::layout::{PaneId, PixelRect};
 use crate::parser::ansi::GraphicsSupport;
 use crate::pty::Pty;
 use crate::renderer::kitty_handler::{KittyHandler, KittyHandlerOptions};
-use crate::search::SearchState;
+use crate::search::{SearchKey, SearchKeyOutcome, SearchState};
 use crate::selection::SelectionState;
 use crate::terminal_decoder::TerminalDecoder;
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter, WriterExit};
@@ -156,6 +156,19 @@ impl Pane {
         }
     }
 
+    /// Entrega uma tecla à busca aberta deste painel. `None` quando não há
+    /// busca aberta (a tecla segue para o shell). Ao fechar, guarda a
+    /// consulta em `last_search_query`.
+    pub fn handle_search_key(&mut self, key: SearchKey) -> Option<SearchKeyOutcome> {
+        let search = self.search.as_mut()?;
+        let outcome = search.handle_key(key, &mut self.grid);
+        if let SearchKeyOutcome::Close { last_query } = &outcome {
+            self.last_search_query = last_query.clone();
+            self.search = None;
+        }
+        Some(outcome)
+    }
+
     /// Resize the grid and the PTY together; `cell_w`/`cell_h` (physical
     /// pixels) fill the `TIOCSWINSZ` pixel fields so programs can size images.
     pub fn resize_grid(&mut self, cols: usize, rows: usize, cell_w: f32, cell_h: f32) {
@@ -279,8 +292,8 @@ fn mark_input_failed(input_failed: &AtomicBool, pane_id: PaneId, message: &str) 
 #[cfg(test)]
 mod tests {
     use super::{
-        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane, TerminalWriteQueueError,
-        WriterExit,
+        record_enqueue_result, record_writer_exit, FullQueuePolicy, Pane, SearchKey,
+        SearchKeyOutcome, SearchState, TerminalWriteQueueError, WriterExit,
     };
     use crate::parser::ansi::GraphicsSupport;
     use crate::renderer::kitty_handler::KittyHandlerOptions;
@@ -496,6 +509,42 @@ mod tests {
             Err(TerminalWriteQueueError::Disconnected),
         );
         assert!(failed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn search_keys_reach_only_an_open_search_and_escape_remembers_the_query() {
+        let mut pane = Pane::new(
+            17,
+            80,
+            24,
+            1_000,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            std::sync::Arc::new(|| {}),
+            &[],
+        )
+        .expect("search key test should spawn its shell");
+        assert_eq!(pane.handle_search_key(SearchKey::Char('x')), None);
+
+        pane.search = Some(SearchState::new(String::new()));
+        assert_eq!(
+            pane.handle_search_key(SearchKey::Char('q')),
+            Some(SearchKeyOutcome::Changed)
+        );
+        assert_eq!(pane.search.as_ref().unwrap().query, "q");
+        assert_eq!(
+            pane.handle_search_key(SearchKey::Escape),
+            Some(SearchKeyOutcome::Close {
+                last_query: "q".to_string()
+            })
+        );
+        assert!(pane.search.is_none());
+        assert_eq!(pane.last_search_query, "q");
+        assert_eq!(pane.handle_search_key(SearchKey::Enter), None);
+        pane.retire();
     }
 
     #[test]

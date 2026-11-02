@@ -26,6 +26,33 @@ pub enum MatchKind {
     Other,
 }
 
+/// Tecla já traduzida pela janela para a busca aberta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchKey {
+    /// Caractere imprimível acrescentado à consulta.
+    Char(char),
+    Backspace,
+    /// Próximo resultado.
+    Enter,
+    /// Resultado anterior.
+    ShiftEnter,
+    /// Fecha a busca, guardando a consulta para a próxima abertura.
+    Escape,
+    /// Tecla engolida pela busca sem efeito (Tab, atalhos com Ctrl...).
+    Ignore,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchKeyOutcome {
+    /// A busca fechou; `last_query` deve ser guardada pelo dono.
+    Close {
+        last_query: String,
+    },
+    /// Consulta, resultado atual ou rolagem mudaram.
+    Changed,
+    Unchanged,
+}
+
 #[derive(Debug, Default)]
 pub struct SearchState {
     pub query: String,
@@ -255,6 +282,43 @@ impl SearchState {
         None
     }
 
+    /// Aplica uma tecla à busca aberta. Enter/Shift+Enter refazem a busca
+    /// se chegaram linhas novas e vão ao próximo/anterior resultado;
+    /// Backspace e caracteres editam a consulta e refazem a busca; em todos
+    /// esses casos a viewport segue o resultado atual. Esc fecha.
+    pub fn handle_key(&mut self, key: SearchKey, grid: &mut Grid) -> SearchKeyOutcome {
+        match key {
+            SearchKey::Escape => SearchKeyOutcome::Close {
+                last_query: std::mem::take(&mut self.query),
+            },
+            SearchKey::Enter | SearchKey::ShiftEnter => {
+                if self.needs_recompute(grid) {
+                    self.recompute(grid);
+                }
+                if key == SearchKey::ShiftEnter {
+                    self.prev();
+                } else {
+                    self.next();
+                }
+                self.scroll_to_current(grid);
+                SearchKeyOutcome::Changed
+            }
+            SearchKey::Backspace => {
+                self.query.pop();
+                self.recompute(grid);
+                self.scroll_to_current(grid);
+                SearchKeyOutcome::Changed
+            }
+            SearchKey::Char(c) => {
+                self.query.push(c);
+                self.recompute(grid);
+                self.scroll_to_current(grid);
+                SearchKeyOutcome::Changed
+            }
+            SearchKey::Ignore => SearchKeyOutcome::Unchanged,
+        }
+    }
+
     /// Posiciona a viewport de modo que o resultado atual fique visível,
     /// perto do terço superior da tela. Não mexe na viewport sem resultado.
     pub fn scroll_to_current(&self, grid: &mut Grid) {
@@ -276,7 +340,7 @@ impl SearchState {
 
 #[cfg(test)]
 mod tests {
-    use super::{MatchKind, SearchMatch, SearchState};
+    use super::{MatchKind, SearchKey, SearchKeyOutcome, SearchMatch, SearchState};
     use crate::grid::Grid;
     use crate::parser::ansi::Utf8Parser;
 
@@ -435,5 +499,91 @@ mod tests {
         state.next();
         assert_eq!(state.contains_cell(&grid, vis, 0), Some(MatchKind::Current));
         assert_eq!(state.contains_cell(&grid, vis, 1), Some(MatchKind::Other));
+    }
+
+    #[test]
+    fn handle_key_edits_the_query_and_follows_the_current_match() {
+        let mut grid = grid_with(10, 2, "foo 1\r\nbar\r\nfoo 2\r\nbaz\r\nfoo 3");
+        let mut state = SearchState::new(String::new());
+        state.recompute(&grid);
+        assert_eq!(grid.scrollback_len(), 3);
+
+        for c in ['f', 'o'] {
+            assert_eq!(
+                state.handle_key(SearchKey::Char(c), &mut grid),
+                SearchKeyOutcome::Changed
+            );
+        }
+        assert_eq!(state.query, "fo");
+        assert_eq!(state.matches.len(), 3);
+        // Starts at the last match (on screen): no scrolling needed.
+        assert_eq!(state.current, Some(2));
+        assert_eq!(grid.scroll_offset, 0);
+
+        // Enter wraps to the first match, which is in the scrollback.
+        assert_eq!(
+            state.handle_key(SearchKey::Enter, &mut grid),
+            SearchKeyOutcome::Changed
+        );
+        assert_eq!(state.current, Some(0));
+        assert_eq!(grid.scroll_offset, 3);
+        assert_eq!(
+            state.handle_key(SearchKey::ShiftEnter, &mut grid),
+            SearchKeyOutcome::Changed
+        );
+        assert_eq!(state.current, Some(2));
+        assert_eq!(grid.scroll_offset, 0);
+
+        // Backspace narrows back to "f" and keeps the current position.
+        assert_eq!(
+            state.handle_key(SearchKey::Backspace, &mut grid),
+            SearchKeyOutcome::Changed
+        );
+        assert_eq!(state.query, "f");
+        assert_eq!(state.matches.len(), 3);
+        assert_eq!(state.current, Some(2));
+
+        // Ignored keys change nothing.
+        assert_eq!(
+            state.handle_key(SearchKey::Ignore, &mut grid),
+            SearchKeyOutcome::Unchanged
+        );
+        assert_eq!((state.query.as_str(), state.current), ("f", Some(2)));
+
+        // Backspace on an empty query is a harmless recompute.
+        state.handle_key(SearchKey::Backspace, &mut grid);
+        assert_eq!(
+            state.handle_key(SearchKey::Backspace, &mut grid),
+            SearchKeyOutcome::Changed
+        );
+        assert!(state.query.is_empty() && state.matches.is_empty());
+        assert_eq!(state.current, None);
+    }
+
+    #[test]
+    fn enter_recomputes_when_new_lines_arrived_and_escape_hands_back_the_query() {
+        // Two visible rows: new output pushes lines into the scrollback,
+        // which is what `needs_recompute` watches.
+        let mut grid = grid_with(20, 2, "foo 1\r\n");
+        let mut state = SearchState::new("foo".to_string());
+        state.recompute(&grid);
+        assert_eq!(state.matches.len(), 1);
+
+        let mut parser = Utf8Parser::new();
+        parser.feed(b"foo 2\r\nfoo 3\r\n", &mut grid);
+        assert!(state.needs_recompute(&grid));
+        assert_eq!(
+            state.handle_key(SearchKey::Enter, &mut grid),
+            SearchKeyOutcome::Changed
+        );
+        assert_eq!(state.matches.len(), 3, "Enter picks up the new output");
+        assert_eq!(state.current, Some(1), "advanced from the kept match");
+
+        assert_eq!(
+            state.handle_key(SearchKey::Escape, &mut grid),
+            SearchKeyOutcome::Close {
+                last_query: "foo".to_string()
+            }
+        );
     }
 }

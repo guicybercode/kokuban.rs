@@ -22,6 +22,7 @@ use crate::pane::PaneTree;
 use crate::render_scene::{ChromeColors, ConfirmOverlayInfo, PaneRenderData, StatusBarLayout};
 use crate::renderer::image_store::ImageStore;
 use crate::renderer::metal::{FrameInputs, MetalRenderer};
+use crate::search::SearchKey;
 use crate::selection::GridPoint;
 use crate::terminal_colors::TerminalColors;
 use crate::terminal_writer::TerminalWriteQueueError;
@@ -1477,15 +1478,42 @@ fn with_update_status<T>(
     Some(action(status, scheduler))
 }
 
-/// Trata uma tecla enquanto a busca do painel focado está aberta. Retorna
-/// `false` quando não há busca aberta, deixando a tecla seguir para o shell.
-fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) -> bool {
+/// Traduz um `NSEvent` para a busca. `None` quando a tecla não produz texto
+/// nem é uma tecla de edição: a busca a engole sem redesenhar.
+fn search_key_from_mac_event(
+    key_code: u16,
+    modifiers: KeyModifiers,
+    characters: Option<&str>,
+) -> Option<SearchKey> {
     const KEY_RETURN: u16 = 36;
     const KEY_TAB: u16 = 48;
     const KEY_DELETE: u16 = 51;
     const KEY_ESCAPE: u16 = 53;
     const KEY_KEYPAD_ENTER: u16 = 76;
 
+    let shift = modifiers.contains(KeyModifiers::SHIFT);
+    let ctrl = modifiers.contains(KeyModifiers::CTRL);
+    Some(match key_code {
+        KEY_ESCAPE => SearchKey::Escape,
+        KEY_RETURN | KEY_KEYPAD_ENTER if shift => SearchKey::ShiftEnter,
+        KEY_RETURN | KEY_KEYPAD_ENTER => SearchKey::Enter,
+        KEY_DELETE => SearchKey::Backspace,
+        KEY_TAB => SearchKey::Ignore,
+        _ if ctrl => SearchKey::Ignore,
+        _ => {
+            // Setas e teclas de função chegam como caracteres de uso
+            // privado (U+F700..U+F8FF) e não entram na consulta.
+            let typed = characters?
+                .chars()
+                .find(|c| !c.is_control() && !('\u{F700}'..='\u{F8FF}').contains(c))?;
+            SearchKey::Char(typed)
+        }
+    })
+}
+
+/// Trata uma tecla enquanto a busca do painel focado está aberta. Retorna
+/// `false` quando não há busca aberta, deixando a tecla seguir para o shell.
+fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) -> bool {
     VIEW_STATE.with(|state| {
         let mut state = state.borrow_mut();
         let Some(state) = state.as_mut() else {
@@ -1498,54 +1526,22 @@ fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) ->
         if pane.search.is_none() {
             return false;
         }
-        let shift = modifiers.contains(KeyModifiers::SHIFT);
-        let ctrl = modifiers.contains(KeyModifiers::CTRL);
-        match key_code {
-            KEY_ESCAPE => {
-                if let Some(search) = pane.search.take() {
-                    pane.last_search_query = search.query;
-                }
-            }
-            KEY_RETURN | KEY_KEYPAD_ENTER => {
-                if let Some(search) = pane.search.as_mut() {
-                    if search.needs_recompute(&pane.grid) {
-                        search.recompute(&pane.grid);
-                    }
-                    if shift {
-                        search.prev();
-                    } else {
-                        search.next();
-                    }
-                    search.scroll_to_current(&mut pane.grid);
-                }
-            }
-            KEY_DELETE => {
-                if let Some(search) = pane.search.as_mut() {
-                    search.query.pop();
-                    search.recompute(&pane.grid);
-                    search.scroll_to_current(&mut pane.grid);
-                }
-            }
-            KEY_TAB => {}
-            _ if ctrl => {}
-            _ => {
-                let typed: String = event
-                    .characters()
-                    .map(|s| s.to_string())
+        let characters = event.characters().map(|s| s.to_string());
+        let typed: Vec<SearchKey> =
+            match search_key_from_mac_event(key_code, modifiers, characters.as_deref()) {
+                Some(SearchKey::Char(_)) => characters
+                    .as_deref()
                     .unwrap_or_default()
                     .chars()
-                    // Setas e teclas de função chegam como caracteres de uso
-                    // privado (U+F700..U+F8FF) e não entram na consulta.
                     .filter(|c| !c.is_control() && !('\u{F700}'..='\u{F8FF}').contains(c))
-                    .collect();
-                if typed.is_empty() {
-                    return true;
-                }
-                if let Some(search) = pane.search.as_mut() {
-                    search.query.push_str(&typed);
-                    search.recompute(&pane.grid);
-                    search.scroll_to_current(&mut pane.grid);
-                }
+                    .map(SearchKey::Char)
+                    .collect(),
+                Some(key) => vec![key],
+                None => return true,
+            };
+        for key in typed {
+            if pane.handle_search_key(key).is_none() {
+                break;
             }
         }
         drop(tree);
@@ -2374,6 +2370,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
 
 #[cfg(test)]
 mod tests {
+    use super::search_key_from_mac_event;
     use super::{
         bracketed_paste_len, dispatch_pane_focus_transition_with,
         dispatch_window_focus_transition_with, encode_clipboard_paste,
@@ -3395,5 +3392,45 @@ mod tests {
                 );
             },
         ));
+    }
+
+    #[test]
+    fn search_keys_map_edit_keys_text_and_swallowed_chords() {
+        use crate::search::SearchKey;
+        let none = KeyModifiers::empty();
+        let cases = [
+            (53, none, Some("\x1b"), Some(SearchKey::Escape)),
+            (36, none, Some("\r"), Some(SearchKey::Enter)),
+            (76, none, Some("\x03"), Some(SearchKey::Enter)),
+            (
+                36,
+                KeyModifiers::SHIFT,
+                Some("\r"),
+                Some(SearchKey::ShiftEnter),
+            ),
+            (51, none, Some("\x7f"), Some(SearchKey::Backspace)),
+            (48, none, Some("\t"), Some(SearchKey::Ignore)),
+            (0, KeyModifiers::CTRL, Some("\x01"), Some(SearchKey::Ignore)),
+            (0, none, Some("a"), Some(SearchKey::Char('a'))),
+            (
+                0,
+                KeyModifiers::SHIFT,
+                Some("A"),
+                Some(SearchKey::Char('A')),
+            ),
+            (0, KeyModifiers::ALT, Some("å"), Some(SearchKey::Char('å'))),
+            // Arrows and function keys arrive as private-use characters.
+            (126, none, Some("\u{F700}"), None),
+            (122, none, Some("\u{F704}"), None),
+            (0, none, Some(""), None),
+            (0, none, None, None),
+        ];
+        for (key_code, modifiers, characters, expected) in cases {
+            assert_eq!(
+                search_key_from_mac_event(key_code, modifiers, characters),
+                expected,
+                "key code {key_code} {modifiers:?} {characters:?}"
+            );
+        }
     }
 }
