@@ -189,7 +189,9 @@ jobs:
       - name: Dependency and binary size delta against the baseline
         shell: bash
         run: |
-          baseline="$(git rev-parse --verify --end-of-options "${BASELINE_REF}^{commit}")"
+          # A pull_request checkout has no local `main`; try the remote branch too.
+          baseline="$(git rev-parse --verify --quiet --end-of-options "${BASELINE_REF}^{commit}" \
+            || git rev-parse --verify --end-of-options "origin/${BASELINE_REF}^{commit}")"
           echo "$baseline" > "$RUNNER_TEMP/gpu-smoke/baseline-revision.txt"
           git worktree add --detach "$RUNNER_TEMP/baseline-src" "$baseline"
           (
