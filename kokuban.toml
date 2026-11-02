@@ -58,6 +58,16 @@ allow_file_transfer = true
 # with OSC 52. Only writes are honoured; clipboard reads are never answered.
 osc52_write = true
 
+[render]
+# Linux only (macOS always draws with Metal). "software" (default) is the CPU
+# renderer. The experimental GPU presenter needs a build with
+# `cargo build --features gpu`: then "auto" tries it (wgpu: Vulkan, then
+# OpenGL ES) and falls back to software when no real GPU is available, and
+# "gpu" requires it and fails to launch otherwise. Without that feature "gpu"
+# fails to launch and "auto" is software. KOKUBAN_RENDER=software|auto|gpu
+# overrides this for one launch.
+backend = "software"
+
 [input]
 # macOS: which Option key sends ESC-prefixed Meta sequences. "both" (default),
 # "left" or "right" keep the other side for accents (∫, ç); "none" lets macOS

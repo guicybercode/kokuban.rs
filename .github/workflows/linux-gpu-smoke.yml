@@ -1,0 +1,217 @@
+name: Linux GPU presenter smoke
+
+# Manual spike workflow: exercises the wgpu presenter on a GitHub runner with
+# Mesa's CPU drivers (lavapipe for Vulkan, llvmpipe for OpenGL ES). There is no
+# real GPU here, so `[render] backend = "gpu"` is forced; `auto` would fall back
+# to the software presenter on these adapters. Also reports the dependency and
+# release-binary size delta against a baseline revision.
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: Revision to compare dependency count and binary size against
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-gpu-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: -D warnings
+      RUST_LOG: info
+      KOKUBAN_NO_UPDATE_CHECK: "1"
+      BASELINE_REF: ${{ inputs.baseline || 'main' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust 1.94.1
+        shell: bash
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          rustup default 1.94.1
+          rustc --version
+
+      - name: Install Mesa, Vulkan loader, Weston and Xvfb
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fontconfig fonts-dejavu-core fonts-noto-color-emoji \
+            libfontconfig1-dev libfreetype6-dev libxkbcommon-x11-0 pkg-config \
+            libegl1 libgl1 libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers \
+            mesa-utils vulkan-tools weston x11-utils xvfb
+          mkdir -p "$RUNNER_TEMP/gpu-smoke"
+          dpkg-query -W libegl1 libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers weston xvfb \
+            > "$RUNNER_TEMP/gpu-smoke/packages.txt"
+
+      - name: Build the candidate with the gpu feature (debug for smokes, release for size)
+        shell: bash
+        run: |
+          cargo build --locked --features gpu
+          cargo build --locked --release --features gpu
+          ls -l target/release/kokuban | tee "$RUNNER_TEMP/gpu-smoke/candidate-binary.txt"
+          cargo tree --locked --features gpu -e normal --prefix none | sort -u > "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
+          wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
+
+      - name: Report Vulkan and GL adapters under Xvfb
+        shell: bash
+        continue-on-error: true
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" bash -c '
+            vulkaninfo --summary || true
+            LIBGL_ALWAYS_SOFTWARE=1 glxinfo -B || true
+            eglinfo -B || true
+          ' 2>&1 | tee "$RUNNER_TEMP/gpu-smoke/adapters.txt"
+
+      - name: First GPU frame under Xvfb (Vulkan lavapipe or GLES llvmpipe)
+        id: xvfb
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cd "$(mktemp -d)"
+          env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET \
+            KOKUBAN_RENDER=gpu KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 LIBGL_ALWAYS_SOFTWARE=1 \
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=5s 60s "$GITHUB_WORKSPACE/target/debug/kokuban" \
+            2>&1 | tee "$RUNNER_TEMP/gpu-smoke/xvfb-gpu.log"
+
+      - name: First GPU frame under Xvfb with the GL backend only
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cd "$(mktemp -d)"
+          # Hiding the Vulkan ICDs forces wgpu onto EGL/GLES (llvmpipe).
+          env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET \
+            VK_ICD_FILENAMES=/nonexistent VK_DRIVER_FILES=/nonexistent \
+            KOKUBAN_RENDER=gpu KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 LIBGL_ALWAYS_SOFTWARE=1 \
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=5s 60s "$GITHUB_WORKSPACE/target/debug/kokuban" \
+            2>&1 | tee "$RUNNER_TEMP/gpu-smoke/xvfb-gl.log"
+
+      - name: Auto backend falls back to software under Xvfb
+        shell: bash
+        run: |
+          set -o pipefail
+          cd "$(mktemp -d)"
+          env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET \
+            KOKUBAN_RENDER=auto KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 LIBGL_ALWAYS_SOFTWARE=1 \
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            timeout --kill-after=5s 60s "$GITHUB_WORKSPACE/target/debug/kokuban" \
+            2>&1 | tee "$RUNNER_TEMP/gpu-smoke/xvfb-auto.log"
+          grep -q "Linux renderer: software" "$RUNNER_TEMP/gpu-smoke/xvfb-auto.log"
+
+      - name: First GPU frame under headless Weston (GL renderer, then pixman)
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export LIBGL_ALWAYS_SOFTWARE=1
+          unset DISPLAY WAYLAND_SOCKET
+          run_weston() {
+            local renderer="$1" log="$2"
+            export WAYLAND_DISPLAY="wayland-kokuban-gpu-$renderer"
+            local args=(--backend=headless-backend.so --socket="$WAYLAND_DISPLAY"
+                        --idle-time=0 --width=1280 --height=900
+                        --log="$RUNNER_TEMP/gpu-smoke/weston-$renderer.log")
+            if [[ "$renderer" == gl ]]; then
+              args+=(--renderer=gl)
+            else
+              args+=(--use-pixman)
+            fi
+            weston "${args[@]}" &
+            local weston_pid=$!
+            for attempt in {1..100}; do
+              test ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" || break
+              kill -0 "$weston_pid" 2>/dev/null || break
+              sleep 0.1
+            done
+            if [[ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then
+              echo "weston --renderer=$renderer did not start" | tee "$log"
+              wait "$weston_pid" 2>/dev/null || true
+              return 1
+            fi
+            (
+              cd "$(mktemp -d)"
+              KOKUBAN_RENDER=gpu KOKUBAN_EXIT_AFTER_FIRST_FRAME=1 \
+                timeout --kill-after=5s 60s "$GITHUB_WORKSPACE/target/debug/kokuban"
+            ) 2>&1 | tee "$log"
+            local status=${PIPESTATUS[0]}
+            kill "$weston_pid" 2>/dev/null || true
+            wait "$weston_pid" 2>/dev/null || true
+            return "$status"
+          }
+          gl_status=0
+          run_weston gl "$RUNNER_TEMP/gpu-smoke/weston-gpu-gl.log" || gl_status=$?
+          pixman_status=0
+          run_weston pixman "$RUNNER_TEMP/gpu-smoke/weston-gpu-pixman.log" || pixman_status=$?
+          echo "weston gl renderer: exit $gl_status; pixman renderer: exit $pixman_status" \
+            | tee "$RUNNER_TEMP/gpu-smoke/weston-summary.txt"
+          rm -rf "$XDG_RUNTIME_DIR"
+          test "$gl_status" -eq 0 -o "$pixman_status" -eq 0
+
+      - name: Compare CPU time per frame between presenters (same host)
+        continue-on-error: true
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" \
+            env LIBGL_ALWAYS_SOFTWARE=1 \
+            timeout --kill-after=10s 600s python3 -B scripts/compare-render-backends.py \
+              "$GITHUB_WORKSPACE/target/release/kokuban" \
+              --backends software gpu --runs 3 --lines 20000 \
+              --output "$RUNNER_TEMP/gpu-smoke/compare-render-backends.json" \
+            2>&1 | tee "$RUNNER_TEMP/gpu-smoke/compare-render-backends.txt"
+
+      - name: Dependency and binary size delta against the baseline
+        shell: bash
+        run: |
+          # A pull_request checkout has no local `main`; try the remote branch too.
+          baseline="$(git rev-parse --verify --quiet --end-of-options "${BASELINE_REF}^{commit}" \
+            || git rev-parse --verify --end-of-options "origin/${BASELINE_REF}^{commit}")"
+          echo "$baseline" > "$RUNNER_TEMP/gpu-smoke/baseline-revision.txt"
+          git worktree add --detach "$RUNNER_TEMP/baseline-src" "$baseline"
+          (
+            cd "$RUNNER_TEMP/baseline-src"
+            cargo tree --locked -e normal --prefix none | sort -u > "$RUNNER_TEMP/gpu-smoke/baseline-tree.txt"
+            cargo build --locked --release
+            ls -l target/release/kokuban | tee "$RUNNER_TEMP/gpu-smoke/baseline-binary.txt"
+          )
+          # The candidate without the feature must match the baseline footprint.
+          cargo tree --locked -e normal --prefix none | sort -u > "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/target-nogpu" cargo build --locked --release
+          ls -l "$RUNNER_TEMP/target-nogpu/release/kokuban" | tee "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-binary.txt"
+          {
+            echo "baseline $baseline: $(wc -l < "$RUNNER_TEMP/gpu-smoke/baseline-tree.txt") crates, $(stat -c %s "$RUNNER_TEMP/baseline-src/target/release/kokuban") bytes"
+            echo "candidate ${GITHUB_SHA} without gpu feature: $(wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt") crates, $(stat -c %s "$RUNNER_TEMP/target-nogpu/release/kokuban") bytes"
+            echo "candidate ${GITHUB_SHA} with --features gpu: $(wc -l < "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt") crates, $(stat -c %s target/release/kokuban) bytes"
+            echo "crates added by --features gpu:"
+            comm -13 "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt" "$RUNNER_TEMP/gpu-smoke/candidate-tree.txt"
+            if grep -Eq '^(wgpu|naga|ash|glow)' "$RUNNER_TEMP/gpu-smoke/candidate-nogpu-tree.txt"; then
+              echo "GPU crates leaked into the build without the gpu feature"
+              exit 1
+            fi
+          } | tee "$RUNNER_TEMP/gpu-smoke/footprint.txt"
+
+      - name: Upload GPU smoke logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: linux-gpu-smoke
+          path: ${{ runner.temp }}/gpu-smoke
+          if-no-files-found: ignore
+          retention-days: 14

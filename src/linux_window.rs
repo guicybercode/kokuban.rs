@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::{render_backend_from_env, Config, RenderBackend, RENDER_BACKEND_ENV};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::grid::cell::Color;
 use crate::grid::TerminalEvent;
@@ -19,7 +19,6 @@ use crate::terminal_colors::TerminalColors;
 use crate::terminal_reader::{ReaderExit, TerminalReader};
 use crate::terminal_writer::{TerminalWriteQueueError, TerminalWriter};
 use crate::window_title::{normalized_window_title, sync_window_title_with, WINDOW_TITLE};
-use softbuffer::{Context, Surface};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -38,8 +37,11 @@ mod clipboard;
 mod damage;
 mod dispatch;
 mod draw;
+#[cfg(feature = "gpu")]
+mod gpu;
 mod ime;
 mod pointer;
+mod presenter;
 mod sizing;
 mod status;
 #[cfg(test)]
@@ -49,20 +51,20 @@ use clipboard::{
     apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer, sync_selection,
     ClipboardAction, SelectionContext,
 };
-use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
 use dispatch::{
     dispatch_encoded_terminal_input_with, dispatch_focus_event_with, dispatch_keyboard_input_with,
     dispatch_mouse_button_and_motion_with, dispatch_mouse_motion_with, dispatch_mouse_wheel_with,
     modifiers_after_focus_change, record_window_focus_change, KeyboardInputError,
     KeyboardInputOutcome, MouseMotionDispatchOutcome,
 };
-use draw::{draw_grid_snapshot_in_band, draw_ime_preedit, rgb_to_xrgb, snapshot_locked_grid};
+use draw::{rgb_to_xrgb, snapshot_locked_grid};
 use ime::{
     ime_cursor_area, ime_payload_from_event, ime_preedit_payload, layout_ime_preedit_for_snapshot,
     replace_ime_preedit, reveal_ime_input_viewport, sync_ime_cursor_area_with, ImeCursorArea,
     ImePreedit, ImePreeditPayload,
 };
 use pointer::{mouse_button_code_from_winit, PointerRouteState};
+use presenter::{create_presenter, FramePresenter, SceneFrame};
 use sizing::{
     atlas_cell_dimensions, configured_terminal_dimensions, create_glyph_atlas, drawable_dimensions,
     immediate_surface_size_to_reconcile, initial_window_dimensions, is_current_surface_size,
@@ -76,8 +78,6 @@ use status::{
 };
 
 const EXIT_AFTER_FIRST_FRAME_ENV: &str = "KOKUBAN_EXIT_AFTER_FIRST_FRAME";
-
-type SoftwareSurface = Surface<Arc<Window>, Arc<Window>>;
 
 fn application_icon() -> Option<Icon> {
     // Keep the X11 property small; the full-resolution PNG stays embedded for macOS.
@@ -174,6 +174,10 @@ pub(crate) fn launch(
     let foreground = colors.resolve_foreground(Color::Default, false);
     let initial_size = initial_window_dimensions(columns, rows);
     let exit_after_first_frame = std::env::var(EXIT_AFTER_FIRST_FRAME_ENV).as_deref() == Ok("1");
+    let render_backend = render_backend_from_env(
+        config.render.backend,
+        std::env::var(RENDER_BACKEND_ENV).ok().as_deref(),
+    );
     let mut grid = Grid::new(
         usize::from(columns),
         usize::from(rows),
@@ -309,6 +313,7 @@ pub(crate) fn launch(
     );
     application.clipboard = clipboard;
     application.theme_watcher = theme_watcher;
+    application.render_backend = render_backend;
     if crate::update::startup_check_enabled(config.update.check_on_startup) {
         // Linux has no status bar; the notice goes into the window title.
         crate::update::spawn_check(application.update_status.clone(), false, move || {
@@ -343,15 +348,14 @@ struct LinuxWindow {
     selection: SelectionState,
     selection_context: SelectionContext,
     selection_drag: Option<DeviceId>,
-    // Drop the surface and its display connection before releasing the window.
-    surface: Option<SoftwareSurface>,
-    context: Option<Context<Arc<Window>>>,
+    // Drop the presenter (surface and display connection) before the window.
+    presenter: Option<Box<dyn FramePresenter>>,
+    render_backend: RenderBackend,
     window: Option<Arc<Window>>,
     glyph_atlas: Option<GlyphAtlas>,
     atlas_scale_factor: Option<f64>,
     cell_dimensions: Option<(u16, u16)>,
     applied_pty_size: Option<TerminalSize>,
-    presented_scenes: std::collections::VecDeque<PresentedScene>,
     background: u32,
     colors: TerminalColors,
     palette_overrides: PaletteOverrides,
@@ -412,14 +416,13 @@ impl LinuxWindow {
             selection: SelectionState::default(),
             selection_context: SelectionContext::default(),
             selection_drag: None,
-            surface: None,
-            context: None,
+            presenter: None,
+            render_backend: RenderBackend::default(),
             window: None,
             glyph_atlas: None,
             atlas_scale_factor: None,
             cell_dimensions: None,
             applied_pty_size: None,
-            presented_scenes: std::collections::VecDeque::new(),
             background: rgb_to_xrgb(background.0, background.1, background.2),
             colors,
             palette_overrides,
@@ -479,10 +482,11 @@ impl LinuxWindow {
         });
         window.set_ime_purpose(ImePurpose::Terminal);
         window.set_ime_allowed(true);
-        let context = Context::new(window.clone())
-            .map_err(|error| format!("could not initialize the software renderer: {error}"))?;
-        let surface = Surface::new(&context, window.clone())
-            .map_err(|error| format!("could not create the software-rendering surface: {error}"))?;
+        let presenter = create_presenter(
+            self.render_backend,
+            window.clone(),
+            self.exit_after_first_frame,
+        )?;
         let scale_factor = window.scale_factor();
         let glyph_atlas = self.create_glyph_atlas(scale_factor)?;
         let cell_dimensions = atlas_cell_dimensions(&glyph_atlas)?;
@@ -497,9 +501,7 @@ impl LinuxWindow {
                 )
             })?;
 
-        self.presented_scenes.clear();
-        self.surface = Some(surface);
-        self.context = Some(context);
+        self.presenter = Some(presenter);
         self.window = Some(window.clone());
         self.glyph_atlas = Some(glyph_atlas);
         self.atlas_scale_factor = Some(scale_factor);
@@ -533,7 +535,9 @@ impl LinuxWindow {
             },
         )?;
         if changed {
-            self.presented_scenes.clear();
+            if let Some(presenter) = self.presenter.as_mut() {
+                presenter.invalidate();
+            }
             self.cell_dimensions = replacement_dimensions;
         }
         Ok(changed)
@@ -616,71 +620,40 @@ impl LinuxWindow {
             cell_dimensions,
             (width.get(), height.get()),
         );
-        let surface = self
-            .surface
+        let presenter = self
+            .presenter
             .as_mut()
-            .ok_or_else(|| "redraw requested before the software renderer was ready".to_string())?;
+            .ok_or_else(|| "redraw requested before the Linux renderer was ready".to_string())?;
         let glyph_atlas = self
             .glyph_atlas
             .as_mut()
             .ok_or_else(|| "redraw requested before the Linux glyph atlas was ready".to_string())?;
 
-        surface
-            .resize(width, height)
-            .map_err(|error| format!("could not resize the software-rendering surface: {error}"))?;
-        let mut buffer = surface
-            .buffer_mut()
-            .map_err(|error| format!("could not acquire the software-rendering buffer: {error}"))?;
-        let frame_size = (width.get(), height.get());
-        let has_overlays = !images.is_empty() || preedit_layout.is_some();
-        let damage = frame_damage(
-            scene_for_buffer_age(&self.presented_scenes, buffer.age()),
-            &snapshot,
-            frame_size,
-            cell_dimensions,
-            has_overlays,
+        presenter.resize((width, height))?;
+        let report = presenter.present(
+            SceneFrame {
+                snapshot,
+                images,
+                preedit: preedit_layout.as_ref(),
+                cell_dimensions,
+                colors: &self.colors,
+                background: self.background,
+                frame_size: (width, height),
+                detect_visible_content: self.exit_after_first_frame,
+            },
             glyph_atlas,
-        );
-        if !damage.is_empty() {
-            let start = damage.start as usize * width.get() as usize;
-            let end = damage.end as usize * width.get() as usize;
-            buffer[start..end].fill(self.background);
-            draw_grid_snapshot_in_band(
-                &mut buffer,
-                frame_size,
-                glyph_atlas,
-                &self.colors,
-                cell_dimensions,
-                &snapshot,
-                preedit_layout.is_none(),
-                &images,
-                damage,
-            );
-        }
-        if let Some(layout) = preedit_layout.as_ref() {
-            draw_ime_preedit(
-                &mut buffer,
-                (width.get(), height.get()),
-                glyph_atlas,
-                &self.colors,
-                cell_dimensions,
-                &snapshot,
-                layout,
-            );
-        }
-        let terminal_content_visible =
-            !self.exit_after_first_frame || buffer.iter().any(|&pixel| pixel != self.background);
-        window.pre_present_notify();
-        buffer
-            .present()
-            .map_err(|error| format!("could not present a Linux frame: {error}"))?;
-        self.presented_scenes.push_front(PresentedScene {
-            snapshot,
-            frame_size,
-            cell_dimensions,
-            has_overlays,
-        });
-        self.presented_scenes.truncate(MAX_PRESENTED_SCENES);
+        )?;
+        let terminal_content_visible = match report.visible_content {
+            Some(visible) => visible,
+            None if self.exit_after_first_frame => {
+                return Err(format!(
+                    "smoke mode could not verify the first frame: the {} presenter cannot read \
+                     its pixels back",
+                    presenter.backend_name()
+                ));
+            }
+            None => true,
+        };
         sync_ime_cursor_area_with(
             self.ime_active,
             &mut self.last_ime_cursor_area,
@@ -983,7 +956,7 @@ impl Drop for LinuxWindow {
 impl ApplicationHandler<LinuxEvent> for LinuxWindow {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
-        if event_loop.exiting() || self.occluded || self.surface.is_none() {
+        if event_loop.exiting() || self.occluded || self.presenter.is_none() {
             return;
         }
         let (Some(window), Some(cell_size)) = (&self.window, self.cell_dimensions) else {
@@ -1527,7 +1500,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                             return;
                         }
                         // Palette changes affect unchanged cells and buffer-age history.
-                        self.presented_scenes.clear();
+                        if let Some(presenter) = self.presenter.as_mut() {
+                            presenter.invalidate();
+                        }
                         if let Some(window) = self.window.as_ref() {
                             window.request_redraw();
                         }

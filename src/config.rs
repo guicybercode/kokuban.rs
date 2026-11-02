@@ -34,6 +34,7 @@ pub struct Config {
     pub notifications: NotificationsConfig,
     pub clipboard: ClipboardConfig,
     pub input: InputConfig,
+    pub render: RenderConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,6 +199,75 @@ impl Default for ClipboardConfig {
     fn default() -> Self {
         Self { osc52_write: true }
     }
+}
+
+/// Which presenter draws the Linux window. macOS always uses Metal and
+/// ignores this table.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum RenderBackend {
+    /// Try the GPU presenter (needs the `gpu` Cargo feature) and fall back to
+    /// software when no real GPU is available (missing drivers, CPU
+    /// rasterizers such as llvmpipe/lavapipe).
+    Auto,
+    /// Require the GPU presenter; launch fails when it cannot be created or
+    /// the binary was built without the `gpu` feature.
+    Gpu,
+    /// Never touch the GPU; the softbuffer CPU presenter. The default.
+    #[default]
+    Software,
+}
+
+// Only the Linux window selects a presenter; macOS always renders with Metal.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+impl RenderBackend {
+    /// Accept the same spellings as the TOML value, ignoring case.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "gpu" => Some(Self::Gpu),
+            "software" => Some(Self::Software),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Gpu => "gpu",
+            Self::Software => "software",
+        }
+    }
+}
+
+/// Environment variable that overrides `[render] backend` for one launch.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub const RENDER_BACKEND_ENV: &str = "KOKUBAN_RENDER";
+
+/// `KOKUBAN_RENDER` wins over the configuration; an unknown value is
+/// reported and ignored so a typo never silently changes the renderer.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn render_backend_from_env(configured: RenderBackend, env: Option<&str>) -> RenderBackend {
+    match env {
+        None => configured,
+        Some(value) if value.trim().is_empty() => configured,
+        Some(value) => match RenderBackend::parse(value) {
+            Some(backend) => backend,
+            None => {
+                eprintln!(
+                    "kokuban: warning: ignoring {RENDER_BACKEND_ENV}={value:?}; expected auto, gpu or software"
+                );
+                configured
+            }
+        },
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct RenderConfig {
+    /// Linux only: `software` (default), `auto` or `gpu`.
+    pub backend: RenderBackend,
 }
 
 #[derive(Debug, Deserialize)]
@@ -558,7 +628,10 @@ impl ColorConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{config_paths, ColorConfig, Config, ConfigSource, ImagesConfig};
+    use super::{
+        config_paths, render_backend_from_env, ColorConfig, Config, ConfigSource, ImagesConfig,
+        RenderBackend,
+    };
     use std::path::PathBuf;
 
     fn temp_directory(label: &str) -> PathBuf {
@@ -770,5 +843,43 @@ mod tests {
         let parsed: Config = toml::from_str(shipped).expect("shipped kokuban.toml must parse");
         assert!(parsed.notifications.enabled);
         assert!(parsed.notifications.command.is_none());
+    }
+
+    #[test]
+    fn render_backend_defaults_to_software_and_parses_the_documented_values() {
+        assert_eq!(Config::default().render.backend, RenderBackend::Software);
+        let parsed: Config = toml::from_str("[render]\nbackend = \"auto\"\n").unwrap();
+        assert_eq!(parsed.render.backend, RenderBackend::Auto);
+        let parsed: Config = toml::from_str("[render]\nbackend = \"gpu\"\n").unwrap();
+        assert_eq!(parsed.render.backend, RenderBackend::Gpu);
+        assert!(toml::from_str::<Config>("[render]\nbackend = \"metal\"\n").is_err());
+        let shipped: Config = toml::from_str(include_str!("../kokuban.toml")).unwrap();
+        assert_eq!(shipped.render.backend, RenderBackend::Software);
+    }
+
+    #[test]
+    fn render_backend_environment_overrides_configuration_only_when_valid() {
+        assert_eq!(
+            render_backend_from_env(RenderBackend::Auto, None),
+            RenderBackend::Auto
+        );
+        assert_eq!(
+            render_backend_from_env(RenderBackend::Auto, Some("")),
+            RenderBackend::Auto
+        );
+        assert_eq!(
+            render_backend_from_env(RenderBackend::Auto, Some("GPU")),
+            RenderBackend::Gpu
+        );
+        assert_eq!(
+            render_backend_from_env(RenderBackend::Gpu, Some(" software ")),
+            RenderBackend::Software
+        );
+        assert_eq!(
+            render_backend_from_env(RenderBackend::Software, Some("vulkan")),
+            RenderBackend::Software
+        );
+        assert_eq!(RenderBackend::parse("auto"), Some(RenderBackend::Auto));
+        assert_eq!(RenderBackend::Gpu.as_str(), "gpu");
     }
 }
