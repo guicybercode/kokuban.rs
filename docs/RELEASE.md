@@ -61,8 +61,8 @@ git -C /tmp/homebrew-kokuban commit -m "kokuban X.Y"
 git -C /tmp/homebrew-kokuban push
 ```
 
-The tap's `brew test-bot` workflow then audits and installs both packages on macOS (Apple Silicon
-and Intel) and Linux. Verify from a clean state: `brew update && brew install guicybercode/kokuban/kokuban.rs`
+The tap's `brew test-bot` workflow then audits both packages and installs and tests the formula on
+macOS (Apple Silicon and Intel, release tarballs) and Linux (source build). Verify from a clean state: `brew update && brew install guicybercode/kokuban/kokuban.rs`
 (or `brew upgrade kokuban.rs`) and `kokuban --version`; for the app `brew install --cask guicybercode/kokuban/kokuban`
 then `codesign -dv /Applications/Kokuban.app`.
 [packaging/homebrew/README.md](../packaging/homebrew/README.md) has the local audit steps to run before pushing.
