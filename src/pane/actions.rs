@@ -163,9 +163,19 @@ fn relayout(tree: &mut PaneTree, host: &dyn PaneActionHost) {
 
 /// Linha absoluta no topo da viewport (ou do cursor, sem rolagem) de onde
 /// a navegação de prompts parte.
+/// Linhas de contexto mantidas acima do prompt alvo.
+const PROMPT_CONTEXT_ROWS: usize = 2;
+
+/// Linha absoluta de referência para a navegação: com a viewport rolada é o
+/// prompt que está na posição de contexto (duas linhas abaixo do topo), para
+/// que "anterior"/"próximo" partam do prompt visível e não do topo da tela;
+/// sem rolagem é a linha do cursor.
 fn prompt_navigation_origin(grid: &Grid) -> usize {
     if grid.scroll_offset > 0 {
-        grid.scrollback_len().saturating_sub(grid.scroll_offset)
+        let sb_len = grid.scrollback_len();
+        let evicted = grid.total_lines_pushed.saturating_sub(sb_len);
+        let top = evicted + sb_len.saturating_sub(grid.scroll_offset);
+        (top + PROMPT_CONTEXT_ROWS).min(grid.current_absolute_row())
     } else {
         grid.current_absolute_row()
     }
@@ -182,12 +192,10 @@ fn scroll_offset_for_prompt(grid: &Grid, target_row: usize) -> Option<usize> {
         return None;
     }
     let sb_index = target_row - evicted;
-    Some(
-        sb_len
-            .saturating_sub(sb_index)
-            .saturating_sub(2)
-            .min(sb_len),
-    )
+    // O topo da viewport é a linha retida `sb_len - scroll_offset`; para o
+    // prompt ficar duas linhas abaixo do topo, o deslocamento sobe duas
+    // linhas além dele, limitado ao início do histórico.
+    Some((sb_len.saturating_sub(sb_index) + PROMPT_CONTEXT_ROWS).min(sb_len))
 }
 
 /// Rola até o prompt anterior (OSC 133 A) acima da viewport, se houver.
@@ -550,24 +558,25 @@ mod tests {
         assert_eq!(grid.current_absolute_row(), 30);
         assert_eq!(grid.scroll_offset, 0);
 
-        // Legacy macOS formula, kept as is: `scroll_offset = sb_len -
-        // sb_index - 2`, so the viewport top lands two rows below the prompt.
+        // The target prompt lands two rows below the viewport top:
+        // `scroll_offset = sb_len - sb_index + 2`.
         scroll_to_prev_prompt(&mut grid);
-        assert_eq!(grid.scroll_offset, 27 - 20 - 2);
-        // From there the same prompt is still the nearest one above the top.
+        assert_eq!(grid.scroll_offset, 27 - 20 + 2);
+        // Pressing again moves to the previous prompt, not the same one.
         scroll_to_prev_prompt(&mut grid);
-        assert_eq!(grid.scroll_offset, 27 - 20 - 2);
-
-        grid.scroll_offset = 27 - 10; // top exactly on prompt 1
+        assert_eq!(grid.scroll_offset, 27 - 10 + 2);
         scroll_to_prev_prompt(&mut grid);
-        assert_eq!(grid.scroll_offset, 27 - 2, "prompt 0 at row 0");
+        assert_eq!(
+            grid.scroll_offset, 27,
+            "prompt 0 at row 0: clamped to the top"
+        );
         scroll_to_prev_prompt(&mut grid);
-        assert_eq!(grid.scroll_offset, 27 - 2, "no earlier prompt: stays");
+        assert_eq!(grid.scroll_offset, 27, "no earlier prompt: stays");
 
         scroll_to_next_prompt(&mut grid);
-        assert_eq!(grid.scroll_offset, 27 - 10 - 2);
+        assert_eq!(grid.scroll_offset, 27 - 10 + 2);
         scroll_to_next_prompt(&mut grid);
-        assert_eq!(grid.scroll_offset, 27 - 20 - 2);
+        assert_eq!(grid.scroll_offset, 27 - 20 + 2);
         scroll_to_next_prompt(&mut grid);
         assert_eq!(grid.scroll_offset, 0, "no later prompt: back to the bottom");
 
@@ -602,8 +611,8 @@ mod tests {
         let outcome = apply(&mut tree, &mut host, PaneAction::PrevPrompt);
         assert_plain(&outcome);
         assert_eq!(outcome.focus_changed_from, None);
-        // 20 lines fed, 17 pushed; prompt 1 at row 10.
-        assert_eq!(tree.focused_pane().unwrap().grid.scroll_offset, 17 - 10 - 2);
+        // 20 lines fed, 17 pushed; prompt 1 at row 10 sits two rows below the top.
+        assert_eq!(tree.focused_pane().unwrap().grid.scroll_offset, 17 - 10 + 2);
         step(&mut tree, &mut host, PaneAction::NextPrompt);
         assert_eq!(tree.focused_pane().unwrap().grid.scroll_offset, 0);
         retire_all(tree);
