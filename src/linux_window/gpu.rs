@@ -199,10 +199,12 @@ impl FrameBuilder {
         };
         // Cropping keeps the 1:1 texel mapping, so shift the UV origin by the
         // same amount the destination moved.
-        let u0 = (glyph.atlas_x as f32 + (x as f32 - destination_x as f32)) / self.atlas_size.0;
-        let v0 = (glyph.atlas_y as f32 + (y as f32 - destination_y as f32)) / self.atlas_size.1;
-        let u1 = u0 + width as f32 / self.atlas_size.0;
-        let v1 = v0 + height as f32 / self.atlas_size.1;
+        let texel_x = glyph.atlas_x as f32 + (x as f32 - destination_x as f32);
+        let texel_y = glyph.atlas_y as f32 + (y as f32 - destination_y as f32);
+        let u0 = texel_x / self.atlas_size.0;
+        let v0 = texel_y / self.atlas_size.1;
+        let u1 = (texel_x + width as f32) / self.atlas_size.0;
+        let v1 = (texel_y + height as f32) / self.atlas_size.1;
         let fill = if atlas.is_color(glyph) {
             Fill::ColorGlyph
         } else {
@@ -1559,9 +1561,11 @@ mod tests {
         assert_eq!(values[1], (baseline - 8) as f32);
         assert_eq!(values[2], 6.0);
         assert_eq!(values[3], 10.0);
-        assert_eq!(values[4], 12.0 / 100.0);
-        assert_eq!(values[5], 20.0 / 100.0);
-        assert_eq!(values[6], 18.0 / 100.0);
-        assert_eq!(values[7], 30.0 / 100.0);
+        for (actual, expected) in values[4..8].iter().zip([12.0, 20.0, 18.0, 30.0]) {
+            assert!(
+                (actual - expected / 100.0).abs() < 1e-6,
+                "uv {actual} should be {expected}/100"
+            );
+        }
     }
 }
