@@ -20,6 +20,7 @@
 
 ### Changed
 
+- `kokuban --update`, `--check-update` and the update notice recognize a Homebrew install (an executable under `Cellar/`, or `Kokuban.app` in `/Applications` while the cask is installed) and point to `brew upgrade kokuban.rs` or `brew upgrade --cask kokuban` instead of replacing files that Homebrew tracks.
 - A `kokuban.toml` in the launch directory can no longer run a program or open local files: `[notifications] command` and `[images.kitty] allow_file_transfer` are ignored there with a warning and are only read from the user configuration directory; appearance, window and keybind settings are still honored.
 - README rewritten around the brand card, the v0.4 video and a three-line install per platform; detailed installation, troubleshooting and performance text moved to `docs/`.
 - Block elements (U+2580–U+259F) and box-drawing characters are drawn as pixel-aligned rectangles on both renderers instead of font glyphs, so pixel art and TUI borders have no seams.
