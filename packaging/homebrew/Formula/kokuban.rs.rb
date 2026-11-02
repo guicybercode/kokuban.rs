@@ -1,6 +1,11 @@
 class KokubanRs < Formula
   desc "Native Rust terminal with a chalkboard theme and Kitty and Sixel graphics"
   homepage "https://github.com/guicybercode/kokuban.rs"
+  # The Linux release binary needs glibc 2.39 (Ubuntu 24.04), so Linux (any
+  # architecture) builds the tagged source against the host's libraries.
+  # macOS installs the prebuilt release tarballs from the `on_macos` block.
+  url "https://github.com/guicybercode/kokuban.rs/archive/refs/tags/v0.4.tar.gz"
+  sha256 "6d6c14df25cb897abae771ba854d4a3ecddcde342d5bbc9deb1bcbdc9a169c9e"
   license "BSD-4-Clause"
 
   livecheck do
@@ -19,14 +24,7 @@ class KokubanRs < Formula
     end
   end
 
-  # The Linux release binary needs glibc 2.39 (Ubuntu 24.04), so Linux builds
-  # the tagged source against the host's libraries instead.
   on_linux do
-    on_intel do
-      url "https://github.com/guicybercode/kokuban.rs/archive/refs/tags/v0.4.tar.gz"
-      sha256 "6d6c14df25cb897abae771ba854d4a3ecddcde342d5bbc9deb1bcbdc9a169c9e"
-    end
-
     depends_on "pkgconf" => :build
     depends_on "rust" => :build
     depends_on "fontconfig"

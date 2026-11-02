@@ -99,30 +99,29 @@ awk -v version="$version" -v arm_sha="$dmg_arm_sha" -v intel_sha="$dmg_intel_sha
 ' "$cask" > "$tmp/kokuban.rb"
 
 # The formula has no `version` stanza (Homebrew reads it from the URL), so the
-# tag appears literally in each `url` inside on_macos/on_linux + on_arm/on_intel:
-# release tarballs on macOS, the source archive of the tag on Linux.
+# tag appears literally in each `url`: the top-level stanza is the source
+# archive of the tag (what Linux builds), and the on_macos + on_arm/on_intel
+# blocks point at the macOS release tarballs.
 awk -v tag="$tag" -v mac_arm="$tar_mac_arm_sha" -v mac_intel="$tar_mac_intel_sha" \
-    -v linux_intel="$source_sha" '
+    -v source="$source_sha" '
+  /^  url "/ { sub(/archive\/refs\/tags\/v[0-9.]+\.tar\.gz/, "archive/refs/tags/" tag ".tar.gz") }
+  /^  sha256 "/ { sub(/"[^"]*"/, "\"" source "\"") }
   /^  on_macos do$/ { os = "macos" }
-  /^  on_linux do$/ { os = "linux" }
   /^  end$/ { os = "" }
   /^    on_arm do$/ { arch = "arm" }
   /^    on_intel do$/ { arch = "intel" }
   /^    end$/ { arch = "" }
-  /^      url "/ {
-    sub(/download\/v[0-9.]+\/kokuban-v[0-9.]+-/, "download/" tag "/kokuban-" tag "-")
-    sub(/archive\/refs\/tags\/v[0-9.]+\.tar\.gz/, "archive/refs/tags/" tag ".tar.gz")
-  }
+  /^      url "/ { sub(/download\/v[0-9.]+\/kokuban-v[0-9.]+-/, "download/" tag "/kokuban-" tag "-") }
   /^      sha256 "/ {
     if (os == "macos" && arch == "arm") sub(/"[^"]*"/, "\"" mac_arm "\"")
     else if (os == "macos" && arch == "intel") sub(/"[^"]*"/, "\"" mac_intel "\"")
-    else if (os == "linux" && arch == "intel") sub(/"[^"]*"/, "\"" linux_intel "\"")
   }
   { print }
 ' "$formula" > "$tmp/kokuban.rs.rb"
 
 if [[ "$(grep -c "download/$tag/kokuban-$tag-" "$tmp/kokuban.rs.rb")" -ne 2 ]] \
-  || ! grep -q "archive/refs/tags/$tag.tar.gz" "$tmp/kokuban.rs.rb"; then
+  || [[ "$(grep -c "archive/refs/tags/$tag.tar.gz" "$tmp/kokuban.rs.rb")" -ne 1 ]] \
+  || [[ "$(grep -c "^  sha256 \"$source_sha\"" "$tmp/kokuban.rs.rb")" -ne 1 ]]; then
   echo "error: the url lines in $formula do not match the expected layout" >&2
   exit 1
 fi
