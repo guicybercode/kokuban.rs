@@ -13,6 +13,15 @@ on:
         description: Revision to compare dependency count and binary size against
         required: true
         default: main
+  # `gh workflow run` only finds workflows on the default branch, so while the
+  # spike lives on a branch the PR itself triggers it for presenter changes.
+  pull_request:
+    paths:
+      - .github/workflows/linux-gpu-smoke.yml
+      - scripts/compare-render-backends.py
+      - src/linux_window/gpu.rs
+      - src/linux_window/gpu.wgsl
+      - src/linux_window/presenter.rs
 
 permissions:
   contents: read
@@ -29,7 +38,7 @@ jobs:
       RUSTFLAGS: -D warnings
       RUST_LOG: info
       KOKUBAN_NO_UPDATE_CHECK: "1"
-      BASELINE_REF: ${{ inputs.baseline }}
+      BASELINE_REF: ${{ inputs.baseline || 'main' }}
 
     steps:
       - name: Check out repository
