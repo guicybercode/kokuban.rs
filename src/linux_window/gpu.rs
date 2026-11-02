@@ -752,11 +752,14 @@ impl WgpuPresenter {
         if render_format != surface_format {
             config.view_formats.push(render_format);
         }
+        // Smoke read-back draws the same instances into an offscreen texture,
+        // so it does not depend on the swapchain offering COPY_SRC (GL does
+        // not) and only needs a 4-byte format to scan.
         let readback = options.readback_first_frame
-            && capabilities.usages.contains(wgpu::TextureUsages::COPY_SRC);
-        if readback {
-            config.usage |= wgpu::TextureUsages::COPY_SRC;
-        }
+            && matches!(
+                render_format,
+                wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm
+            );
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kokuban cells"),
@@ -1189,7 +1192,7 @@ impl WgpuPresenter {
         let data = slice
             .get_mapped_range()
             .map_err(|error| format!("could not read the GPU read-back buffer: {error}"))?;
-        let expected = match self.config.format.remove_srgb_suffix() {
+        let expected = match self.render_format {
             wgpu::TextureFormat::Rgba8Unorm => [
                 ((background >> 16) & 0xff) as u8,
                 ((background >> 8) & 0xff) as u8,
@@ -1213,6 +1216,119 @@ impl WgpuPresenter {
         drop(data);
         staging.unmap();
         Ok(visible)
+    }
+}
+
+impl WgpuPresenter {
+    /// Clear to the background and replay the frame's batches into `view`.
+    fn record_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        scene: &SceneFrame<'_>,
+    ) -> Result<(), String> {
+        let Some(atlas_binding) = self.atlas.as_ref() else {
+            return Err("GPU atlas texture missing after upload".to_string());
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("kokuban frame"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(Self::clear_color(scene.background)),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &atlas_binding.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        let mut placeholder_bound = false;
+        for batch in &self.builder.batches {
+            match batch {
+                Batch::Cells(range) => {
+                    if !placeholder_bound {
+                        pass.set_bind_group(1, &self.placeholder_image, &[]);
+                        placeholder_bound = true;
+                    }
+                    pass.draw(0..6, range.clone());
+                }
+                Batch::Image { instance, index } => {
+                    let Some(cached) = scene
+                        .images
+                        .get(*index)
+                        .and_then(|image| self.images.get(&ImageKey::of(image)))
+                    else {
+                        continue;
+                    };
+                    pass.set_bind_group(1, &cached.bind_group, &[]);
+                    placeholder_bound = false;
+                    pass.draw(0..6, *instance..*instance + 1);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Smoke mode: draw the frame again into a texture that can be copied to
+    /// a mappable buffer. Returns the staging buffer and its padded row size.
+    fn record_readback(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &SceneFrame<'_>,
+        frame_size: (u32, u32),
+    ) -> Result<(wgpu::Buffer, u32), String> {
+        let offscreen = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("kokuban read-back target"),
+            size: wgpu::Extent3d {
+                width: frame_size.0,
+                height: frame_size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.render_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = offscreen.create_view(&wgpu::TextureViewDescriptor::default());
+        self.record_pass(encoder, &view, scene)?;
+        let bytes_per_row = (frame_size.0 * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("kokuban read-back"),
+            size: u64::from(bytes_per_row) * u64::from(frame_size.1),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &offscreen,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bytes_per_row),
+                    rows_per_image: None,
+                },
+            },
+            wgpu::Extent3d {
+                width: frame_size.0,
+                height: frame_size.1,
+                depth_or_array_layers: 1,
+            },
+        );
+        Ok((staging, bytes_per_row))
     }
 }
 
@@ -1286,86 +1402,12 @@ impl FramePresenter for WgpuPresenter {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("kokuban frame"),
             });
-        {
-            let Some(atlas_binding) = self.atlas.as_ref() else {
-                return Err("GPU atlas texture missing after upload".to_string());
-            };
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("kokuban frame"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Self::clear_color(scene.background)),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &atlas_binding.bind_group, &[]);
-            pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-            let mut placeholder_bound = false;
-            for batch in &self.builder.batches {
-                match batch {
-                    Batch::Cells(range) => {
-                        if !placeholder_bound {
-                            pass.set_bind_group(1, &self.placeholder_image, &[]);
-                            placeholder_bound = true;
-                        }
-                        pass.draw(0..6, range.clone());
-                    }
-                    Batch::Image { instance, index } => {
-                        let Some(cached) = scene
-                            .images
-                            .get(*index)
-                            .and_then(|image| self.images.get(&ImageKey::of(image)))
-                        else {
-                            continue;
-                        };
-                        pass.set_bind_group(1, &cached.bind_group, &[]);
-                        placeholder_bound = false;
-                        pass.draw(0..6, *instance..*instance + 1);
-                    }
-                }
-            }
-        }
-        let readback = (self.readback && scene.detect_visible_content).then(|| {
-            let bytes_per_row =
-                (frame_size.0 * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
-            let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("kokuban read-back"),
-                size: u64::from(bytes_per_row) * u64::from(frame_size.1),
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &frame.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &staging,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(bytes_per_row),
-                        rows_per_image: None,
-                    },
-                },
-                wgpu::Extent3d {
-                    width: frame_size.0,
-                    height: frame_size.1,
-                    depth_or_array_layers: 1,
-                },
-            );
-            (staging, bytes_per_row)
-        });
+        self.record_pass(&mut encoder, &view, &scene)?;
+        let readback = if self.readback && scene.detect_visible_content {
+            Some(self.record_readback(&mut encoder, &scene, frame_size)?)
+        } else {
+            None
+        };
         self.queue.submit(std::iter::once(encoder.finish()));
         self.window.pre_present_notify();
         self.queue.present(frame);
