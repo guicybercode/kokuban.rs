@@ -13,10 +13,11 @@ https://github.com/user-attachments/assets/4769ed61-12ed-4bb9-817f-5f3ee06c3238
 **Homebrew** (macOS Apple Silicon and Intel, Linux x86_64; see [docs/INSTALL.md](docs/INSTALL.md)):
 
 ```sh
-brew tap guicybercode/kokuban && brew trust guicybercode/kokuban
-brew install kokuban.rs          # `kokuban` on your PATH
-brew install --cask kokuban      # or Kokuban.app in /Applications (macOS)
+brew install guicybercode/kokuban/kokuban.rs        # `kokuban` on your PATH
+brew install --cask guicybercode/kokuban/kokuban    # or Kokuban.app in /Applications (macOS)
 ```
+
+The full name taps `guicybercode/kokuban` and trusts the package in one step; afterwards `brew upgrade kokuban.rs` (or `--cask kokuban`) works as usual.
 
 **macOS (direct download, Apple Silicon)** — for Intel Macs replace `aarch64-apple-darwin` with `x86_64-apple-darwin`:
 

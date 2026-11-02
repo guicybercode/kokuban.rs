@@ -10,14 +10,14 @@ The tap [`guicybercode/homebrew-kokuban`](https://github.com/guicybercode/homebr
 - the cask `kokuban` (macOS only): `Kokuban.app` from the release disk image, installed in `/Applications`.
 
 ```sh
-brew tap guicybercode/kokuban
-brew trust guicybercode/kokuban        # Homebrew 7 loads third-party taps only after this
-brew install kokuban.rs                # `kokuban` on your PATH
-brew install --cask kokuban            # or the app bundle (macOS)
-brew upgrade kokuban.rs                # move to the latest release (`--cask kokuban` for the app)
-brew uninstall kokuban.rs              # remove it (`--cask kokuban` for the app)
-brew uninstall --cask --zap kokuban    # also remove ~/.config/kokuban
+brew install guicybercode/kokuban/kokuban.rs        # `kokuban` on your PATH
+brew install --cask guicybercode/kokuban/kokuban    # or the app bundle (macOS)
+brew upgrade kokuban.rs                             # move to the latest release (`--cask kokuban` for the app)
+brew uninstall kokuban.rs                           # remove it (`--cask kokuban` for the app)
+brew uninstall --cask --zap kokuban                 # also remove ~/.config/kokuban
 ```
+
+The full `guicybercode/kokuban/...` name makes Homebrew tap the repository and trust that one package in the same command. To use the short names from the start, run `brew tap guicybercode/kokuban && brew trust guicybercode/kokuban` first; Homebrew 7 loads third-party taps only after `brew trust`.
 
 The executable and the app are ad-hoc signed, not Developer ID signed or notarized, and Homebrew prints a caveat saying so. If macOS refuses the first launch of the app, use **Open** from the Finder context menu or clear the quarantine flag:
 
@@ -93,7 +93,7 @@ On macOS the app menu also has **Check for Updates…** and **Install Update…*
 
 Turn the automatic check off with `check_on_startup = false` under `[update]` in `kokuban.toml`, or set `KOKUBAN_NO_UPDATE_CHECK=1`.
 
-Homebrew installs are updated with `brew upgrade --cask kokuban` instead (see [Homebrew (macOS)](#homebrew-macos)).
+Homebrew installs are updated with `brew upgrade --cask kokuban` instead (see [Homebrew (macOS and Linux)](#homebrew-macos-and-linux)).
 
 ## Build and run from source
 
