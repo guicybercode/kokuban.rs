@@ -1,4 +1,6 @@
 pub mod actions;
+pub mod cleanup;
+pub mod focus;
 // `pane::pane::Pane` is the leaf; the parent module owns the tree.
 #[allow(clippy::module_inception)]
 pub mod pane;

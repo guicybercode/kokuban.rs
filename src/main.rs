@@ -23,6 +23,8 @@ mod omarchy_theme;
 mod palette;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 mod pane;
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+mod pane_reader;
 mod parser;
 mod pty;
 #[cfg_attr(target_os = "linux", allow(dead_code))]
