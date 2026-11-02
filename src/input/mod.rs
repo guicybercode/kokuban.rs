@@ -1,5 +1,6 @@
-// Keybinds are dispatched by the macOS window; Linux routes keys in `input::linux`.
-#[cfg(any(target_os = "macos", test))]
+// Keybinds are dispatched by the macOS window today; the Linux window will
+// consume the same table once its pane port lands.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub mod keybind;
 pub mod keyboard;
 #[cfg(target_os = "linux")]

@@ -8,26 +8,27 @@ mod glyph_atlas;
 mod graphics;
 mod grid;
 mod input;
-mod notifications;
-// Pane layout, search and the render scene are consumed by the macOS window only.
 mod launch_options;
-#[cfg(any(target_os = "macos", test))]
+// Pane layout, search and the render scene compile on both OSes; the macOS
+// window consumes them today and the Linux pane port will follow.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod layout;
 #[cfg(target_os = "linux")]
 mod linux_clipboard;
 #[cfg(target_os = "linux")]
 mod linux_window;
+mod notifications;
 #[cfg(target_os = "linux")]
 mod omarchy_theme;
 mod palette;
-#[cfg(target_os = "macos")]
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod pane;
 mod parser;
 mod pty;
-#[cfg(target_os = "macos")]
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod render_scene;
 mod renderer;
-#[cfg(any(target_os = "macos", test))]
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 mod search;
 mod selection;
 #[cfg(target_os = "linux")]

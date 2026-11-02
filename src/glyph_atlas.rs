@@ -127,7 +127,6 @@ impl ScalarGlyphCache {
         }
     }
 
-    #[cfg(any(target_os = "macos", test))]
     pub fn clear(&mut self) {
         self.ascii.fill(None);
         self.unicode.clear();
@@ -175,8 +174,7 @@ pub struct GlyphAtlas {
     /// Reported alongside `ascent`; only tests read it today.
     #[allow(dead_code)]
     pub descent: f32,
-    /// Kept for `clear_and_resize` (macOS font zoom).
-    #[cfg(any(target_os = "macos", test))]
+    /// Kept for `clear_and_resize` (font zoom).
     font: Font,
     font_size: f32,
     scale_factor: f32,
@@ -288,7 +286,6 @@ impl GlyphAtlas {
             run_glyphs: HashMap::new(),
             row_shaper: RowShaper::new(),
             ligatures: false,
-            #[cfg(any(target_os = "macos", test))]
             font: font.font.clone(),
             rasterizer: TextRasterizer::new(faces),
             glyphs: ScalarGlyphCache::new(),
@@ -317,7 +314,8 @@ impl GlyphAtlas {
     }
 
     /// Clear all cached glyphs and reset the atlas. Glyphs will be re-rasterized lazily.
-    #[cfg(any(target_os = "macos", test))]
+    // Font zoom is wired only in the macOS window so far.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn clear_and_resize(&mut self, new_font_size: f32) -> Result<(), GlyphAtlasError> {
         let metrics = scaled_font_metrics(&self.font, new_font_size, self.scale_factor)?;
 

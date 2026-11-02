@@ -156,7 +156,9 @@ impl Pane {
         }
     }
 
-    pub fn resize_grid(&mut self, cols: usize, rows: usize) {
+    /// Resize the grid and the PTY together; `cell_w`/`cell_h` (physical
+    /// pixels) fill the `TIOCSWINSZ` pixel fields so programs can size images.
+    pub fn resize_grid(&mut self, cols: usize, rows: usize, cell_w: f32, cell_h: f32) {
         let current_cols = self.grid.cols();
         let current_rows = self.grid.rows();
         let pty = Arc::clone(&self.pty);
@@ -165,7 +167,14 @@ impl Pane {
             current_rows,
             cols,
             rows,
-            move |pty_cols, pty_rows| pty.resize(pty_cols, pty_rows),
+            move |pty_cols, pty_rows| {
+                pty.resize_with_pixels(
+                    pty_cols,
+                    pty_rows,
+                    pixel_extent(pty_cols, cell_w),
+                    pixel_extent(pty_rows, cell_h),
+                )
+            },
             |grid_cols, grid_rows| {
                 self.grid.resize(grid_cols, grid_rows);
                 // Reflow changes retained-row coordinates, as on the Linux path.
@@ -174,6 +183,17 @@ impl Pane {
         ) {
             log::error!("Failed to resize PTY for pane {}: {error}", self.id);
         }
+    }
+}
+
+/// Pixel size of `cells` cells of `cell_size` physical pixels, saturated to
+/// the `winsize` range; non-finite or negative sizes report zero.
+fn pixel_extent(cells: u16, cell_size: f32) -> u16 {
+    let pixels = f32::from(cells) * cell_size;
+    if pixels.is_finite() && pixels > 0.0 {
+        pixels.round().min(f32::from(u16::MAX)) as u16
+    } else {
+        0
     }
 }
 
@@ -267,6 +287,17 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::io;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn pixel_extent_rounds_and_saturates() {
+        assert_eq!(super::pixel_extent(80, 10.4), 832);
+        assert_eq!(super::pixel_extent(24, 20.6), 494);
+        assert_eq!(super::pixel_extent(0, 10.0), 0);
+        assert_eq!(super::pixel_extent(10, 0.0), 0);
+        assert_eq!(super::pixel_extent(10, -1.0), 0);
+        assert_eq!(super::pixel_extent(10, f32::NAN), 0);
+        assert_eq!(super::pixel_extent(u16::MAX, 10.0), u16::MAX);
+    }
 
     #[test]
     fn pty_resize_completes_before_grid_commit() {

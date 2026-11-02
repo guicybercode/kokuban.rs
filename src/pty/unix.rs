@@ -275,13 +275,8 @@ impl Pty {
         }
     }
 
-    #[cfg(any(target_os = "macos", test))]
-    pub fn resize(&self, cols: u16, rows: u16) -> std::io::Result<()> {
-        self.resize_with_pixels(cols, rows, 0, 0)
-    }
-
     /// Report the drawable terminal area, in physical pixels, along with its grid.
-    /// Callers without pixel metrics can continue using `resize`.
+    /// Callers without pixel metrics pass zero for both pixel fields.
     pub fn resize_with_pixels(
         &self,
         cols: u16,
@@ -1254,9 +1249,8 @@ mod tests {
         assert_eq!(size(), (80, 24, 809, 499));
         pty.resize_with_pixels(100, 30, 1000, 600).unwrap();
         assert_eq!(size(), (100, 30, 1000, 600));
-        // The existing API keeps its zero-pixel contract for callers that
-        // have not yet integrated physical renderer dimensions.
-        pty.resize(90, 25).unwrap();
+        // Zero pixel fields stay allowed for callers without pixel metrics.
+        pty.resize_with_pixels(90, 25, 0, 0).unwrap();
         assert_eq!(size(), (90, 25, 0, 0));
     }
 
