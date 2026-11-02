@@ -281,7 +281,9 @@ mod tests {
 
         run_notification_command(script.to_str().unwrap(), &title, &body).unwrap();
 
-        for _ in 0..50 {
+        // Up to 5 s: under the full parallel suite the helper can take well
+        // over the old 1 s budget to start and write its capture file.
+        for _ in 0..250 {
             if out.exists() {
                 break;
             }
@@ -414,7 +416,9 @@ mod tests {
             focused,
         );
         controller.handle_notification(NotificationRequest::new("hi\u{0007}&x", "body\n<tag>"));
-        for _ in 0..50 {
+        // Up to 5 s: under the full parallel suite the helper can take well
+        // over the old 1 s budget to start and write its capture file.
+        for _ in 0..250 {
             if out.exists() {
                 break;
             }
