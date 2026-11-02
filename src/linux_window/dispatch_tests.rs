@@ -19,7 +19,7 @@ use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase};
 use winit::keyboard::ModifiersState;
 
 #[test]
-fn keyboard_forwarding_releases_the_grid_before_encoding_and_enqueueing() {
+fn keyboard_forwarding_encodes_and_enqueues_under_the_grid_lock() {
     let mut history = grid_with_scrollback(4, 10);
     history.application_cursor_keys = true;
     history.scroll_viewport_up(history.scrollback_len());
@@ -32,15 +32,15 @@ fn keyboard_forwarding_releases_the_grid_before_encoding_and_enqueueing() {
         |application_cursor_keys, _kitty_disambiguate| {
             assert!(application_cursor_keys);
             assert!(
-                grid.try_lock().is_ok(),
-                "encoder must run without the Grid lock"
+                grid.try_lock().is_err(),
+                "the encoder runs under the Grid lock"
             );
             Some(b"\x1bOA".to_vec())
         },
         |bytes| {
             assert!(
-                grid.try_lock().is_ok(),
-                "queue enqueue must run without the Grid lock"
+                grid.try_lock().is_err(),
+                "the enqueue runs under the Grid lock, like the pane tree in the window"
             );
             written.borrow_mut().extend_from_slice(&bytes);
             Ok(())
@@ -64,7 +64,7 @@ fn keyboard_forwarding_releases_the_grid_before_encoding_and_enqueueing() {
 }
 
 #[test]
-fn ime_commit_is_queued_once_as_raw_utf8_outside_the_grid_lock() {
+fn ime_commit_is_queued_once_as_raw_utf8_under_the_grid_lock() {
     let mut history = grid_with_scrollback(4, 10);
     history.bracketed_paste = true;
     history.scroll_viewport_up(history.scrollback_len());
@@ -78,8 +78,8 @@ fn ime_commit_is_queued_once_as_raw_utf8_outside_the_grid_lock() {
 
     let outcome = dispatch_encoded_terminal_input_with(&grid, Some(bytes), |bytes| {
         assert!(
-            grid.try_lock().is_ok(),
-            "IME enqueue must run without the Grid lock"
+            grid.try_lock().is_err(),
+            "the IME enqueue runs under the Grid lock"
         );
         writes.borrow_mut().push(bytes);
         Ok(())
@@ -253,8 +253,8 @@ fn pointer_route_isolates_mouse_button_positions_by_device() {
             ModifiersState::empty(),
             |bytes| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "routed mouse button enqueue must run without the Grid lock"
+                    grid.try_lock().is_err(),
+                    "the routed mouse button enqueue runs under the Grid lock"
                 );
                 writes.borrow_mut().push(bytes);
                 Ok(())
@@ -294,7 +294,7 @@ fn pointer_route_keeps_a_forwarded_button_captured_until_its_release() {
         MouseButton::Left,
         ModifiersState::empty(),
         |bytes| {
-            assert!(grid.try_lock().is_ok());
+            assert!(grid.try_lock().is_err());
             writes.borrow_mut().push(bytes);
             Ok(())
         },
@@ -423,7 +423,7 @@ fn pointer_route_keeps_a_forwarded_button_captured_until_its_release() {
         MouseButton::Left,
         ModifiersState::empty(),
         |bytes| {
-            assert!(grid.try_lock().is_ok());
+            assert!(grid.try_lock().is_err());
             writes.borrow_mut().push(bytes);
             Ok(())
         },
@@ -582,8 +582,8 @@ fn pointer_route_requires_matching_position_only_for_tracked_wheel_input() {
             &mut tracked_route.wheel_state,
             |bytes| {
                 assert!(
-                    tracked_grid.try_lock().is_ok(),
-                    "routed wheel enqueue must run without the Grid lock"
+                    tracked_grid.try_lock().is_err(),
+                    "the routed wheel enqueue runs under the Grid lock"
                 );
                 tracked_writes.borrow_mut().push(bytes);
                 Ok(())
@@ -722,7 +722,7 @@ fn mouse_button_release_clamps_negative_grab_coordinates_to_the_terminal_edge() 
 }
 
 #[test]
-fn mouse_buttons_encode_modifiers_without_holding_the_grid_lock_or_scrolling() {
+fn mouse_buttons_encode_modifiers_under_the_grid_lock_without_scrolling() {
     let mut history = grid_with_scrollback(4, 10);
     history.mouse_tracking = MouseTracking::Normal;
     history.mouse_encoding = MouseEncoding::Sgr;
@@ -740,8 +740,8 @@ fn mouse_buttons_encode_modifiers_without_holding_the_grid_lock_or_scrolling() {
             modified,
             |bytes| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "mouse button enqueue must run without the Grid lock"
+                    grid.try_lock().is_err(),
+                    "the mouse button enqueue runs under the Grid lock"
                 );
                 writes.borrow_mut().push(bytes);
                 Ok(())
@@ -895,8 +895,8 @@ fn mouse_buttons_ignore_disabled_unsupported_or_missing_geometry_and_preserve_qu
             ModifiersState::empty(),
             |_| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "mouse button queue errors must occur outside the Grid lock"
+                    grid.try_lock().is_err(),
+                    "mouse button queue errors surface under the Grid lock"
                 );
                 Err(queue_error)
             },
@@ -966,8 +966,8 @@ fn mouse_motion_respects_xterm_tracking_modes() {
             None,
             |bytes| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "mouse motion enqueue must run without the Grid lock"
+                    grid.try_lock().is_err(),
+                    "the mouse motion enqueue runs under the Grid lock"
                 );
                 writes.borrow_mut().push(bytes);
                 Ok(())
@@ -1566,8 +1566,8 @@ fn alternate_scroll_forwards_unmodified_cursor_keys_without_pointer_geometry() {
             &mut state,
             |bytes| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "alternate scroll must enqueue outside the Grid lock"
+                    grid.try_lock().is_err(),
+                    "alternate scroll enqueues under the Grid lock"
                 );
                 writes.borrow_mut().push(bytes);
                 Ok(())
@@ -1592,7 +1592,7 @@ fn alternate_scroll_forwards_unmodified_cursor_keys_without_pointer_geometry() {
             modified,
             &mut state,
             |bytes| {
-                assert!(grid.try_lock().is_ok());
+                assert!(grid.try_lock().is_err());
                 writes.borrow_mut().push(bytes);
                 Ok(())
             },
@@ -1621,7 +1621,7 @@ fn alternate_scroll_forwards_unmodified_cursor_keys_without_pointer_geometry() {
             ModifiersState::empty(),
             &mut state,
             |_| {
-                assert!(grid.try_lock().is_ok());
+                assert!(grid.try_lock().is_err());
                 Err(queue_error)
             },
         )
@@ -1634,7 +1634,7 @@ fn alternate_scroll_forwards_unmodified_cursor_keys_without_pointer_geometry() {
 }
 
 #[test]
-fn wheel_scrolls_locally_or_reports_tracking_without_holding_the_grid_lock() {
+fn wheel_scrolls_locally_or_reports_tracking_under_the_grid_lock() {
     let grid = Mutex::new(grid_with_scrollback(4, 10));
     let enqueue_calls = AtomicUsize::new(0);
     let mut wheel_state = MouseWheelState::default();
@@ -1710,8 +1710,8 @@ fn wheel_scrolls_locally_or_reports_tracking_without_holding_the_grid_lock() {
             &mut wheel_state,
             |bytes| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "mouse enqueue must run without the Grid lock"
+                    grid.try_lock().is_err(),
+                    "the mouse enqueue runs under the Grid lock"
                 );
                 writes.borrow_mut().push(bytes);
                 Ok(())
@@ -1747,7 +1747,7 @@ fn wheel_scrolls_locally_or_reports_tracking_without_holding_the_grid_lock() {
             modified,
             &mut wheel_state,
             |bytes| {
-                assert!(grid.try_lock().is_ok());
+                assert!(grid.try_lock().is_err());
                 writes.borrow_mut().push(bytes);
                 Ok(())
             },
@@ -1816,8 +1816,8 @@ fn tracked_wheel_ignores_missing_geometry_and_preserves_queue_errors() {
             &mut wheel_state,
             |_| {
                 assert!(
-                    grid.try_lock().is_ok(),
-                    "mouse queue errors must be returned outside the Grid lock"
+                    grid.try_lock().is_err(),
+                    "mouse queue errors surface under the Grid lock"
                 );
                 Err(queue_error)
             },
@@ -1866,8 +1866,8 @@ fn focus_reporting_is_gated_and_writes_exact_bytes_without_scrolling() {
     let dispatch = |focused| {
         dispatch_focus_event_with(&grid, focused, |bytes| {
             assert!(
-                grid.try_lock().is_ok(),
-                "focus enqueue must run without the Grid lock"
+                grid.try_lock().is_err(),
+                "the focus enqueue runs under the Grid lock"
             );
             writes.borrow_mut().push(bytes);
             Ok(())
@@ -1916,8 +1916,8 @@ fn focus_reporting_is_gated_and_writes_exact_bytes_without_scrolling() {
     ] {
         let error = dispatch_focus_event_with(&grid, true, |_| {
             assert!(
-                grid.try_lock().is_ok(),
-                "focus queue errors must be returned outside the Grid lock"
+                grid.try_lock().is_err(),
+                "focus queue errors surface under the Grid lock"
             );
             Err(queue_error)
         })
