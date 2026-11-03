@@ -524,8 +524,8 @@ Evidências: [relatório X11](linux-evidence/2026-09-10-modern-terminals/x11.jso
 
 ## Matriz de recursos
 
-Estado em 2026-10-31, após a integração dos PRs #28–#33. A coluna Kokuban
-descreve a `main` desta data (busca e protocolo de teclado só no macOS; OSC 52
+Estado em 2026-11-03, após a integração dos PRs #48–#52. A coluna Kokuban
+descreve a `main` desta data (painéis e busca nos dois SOs; OSC 52
 somente escrita; protocolo kitty no nível 1, desambiguação). As colunas dos outros terminais vêm da documentação pública e de
 tabelas de capacidade de terceiros, não de medição nossa; células com "?" não
 foram verificadas em tempo hábil[^nv].
@@ -538,7 +538,7 @@ foram verificadas em tempo hábil[^nv].
 | Clipboard OSC 52 (escrita) | sim | não | sim | sim | sim |
 | Protocolo de teclado kitty | sim | não | sim | sim | sim |
 | Busca no scrollback | sim | sim | sem UI própria (kitten `hints`/pager) | sim (1.3) | não |
-| Painéis divididos | macOS | parcial (mesma sessão) | sim (layouts) | sim | não |
+| Painéis divididos | sim (macOS `Cmd+D`, Linux `Ctrl+Shift+D`) | parcial (mesma sessão) | sim (layouts) | sim | não |
 | Renderização GPU | Metal no macOS; software no Linux | não | OpenGL | Metal/OpenGL | OpenGL |
 | Atualização embutida | sim (`kokuban --update`) | via macOS | não | macOS (Sparkle) | não |
 | Licença | BSD-4-Clause | proprietária | GPL-3.0 | MIT | Apache-2.0 |
