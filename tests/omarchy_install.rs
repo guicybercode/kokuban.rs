@@ -100,17 +100,43 @@ impl Home {
         String::from_utf8(output.stdout).unwrap()
     }
 
-    /// Every regular file below HOME with its contents.
+    /// Points `relative` at `target` (taken as is, so it may be relative or
+    /// missing), creating the link's directory.
+    fn symlink(&self, target: &str, relative: &str) {
+        let path = self.path(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(target, path).unwrap();
+    }
+
+    fn link_target(&self, relative: &str) -> PathBuf {
+        let path = self.path(relative);
+        assert!(
+            fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "{relative} is no longer a symbolic link"
+        );
+        fs::read_link(path).unwrap()
+    }
+
+    /// Every regular file below HOME with its contents, and every symbolic
+    /// link with `-> target`, without following links.
     fn files(&self) -> BTreeMap<PathBuf, Vec<u8>> {
         fn walk(directory: &Path, base: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
             for entry in fs::read_dir(directory).unwrap() {
-                let path = entry.unwrap().path();
-                if path.is_dir() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                let kind = entry.file_type().unwrap();
+                let contents = if kind.is_dir() {
                     walk(&path, base, files);
+                    continue;
+                } else if kind.is_symlink() {
+                    format!("-> {}", fs::read_link(&path).unwrap().display()).into_bytes()
                 } else {
-                    let contents = fs::read(&path).unwrap();
-                    files.insert(path.strip_prefix(base).unwrap().to_path_buf(), contents);
-                }
+                    fs::read(&path).unwrap()
+                };
+                files.insert(path.strip_prefix(base).unwrap().to_path_buf(), contents);
             }
         }
         let mut files = BTreeMap::new();
@@ -337,5 +363,96 @@ fn invalid_input_fails_before_changing_the_home() {
         let output = home.run(&arguments);
         assert!(!output.status.success(), "{arguments:?}");
         assert_eq!(home.files(), before, "{arguments:?}");
+    }
+}
+
+#[test]
+fn symlinked_dotfiles_are_edited_through_the_link() {
+    // A dotfiles manager (stow, chezmoi symlink mode, a bare repository with
+    // links) keeps the real files elsewhere; the links must survive.
+    let home = Home::new();
+    home.write("dotfiles/hypr/hyprland.lua", USER_LUA);
+    home.write("dotfiles/xdg-terminals.list", OMARCHY_GHOSTTY_LIST);
+    home.symlink(
+        "../../dotfiles/hypr/hyprland.lua",
+        ".config/hypr/hyprland.lua",
+    );
+    home.symlink(
+        "../dotfiles/xdg-terminals.list",
+        ".config/xdg-terminals.list",
+    );
+    let before = home.files();
+
+    home.run_ok(&[]);
+    assert_eq!(
+        home.link_target(".config/hypr/hyprland.lua"),
+        Path::new("../../dotfiles/hypr/hyprland.lua")
+    );
+    assert_eq!(
+        home.link_target(".config/xdg-terminals.list"),
+        Path::new("../dotfiles/xdg-terminals.list")
+    );
+    let lua = home.read("dotfiles/hypr/hyprland.lua");
+    assert!(lua.starts_with(USER_LUA));
+    assert_eq!(lua.matches(LUA_RULE).count(), 1);
+    assert_eq!(
+        entries(&home.read("dotfiles/xdg-terminals.list")),
+        [DESKTOP_ID, "com.mitchellh.ghostty.desktop"]
+    );
+    // No temporary file is left next to the link or the target.
+    for directory in ["dotfiles", "dotfiles/hypr", ".config", ".config/hypr"] {
+        for entry in fs::read_dir(home.path(directory)).unwrap() {
+            let name = entry.unwrap().file_name();
+            assert!(!name.to_string_lossy().contains(".kokuban-"), "{name:?}");
+        }
+    }
+    let installed = home.files();
+    home.run_ok(&["install"]);
+    assert_eq!(home.files(), installed);
+
+    home.run_ok(&["uninstall"]);
+    assert_eq!(home.files(), before);
+}
+
+#[test]
+fn a_list_the_script_created_is_emptied_not_deleted_once_it_is_a_link() {
+    // The list was created by the script and later moved into dotfiles.
+    let home = Home::new();
+    home.run_ok(&["--no-hypr"]);
+    fs::create_dir_all(home.path("dotfiles")).unwrap();
+    fs::rename(
+        home.path(".config/xdg-terminals.list"),
+        home.path("dotfiles/xdg-terminals.list"),
+    )
+    .unwrap();
+    home.symlink(
+        "../dotfiles/xdg-terminals.list",
+        ".config/xdg-terminals.list",
+    );
+
+    home.run_ok(&["uninstall"]);
+    home.link_target(".config/xdg-terminals.list");
+    let list = home.read("dotfiles/xdg-terminals.list");
+    assert!(entries(&list).is_empty(), "{list}");
+}
+
+#[test]
+fn a_broken_link_is_refused_before_changing_the_home() {
+    for (link, arguments) in [
+        (".config/hypr/hyprland.lua", vec!["--no-default"]),
+        (".config/hypr/hyprland.conf", vec!["--no-default"]),
+        (".config/xdg-terminals.list", vec![]),
+    ] {
+        let home = Home::new();
+        home.symlink("/nonexistent/dotfiles/file", link);
+        let before = home.files();
+        let output = home.run(&arguments);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{link}");
+        assert!(
+            stderr.contains("is a symbolic link") && stderr.contains("nothing was changed"),
+            "{link}: {stderr}"
+        );
+        assert_eq!(home.files(), before, "{link}");
     }
 }

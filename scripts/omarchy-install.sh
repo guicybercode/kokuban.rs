@@ -87,9 +87,26 @@ case "$bin_path$icon_path" in
   *[\"\`\$\\%]* | *$'\n'*) fail "install paths must not contain quotes, \$, \\, % or newlines" ;;
 esac
 
+# Configuration files are often symbolic links into a dotfiles repository.
+# Print the file to edit: the link's final target, so the link itself survives.
+# A link to a missing file, to a directory or in a loop is refused.
+edit_target() {
+  local path="$1" target
+  if [[ ! -L "$path" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+  if ! target="$(readlink -f -- "$path")" || [[ ! -f "$target" ]]; then
+    fail "$path is a symbolic link to $(readlink -- "$path"), which is not an existing regular file; nothing was changed. Fix the link (or replace it with a file) and run this script again."
+  fi
+  printf '%s\n' "$target"
+}
+
 # Write a file through a temporary sibling so readers never see half a file.
+# A symbolic link is kept and the file it points at is replaced instead.
 replace_file() {
-  local path="$1" content="$2" temporary
+  local path content="$2" temporary
+  path="$(edit_target "$1")" || exit 1
   temporary="$(mktemp "$path.kokuban-XXXXXX")"
   printf '%s' "$content" >"$temporary"
   if [[ -e "$path" ]]; then
@@ -167,7 +184,7 @@ forget_preference() {
       [[ -n "$line" && "$line" != \#* ]] && entries=$((entries + 1))
       content+="$line"$'\n'
     done <"$list"
-    if [[ $entries -eq 0 ]] && grep -qxF "$LIST_MARK" "$list"; then
+    if [[ $entries -eq 0 && ! -L "$list" ]] && grep -qxF "$LIST_MARK" "$list"; then
       rm -f "$list"
       echo "Removed $list"
     else
@@ -182,9 +199,10 @@ forget_preference() {
 hypr_entry() {
   local format="$hypr_format"
   if [[ -z "$format" ]]; then
-    if [[ -f "$hypr_dir/hyprland.lua" ]]; then
+    # -L too: a broken link is reported by the preflight, not silently skipped.
+    if [[ -f "$hypr_dir/hyprland.lua" || -L "$hypr_dir/hyprland.lua" ]]; then
       format=lua
-    elif [[ -f "$hypr_dir/hyprland.conf" ]]; then
+    elif [[ -f "$hypr_dir/hyprland.conf" || -L "$hypr_dir/hyprland.conf" ]]; then
       format=conf
     else
       return 1
@@ -235,7 +253,6 @@ tag_kokuban() {
   fi
   format="${entry%% *}"
   path="${entry#* }"
-  [[ -f "$path" ]] || fail "$path does not exist; it must be Hyprland's entry file"
   content="$(strip_block "$path")"
   [[ -n "$content" ]] && content+=$'\n\n'
   content+="$(hypr_block "$format")"$'\n'
@@ -287,6 +304,23 @@ remove_files() {
   echo "Removed $bin_path, $icon_path and $desktop_path"
 }
 
+# --- Preflight -------------------------------------------------------------
+
+# Refuse, before the first change, every file the action could not edit safely.
+preflight() {
+  local entry path
+  [[ "$action" == install ]] || return 0
+  if $set_default; then
+    edit_target "$(preference_target)" >/dev/null || exit 1
+  fi
+  if $set_hypr && entry="$(hypr_entry)"; then
+    path="${entry#* }"
+    path="$(edit_target "$path")" || exit 1
+    [[ -f "$path" ]] || fail "$path does not exist; it must be Hyprland's entry file"
+  fi
+}
+
+preflight
 if [[ "$action" == install ]]; then
   install_files
   $set_default && prefer_kokuban
