@@ -2,6 +2,7 @@
 //!
 //! Arboard's text-only backend uses X11 or Wayland data-control. Keep its owner
 //! alive between requests so another application can retrieve copied text.
+//! Both the CLIPBOARD and the PRIMARY selection go through the same worker.
 
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,18 +25,30 @@ pub enum ClipboardError {
     Backend(String),
 }
 
+/// Which X11/Wayland selection a request targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardKind {
+    /// Explicit copy/paste (Ctrl+Shift+C/V, OSC 52).
+    Clipboard,
+    /// The current mouse selection, pasted with the middle button.
+    Primary,
+}
+
 #[derive(Debug)]
 pub enum ClipboardEvent {
     Paste {
         request_id: u64,
         result: Result<String, ClipboardError>,
     },
-    CopyFinished(Result<(), ClipboardError>),
+    CopyFinished {
+        kind: ClipboardKind,
+        result: Result<(), ClipboardError>,
+    },
 }
 
 enum ClipboardCommand {
-    Copy(String),
-    Paste(u64),
+    Copy(ClipboardKind, String),
+    Paste(ClipboardKind, u64),
 }
 
 pub struct LinuxClipboard {
@@ -53,15 +66,19 @@ impl LinuxClipboard {
         )
     }
 
-    pub fn copy_text(&self, text: String) -> Result<(), ClipboardError> {
+    pub fn copy_text(&self, kind: ClipboardKind, text: String) -> Result<(), ClipboardError> {
         validate_text_size(&text)?;
-        self.enqueue(ClipboardCommand::Copy(text))
+        self.enqueue(ClipboardCommand::Copy(kind, text))
     }
 
     /// Preserve the request ID when returning text so the UI can reject stale
     /// results after the target tab closes or its session changes.
-    pub fn request_paste(&self, request_id: u64) -> Result<(), ClipboardError> {
-        self.enqueue(ClipboardCommand::Paste(request_id))
+    pub fn request_paste(
+        &self,
+        kind: ClipboardKind,
+        request_id: u64,
+    ) -> Result<(), ClipboardError> {
+        self.enqueue(ClipboardCommand::Paste(kind, request_id))
     }
 
     fn enqueue(&self, command: ClipboardCommand) -> Result<(), ClipboardError> {
@@ -100,13 +117,15 @@ impl LinuxClipboard {
                     let clipboard = initialized
                         .and_then(|()| backend.as_mut().ok_or(ClipboardError::Unavailable));
                     let event = match command {
-                        ClipboardCommand::Copy(text) => ClipboardEvent::CopyFinished(
-                            clipboard.and_then(|clipboard| clipboard.write_text(text)),
-                        ),
-                        ClipboardCommand::Paste(request_id) => ClipboardEvent::Paste {
+                        ClipboardCommand::Copy(kind, text) => ClipboardEvent::CopyFinished {
+                            kind,
+                            result: clipboard
+                                .and_then(|clipboard| clipboard.write_text(kind, text)),
+                        },
+                        ClipboardCommand::Paste(kind, request_id) => ClipboardEvent::Paste {
                             request_id,
                             result: clipboard.and_then(|clipboard| {
-                                let text = clipboard.read_text()?;
+                                let text = clipboard.read_text(kind)?;
                                 // Arboard returns an owned String; it has no
                                 // streaming byte limit for the underlying OS
                                 // transfer. Bound what reaches our UI/PTY.
@@ -151,25 +170,40 @@ fn backend_error(error: arboard::Error) -> ClipboardError {
 }
 
 trait ClipboardBackend {
-    fn read_text(&mut self) -> Result<String, ClipboardError>;
-    fn write_text(&mut self, text: String) -> Result<(), ClipboardError>;
+    fn read_text(&mut self, kind: ClipboardKind) -> Result<String, ClipboardError>;
+    fn write_text(&mut self, kind: ClipboardKind, text: String) -> Result<(), ClipboardError>;
+}
+
+fn arboard_kind(kind: ClipboardKind) -> arboard::LinuxClipboardKind {
+    match kind {
+        ClipboardKind::Clipboard => arboard::LinuxClipboardKind::Clipboard,
+        ClipboardKind::Primary => arboard::LinuxClipboardKind::Primary,
+    }
 }
 
 impl ClipboardBackend for arboard::Clipboard {
-    fn read_text(&mut self) -> Result<String, ClipboardError> {
-        self.get_text().map_err(backend_error)
+    fn read_text(&mut self, kind: ClipboardKind) -> Result<String, ClipboardError> {
+        use arboard::GetExtLinux;
+        self.get()
+            .clipboard(arboard_kind(kind))
+            .text()
+            .map_err(backend_error)
     }
 
-    fn write_text(&mut self, text: String) -> Result<(), ClipboardError> {
-        self.set_text(text).map_err(backend_error)
+    fn write_text(&mut self, kind: ClipboardKind, text: String) -> Result<(), ClipboardError> {
+        use arboard::SetExtLinux;
+        self.set()
+            .clipboard(arboard_kind(kind))
+            .text(text)
+            .map_err(backend_error)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ClipboardBackend, ClipboardError, ClipboardEvent, LinuxClipboard, COMMAND_CAPACITY,
-        MAX_CLIPBOARD_TEXT_BYTES,
+        ClipboardBackend, ClipboardError, ClipboardEvent, ClipboardKind, LinuxClipboard,
+        COMMAND_CAPACITY, MAX_CLIPBOARD_TEXT_BYTES,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc::{self, Receiver, Sender};
@@ -181,6 +215,7 @@ mod tests {
 
     struct FakeClipboard {
         text: String,
+        primary: Option<String>,
         writes: Arc<AtomicUsize>,
         read_started: Option<Sender<()>>,
         release_read: Option<Receiver<()>>,
@@ -191,6 +226,7 @@ mod tests {
         fn new(text: String) -> Self {
             Self {
                 text,
+                primary: None,
                 writes: Arc::new(AtomicUsize::new(0)),
                 read_started: None,
                 release_read: None,
@@ -200,19 +236,29 @@ mod tests {
     }
 
     impl ClipboardBackend for FakeClipboard {
-        fn read_text(&mut self) -> Result<String, ClipboardError> {
+        fn read_text(&mut self, kind: ClipboardKind) -> Result<String, ClipboardError> {
             if let Some(started) = self.read_started.take() {
                 started.send(()).unwrap();
             }
             if let Some(release) = self.release_read.take() {
                 release.recv().unwrap();
             }
-            Ok(self.text.clone())
+            match kind {
+                ClipboardKind::Clipboard => Ok(self.text.clone()),
+                // Like Wayland without primary-selection support.
+                ClipboardKind::Primary => self
+                    .primary
+                    .clone()
+                    .ok_or_else(|| ClipboardError::Backend("primary unsupported".into())),
+            }
         }
 
-        fn write_text(&mut self, text: String) -> Result<(), ClipboardError> {
+        fn write_text(&mut self, kind: ClipboardKind, text: String) -> Result<(), ClipboardError> {
             self.writes.fetch_add(1, Ordering::Relaxed);
-            self.text = text;
+            match kind {
+                ClipboardKind::Clipboard => self.text = text,
+                ClipboardKind::Primary => self.primary = Some(text),
+            }
             Ok(())
         }
     }
@@ -246,13 +292,18 @@ mod tests {
         let mut backend = FakeClipboard::new(String::new());
         backend.dropped = Some(dropped);
         let (worker, events) = fake_worker(backend);
-        worker.copy_text("ação 🦀".into()).unwrap();
+        worker
+            .copy_text(ClipboardKind::Clipboard, "ação 🦀".into())
+            .unwrap();
         assert!(matches!(
             events.recv_timeout(TEST_TIMEOUT).unwrap(),
-            ClipboardEvent::CopyFinished(Ok(()))
+            ClipboardEvent::CopyFinished {
+                kind: ClipboardKind::Clipboard,
+                result: Ok(())
+            }
         ));
         assert!(drop_receiver.try_recv().is_err(), "copy owner was dropped");
-        worker.request_paste(41).unwrap();
+        worker.request_paste(ClipboardKind::Clipboard, 41).unwrap();
         match events.recv_timeout(TEST_TIMEOUT).unwrap() {
             ClipboardEvent::Paste {
                 request_id: 41,
@@ -271,10 +322,13 @@ mod tests {
         let (worker, events) =
             fake_worker(FakeClipboard::new("x".repeat(MAX_CLIPBOARD_TEXT_BYTES + 1)));
         assert_eq!(
-            worker.copy_text("x".repeat(MAX_CLIPBOARD_TEXT_BYTES + 1)),
+            worker.copy_text(
+                ClipboardKind::Clipboard,
+                "x".repeat(MAX_CLIPBOARD_TEXT_BYTES + 1)
+            ),
             Err(ClipboardError::TooLarge)
         );
-        worker.request_paste(42).unwrap();
+        worker.request_paste(ClipboardKind::Clipboard, 42).unwrap();
         assert!(matches!(
             events.recv_timeout(TEST_TIMEOUT).unwrap(),
             ClipboardEvent::Paste {
@@ -283,11 +337,17 @@ mod tests {
             }
         ));
         worker
-            .copy_text("x".repeat(MAX_CLIPBOARD_TEXT_BYTES))
+            .copy_text(
+                ClipboardKind::Clipboard,
+                "x".repeat(MAX_CLIPBOARD_TEXT_BYTES),
+            )
             .unwrap();
         assert!(matches!(
             events.recv_timeout(TEST_TIMEOUT).unwrap(),
-            ClipboardEvent::CopyFinished(Ok(()))
+            ClipboardEvent::CopyFinished {
+                kind: ClipboardKind::Clipboard,
+                result: Ok(())
+            }
         ));
     }
 
@@ -302,12 +362,17 @@ mod tests {
         backend.dropped = Some(dropped);
         let writes = Arc::clone(&backend.writes);
         let (worker, events) = fake_worker(backend);
-        worker.request_paste(1).unwrap();
+        worker.request_paste(ClipboardKind::Clipboard, 1).unwrap();
         start_receiver.recv_timeout(TEST_TIMEOUT).unwrap();
         for _ in 0..COMMAND_CAPACITY {
-            worker.copy_text("queued".into()).unwrap();
+            worker
+                .copy_text(ClipboardKind::Clipboard, "queued".into())
+                .unwrap();
         }
-        assert_eq!(worker.request_paste(2), Err(ClipboardError::Busy));
+        assert_eq!(
+            worker.request_paste(ClipboardKind::Clipboard, 2),
+            Err(ClipboardError::Busy)
+        );
         let (shutdown_done, shutdown_receiver) = mpsc::channel();
         let shutdown = thread::spawn(move || {
             drop(worker);
@@ -350,7 +415,7 @@ mod tests {
             move |event| events.send(event).unwrap(),
         )
         .unwrap();
-        worker.request_paste(1).unwrap();
+        worker.request_paste(ClipboardKind::Clipboard, 1).unwrap();
         assert!(matches!(
             receiver.recv_timeout(TEST_TIMEOUT).unwrap(),
             ClipboardEvent::Paste {
@@ -358,7 +423,7 @@ mod tests {
                 result: Err(ClipboardError::Backend(_))
             }
         ));
-        worker.request_paste(2).unwrap();
+        worker.request_paste(ClipboardKind::Clipboard, 2).unwrap();
         match receiver.recv_timeout(TEST_TIMEOUT).unwrap() {
             ClipboardEvent::Paste {
                 request_id: 2,
@@ -368,5 +433,53 @@ mod tests {
             }
             event => panic!("unexpected clipboard event: {event:?}"),
         }
+    }
+
+    #[test]
+    fn primary_and_clipboard_selections_stay_independent() {
+        let (worker, events) = fake_worker(FakeClipboard::new("clipboard".into()));
+        worker.request_paste(ClipboardKind::Primary, 1).unwrap();
+        assert!(
+            matches!(
+                events.recv_timeout(TEST_TIMEOUT).unwrap(),
+                ClipboardEvent::Paste {
+                    request_id: 1,
+                    result: Err(ClipboardError::Backend(_))
+                }
+            ),
+            "an unsupported PRIMARY must fail without touching CLIPBOARD"
+        );
+        worker
+            .copy_text(ClipboardKind::Primary, "selected 日本".into())
+            .unwrap();
+        assert!(matches!(
+            events.recv_timeout(TEST_TIMEOUT).unwrap(),
+            ClipboardEvent::CopyFinished {
+                kind: ClipboardKind::Primary,
+                result: Ok(())
+            }
+        ));
+        for (kind, request_id, expected) in [
+            (ClipboardKind::Primary, 2, "selected 日本"),
+            (ClipboardKind::Clipboard, 3, "clipboard"),
+        ] {
+            worker.request_paste(kind, request_id).unwrap();
+            match events.recv_timeout(TEST_TIMEOUT).unwrap() {
+                ClipboardEvent::Paste {
+                    request_id: id,
+                    result: Ok(text),
+                } => {
+                    assert_eq!((id, text.as_str()), (request_id, expected));
+                }
+                event => panic!("unexpected clipboard event: {event:?}"),
+            }
+        }
+        assert_eq!(
+            worker.copy_text(
+                ClipboardKind::Primary,
+                "x".repeat(MAX_CLIPBOARD_TEXT_BYTES + 1)
+            ),
+            Err(ClipboardError::TooLarge)
+        );
     }
 }

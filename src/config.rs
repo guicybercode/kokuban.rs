@@ -172,6 +172,9 @@ pub struct ClipboardConfig {
     /// Let programs copy text to the system clipboard with OSC 52.
     /// Reads (`OSC 52 ; ? `) are never answered.
     pub osc52_write: bool,
+    /// Linux: publish mouse selections as the PRIMARY selection and paste it
+    /// with the middle button (Shift+middle while a program tracks the mouse).
+    pub primary_selection: bool,
 }
 
 /// Which Option key acts as Alt/Meta (ESC prefix) instead of composing
@@ -196,7 +199,10 @@ pub struct InputConfig {
 
 impl Default for ClipboardConfig {
     fn default() -> Self {
-        Self { osc52_write: true }
+        Self {
+            osc52_write: true,
+            primary_selection: true,
+        }
     }
 }
 
@@ -653,6 +659,16 @@ step = 5
         let defaults: Config = toml::from_str("").unwrap();
         assert_eq!(defaults.keybind.linux.zoom_in, "ctrl+shift+plus");
         assert_eq!(defaults.keybind.linux.focus_attention, "ctrl+shift+n");
+    }
+
+    #[test]
+    fn primary_selection_defaults_on_and_can_be_disabled_alone() {
+        let defaults: Config = toml::from_str("").unwrap();
+        assert!(defaults.clipboard.primary_selection);
+        assert!(defaults.clipboard.osc52_write);
+        let disabled: Config = toml::from_str("[clipboard]\nprimary_selection = false\n").unwrap();
+        assert!(!disabled.clipboard.primary_selection);
+        assert!(disabled.clipboard.osc52_write);
     }
 
     #[test]

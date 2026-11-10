@@ -2,7 +2,7 @@ use crate::config::{ColorConfig, Config};
 use crate::glyph_atlas::GlyphAtlas;
 use crate::graphics::SixelPlacement;
 use crate::grid::cell::{CellFlags, Color};
-use crate::grid::{Grid, MouseTracking};
+use crate::grid::Grid;
 use crate::input::keybind::{platform_table, KeybindMap, PaneAction};
 use crate::input::linux::{
     encode_key_press, key_modifiers_from_winit, key_name_from_winit, key_press_from_winit,
@@ -10,7 +10,9 @@ use crate::input::linux::{
 };
 use crate::input::paste::{encode_paste, MAX_PASTE_BYTES};
 use crate::layout::{DividerInfo, PaneId, PixelRect, SplitDirection, DIVIDER_THICKNESS};
-use crate::linux_clipboard::{ClipboardEvent, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES};
+use crate::linux_clipboard::{
+    ClipboardEvent, ClipboardKind, LinuxClipboard, MAX_CLIPBOARD_TEXT_BYTES,
+};
 use crate::notifications::NotificationController;
 use crate::omarchy_theme::{watch_current_theme, ThemeWatcher};
 use crate::palette::PaletteOverrides;
@@ -62,8 +64,8 @@ mod status;
 mod test_support;
 
 use clipboard::{
-    apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer, sync_selection,
-    ClipboardAction, SelectionContext,
+    apply_selection_to_snapshot, clipboard_action, pointer_button_is_local, primary_selection_text,
+    selection_point_at_pointer, sync_selection, ClipboardAction, SelectionContext,
 };
 use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
 use dispatch::{
@@ -373,6 +375,7 @@ pub(crate) fn launch(
         window_focused,
     });
     application.clipboard = clipboard;
+    application.primary_selection = config.clipboard.primary_selection;
     application.theme_watcher = theme_watcher;
     if crate::update::startup_check_enabled(config.update.check_on_startup) {
         // Linux has no status bar yet; the notice goes into the window title.
@@ -476,6 +479,13 @@ struct PaneFrame {
 struct LinuxWindow {
     app_id: String,
     clipboard: Option<LinuxClipboard>,
+    /// `[clipboard] primary_selection`: selections fill PRIMARY, middle pastes it.
+    primary_selection: bool,
+    /// PRIMARY failures (e.g. a compositor without primary-selection support)
+    /// are logged once, not on every selection.
+    primary_failure_logged: bool,
+    /// Pointer device whose middle press pasted PRIMARY; its release stays local.
+    primary_paste_press: Option<DeviceId>,
     paste_request: u64,
     pending_pastes: HashMap<u64, PendingPaste>,
     /// Selection bookkeeping per pane (revision and evicted rows).
@@ -719,6 +729,9 @@ impl LinuxWindow {
         Self {
             app_id: crate::app_icon::APP_ID.to_string(),
             clipboard: None,
+            primary_selection: true,
+            primary_failure_logged: false,
+            primary_paste_press: None,
             paste_request: 0,
             pending_pastes: HashMap::new(),
             selection_contexts: HashMap::new(),
@@ -1314,7 +1327,9 @@ impl LinuxWindow {
                     {
                         Ok(text) => {
                             if let Some(clipboard) = &self.clipboard {
-                                if let Err(error) = clipboard.copy_text(text) {
+                                if let Err(error) =
+                                    clipboard.copy_text(ClipboardKind::Clipboard, text)
+                                {
                                     log::warn!("could not copy selection: {error}");
                                 }
                             }
@@ -1324,33 +1339,72 @@ impl LinuxWindow {
                 }
             }
             ClipboardAction::Paste => {
-                // Keep the target pane, mode and revision with this request.
-                // Clipboard IO runs asynchronously and may finish after a
-                // screen transition. Bound replies waiting in the UI event
-                // queue, as well as the clipboard worker's own bounded queue.
-                if self.pending_pastes.len() >= 8 {
-                    log::warn!("clipboard paste queue is full");
-                    return Ok(());
+                let target = PendingPaste {
+                    pane: focused,
+                    bracketed: grid.bracketed_paste,
+                    revision: grid.screen_revision(),
+                };
+                drop(tree);
+                self.request_paste(ClipboardKind::Clipboard, target);
+            }
+        }
+        Ok(())
+    }
+
+    /// Ask the clipboard worker for `kind` and remember the target pane.
+    fn request_paste(&mut self, kind: ClipboardKind, target: PendingPaste) {
+        // Keep the target pane, mode and revision with this request.
+        // Clipboard IO runs asynchronously and may finish after a
+        // screen transition. Bound replies waiting in the UI event
+        // queue, as well as the clipboard worker's own bounded queue.
+        if self.pending_pastes.len() >= 8 {
+            log::warn!("clipboard paste queue is full");
+            return;
+        }
+        self.paste_request = self.paste_request.wrapping_add(1);
+        while self.pending_pastes.contains_key(&self.paste_request) {
+            self.paste_request = self.paste_request.wrapping_add(1);
+        }
+        if let Some(clipboard) = &self.clipboard {
+            match clipboard.request_paste(kind, self.paste_request) {
+                Ok(()) => {
+                    self.pending_pastes.insert(self.paste_request, target);
                 }
-                self.paste_request = self.paste_request.wrapping_add(1);
-                while self.pending_pastes.contains_key(&self.paste_request) {
-                    self.paste_request = self.paste_request.wrapping_add(1);
-                }
-                if let Some(clipboard) = &self.clipboard {
-                    match clipboard.request_paste(self.paste_request) {
-                        Ok(()) => {
-                            self.pending_pastes.insert(
-                                self.paste_request,
-                                PendingPaste {
-                                    pane: focused,
-                                    bracketed: grid.bracketed_paste,
-                                    revision: grid.screen_revision(),
-                                },
-                            );
-                        }
-                        Err(error) => log::warn!("could not request clipboard paste: {error}"),
-                    }
-                }
+                Err(error) => log::warn!("could not request clipboard paste: {error}"),
+            }
+        }
+    }
+
+    /// Paste PRIMARY into the focused pane (middle button).
+    fn paste_primary_into_focused(&mut self) -> Result<(), GridAccessError> {
+        let tree = lock_tree(&self.panes)?;
+        let Some(pane) = tree.focused_pane() else {
+            return Ok(());
+        };
+        let target = PendingPaste {
+            pane: pane.id,
+            bracketed: pane.grid.bracketed_paste,
+            revision: pane.grid.screen_revision(),
+        };
+        drop(tree);
+        self.request_paste(ClipboardKind::Primary, target);
+        Ok(())
+    }
+
+    /// After a drag ends, offer the selected text as PRIMARY.
+    fn publish_primary_selection(&mut self, pane_id: PaneId) -> Result<(), GridAccessError> {
+        if !self.primary_selection {
+            return Ok(());
+        }
+        let text = {
+            let tree = lock_tree(&self.panes)?;
+            tree.pane(pane_id).and_then(|pane| {
+                primary_selection_text(&pane.selection, &pane.grid, MAX_CLIPBOARD_TEXT_BYTES)
+            })
+        };
+        if let (Some(text), Some(clipboard)) = (text, &self.clipboard) {
+            if let Err(error) = clipboard.copy_text(ClipboardKind::Primary, text) {
+                log::warn!("could not publish the PRIMARY selection: {error}");
             }
         }
         Ok(())
@@ -1358,9 +1412,21 @@ impl LinuxWindow {
 
     fn handle_clipboard_event(&mut self, event: ClipboardEvent) -> Result<(), GridAccessError> {
         match event {
-            ClipboardEvent::CopyFinished(result) => {
+            ClipboardEvent::CopyFinished { kind, result } => {
                 if let Err(error) = result {
-                    log::warn!("could not copy selection: {error}");
+                    match kind {
+                        ClipboardKind::Clipboard => {
+                            log::warn!("could not copy selection: {error}")
+                        }
+                        ClipboardKind::Primary if !self.primary_failure_logged => {
+                            self.primary_failure_logged = true;
+                            log::warn!(
+                                "could not publish the PRIMARY selection: {error}; \
+                                 further PRIMARY errors are not logged"
+                            );
+                        }
+                        ClipboardKind::Primary => {}
+                    }
                 }
             }
             ClipboardEvent::Paste { request_id, result } => {
@@ -1875,21 +1941,41 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                         }
                     }
                 }
-                let local_press = if button == MouseButton::Left && state.is_pressed() {
-                    match lock_tree(&self.panes) {
-                        Ok(tree) => {
-                            tree.focused_pane()
-                                .is_some_and(|pane| pane.grid.mouse_tracking == MouseTracking::None)
-                                || self.modifiers.shift_key()
-                        }
-                        Err(_) => {
-                            // Drop the poisoned guard before calling the error path.
-                            false
-                        }
-                    }
-                } else {
-                    false
+                let focused_button_is_local = || match lock_tree(&self.panes) {
+                    Ok(tree) => tree.focused_pane().is_some_and(|pane| {
+                        pointer_button_is_local(pane.grid.mouse_tracking, self.modifiers)
+                    }),
+                    // Drop the poisoned guard before calling the error path.
+                    Err(_) => false,
                 };
+                // Middle button pastes PRIMARY; its release is swallowed too.
+                if button == MouseButton::Middle && self.primary_selection {
+                    let paste_press = state.is_pressed() && focused_button_is_local();
+                    let paste_release = !state.is_pressed()
+                        && self
+                            .primary_paste_press
+                            .take_if(|press| *press == device_id)
+                            .is_some();
+                    if paste_press || paste_release {
+                        if paste_press {
+                            self.primary_paste_press = Some(device_id);
+                            if let Err(error) = self.paste_primary_into_focused() {
+                                self.fail(event_loop, error.to_string());
+                                return;
+                            }
+                        }
+                        self.pointer_route.record_button_dispatch(
+                            device_id,
+                            state,
+                            button_code,
+                            false,
+                            cell_dimensions,
+                        );
+                        return;
+                    }
+                }
+                let local_press =
+                    button == MouseButton::Left && state.is_pressed() && focused_button_is_local();
                 let local_release = button == MouseButton::Left
                     && state == ElementState::Released
                     && self
@@ -1914,6 +2000,12 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     }
                     if local_release {
                         self.selection_drag = None;
+                        if let Some(pane_id) = drag_pane {
+                            if let Err(error) = self.publish_primary_selection(pane_id) {
+                                self.fail(event_loop, error.to_string());
+                                return;
+                            }
+                        }
                     }
                     self.pointer_route.record_button_dispatch(
                         device_id,
@@ -2373,7 +2465,7 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
             }
             LinuxEvent::ClipboardWrite(text) => {
                 if let Some(clipboard) = &self.clipboard {
-                    if let Err(error) = clipboard.copy_text(text) {
+                    if let Err(error) = clipboard.copy_text(ClipboardKind::Clipboard, text) {
                         log::warn!("could not apply OSC 52 clipboard write: {error}");
                     }
                 }
