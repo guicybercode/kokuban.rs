@@ -9,14 +9,19 @@ at once, reap its shell and remove the divider while the window stays alive.
 
 A second split then exercises the search strip and the close confirmation:
 `Ctrl+Shift+F` must paint a chalk strip over the pane's last row, show the
-miss counter in hanko red, and keep the query out of the shell after Escape.
+miss counter in hanko red, keep a long query on one row and keep the query
+out of the shell after Escape. A third, narrow split must show the strip too.
 With `sleep` in the foreground, `Ctrl+Shift+W` must ask instead of closing;
 `n` keeps the pane, `y` closes it, and on the last pane `y` exits cleanly.
 
-A second session runs `sleep` and asks the window to close through
-WM_DELETE_WINDOW: the strip must appear, Escape keeps the terminal and its
-shell, Enter (the default N of [y/N]) keeps them too, and y on the next
-request exits cleanly.
+A second session runs `sleep` and `tail` in two panes and asks the window to
+close through WM_DELETE_WINDOW: the strip must appear, Escape keeps the
+terminal and its jobs, Enter (the default N of [y/N]) keeps them too, and y on
+the next request exits cleanly.
+
+With --screenshots DIR the frames behind six of those checks are also saved
+as PNGs (scaled 2x): a search with matches, no matches, a long query, a
+narrow pane, and the close prompts with one and with two jobs.
 """
 
 import argparse
@@ -30,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
 
 
 COLUMNS = 60
@@ -89,6 +95,32 @@ class Frame:
                 pixel = int.from_bytes(self.data[offset:offset + self.pixel_bytes], self.order)
                 matches += pixel & self.mask == desired
         return matches
+
+    def rgb_rows(self, scale: int):
+        """Rows of 8-bit RGB bytes, each pixel repeated `scale` times."""
+        shifts = [(mask & -mask).bit_length() - 1 for mask in self.masks]
+        maxima = [mask >> shift for mask, shift in zip(self.masks, shifts)]
+        for y in range(self.height):
+            row = self.offset + y * self.stride
+            line = bytearray()
+            for x in range(self.width):
+                offset = row + x * self.pixel_bytes
+                pixel = int.from_bytes(self.data[offset:offset + self.pixel_bytes], self.order)
+                rgb = bytes(((pixel & mask) >> shift) * 255 // maximum
+                            for mask, shift, maximum in zip(self.masks, shifts, maxima))
+                line += rgb * scale
+            for _ in range(scale):
+                yield bytes(line)
+
+    def write_png(self, path: Path, scale: int = 2) -> None:
+        def chunk(kind: bytes, payload: bytes) -> bytes:
+            body = kind + payload
+            return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body))
+
+        raw = b"".join(b"\0" + row for row in self.rgb_rows(scale))
+        header = struct.pack(">IIBBBBB", self.width * scale, self.height * scale, 8, 2, 0, 0, 0)
+        path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+                         + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
     def count_not(self, color: str) -> int:
         undesired = self.packed(color)
@@ -167,9 +199,11 @@ def child_pids(parent: int) -> list[int]:
 
 
 class PanesSmoke:
-    def __init__(self, directory: Path, terminal: subprocess.Popen) -> None:
+    def __init__(self, directory: Path, terminal: subprocess.Popen,
+                 screenshots: Path | None) -> None:
         self.directory = directory
         self.terminal = terminal
+        self.screenshots = screenshots
         self.deadline = time.monotonic() + 60
         self.window = ""
         self.last_mismatch = ""
@@ -201,8 +235,8 @@ class PanesSmoke:
         run("xwd", "-id", self.window, "-silent", "-out", str(screenshot))
         return Frame(screenshot.read_bytes())
 
-    def key(self, keys: str) -> None:
-        xdo("key", "--window", self.window, "--clearmodifiers", "--delay", "40", keys)
+    def key(self, *keys: str) -> None:
+        xdo("key", "--window", self.window, "--clearmodifiers", "--delay", "40", *keys)
 
     def shells(self) -> list[int]:
         return child_pids(self.terminal.pid)
@@ -236,27 +270,38 @@ class PanesSmoke:
 
         return self.wait(matches, "a vertical divider" if present else "no divider")
 
-    def last_row(self, frame: Frame, right_pane: bool) -> tuple[int, int, int, int]:
-        """Last cell row of the right pane (after a split) or of the window."""
-        cell_height = frame.height // ROWS
-        left = frame.width // 2 + DIVIDER_THICKNESS if right_pane else 0
-        return (left, (ROWS - 1) * cell_height, frame.width, ROWS * cell_height)
+    def shot(self, name: str, frame: Frame) -> None:
+        if self.screenshots is not None:
+            self.screenshots.mkdir(parents=True, exist_ok=True)
+            frame.write_png(self.screenshots / f"{name}.png")
 
-    def wait_for_strip(self, present: bool, right_pane: bool, description: str) -> Frame:
+    def last_row(self, frame: Frame, right_pane: bool | float,
+                 rows: int = 1) -> tuple[int, int, int, int]:
+        """Last `rows` cell rows of the window, of the right pane after a
+        split (True), or of the pane starting at that fraction of the width."""
+        cell_height = frame.height // ROWS
+        fraction = 0.5 if right_pane is True else float(right_pane)
+        left = int(frame.width * fraction) + DIVIDER_THICKNESS if fraction else 0
+        return (left, (ROWS - rows) * cell_height, frame.width, ROWS * cell_height)
+
+    def wait_for_strip(self, present: bool, right_pane: bool | float,
+                       description: str, rows: int = 1) -> Frame:
+        """`rows` > 1 looks for the strip in the last rows of the window: a
+        pane below a horizontal divider ends a few pixels above the bottom."""
         def matches():
             frame = self.capture()
-            region = self.last_row(frame, right_pane)
+            region = self.last_row(frame, right_pane, rows)
             area = (region[2] - region[0]) * (region[3] - region[1])
             chalk = frame.count(CHALK, region)
-            self.last_mismatch = f"{chalk} chalk pixels of {area} in the last row {region}"
+            self.last_mismatch = f"{chalk} chalk pixels of {area} in the last rows {region}"
             if present:
-                return frame if chalk >= area * 0.6 else None
-            return frame if chalk <= area * 0.1 else None
+                return frame if chalk >= area * 0.6 / rows else None
+            return frame if chalk <= area * 0.1 / rows else None
 
         return self.wait(matches, description)
 
     def type_line(self, text: str) -> None:
-        xdo("type", "--window", self.window, "--delay", "20", text)
+        xdo("type", "--window", self.window, "--delay", "20", "--", text)
         self.key("Return")
 
     def wait_for_job(self, shell: int, name: str) -> int:
@@ -274,23 +319,41 @@ class PanesSmoke:
                 raise AssertionError(description)
             time.sleep(0.05)
 
+    def type_text(self, text: str) -> None:
+        xdo("type", "--window", self.window, "--delay", "20", "--", text)
+
     def exercise_search(self) -> dict:
         marker = self.directory / "search-marker"
-        self.type_line("echo kokuban-needle")
+        self.type_line("echo kokuban-needle-in-a-long-haystack")
         self.key("ctrl+shift+f")
         self.wait_for_strip(True, True, "the search strip")
-        xdo("type", "--window", self.window, "--delay", "20", "kokuban-needle")
+        self.type_text("kokuban-needle")
         found = self.wait_for_strip(True, True, "the strip with matches")
         found_red = found.count(HANKO_RED, self.last_row(found, True))
-        xdo("type", "--window", self.window, "--delay", "20", "zz")
+        self.shot("01-busca-com-resultado", found)
+        self.type_text("zz")
 
         def missing():
             frame = self.capture()
             red = frame.count(HANKO_RED, self.last_row(frame, True))
             self.last_mismatch = f"{red} hanko-red pixels in the strip"
-            return red if red > found_red else None
+            return (red, frame) if red > found_red else None
 
-        miss_red = self.wait(missing, "the hanko-red 'no matches' counter")
+        miss_red, miss = self.wait(missing, "the hanko-red 'no matches' counter")
+        self.shot("02-sem-resultados", miss)
+
+        # A query wider than the pane keeps its end, after an ellipsis.
+        self.key("BackSpace", "BackSpace")
+        self.type_text("-in-a-long-haystack")
+
+        def long_query():
+            frame = self.capture()
+            red = frame.count(HANKO_RED, self.last_row(frame, True))
+            self.last_mismatch = f"{red} hanko-red pixels in the strip"
+            return frame if red <= found_red else None
+
+        self.shot("03-consulta-longa", self.wait(long_query, "the long query to match"))
+        self.wait_for_strip(True, True, "the strip with a long query")
         self.key("Escape")
         self.wait_for_strip(False, True, "the strip to close after Escape")
         # A leaked query would turn this into `kokuban-needlezzecho ...`.
@@ -299,17 +362,40 @@ class PanesSmoke:
                   "the shell to run the command typed after the search")
         return {"strip_red_with_matches": found_red, "strip_red_without_matches": miss_red}
 
+    def exercise_narrow_pane(self, shells: list[int]) -> None:
+        """Split the right pane again and search in the narrow pane."""
+        self.key("ctrl+shift+d")
+        narrow = next(pid for pid in self.wait_for_shells(3, "the narrow pane's shell")
+                      if pid not in shells)
+        self.type_line("echo needle")
+        self.key("ctrl+shift+f")
+        self.wait_for_strip(True, 0.75, "the search strip in the narrow pane")
+        self.type_text("needle")
+        self.shot("04-painel-estreito",
+                  self.wait_for_strip(True, 0.75, "the narrow strip with matches"))
+        self.key("Escape")
+        self.wait_for_strip(False, 0.75, "the narrow strip to close")
+        # An idle shell closes at once and the focus moves to the first
+        # pane; Ctrl+Shift+L brings it back to the right one.
+        self.key("ctrl+shift+w")
+        if self.wait_for_shells(2, "the narrow pane's shell to be reaped") != shells:
+            raise AssertionError(f"closing the narrow pane kept {narrow}")
+        self.wait_for_divider(True)
+        self.key("ctrl+shift+l")
+
     def exercise_close_confirmation(self, first_shell: int) -> dict:
         self.key("ctrl+shift+d")
         shells = self.wait_for_shells(2, "the second split pane's shell")
         shell = next(pid for pid in shells if pid != first_shell)
         self.wait_for_divider(True)
         search = self.exercise_search()
+        self.exercise_narrow_pane(shells)
 
         self.type_line("sleep 60")
         job = self.wait_for_job(shell, "sleep")
         self.key("ctrl+shift+w")
-        self.wait_for_strip(True, True, "the close prompt over the busy pane")
+        self.shot("05-fechar-um-job",
+                  self.wait_for_strip(True, True, "the close prompt over the busy pane"))
         self.stays(lambda: len(self.shells()) == 2, "a busy pane closed without asking")
         self.key("n")
         self.wait_for_strip(False, True, "the prompt to close after n")
@@ -347,23 +433,34 @@ class PanesSmoke:
         self.wait(lambda: self.capture().count_not(BOARD) > 0, "the first prompt")
         self.type_line("sleep 60")
         job = self.wait_for_job(shell, "sleep")
+        # A second job in a pane below, so the prompt names both.
+        self.key("ctrl+shift+e")
+        lower = next(pid for pid in self.wait_for_shells(2, "the lower pane's shell")
+                     if pid != shell)
+        self.type_line("tail -f /dev/null")
+        tail = self.wait_for_job(lower, "tail")
+
+        def both_running() -> bool:
+            return (self.terminal.poll() is None and job in child_pids(shell)
+                    and tail in child_pids(lower))
+
         send_wm_delete_window(int(self.window))
-        self.wait_for_strip(True, False, "the window close prompt")
-        self.stays(lambda: self.terminal.poll() is None, "the window closed without asking")
+        self.shot("06-fechar-dois-jobs",
+                  self.wait_for_strip(True, False, "the window close prompt", 2))
+        self.stays(both_running, "the window closed without asking")
         self.key("Escape")
-        self.wait_for_strip(False, False, "the window prompt to close after Escape")
-        self.stays(lambda: job in child_pids(shell), "cancelling ended the job")
+        self.wait_for_strip(False, False, "the window prompt to close after Escape", 2)
+        self.stays(both_running, "cancelling ended a job")
 
         # Enter answers the default N of [y/N]: the job keeps running.
         send_wm_delete_window(int(self.window))
-        self.wait_for_strip(True, False, "the window close prompt again")
+        self.wait_for_strip(True, False, "the window close prompt again", 2)
         self.key("Return")
-        self.wait_for_strip(False, False, "the window prompt to close after Enter")
-        self.stays(lambda: self.terminal.poll() is None and job in child_pids(shell),
-                   "Enter closed the window")
+        self.wait_for_strip(False, False, "the window prompt to close after Enter", 2)
+        self.stays(both_running, "Enter closed the window or ended a job")
 
         send_wm_delete_window(int(self.window))
-        self.wait_for_strip(True, False, "the window close prompt a third time")
+        self.wait_for_strip(True, False, "the window close prompt a third time", 2)
         subprocess.run(
             ["xdotool", "key", "--window", self.window, "--clearmodifiers", "y"],
             capture_output=True, timeout=3, check=False,
@@ -374,7 +471,7 @@ class PanesSmoke:
             raise AssertionError("confirming the window close did not exit") from error
         if status != 0:
             raise AssertionError(f"terminal failed after the confirmed window close: {status}")
-        return {"result": "passed", "shell": shell}
+        return {"result": "passed", "shells": [shell, lower]}
 
     def exercise(self) -> dict:
         self.locate()
@@ -433,7 +530,8 @@ class PanesSmoke:
                 self.terminal.wait(timeout=3)
 
 
-def run_session(binary: Path, directory: Path, name: str, scenario) -> dict:
+def run_session(binary: Path, directory: Path, name: str, scenario,
+                screenshots: Path | None) -> dict:
     environment = os.environ.copy()
     environment.pop("KOKUBAN_EXIT_AFTER_FIRST_FRAME", None)
     for key in ("WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XDG_RUNTIME_DIR"):
@@ -448,7 +546,7 @@ def run_session(binary: Path, directory: Path, name: str, scenario) -> dict:
             [str(binary), "-e", "/bin/sh"],
             cwd=directory, env=environment, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
         )
-        smoke = PanesSmoke(directory, terminal)
+        smoke = PanesSmoke(directory, terminal, screenshots)
         try:
             return scenario(smoke)
         except Exception as error:
@@ -460,7 +558,7 @@ def run_session(binary: Path, directory: Path, name: str, scenario) -> dict:
             smoke.cleanup()
 
 
-def check(binary: Path) -> dict:
+def check(binary: Path, screenshots: Path | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="kokuban-panes-") as temporary:
         directory = Path(temporary)
         (directory / "kokuban.toml").write_text(
@@ -469,9 +567,9 @@ def check(binary: Path) -> dict:
             "[omarchy]\nenabled = false\n",
             encoding="utf-8",
         )
-        report = run_session(binary, directory, "panes", PanesSmoke.exercise)
+        report = run_session(binary, directory, "panes", PanesSmoke.exercise, screenshots)
         report["window_close"] = run_session(
-            binary, directory, "window-close", PanesSmoke.exercise_window_close
+            binary, directory, "window-close", PanesSmoke.exercise_window_close, screenshots
         )
         return report
 
@@ -480,8 +578,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--screenshots", type=Path,
+                        help="directory for PNGs of the strips and prompts")
     arguments = parser.parse_args()
-    report = check(arguments.binary.resolve(strict=True))
+    report = check(arguments.binary.resolve(strict=True), arguments.screenshots)
     encoded = json.dumps(report, indent=2) + "\n"
     if arguments.output:
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
