@@ -26,6 +26,10 @@ import time
 import tty
 
 
+# Current Omarchy publishes the theme below ~/.local/state; older releases used
+# ~/.config. Kokuban prefers the state directory when both exist.
+STATE_CURRENT = ".local/state/omarchy/current"
+LEGACY_CURRENT = ".config/omarchy/current"
 DSR_REPLY = re.compile(rb"\x1b\[([0-9]+);([0-9]+)R")
 CELL_REPLY = re.compile(rb"\x1b\[6;([0-9]+);([0-9]+)t")
 OSC_REPLY = re.compile(
@@ -192,8 +196,10 @@ class Frame:
 
 
 class ThemeSmoke:
-    def __init__(self, directory: Path, terminal: subprocess.Popen, artifacts: Path | None) -> None:
+    def __init__(self, directory: Path, terminal: subprocess.Popen, artifacts: Path | None,
+                 current: Path) -> None:
         self.directory = directory
+        self.current = current
         self.terminal = terminal
         self.artifacts = artifacts
         self.window = ""
@@ -329,7 +335,7 @@ class ThemeSmoke:
             "sleep", "0.05", "mouseup", "1")
 
     def replace_theme(self, contents: str) -> None:
-        current = self.directory / "home/.config/omarchy/current"
+        current = self.current
         replacement = current / "theme.next"
         replacement.mkdir()
         (replacement / "colors.toml").write_text(contents, encoding="utf-8")
@@ -407,14 +413,22 @@ def theme_text(colors: dict[str, str]) -> str:
 
 
 def check(binary: Path, overrides: bool, artifacts: Path | None, *,
-          font_case: tuple[str, str | None] | None = None, fontconfig: Path | None = None) -> dict:
+          font_case: tuple[str, str | None] | None = None, fontconfig: Path | None = None,
+          layout: str = STATE_CURRENT) -> dict:
     with tempfile.TemporaryDirectory(prefix="kokuban-theme-") as temporary:
         directory = Path(temporary)
         home = directory / "home"
-        theme = home / ".config/omarchy/current/theme"
+        current = home / layout
+        theme = current / "theme"
         theme.mkdir(parents=True)
         colors = palette()
         (theme / "colors.toml").write_text(theme_text(colors), encoding="utf-8")
+        if layout == STATE_CURRENT and not font_case:
+            # A leftover legacy directory with other colors must be ignored.
+            decoy = home / LEGACY_CURRENT / "theme"
+            decoy.mkdir(parents=True)
+            (decoy / "colors.toml").write_text(theme_text(
+                {name: "#ff00ff" for name in colors}), encoding="utf-8")
         xdg = directory / "xdg"
         (xdg / "kokuban").mkdir(parents=True)
         family = font_case[1] if font_case else "DejaVu Sans Mono"
@@ -450,18 +464,19 @@ def check(binary: Path, overrides: bool, artifacts: Path | None, *,
                 [str(binary), "-e", sys.executable, str(Path(__file__).resolve()), "--child"],
                 cwd=directory, env=environment, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
             )
-            smoke = ThemeSmoke(directory, terminal, artifacts)
+            smoke = ThemeSmoke(directory, terminal, artifacts, current)
             try:
                 if font_case:
                     smoke.locate()
                     smoke.check_frame(colors, "initial", selected=False)
                     smoke.check_defaults(colors)
-                    result = {"result": "passed", "case": font_case[0],
+                    result = {"result": "passed", "case": font_case[0], "omarchy_current": layout,
                               "configured_family": family,
                               "cell": [smoke.cell_width, smoke.cell_height],
                               "frame": smoke.capture().signature()}
                 else:
                     result = smoke.exercise(overrides)
+                    result["omarchy_current"] = layout
                 (directory / "stop").touch()
                 if terminal.wait(timeout=5) != 0:
                     raise AssertionError(f"terminal failed after child exit: {terminal.returncode}")
@@ -526,7 +541,10 @@ def check_fontconfig(binary: Path, artifacts: Path | None) -> dict:
         ).stdout.splitlines()
         if {str(Path(path).resolve()) for path in listed} != {sources["DejaVu Sans"]["file"]}:
             raise AssertionError(f"Menlo must be an explicit family, not a missing-font fallback: {listed}")
-        cases = [check(binary, False, artifacts, font_case=case, fontconfig=fontconfig) for case in (
+        # These windows start from the theme palette, so they also cover the
+        # legacy ~/.config location used by older Omarchy releases.
+        cases = [check(binary, False, artifacts, font_case=case, fontconfig=fontconfig,
+                       layout=LEGACY_CURRENT) for case in (
             ("font-default", None), ("font-monospace-control", "DejaVu Sans Mono"),
             ("font-explicit-override", "DejaVu Sans"), ("font-menlo-control", "Menlo"),
         )]
