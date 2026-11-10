@@ -130,22 +130,54 @@ pub(super) fn search_prompt(
     }
 }
 
-/// Row the search strip covers: the last one, unless the current match is
-/// on it; then the first, so the strip never hides the match it reports.
-pub(super) fn search_strip_row(search: &SearchState, grid: &Grid) -> usize {
-    let last = grid.rows().saturating_sub(1);
-    let Some(current) = search.current_match() else {
-        return last;
-    };
+/// Viewport row of the current match, when it is on screen.
+fn current_match_row(search: &SearchState, grid: &Grid) -> Option<usize> {
+    let current = search.current_match()?;
     let top = grid.scrollback_len().saturating_sub(grid.scroll_offset);
-    let visible_row = usize::try_from(current.row)
-        .ok()
-        .and_then(|row| row.checked_sub(top));
-    if visible_row == Some(last) {
+    usize::try_from(current.row)
+        .ok()?
+        .checked_sub(top)
+        .filter(|row| *row < grid.rows())
+}
+
+/// Row the search strip covers. It stays on the last row for the whole
+/// search, so navigating never makes it jump; `keep_match_clear_of_strip`
+/// scrolls the match off that row instead. Only a match on the last row of
+/// the live screen, with nothing below to scroll to, moves the strip to the
+/// first row, and it stays there until the search closes.
+pub(super) fn search_strip_row(search: &mut SearchState, grid: &Grid) -> usize {
+    let last = grid.rows().saturating_sub(1);
+    if !search.strip_at_top
+        && last > 0
+        && grid.scroll_offset == 0
+        && current_match_row(search, grid) == Some(last)
+    {
+        search.strip_at_top = true;
+    }
+    if search.strip_at_top {
         0
     } else {
         last
     }
+}
+
+/// After the search moves to a match: scroll one line when the match sits
+/// under the strip, so the strip keeps its row and the match stays visible.
+/// Returns true when the viewport moved.
+pub(super) fn keep_match_clear_of_strip(search: &SearchState, grid: &mut Grid) -> bool {
+    let Some(row) = current_match_row(search, grid) else {
+        return false;
+    };
+    if search.strip_at_top {
+        if row == 0 && grid.scroll_offset < grid.scrollback_len() {
+            grid.scroll_offset += 1;
+            return true;
+        }
+    } else if row + 1 == grid.rows() && grid.scroll_offset > 0 {
+        grid.scroll_offset -= 1;
+        return true;
+    }
+    false
 }
 
 /// " Close pane (vim)? [y/N]": only the program names shrink, to an
@@ -276,13 +308,13 @@ pub(super) fn paint_strip(
 #[cfg(test)]
 mod tests {
     use super::{
-        close_prompt_segments, paint_strip, search_prompt, search_strip_row, StripColors,
-        StripSegment,
+        close_prompt_segments, keep_match_clear_of_strip, paint_strip, search_prompt,
+        search_strip_row, StripColors, StripSegment,
     };
     use crate::grid::cell::{CellFlags, Color};
     use crate::grid::{CursorShape, Grid};
     use crate::linux_window::draw::{snapshot_locked_grid, CursorSnapshot, GridSnapshot};
-    use crate::search::{SearchMatch, SearchState, MAX_MATCHES};
+    use crate::search::{SearchKey, SearchMatch, SearchState, MAX_MATCHES};
 
     const COLORS: StripColors = StripColors {
         text: (31, 58, 42),
@@ -512,20 +544,79 @@ mod tests {
         assert_eq!(joined(&segments), " Close pane? [y/N]");
     }
 
+    /// `lines` numbered lines in a `rows`-row grid, every one matching
+    /// "line", then a shell prompt on the last row when `prompt` is set.
+    fn numbered_grid(rows: usize, lines: usize, prompt: bool) -> Grid {
+        let mut text: Vec<String> = (0..lines).map(|index| format!("line {index}")).collect();
+        if prompt {
+            text.push("$ ".to_string());
+        }
+        let text: Vec<&str> = text.iter().map(String::as_str).collect();
+        grid_with_lines(20, rows, &text)
+    }
+
     #[test]
-    fn search_strip_moves_to_the_top_when_the_match_is_on_the_last_row() {
+    fn search_strip_keeps_the_last_row_while_navigating() {
+        // Ten lines and a prompt in a four-row pane: seven in the scrollback.
+        let mut grid = numbered_grid(4, 10, true);
+        let mut search = SearchState::new("line".to_string());
+        search.recompute(&grid);
+        let last = grid.rows() - 1;
+        let mut rows = Vec::new();
+        // Enter walks down from the oldest line; "line 3" lands on the last
+        // row of the viewport and must be scrolled clear of the strip.
+        for _ in 0..12 {
+            search.handle_key(SearchKey::Enter, &mut grid);
+            keep_match_clear_of_strip(&search, &mut grid);
+            rows.push(search_strip_row(&mut search, &grid));
+            // Every match, including those that land on the last row, is
+            // shown above the strip.
+            let row = super::current_match_row(&search, &grid);
+            assert!(row.is_some_and(|row| row < last), "{search:?} at {row:?}");
+        }
+        assert!(rows.iter().all(|row| *row == last), "{rows:?}");
+        assert!(!search.strip_at_top);
+    }
+
+    #[test]
+    fn a_match_on_the_live_last_row_moves_the_strip_up_once() {
+        // No prompt: "line 9" is the live last row, with nothing below it.
+        let mut grid = numbered_grid(4, 10, false);
+        let mut search = SearchState::new("line 9".to_string());
+        search.recompute(&grid);
+        assert_eq!(grid.scroll_offset, 0);
+        assert_eq!(search_strip_row(&mut search, &grid), 0);
+        // It stays on the first row for every other match, too.
+        search.query = "line".to_string();
+        search.recompute(&grid);
+        // Shift+Enter walks up, so matches reach the first row and must be
+        // scrolled clear of the strip there; Enter walks back down.
+        for key in [SearchKey::ShiftEnter; 12]
+            .into_iter()
+            .chain([SearchKey::Enter; 12])
+        {
+            search.handle_key(key, &mut grid);
+            keep_match_clear_of_strip(&search, &mut grid);
+            assert_eq!(search_strip_row(&mut search, &grid), 0);
+            if search.current != Some(0) {
+                let row = super::current_match_row(&search, &grid);
+                assert!(row.is_some_and(|row| row > 0), "{search:?} at {row:?}");
+            }
+        }
+        // A new search starts on the last row again.
+        let mut search = SearchState::new("line 2".to_string());
+        search.recompute(&grid);
+        assert_eq!(search_strip_row(&mut search, &grid), grid.rows() - 1);
+    }
+
+    #[test]
+    fn misses_and_empty_queries_keep_the_strip_on_the_last_row() {
         let grid = grid_with_lines(20, 3, &["alpha", "beta", "gamma"]);
-        let mut search = SearchState::new("gamma".to_string());
-        search.recompute(&grid);
-        assert_eq!(search.current_match().unwrap().row, 2);
-        assert_eq!(search_strip_row(&search, &grid), 0);
-
-        let mut search = SearchState::new("alpha".to_string());
-        search.recompute(&grid);
-        assert_eq!(search_strip_row(&search, &grid), 2);
-
         let mut search = SearchState::new("absent".to_string());
         search.recompute(&grid);
-        assert_eq!(search_strip_row(&search, &grid), 2);
+        assert_eq!(search_strip_row(&mut search, &grid), 2);
+        let mut search = SearchState::new(String::new());
+        search.recompute(&grid);
+        assert_eq!(search_strip_row(&mut search, &grid), 2);
     }
 }

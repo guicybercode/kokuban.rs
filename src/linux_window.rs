@@ -87,7 +87,10 @@ use ime::{
     replace_ime_preedit, reveal_ime_input_viewport_locked, sync_ime_cursor_area_with,
     ImeCursorArea, ImePreedit, ImePreeditPayload,
 };
-use overlay::{close_prompt_segments, paint_strip, search_prompt, search_strip_row, StripColors};
+use overlay::{
+    close_prompt_segments, keep_match_clear_of_strip, paint_strip, search_prompt, search_strip_row,
+    StripColors,
+};
 use pointer::{mouse_button_code_from_winit, PointerRouteState};
 use sizing::{
     atlas_cell_dimensions, configured_terminal_dimensions, create_glyph_atlas, drawable_dimensions,
@@ -694,6 +697,16 @@ fn search_key_from_winit(logical_key: &Key, modifiers: ModifiersState) -> Search
     }
 }
 
+/// Give a key to the pane's open search, then keep the current match out
+/// from under the search strip. `None` when no search is open.
+fn handle_search_key(pane: &mut Pane, key: SearchKey) -> Option<SearchKeyOutcome> {
+    let outcome = pane.handle_search_key(key)?;
+    if let Some(search) = pane.search.as_ref() {
+        keep_match_clear_of_strip(search, &mut pane.grid);
+    }
+    Some(outcome)
+}
+
 /// Append committed IME text to the open search query; true when it changed.
 fn type_into_search(pane: &mut Pane, bytes: &[u8]) -> bool {
     let mut changed = false;
@@ -702,7 +715,7 @@ fn type_into_search(pane: &mut Pane, bytes: &[u8]) -> bool {
             continue;
         }
         changed |= matches!(
-            pane.handle_search_key(SearchKey::Char(character)),
+            handle_search_key(pane, SearchKey::Char(character)),
             Some(SearchKeyOutcome::Changed)
         );
     }
@@ -1026,7 +1039,8 @@ impl LinuxWindow {
                     &pane.grid,
                     &self.colors,
                 );
-                if let Some(search) = pane.search.as_ref() {
+                if let Some(search) = pane.search.as_mut() {
+                    let row = search_strip_row(search, &pane.grid);
                     apply_search_to_snapshot(
                         &mut snapshot,
                         search,
@@ -1035,7 +1049,6 @@ impl LinuxWindow {
                         self.divider_colors.focused,
                     );
                     let prompt = search_prompt(search, snapshot.columns, strip_colors);
-                    let row = search_strip_row(search, &pane.grid);
                     paint_strip(
                         &mut snapshot,
                         row,
@@ -1573,6 +1586,14 @@ impl LinuxWindow {
             }
         };
         let outcome = apply_pane_action(&mut tree, action, &mut host);
+        if action == PaneAction::Search {
+            // A reopened search may land on a match under the strip.
+            if let Some(pane) = tree.focused_pane_mut() {
+                if let Some(search) = pane.search.as_ref() {
+                    keep_match_clear_of_strip(search, &mut pane.grid);
+                }
+            }
+        }
         if let Some(prompt) = host.close_prompt.take() {
             drop(tree);
             self.close_prompt = Some(prompt);
@@ -2339,10 +2360,10 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     }
                     let search_outcome = lock_tree(&self.panes).map(|mut tree| {
                         tree.focused_pane_mut().and_then(|pane| {
-                            pane.handle_search_key(search_key_from_winit(
-                                &event.logical_key,
-                                self.modifiers,
-                            ))
+                            handle_search_key(
+                                pane,
+                                search_key_from_winit(&event.logical_key, self.modifiers),
+                            )
                         })
                     });
                     match search_outcome {
