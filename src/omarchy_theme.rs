@@ -1,4 +1,6 @@
 //! Omarchy publishes a complete palette by replacing its current/theme directory.
+//! The `current` directory lives in ~/.local/state on current Omarchy and in
+//! ~/.config on older installations; the newer location wins when both exist.
 //! Observe filesystem events off the UI thread; idle terminals do not poll files.
 
 use crate::terminal_colors::{Rgb, TerminalColors};
@@ -87,10 +89,30 @@ fn read_optional_theme(path: &Path) -> Option<TerminalColors> {
     }
 }
 
-fn current_directory(home: Option<PathBuf>) -> Option<PathBuf> {
-    // Omarchy itself uses HOME here, even when Kokuban's own config is in XDG.
+/// Locations of Omarchy's `current` directory, newest layout first.
+///
+/// Current Omarchy publishes the active theme under `~/.local/state`, and its
+/// migration moves the legacy `~/.config` directory there without leaving an
+/// alias. Older installations still use `~/.config/omarchy/current`.
+const CURRENT_DIRECTORIES: [&str; 2] = [".local/state/omarchy/current", ".config/omarchy/current"];
+
+fn current_directory_candidates(home: Option<PathBuf>) -> Vec<PathBuf> {
+    // Omarchy hard-codes these below HOME, ignoring XDG_STATE_HOME and
+    // XDG_CONFIG_HOME, even when Kokuban's own config is in XDG.
     home.filter(|path| path.is_absolute())
-        .map(|home| home.join(".config/omarchy/current"))
+        .map(|home| {
+            CURRENT_DIRECTORIES
+                .iter()
+                .map(|relative| home.join(relative))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn current_directory(home: Option<PathBuf>) -> Option<PathBuf> {
+    current_directory_candidates(home)
+        .into_iter()
+        .find(|directory| directory.is_dir())
 }
 
 pub(crate) fn watch_current_theme(
@@ -103,9 +125,6 @@ pub(crate) fn watch_current_theme(
     let Some(directory) = current_directory(std::env::var_os("HOME").map(PathBuf::from)) else {
         return (None, None);
     };
-    if !directory.is_dir() {
-        return (None, None);
-    }
     match ThemeWatcher::start(directory.clone(), on_change) {
         Ok(watcher) => {
             let initial = watcher.take_update();
@@ -483,10 +502,92 @@ mod tests {
         assert_eq!(colors.selection_background(), (244, 246, 240));
         assert_eq!(colors.cursor(), None);
         assert_eq!(
-            current_directory(Some("/home/test".into())).unwrap(),
-            Path::new("/home/test/.config/omarchy/current")
+            current_directory_candidates(Some("/home/test".into())),
+            [
+                Path::new("/home/test/.local/state/omarchy/current"),
+                Path::new("/home/test/.config/omarchy/current"),
+            ]
         );
+        assert!(current_directory_candidates(Some("relative-home".into())).is_empty());
+        assert!(current_directory_candidates(None).is_empty());
         assert!(current_directory(Some("relative-home".into())).is_none());
+    }
+
+    fn make_current(home: &Path, relative: &str, background: &str) -> PathBuf {
+        let current = home.join(relative);
+        std::fs::create_dir_all(current.join("theme")).unwrap();
+        std::fs::write(current.join("theme").join(COLORS_FILE), palette(background)).unwrap();
+        current
+    }
+
+    #[test]
+    fn missing_home_layouts_select_no_directory() {
+        let home = Directory::new();
+        assert!(current_directory(Some(home.0.clone())).is_none());
+        // A regular file where Omarchy expects a directory is not a theme root.
+        std::fs::create_dir_all(home.0.join(".local/state/omarchy")).unwrap();
+        std::fs::write(home.0.join(".local/state/omarchy/current"), "").unwrap();
+        assert!(current_directory(Some(home.0.clone())).is_none());
+    }
+
+    #[test]
+    fn state_directory_of_current_omarchy_is_selected() {
+        let home = Directory::new();
+        let state = make_current(&home.0, CURRENT_DIRECTORIES[0], "#010203");
+        assert_eq!(current_directory(Some(home.0.clone())).unwrap(), state);
+    }
+
+    #[test]
+    fn legacy_config_directory_is_used_when_state_directory_is_absent() {
+        let home = Directory::new();
+        // Older Omarchy may already own ~/.local/state/omarchy for other data.
+        std::fs::create_dir_all(home.0.join(".local/state/omarchy/toggles")).unwrap();
+        let legacy = make_current(&home.0, CURRENT_DIRECTORIES[1], "#040506");
+        assert_eq!(current_directory(Some(home.0.clone())).unwrap(), legacy);
+    }
+
+    #[test]
+    fn state_directory_takes_priority_over_a_leftover_legacy_directory() {
+        let home = Directory::new();
+        let legacy = make_current(&home.0, CURRENT_DIRECTORIES[1], "#040506");
+        let state = make_current(&home.0, CURRENT_DIRECTORIES[0], "#010203");
+        let selected = current_directory(Some(home.0.clone())).unwrap();
+        assert_eq!(selected, state);
+        assert_ne!(selected, legacy);
+        let (sender, receiver) = mpsc::channel();
+        let watcher = ThemeWatcher::start(selected, move || sender.send(()).is_ok()).unwrap();
+        assert_eq!(
+            watcher.take_update().unwrap().default_background(),
+            (1, 2, 3)
+        );
+        // Theme changes published to the legacy path are not followed.
+        std::fs::write(legacy.join("theme").join(COLORS_FILE), palette("#0a0b0c")).unwrap();
+        assert!(receiver.recv_timeout(Duration::from_millis(100)).is_err());
+        let next = state.join("next-theme");
+        std::fs::create_dir(&next).unwrap();
+        std::fs::write(next.join(COLORS_FILE), palette("#070809")).unwrap();
+        std::fs::remove_dir_all(state.join("theme")).unwrap();
+        std::fs::rename(next, state.join("theme")).unwrap();
+        receiver.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(
+            watcher.take_update().unwrap().default_background(),
+            (7, 8, 9)
+        );
+    }
+
+    #[test]
+    fn symlinked_legacy_alias_resolves_to_the_state_directory() {
+        let home = Directory::new();
+        let state = make_current(&home.0, CURRENT_DIRECTORIES[0], "#010203");
+        std::fs::create_dir_all(home.0.join(".config/omarchy")).unwrap();
+        std::os::unix::fs::symlink(&state, home.0.join(CURRENT_DIRECTORIES[1])).unwrap();
+        assert_eq!(current_directory(Some(home.0.clone())).unwrap(), state);
+        // A symlinked state directory is still a directory for selection.
+        std::fs::remove_file(home.0.join(CURRENT_DIRECTORIES[1])).unwrap();
+        let target = home.0.join("elsewhere");
+        std::fs::rename(&state, &target).unwrap();
+        std::os::unix::fs::symlink(&target, &state).unwrap();
+        assert_eq!(current_directory(Some(home.0.clone())).unwrap(), state);
     }
 
     #[test]
