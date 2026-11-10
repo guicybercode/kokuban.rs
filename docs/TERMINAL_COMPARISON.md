@@ -541,7 +541,7 @@ foram verificadas em tempo hábil[^nv].
 | Painéis divididos | sim (macOS `Cmd+D`, Linux `Ctrl+Shift+D`) | parcial (mesma sessão) | sim (layouts) | sim | não |
 | Renderização GPU | Metal no macOS; software no Linux | não | OpenGL | Metal/OpenGL | OpenGL |
 | Atualização embutida | sim (`kokuban --update`) | via macOS | não | macOS (Sparkle) | não |
-| Licença | BSD-4-Clause | proprietária | GPL-3.0 | MIT | Apache-2.0 |
+| Licença | BSD-3-Clause | proprietária | GPL-3.0 | MIT | Apache-2.0 |
 
 O gráfico de vazão PTY do mesmo ensaio está em
 [screenshots/throughput-comparison.svg](screenshots/throughput-comparison.svg)

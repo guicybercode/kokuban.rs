@@ -6,7 +6,7 @@ class KokubanRs < Formula
   # macOS installs the prebuilt release tarballs from the `on_macos` block.
   url "https://github.com/guicybercode/kokuban.rs/archive/refs/tags/v0.4.tar.gz"
   sha256 "6d6c14df25cb897abae771ba854d4a3ecddcde342d5bbc9deb1bcbdc9a169c9e"
-  license "BSD-4-Clause"
+  license "BSD-3-Clause"
 
   livecheck do
     url :homepage

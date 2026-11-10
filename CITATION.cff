@@ -9,7 +9,7 @@ authors:
 repository-code: "https://github.com/guicybercode/kokuban.rs"
 url: "https://github.com/guicybercode/kokuban.rs"
 version: 0.4.0
-license: BSD-4-Clause
+license: BSD-3-Clause
 date-released: "2026-09-28"
 keywords:
   - terminal emulator

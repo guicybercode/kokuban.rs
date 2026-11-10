@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix="kokuban-dmg-") as temporary:
         "LSApplicationCategoryType": "public.app-category.developer-tools",
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
-        "NSHumanReadableCopyright": "BSD-4-Clause. See Resources/LICENSE.",
+        "NSHumanReadableCopyright": "BSD-3-Clause. See Resources/LICENSE.",
     }
     (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info))
 
