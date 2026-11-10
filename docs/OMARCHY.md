@@ -264,6 +264,32 @@ compositor. Native Hyprland rendering, scaling,
 clipboard, Omarchy window rules, and the bindings above still need an on-device
 run; parser or Xvfb tests alone do not establish those behaviors.
 
+On 2026-11-10 a headless validation ran under sway 1.10.1 (wlroots headless
+backend, `xwayland disable`), Weston 14 and Xvfb, on Debian 13 x86_64. Under
+sway at output scale 1.25, `scripts/linux-wayland-smoke.py` checked that the
+glyph atlas follows `wp_fractional_scale_v1`, that SGR mouse reports name the
+cell under the pointer (including the last cell), CLIPBOARD copy and paste
+through `wlr-data-control` against `wl-copy`/`wl-paste`, PRIMARY from a drag
+and middle-click paste, a text-input-v3 session with purpose `terminal` whose
+input-method-v2 preedit never reaches the PTY and whose commit arrives once,
+and runtime scale changes to 1.5 and 1.0. Weston covered integer scale 2 and
+the launch smoke; it has no data-control, so the clipboard is unavailable
+there without XWayland. The X11 clipboard smoke covers the same PRIMARY routes.
+
+```sh
+cargo build --manifest-path scripts/wayland-inject/Cargo.toml
+python3 scripts/linux-wayland-smoke.py target/debug/kokuban \
+  --inject scripts/wayland-inject/target/debug/wayland-inject
+```
+
+The input method in that run is a protocol-level test client, not fcitx5 or
+IBus, and every input device is virtual. On Hyprland, still verify with a
+physical keyboard and mouse: fcitx5 (or IBus) composition and candidate window
+placement next to the cursor after a split, monitor scale 1.25 or 1.5 and
+moving the window between monitors with different scales, `Super+C`/`Super+V`
+and middle-click paste against another application, and that
+`hyprctl clients` reports `xwayland: false` for Kokuban.
+
 Linux currently uses software rendering. No same-machine measurement establishes
 that Kokuban outperforms Ghostty, Alacritty, or Kitty. See
 [Linux performance](LINUX_PERFORMANCE.md) for the benchmark scope and limitations.

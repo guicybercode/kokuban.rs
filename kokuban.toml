@@ -57,6 +57,9 @@ allow_file_transfer = true
 # Allow programs (tmux, Neovim, SSH sessions) to copy text to the system clipboard
 # with OSC 52. Only writes are honoured; clipboard reads are never answered.
 osc52_write = true
+# Linux: a mouse selection becomes the PRIMARY selection and the middle button
+# pastes it (Shift+middle while a program such as Vim or tmux uses the mouse).
+primary_selection = true
 
 [input]
 # macOS: which Option key sends ESC-prefixed Meta sequences. "both" (default),

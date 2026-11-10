@@ -4,7 +4,7 @@ use super::draw::GridSnapshot;
 use super::pointer::terminal_cell_at_pointer;
 use super::sizing::TerminalDimensions;
 use crate::grid::cell::{CellFlags, Color};
-use crate::grid::Grid;
+use crate::grid::{Grid, MouseTracking};
 use crate::selection::{point_from_viewport, GridPoint, SelectionState};
 use crate::terminal_colors::TerminalColors;
 use winit::dpi::PhysicalPosition;
@@ -87,6 +87,29 @@ pub(super) fn clipboard_action(
     None
 }
 
+/// Mouse buttons stay with Kokuban (selection, PRIMARY paste) unless the
+/// program tracks the mouse; Shift always keeps them local.
+pub(super) fn pointer_button_is_local(tracking: MouseTracking, modifiers: ModifiersState) -> bool {
+    tracking == MouseTracking::None || modifiers.shift_key()
+}
+
+/// Text for the PRIMARY selection once a drag ends. A click without
+/// movement leaves a one-cell selection and must not replace PRIMARY.
+pub(super) fn primary_selection_text(
+    selection: &SelectionState,
+    grid: &Grid,
+    limit: usize,
+) -> Option<String> {
+    let (start, end) = selection.normalized()?;
+    if start == end {
+        return None;
+    }
+    selection
+        .get_text_with_limit(grid, limit)
+        .ok()
+        .filter(|text| !text.is_empty())
+}
+
 pub(super) fn apply_selection_to_snapshot(
     snapshot: &mut GridSnapshot,
     selection: &SelectionState,
@@ -113,11 +136,12 @@ pub(super) fn apply_selection_to_snapshot(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer, sync_selection,
-        ClipboardAction, SelectionContext,
+        apply_selection_to_snapshot, clipboard_action, pointer_button_is_local,
+        primary_selection_text, selection_point_at_pointer, sync_selection, ClipboardAction,
+        SelectionContext,
     };
     use crate::grid::cell::{CellFlags, Color, UnderlineStyle};
-    use crate::grid::Grid;
+    use crate::grid::{Grid, MouseTracking};
     use crate::linux_window::draw::snapshot_locked_grid;
     use crate::selection::{GridPoint, SelectionState};
     use crate::terminal_colors::TerminalColors;
@@ -136,6 +160,45 @@ mod tests {
         for character in text.chars() {
             grid.put_char(character);
         }
+    }
+
+    #[test]
+    fn mouse_buttons_stay_local_without_tracking_or_with_shift() {
+        let none = ModifiersState::empty();
+        assert!(pointer_button_is_local(MouseTracking::None, none));
+        assert!(!pointer_button_is_local(MouseTracking::Normal, none));
+        assert!(pointer_button_is_local(
+            MouseTracking::Normal,
+            ModifiersState::SHIFT
+        ));
+        assert!(!pointer_button_is_local(
+            MouseTracking::Normal,
+            ModifiersState::CONTROL
+        ));
+    }
+
+    #[test]
+    fn primary_selection_takes_dragged_text_but_not_a_plain_click() {
+        let mut grid = Grid::new(20, 2, 10);
+        write_row(&mut grid, 0, "PRIMARY text");
+        let click = selected(GridPoint { row: 0, col: 3 }, GridPoint { row: 0, col: 3 });
+        assert_eq!(primary_selection_text(&click, &grid, 1024), None);
+        assert_eq!(
+            primary_selection_text(&SelectionState::default(), &grid, 1024),
+            None
+        );
+        let drag = selected(GridPoint { row: 0, col: 6 }, GridPoint { row: 0, col: 0 });
+        assert_eq!(
+            primary_selection_text(&drag, &grid, 1024).as_deref(),
+            Some("PRIMARY")
+        );
+        assert_eq!(
+            primary_selection_text(&drag, &grid, 3),
+            None,
+            "over the limit"
+        );
+        let blank = selected(GridPoint { row: 1, col: 0 }, GridPoint { row: 1, col: 5 });
+        assert_eq!(primary_selection_text(&blank, &grid, 1024), None);
     }
 
     #[test]

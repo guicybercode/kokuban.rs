@@ -10,6 +10,8 @@ Linux supports these clipboard and selection actions:
 | Select text while an application captures the mouse | `Shift` + left-button drag |
 | Copy selection | `Ctrl+Shift+C` or `Ctrl+Insert` |
 | Paste clipboard | `Ctrl+Shift+V` or `Shift+Insert` |
+| Paste the PRIMARY selection | Middle click |
+| Paste PRIMARY while an application captures the mouse | `Shift` + middle click |
 | Select all retained text | `Ctrl+Shift+A` |
 | Scroll history | `Shift+PageUp` / `Shift+PageDown` |
 | Oldest/newest retained view | `Shift+Home` / `Shift+End` |
@@ -19,7 +21,9 @@ Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-
 
 Omarchy maps `Super+C` and `Super+V` to the supported Insert shortcuts; see [Omarchy clipboard bindings](OMARCHY.md#use-the-existing-omarchy-bindings) for the integration and validation scope.
 
-The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](TERMINAL_TEXT.md) and [Linux application validation](LINUX_APPS.md). OSC 52 remote clipboard commands remain pending.
+A drag selection also becomes the PRIMARY selection, which other X11 and Wayland applications paste with their middle button; a plain click does not replace it. Set `[clipboard] primary_selection = false` to keep both the selection and the middle button out of PRIMARY. While an application tracks the mouse, the middle button is reported to it unless `Shift` is held.
+
+The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol (`ext-data-control-v1` or `wlr-data-control`; Hyprland and sway have it). PRIMARY on Wayland needs `wlr-data-control` version 2 or `ext-data-control`; without it CLIPBOARD keeps working, publishing PRIMARY logs one warning per session and middle-click paste does nothing. On a Wayland desktop without data-control (GNOME, Weston) Kokuban falls back to the X11 clipboard through XWayland, so `DISPLAY` must be set; with neither, copy and paste log a warning and do nothing. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](TERMINAL_TEXT.md) and [Linux application validation](LINUX_APPS.md). OSC 52 clipboard writes from remote programs are accepted; reads are refused.
 
 These are the macOS defaults for the pane, zoom, prompt-navigation and search actions; the Linux defaults follow in the next section.
 
