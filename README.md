@@ -56,7 +56,7 @@ cargo build --release --locked
 - **Chalkboard theme**: green board, chalk text and one hanko-red accent as the factory default.
 - **Omarchy integration (Linux)**: launcher arguments, existing copy/paste shortcuts, live system palette and the system monospace font.
 - **Panes, zoom and prompt marks**: vim-style splits, per-session font zoom and command-boundary navigation on both platforms; the status bar is macOS-only for now.
-- **Selection and clipboard**: mouse selection on both platforms; asynchronous system clipboard on Linux.
+- **Selection and clipboard**: mouse selection on both platforms; asynchronous system clipboard on Linux, with PRIMARY selection and middle-click paste.
 - **Daily-driver basics**: scrollback search (`Cmd+F`, `Ctrl+Shift+F` on Linux), clickable OSC 8 links, OSC 52 clipboard writes over SSH and tmux, the kitty keyboard protocol for Neovim and Helix, and a per-pane attention mark with `Cmd+Shift+A` (`Ctrl+Shift+N` on Linux) to jump to it.
 - **Self-update**: `kokuban --update` downloads, verifies and replaces the running release.
 - **Configuration**: local or XDG TOML for fonts, colors, images and keybinds.
@@ -69,9 +69,10 @@ macOS is the primary desktop target; Linux follows the Omarchy roadmap and share
 |---|---|---|
 | Renderer | Metal GPU | Software rasterizer (winit + softbuffer, X11/Wayland) |
 | Panes (split, focus, resize, close) and font zoom | Yes | Yes (`[keybind.linux]`) |
-| Status bar and close confirmation | Yes | No (next) |
+| Status bar | Yes | No (next) |
+| Close confirmation | Yes (`[confirm]`) | Only while a program other than the shell runs in the foreground (`[confirm]`) |
 | Prompt marks | Indicator and navigation | Navigation only |
-| Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Matches highlighted (`Ctrl+Shift+F`); no prompt text yet |
+| Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Yes (`Ctrl+Shift+F`, query and match count in a strip over the pane) |
 | Attention mark | ● and red dividers (`Cmd+Shift+A`) | Red dividers (`Ctrl+Shift+N`); no ● yet |
 | IME / text composition | In progress | Yes (preedit) |
 | Kitty animation | No (static images only) | Yes (bounded cache; mpv video) |

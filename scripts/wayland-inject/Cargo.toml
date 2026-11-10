@@ -1,0 +1,12 @@
+[package]
+name = "wayland-inject"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+wayland-protocols-misc = { version = "0.3", features = ["client"] }
+
+[workspace]

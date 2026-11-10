@@ -10,6 +10,8 @@ Linux supports these clipboard and selection actions:
 | Select text while an application captures the mouse | `Shift` + left-button drag |
 | Copy selection | `Ctrl+Shift+C` or `Ctrl+Insert` |
 | Paste clipboard | `Ctrl+Shift+V` or `Shift+Insert` |
+| Paste the PRIMARY selection | Middle click |
+| Paste PRIMARY while an application captures the mouse | `Shift` + middle click |
 | Select all retained text | `Ctrl+Shift+A` |
 | Scroll history | `Shift+PageUp` / `Shift+PageDown` |
 | Oldest/newest retained view | `Shift+Home` / `Shift+End` |
@@ -19,7 +21,9 @@ Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-
 
 Omarchy maps `Super+C` and `Super+V` to the supported Insert shortcuts; see [Omarchy clipboard bindings](OMARCHY.md#use-the-existing-omarchy-bindings) for the integration and validation scope.
 
-The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol. Other Wayland desktops need XWayland clipboard access. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](TERMINAL_TEXT.md) and [Linux application validation](LINUX_APPS.md). OSC 52 remote clipboard commands remain pending.
+A drag selection also becomes the PRIMARY selection, which other X11 and Wayland applications paste with their middle button; a plain click does not replace it. Set `[clipboard] primary_selection = false` to keep both the selection and the middle button out of PRIMARY. While an application tracks the mouse, the middle button is reported to it unless `Shift` is held.
+
+The Linux clipboard works through X11 or a Wayland compositor exposing a data-control protocol (`ext-data-control-v1` or `wlr-data-control`; Hyprland and sway have it). PRIMARY on Wayland needs `wlr-data-control` version 2 or `ext-data-control`; without it CLIPBOARD keeps working, publishing PRIMARY logs one warning per session and middle-click paste does nothing. On a Wayland desktop without data-control (GNOME, Weston) Kokuban falls back to the X11 clipboard through XWayland, so `DISPLAY` must be set; with neither, copy and paste log a warning and do nothing. Copy joins automatically wrapped rows, preserves explicit line breaks and copies complete graphemes. Resize reflows retained text without cropping it. See [text preservation](TERMINAL_TEXT.md) and [Linux application validation](LINUX_APPS.md). OSC 52 clipboard writes from remote programs are accepted; reads are refused.
 
 These are the macOS defaults for the pane, zoom, prompt-navigation and search actions; the Linux defaults follow in the next section.
 
@@ -56,7 +60,11 @@ The pane, zoom, prompt and search bindings can be remapped under `[keybind]` on 
 
 The Linux window dispatches the `[keybind.linux]` table below: splits, close, focus, resize, zoom, prompt navigation, scrollback search and the attention jump, on the same pane tree as macOS. Super is left to the window manager, and none of the defaults collides with the fixed `Ctrl+Shift+C/V/A`, `Ctrl+Insert`, `Shift+Insert` and `Shift+PageUp/PageDown/Home/End` inputs above. A click focuses the pane under the pointer; dividers next to the focused pane, or to one that received a BEL or notification while unwatched, are drawn in hanko red.
 
-Still macOS-only: the status bar, so Linux shows neither the search prompt text (matches are highlighted in the pane while the search is open and keys go to the query), the ● attention mark nor the prompt indicator; and the close confirmation dialog, so `Ctrl+Shift+W` closes the pane immediately.
+While the search is open, a strip over the pane's last row shows the query, a block caret and `current/total` or `no matches` in hanko red; typed and IME-composed text goes to the query, never to the shell. The strip keeps its row while `Enter`/`Shift+Enter` move between matches: a match that would land under it is scrolled one line clear instead. Only a match on the last line of the live screen, with nothing below to scroll to, moves the strip to the first row, where it stays until the search closes. The strip is drawn above kitty and sixel images.
+
+`Ctrl+Shift+W` and the window's close button ask first when a program other than the shell holds the pane's terminal in the foreground (an editor, `ssh`, a build; detected with `tcgetpgrp` on the PTY), naming it in a strip such as `Close pane (vim)? [y/N]`. Only `y` closes; `n`, `Esc` and `Enter` (the default `N`) cancel and keep every PTY; other keys and clicks are ignored until then. An idle shell closes at once. `[confirm] on_close_pane = false` and `on_quit = false` turn the questions off. A program started with `-e` is the pane's own process and does not count as a job.
+
+Still macOS-only: the status bar, so Linux shows neither the ● attention mark nor the prompt indicator.
 
 | Action              | Default Linux keybind   |
 |---------------------|-------------------------|

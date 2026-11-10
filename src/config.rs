@@ -172,6 +172,9 @@ pub struct ClipboardConfig {
     /// Let programs copy text to the system clipboard with OSC 52.
     /// Reads (`OSC 52 ; ? `) are never answered.
     pub osc52_write: bool,
+    /// Linux: publish mouse selections as the PRIMARY selection and paste it
+    /// with the middle button (Shift+middle while a program tracks the mouse).
+    pub primary_selection: bool,
 }
 
 /// Which Option key acts as Alt/Meta (ESC prefix) instead of composing
@@ -196,7 +199,10 @@ pub struct InputConfig {
 
 impl Default for ClipboardConfig {
     fn default() -> Self {
-        Self { osc52_write: true }
+        Self {
+            osc52_write: true,
+            primary_selection: true,
+        }
     }
 }
 
@@ -656,6 +662,16 @@ step = 5
     }
 
     #[test]
+    fn primary_selection_defaults_on_and_can_be_disabled_alone() {
+        let defaults: Config = toml::from_str("").unwrap();
+        assert!(defaults.clipboard.primary_selection);
+        assert!(defaults.clipboard.osc52_write);
+        let disabled: Config = toml::from_str("[clipboard]\nprimary_selection = false\n").unwrap();
+        assert!(!disabled.clipboard.primary_selection);
+        assert!(disabled.clipboard.osc52_write);
+    }
+
+    #[test]
     fn parses_hex_colors_with_existing_prefix_and_case_support() {
         for (input, expected) in [
             ("000000", (0, 0, 0)),
@@ -878,5 +894,21 @@ step = 5
 
         let shipped: Config = toml::from_str(include_str!("../kokuban.toml")).unwrap();
         assert_eq!(shipped.input.option_as_alt, OptionAsAlt::Both);
+    }
+
+    #[test]
+    fn close_confirmation_defaults_on_and_each_question_can_be_turned_off() {
+        let shipped: Config = toml::from_str(include_str!("../kokuban.toml"))
+            .expect("shipped kokuban.toml must parse");
+        assert!(shipped.confirm.on_close_pane && shipped.confirm.on_quit);
+        let default = Config::default();
+        assert!(default.confirm.on_close_pane && default.confirm.on_quit);
+
+        let panes_only: Config = toml::from_str("[confirm]\non_close_pane = false\n").unwrap();
+        assert!(!panes_only.confirm.on_close_pane);
+        assert!(panes_only.confirm.on_quit);
+        let quit_only: Config = toml::from_str("[confirm]\non_quit = false\n").unwrap();
+        assert!(quit_only.confirm.on_close_pane);
+        assert!(!quit_only.confirm.on_quit);
     }
 }

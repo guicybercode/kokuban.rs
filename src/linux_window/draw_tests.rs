@@ -1080,13 +1080,22 @@ mod graphics_tests {
     use crate::glyph_atlas::GlyphAtlas;
     use crate::grid::cell::Color;
     use crate::grid::Grid;
+    use crate::linux_window::overlay::{paint_strip, StripSegment};
     use crate::parser::ansi::GraphicsSupport;
     use crate::software_graphics::SoftwareGraphics;
     use crate::terminal_colors::TerminalColors;
     use crate::terminal_decoder::TerminalDecoder;
     use std::sync::Mutex;
 
-    fn render_images(mut grid: Grid, commands: &[u8]) -> (Vec<u32>, (u16, u16)) {
+    fn render_images(grid: Grid, commands: &[u8]) -> (Vec<u32>, (u16, u16)) {
+        render_images_with(grid, commands, |_| {})
+    }
+
+    fn render_images_with(
+        mut grid: Grid,
+        commands: &[u8],
+        prepare: impl FnOnce(&mut super::GridSnapshot),
+    ) -> (Vec<u32>, (u16, u16)) {
         let mut atlas = GlyphAtlas::new("kokuban-test-font-that-does-not-exist", 14.0, 1.0)
             .expect("system monospace fallback should be available");
         let cell_size = atlas_cell_dimensions(&atlas).unwrap();
@@ -1115,7 +1124,8 @@ mod graphics_tests {
             grid.cols() as u32 * u32::from(cell_size.0),
             grid.rows() as u32 * u32::from(cell_size.1),
         );
-        let snapshot = snapshot_grid(&Mutex::new(grid)).unwrap();
+        let mut snapshot = snapshot_grid(&Mutex::new(grid)).unwrap();
+        prepare(&mut snapshot);
         let mut frame = vec![0; frame_size.0 as usize * frame_size.1 as usize];
         draw_grid_snapshot_with_images(
             &mut frame,
@@ -1173,6 +1183,34 @@ mod graphics_tests {
                 .all(|row| row[usize::from(cell_size.0)..]
                     .iter()
                     .all(|pixel| *pixel == 0xff0000)));
+        }
+    }
+
+    #[test]
+    fn window_strips_are_drawn_over_every_image_layer() {
+        // A red image over both rows; the strip sits on the last one.
+        let chalk = (244, 246, 240);
+        let segments = [StripSegment::new(" /x", (31, 58, 42), chalk)];
+        for z_index in [-1_073_741_825, -1, 0, 5] {
+            let command =
+                format!("\x1b_Ga=T,f=32,s=1,v=1,i=1,c=3,r=2,C=1,z={z_index};/wAA/w==\x1b\\");
+            let (frame, cell_size) =
+                render_images_with(Grid::new(3, 2, 0), command.as_bytes(), |snapshot| {
+                    paint_strip(snapshot, 1, &segments, chalk);
+                });
+            let width = 3 * usize::from(cell_size.0);
+            let (image_row, strip_row) = frame.split_at(width * usize::from(cell_size.1));
+            assert!(
+                image_row.iter().all(|pixel| *pixel == 0xff0000),
+                "z={z_index}: the image must still cover the row above the strip"
+            );
+            assert!(
+                !strip_row.contains(&0xff0000),
+                "z={z_index}: no image pixel may show through the strip"
+            );
+            // The strip background fills the row; its last cell is blank.
+            let last_cell = &strip_row[width - usize::from(cell_size.0)..width];
+            assert!(last_cell.iter().all(|pixel| *pixel == 0xf4f6f0));
         }
     }
 
