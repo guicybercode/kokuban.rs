@@ -225,8 +225,10 @@ class ClipboardSmoke:
         if shift:
             xdo("keydown", "Shift_L")
         try:
-            xdo("mousemove", "--sync", "--window", self.window, *self.cell_point(column, row),
-                "mousedown", "2", "sleep", "0.05", "mouseup", "2")
+            # No --sync: it waits for motion and hangs when the pointer is
+            # already on that cell. XTest keeps the move before the press.
+            xdo("mousemove", "--window", self.window, *self.cell_point(column, row),
+                "sleep", "0.05", "mousedown", "2", "sleep", "0.05", "mouseup", "2")
         finally:
             if shift:
                 xdo("keyup", "Shift_L")
