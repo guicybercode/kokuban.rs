@@ -975,6 +975,17 @@ define_class!(
             sync_backing_scale(self);
         }
 
+        // The atlas starts at `NSScreen::mainScreen`'s scale, but the window
+        // can open on another display; match its backing scale as soon as the
+        // view joins it instead of relying on a later backing notification.
+        #[unsafe(method(viewDidMoveToWindow))]
+        fn view_did_move_to_window(&self) {
+            // SAFETY: forwards to NSView's implementation on the main thread;
+            // the selector takes no arguments and returns void.
+            let _: () = unsafe { msg_send![super(self), viewDidMoveToWindow] };
+            sync_backing_scale(self);
+        }
+
         #[unsafe(method(setFrameSize:))]
         fn set_frame_size(&self, new_size: NSSize) {
             // SAFETY: forwards the same NSSize to NSView's implementation;
@@ -3292,6 +3303,27 @@ mod tests {
         assert_eq!(backing_scale_change(2.0, 2.005), None);
         for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             assert_eq!(backing_scale_change(2.0, invalid), None, "{invalid}");
+        }
+    }
+
+    /// Selectors `TerminalView` itself overrides (not inherited from NSView).
+    fn terminal_view_own_selectors() -> Vec<String> {
+        use objc2::ClassType;
+        super::TerminalView::class()
+            .instance_methods()
+            .iter()
+            .map(|method| method.name().name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn terminal_view_tracks_backing_scale_when_joining_a_window() {
+        let selectors = terminal_view_own_selectors();
+        for selector in ["viewDidMoveToWindow", "viewDidChangeBackingProperties"] {
+            assert!(
+                selectors.iter().any(|name| name == selector),
+                "TerminalView must override {selector}: {selectors:?}"
+            );
         }
     }
 }
