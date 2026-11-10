@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Exercise real X11 copy, paste and selection under xvfb-run.
 
+Covers CLIPBOARD (Ctrl+Shift+C/V, Ctrl/Shift+Insert) and PRIMARY: a drag
+selection becomes PRIMARY, the middle button pastes it, and while a program
+tracks the mouse the middle button is reported unless Shift is held.
+
 Requires xclip, xdotool and xwd. A raw PTY child records every input byte;
 DSR replies acknowledge terminal-mode changes before keyboard/mouse injection.
 No window manager, Python packages or external clipboard daemon are needed.
@@ -34,6 +38,8 @@ WRAPPED_TEXT = (
 ).encode("utf-8")
 PASTE_ONE = "ação 🦀\r\nlinha\t2\n終わり".encode("utf-8")
 PASTE_TWO = "safe\x1b[201~\n二\tfim".encode("utf-8")
+PRIMARY_PASTE = "primária 中\nfim".encode("utf-8")
+EXPECTED_PRIMARY = b"\x1b[200~" + "primária 中\rfim".encode("utf-8") + b"\x1b[201~"
 EXPECTED_ONE = b"\x1b[200~" + "ação 🦀\rlinha\t2\r終わり".encode("utf-8") + b"\x1b[201~"
 EXPECTED_TWO = b"\x1b[200~" + "safe[201~\r二\tfim".encode("utf-8") + b"\x1b[201~"
 DSR_REPLY = re.compile(rb"\x1b\[([0-9]+);([0-9]+)R")
@@ -197,23 +203,33 @@ class ClipboardSmoke:
         if self.cell_width < 2 or self.cell_height < 2:
             raise AssertionError(f"invalid terminal cell geometry: {geometry}, {size}")
 
-    def clipboard(self) -> bytes:
+    def clipboard(self, selection: str = "clipboard") -> bytes:
         result = subprocess.run(
-            ["xclip", "-selection", "clipboard", "-out", "-target", "UTF8_STRING"],
+            ["xclip", "-selection", selection, "-out", "-target", "UTF8_STRING"],
             capture_output=True, timeout=2,
         )
         return result.stdout if result.returncode == 0 else b""
 
-    def set_clipboard(self, text: bytes) -> None:
+    def set_clipboard(self, text: bytes, selection: str = "clipboard") -> None:
         path = self.directory / f"clipboard-{len(self.owners)}.txt"
         path.write_bytes(text)
         # -quiet stays in the foreground, so its owner is tracked and cleaned up.
         owner = subprocess.Popen(
-            ["xclip", "-selection", "clipboard", "-in", "-quiet", str(path)],
+            ["xclip", "-selection", selection, "-in", "-quiet", str(path)],
             stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log,
         )
         self.owners.append(owner)
-        self.wait(lambda: self.clipboard() == text, "external clipboard ownership")
+        self.wait(lambda: self.clipboard(selection) == text, f"external {selection} ownership")
+
+    def middle_click(self, column: int, row: int, shift: bool = False) -> None:
+        if shift:
+            xdo("keydown", "Shift_L")
+        try:
+            xdo("mousemove", "--sync", "--window", self.window, *self.cell_point(column, row),
+                "mousedown", "2", "sleep", "0.05", "mouseup", "2")
+        finally:
+            if shift:
+                xdo("keyup", "Shift_L")
 
     def key(self, keys: str) -> None:
         xdo("key", "--clearmodifiers", "--delay", "20", keys)
@@ -271,8 +287,14 @@ class ClipboardSmoke:
     def copy_selection(self, expected: bytes, shift: bool = False) -> None:
         self.update_geometry(self.probe())
         before = self.row_pixels()
+        self.set_clipboard(b"primary sentinel before drag", "primary")
         self.drag(len(expected), shift)
         self.verify_highlight(before, len(expected))
+        try:
+            self.wait(lambda: self.clipboard("primary") == expected, "drag selection as PRIMARY")
+        except AssertionError as error:
+            raise AssertionError(f"{error}\nexpected: {expected!r}\n"
+                                 f"actual: {self.clipboard('primary')!r}") from error
         for keys in ("ctrl+shift+c", "ctrl+Insert"):
             # Reuse the selection, but require each shortcut to replace an
             # external owner so a previous successful copy cannot satisfy it.
@@ -346,6 +368,10 @@ class ClipboardSmoke:
         self.set_clipboard(PASTE_TWO)
         self.key("shift+Insert")
         self.verify_input(EXPECTED_TWO)
+        # The middle button pastes PRIMARY, not CLIPBOARD, with the same encoding.
+        self.set_clipboard(PRIMARY_PASTE, "primary")
+        self.middle_click(5, 3)
+        self.verify_input(EXPECTED_PRIMARY)
         self.phase("plain")
         self.set_clipboard(PASTE_ONE)
         self.key("ctrl+shift+v")
@@ -358,6 +384,13 @@ class ClipboardSmoke:
             "mousedown", "1", "sleep", "0.05", "mouseup", "1")
         self.verify_input(b"\x1b[<0;26;5M\x1b[<0;26;5m")
         self.copy_selection(SHIFT_TEXT, shift=True)
+        # With mouse tracking the middle button belongs to the program; Shift
+        # takes it back for a PRIMARY paste.
+        self.middle_click(25, 4)
+        self.verify_input(b"\x1b[<1;26;5M\x1b[<1;26;5m")
+        self.set_clipboard(PRIMARY_PASTE, "primary")
+        self.middle_click(25, 4, shift=True)
+        self.verify_input(EXPECTED_PRIMARY)
 
     def cleanup(self) -> None:
         (self.directory / "stop").touch()
@@ -367,7 +400,8 @@ class ClipboardSmoke:
             # Release injected modifiers/buttons even when an assertion interrupted
             # a gesture, then terminate only our own raw PTY helper if still alive.
             if self.window:
-                for arguments in (["keyup", "Shift_L", "Control_L"], ["mouseup", "1"]):
+                for arguments in (["keyup", "Shift_L", "Control_L"], ["mouseup", "1"],
+                                  ["mouseup", "2"]):
                     try:
                         subprocess.run(["xdotool", *arguments], capture_output=True, timeout=2)
                     except (OSError, subprocess.TimeoutExpired):
@@ -427,7 +461,8 @@ def main() -> None:
             print("PASS clipboard: exact compound graphemes through real X11 drag copy", flush=True)
         else:
             print("PASS clipboard: CtrlShiftC, CtrlInsert, CtrlShiftV, ShiftInsert, exact UTF-8 paste bytes, "
-                  "drag copy, retained owner, visible highlight, Shift mouse override, "
+                  "drag copy, drag to PRIMARY, middle-click PRIMARY paste, Shift+middle under "
+                  "mouse tracking, retained owner, visible highlight, Shift mouse override, "
                   "compound graphemes, wrapped URL and exact copy after four no-redraw resizes",
                   flush=True)
 
