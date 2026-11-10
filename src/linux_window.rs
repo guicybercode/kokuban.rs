@@ -55,6 +55,7 @@ mod damage;
 mod dispatch;
 mod draw;
 mod ime;
+mod overlay;
 mod pointer;
 mod sizing;
 mod status;
@@ -82,6 +83,7 @@ use ime::{
     replace_ime_preedit, reveal_ime_input_viewport_locked, sync_ime_cursor_area_with,
     ImeCursorArea, ImePreedit, ImePreeditPayload,
 };
+use overlay::{paint_strip, search_prompt, search_strip_row, StripColors};
 use pointer::{mouse_button_code_from_winit, PointerRouteState};
 use sizing::{
     atlas_cell_dimensions, configured_terminal_dimensions, create_glyph_atlas, drawable_dimensions,
@@ -411,6 +413,14 @@ pub(crate) fn launch(
     combine_launch_results(run_result, reader_join_result, finish_result)
 }
 
+fn xrgb_components(color: u32) -> (u8, u8, u8) {
+    (
+        ((color >> 16) & 0xff) as u8,
+        ((color >> 8) & 0xff) as u8,
+        (color & 0xff) as u8,
+    )
+}
+
 fn xrgb_from_hex(hex: &str) -> u32 {
     let (red, green, blue) = ColorConfig::parse_hex(hex);
     rgb_to_xrgb(red, green, blue)
@@ -665,6 +675,21 @@ fn search_key_from_winit(logical_key: &Key, modifiers: ModifiersState) -> Search
             .map_or(SearchKey::Ignore, SearchKey::Char),
         _ => SearchKey::Ignore,
     }
+}
+
+/// Append committed IME text to the open search query; true when it changed.
+fn type_into_search(pane: &mut Pane, bytes: &[u8]) -> bool {
+    let mut changed = false;
+    for character in String::from_utf8_lossy(bytes).chars() {
+        if character.is_control() {
+            continue;
+        }
+        changed |= matches!(
+            pane.handle_search_key(SearchKey::Char(character)),
+            Some(SearchKeyOutcome::Changed)
+        );
+    }
+    changed
 }
 
 /// Shortcuts that must not fire again while the key is held.
@@ -947,6 +972,11 @@ impl LinuxWindow {
             .cell_dimensions
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let frame_size = (width.get(), height.get());
+        let strip_colors = StripColors {
+            text: self.colors.default_background(),
+            background: self.colors.resolve_foreground(Color::Default, false),
+            accent: xrgb_components(self.divider_colors.focused),
+        };
         let (pane_frames, dividers, focused_index) = {
             // Match the reader's lock order: pane tree, then image store.
             let mut tree = lock_tree(&self.panes).map_err(|error| error.to_string())?;
@@ -984,6 +1014,22 @@ impl LinuxWindow {
                         &self.colors,
                         self.divider_colors.focused,
                     );
+                    let prompt = search_prompt(search, snapshot.columns, strip_colors);
+                    let row = search_strip_row(search, &pane.grid);
+                    paint_strip(
+                        &mut snapshot,
+                        row,
+                        &prompt.segments,
+                        strip_colors.background,
+                    );
+                    if id == focused {
+                        // Typed text and IME candidates belong to the query.
+                        snapshot.cursor = None;
+                        snapshot.input_cursor = (
+                            row,
+                            prompt.caret_column.min(snapshot.columns.saturating_sub(1)),
+                        );
+                    }
                 }
                 let images =
                     snapshot_images(&pane.kitty_handler, &store, &pane.grid, cell_dimensions);
@@ -2127,6 +2173,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                                 viewport_changed: false,
                             });
                         };
+                        if pane.search.is_some() {
+                            // Composed text extends the query, never the shell.
+                            let changed = type_into_search(pane, &bytes);
+                            return Ok(KeyboardInputOutcome::Ignored {
+                                viewport_changed: changed,
+                            });
+                        }
                         let (grid, input) = pane.grid_and_input();
                         dispatch_encoded_terminal_input_locked(grid, Some(bytes), |bytes| {
                             input.queue_input(bytes);
@@ -2460,7 +2513,8 @@ mod tests {
         apply_search_to_snapshot, arm_grid_redraw, begin_grid_redraw, divider_rectangle,
         layout_viewport, pack_cell_dimensions, pane_action_ignores_repeat, pane_local_position,
         pane_viewport, search_key_from_winit, sync_pane_metrics, terminal_color_query_value,
-        unpack_cell_dimensions, GridAccessError, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        type_into_search, unpack_cell_dimensions, xrgb_components, GridAccessError,
+        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::grid::cell::Color;
     use crate::grid::Grid;
@@ -2585,6 +2639,41 @@ mod tests {
             touches_attention: false,
         };
         assert_eq!(divider_rectangle(&horizontal), ((0, 297), (800, 6)));
+    }
+
+    #[test]
+    fn packed_colors_unpack_to_their_components() {
+        assert_eq!(xrgb_components(0x00b5_312c), (0xb5, 0x31, 0x2c));
+        assert_eq!(xrgb_components(0xff00_0000), (0, 0, 0));
+    }
+
+    #[test]
+    fn ime_commits_extend_only_an_open_search() {
+        let command: Vec<std::ffi::OsString> = ["/bin/sh", "-c", "read value"]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let mut tree = PaneTree::new(
+            20,
+            4,
+            100,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            std::sync::Arc::new(|| {}),
+            &command,
+        )
+        .expect("IME search test should spawn its PTY");
+        let pane = tree.focused_pane_mut().unwrap();
+        assert!(!type_into_search(pane, "x".as_bytes()));
+        assert!(pane.search.is_none());
+
+        pane.search = Some(SearchState::new(String::new()));
+        assert!(type_into_search(pane, "日本\n\u{7}".as_bytes()));
+        assert_eq!(pane.search.as_ref().unwrap().query, "日本");
+        assert!(!type_into_search(pane, "\r".as_bytes()));
     }
 
     #[test]
