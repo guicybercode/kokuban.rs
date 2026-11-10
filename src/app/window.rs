@@ -1075,6 +1075,23 @@ define_class!(
             dispatch_window_focus_transition(true);
         }
 
+        // A frame presented before the window reached the screen can be lost,
+        // leaving a new window empty until the next key press: draw the
+        // current grid again whenever AppKit reports the window as visible.
+        #[unsafe(method(windowDidChangeOcclusionState:))]
+        fn window_did_change_occlusion_state(&self, _notification: &NSNotification) {
+            let Some(window) = self.window() else {
+                return;
+            };
+            if window_is_visible(window.occlusionState()) {
+                VIEW_STATE.with(|state| {
+                    if let Some(state) = state.borrow().as_ref() {
+                        state.request_render();
+                    }
+                });
+            }
+        }
+
         #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _notification: &NSNotification) {
             // A pre-edit cannot survive losing the key window: drop it on both sides.
@@ -1214,6 +1231,12 @@ fn deliver_key_event(event: &NSEvent) {
     if !handle_search_key(event, event.keyCode(), key_modifiers) {
         forward_key_event_to_pane(event);
     }
+}
+
+/// Whether any part of the window is on screen (not minimized, hidden,
+/// fully covered or on another Space).
+fn window_is_visible(occlusion: NSWindowOcclusionState) -> bool {
+    occlusion.contains(NSWindowOcclusionState::Visible)
 }
 
 /// Rebuild the glyph atlas, pane geometry and Metal layer when the window's
@@ -2305,7 +2328,9 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
 #[cfg(test)]
 mod tests {
     use super::search_key_from_mac_event;
-    use super::{backing_scale_change, mac_key_route, search_text_keys, MacKeyRoute};
+    use super::{
+        backing_scale_change, mac_key_route, search_text_keys, window_is_visible, MacKeyRoute,
+    };
     use super::{
         bracketed_paste_len, dispatch_window_focus_transition_with, encode_clipboard_paste,
         encode_macos_forwarded_wheel, focus_report_bytes, mac_key_equivalent_route,
@@ -3314,6 +3339,28 @@ mod tests {
             .iter()
             .map(|method| method.name().name().to_string_lossy().into_owned())
             .collect()
+    }
+
+    #[test]
+    fn occlusion_visibility_follows_the_visible_bit_only() {
+        use objc2_app_kit::NSWindowOcclusionState;
+        assert!(window_is_visible(NSWindowOcclusionState::Visible));
+        assert!(window_is_visible(NSWindowOcclusionState(
+            NSWindowOcclusionState::Visible.0 | 1 << 20
+        )));
+        assert!(!window_is_visible(NSWindowOcclusionState(0)));
+        assert!(!window_is_visible(NSWindowOcclusionState(1 << 20)));
+    }
+
+    #[test]
+    fn terminal_view_redraws_when_the_window_becomes_visible() {
+        let selectors = terminal_view_own_selectors();
+        assert!(
+            selectors
+                .iter()
+                .any(|name| name == "windowDidChangeOcclusionState:"),
+            "TerminalView must observe occlusion changes: {selectors:?}"
+        );
     }
 
     #[test]
