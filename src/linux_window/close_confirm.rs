@@ -53,14 +53,14 @@ pub(super) enum CloseAnswer {
     Ignore,
 }
 
-/// `y` or Enter confirms, `n` or Escape cancels; chords are ignored.
+/// Only `y` confirms: `n`, Escape and Enter cancel, so a stray Enter (the
+/// default `N` of `[y/N]`) never ends a running job. Chords are ignored.
 pub(super) fn close_answer(logical_key: &Key, modifiers: ModifiersState) -> CloseAnswer {
     if modifiers.control_key() || modifiers.alt_key() || modifiers.super_key() {
         return CloseAnswer::Ignore;
     }
     match logical_key {
-        Key::Named(NamedKey::Enter) => CloseAnswer::Confirm,
-        Key::Named(NamedKey::Escape) => CloseAnswer::Cancel,
+        Key::Named(NamedKey::Enter | NamedKey::Escape) => CloseAnswer::Cancel,
         Key::Character(text) => match text.as_str() {
             "y" | "Y" => CloseAnswer::Confirm,
             "n" | "N" => CloseAnswer::Cancel,
@@ -144,23 +144,31 @@ mod tests {
     use winit::keyboard::{Key, ModifiersState, NamedKey, SmolStr};
 
     #[test]
-    fn y_and_enter_confirm_n_and_escape_cancel_everything_else_is_swallowed() {
+    fn only_y_confirms_while_n_escape_and_enter_keep_the_pane() {
         let none = ModifiersState::empty();
         let character = |text: &str| Key::Character(SmolStr::new(text));
+        // The four answers the [y/N] strip offers.
         assert_eq!(close_answer(&character("y"), none), CloseAnswer::Confirm);
-        assert_eq!(
-            close_answer(&character("Y"), ModifiersState::SHIFT),
-            CloseAnswer::Confirm
-        );
-        assert_eq!(
-            close_answer(&Key::Named(NamedKey::Enter), none),
-            CloseAnswer::Confirm
-        );
         assert_eq!(close_answer(&character("n"), none), CloseAnswer::Cancel);
         assert_eq!(
             close_answer(&Key::Named(NamedKey::Escape), none),
             CloseAnswer::Cancel
         );
+        assert_eq!(
+            close_answer(&Key::Named(NamedKey::Enter), none),
+            CloseAnswer::Cancel
+        );
+        // Caps Lock or Shift give the same answers.
+        assert_eq!(
+            close_answer(&character("Y"), ModifiersState::SHIFT),
+            CloseAnswer::Confirm
+        );
+        assert_eq!(close_answer(&character("N"), none), CloseAnswer::Cancel);
+        assert_eq!(
+            close_answer(&Key::Named(NamedKey::Enter), ModifiersState::SHIFT),
+            CloseAnswer::Cancel
+        );
+        // Anything else, and every chord, is swallowed.
         assert_eq!(close_answer(&character("q"), none), CloseAnswer::Ignore);
         assert_eq!(
             close_answer(&Key::Named(NamedKey::Tab), none),

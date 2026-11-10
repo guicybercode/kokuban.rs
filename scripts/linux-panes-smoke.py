@@ -15,7 +15,8 @@ With `sleep` in the foreground, `Ctrl+Shift+W` must ask instead of closing;
 
 A second session runs `sleep` and asks the window to close through
 WM_DELETE_WINDOW: the strip must appear, Escape keeps the terminal and its
-shell, and Enter on the next request exits cleanly.
+shell, Enter (the default N of [y/N]) keeps them too, and y on the next
+request exits cleanly.
 """
 
 import argparse
@@ -353,10 +354,18 @@ class PanesSmoke:
         self.wait_for_strip(False, False, "the window prompt to close after Escape")
         self.stays(lambda: job in child_pids(shell), "cancelling ended the job")
 
+        # Enter answers the default N of [y/N]: the job keeps running.
         send_wm_delete_window(int(self.window))
         self.wait_for_strip(True, False, "the window close prompt again")
+        self.key("Return")
+        self.wait_for_strip(False, False, "the window prompt to close after Enter")
+        self.stays(lambda: self.terminal.poll() is None and job in child_pids(shell),
+                   "Enter closed the window")
+
+        send_wm_delete_window(int(self.window))
+        self.wait_for_strip(True, False, "the window close prompt a third time")
         subprocess.run(
-            ["xdotool", "key", "--window", self.window, "--clearmodifiers", "Return"],
+            ["xdotool", "key", "--window", self.window, "--clearmodifiers", "y"],
             capture_output=True, timeout=3, check=False,
         )
         try:

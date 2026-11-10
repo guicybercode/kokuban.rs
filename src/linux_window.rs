@@ -550,7 +550,7 @@ struct LinuxWindow {
     terminal_closed: bool,
     confirm_on_close_pane: bool,
     confirm_on_quit: bool,
-    /// Close waiting for y/n; keys and clicks go nowhere else meanwhile.
+    /// Close waiting for y/N; keys and clicks go nowhere else meanwhile.
     close_prompt: Option<ClosePrompt>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,

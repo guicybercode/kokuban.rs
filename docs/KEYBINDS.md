@@ -58,7 +58,7 @@ The Linux window dispatches the `[keybind.linux]` table below: splits, close, fo
 
 While the search is open, a strip over the pane's last row (its first row when the current match sits on the last one) shows the query, a block caret and `current/total` or `no matches` in hanko red; typed and IME-composed text goes to the query, never to the shell.
 
-`Ctrl+Shift+W` and the window's close button ask first when a program other than the shell holds the pane's terminal in the foreground (an editor, `ssh`, a build; detected with `tcgetpgrp` on the PTY), naming it in a strip such as `Close pane (vim)? [y/n]`. `y` or `Enter` closes, `n` or `Esc` cancels and keeps every PTY; other keys and clicks are ignored until then. An idle shell closes at once. `[confirm] on_close_pane = false` and `on_quit = false` turn the questions off. A program started with `-e` is the pane's own process and does not count as a job.
+`Ctrl+Shift+W` and the window's close button ask first when a program other than the shell holds the pane's terminal in the foreground (an editor, `ssh`, a build; detected with `tcgetpgrp` on the PTY), naming it in a strip such as `Close pane (vim)? [y/N]`. Only `y` closes; `n`, `Esc` and `Enter` (the default `N`) cancel and keep every PTY; other keys and clicks are ignored until then. An idle shell closes at once. `[confirm] on_close_pane = false` and `on_quit = false` turn the questions off. A program started with `-e` is the pane's own process and does not count as a job.
 
 Still macOS-only: the status bar, so Linux shows neither the ● attention mark nor the prompt indicator.
 

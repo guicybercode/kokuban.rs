@@ -148,7 +148,7 @@ pub(super) fn search_strip_row(search: &SearchState, grid: &Grid) -> usize {
     }
 }
 
-/// " Close pane (vim)? [y/n]": only the program names shrink, to an
+/// " Close pane (vim)? [y/N]": only the program names shrink, to an
 /// ellipsis or out of the row, so the question and the keys stay visible.
 pub(super) fn close_prompt_segments(
     question: &str,
@@ -156,7 +156,7 @@ pub(super) fn close_prompt_segments(
     columns: usize,
     colors: StripColors,
 ) -> Vec<StripSegment> {
-    // " " + question + " (" + names + ")" + "? " + "[y/n]".
+    // " " + question + " (" + names + ")" + "? " + "[y/N]".
     let room = columns.saturating_sub(text_width(question) + 11);
     let names = running.join(", ");
     let names = if names.is_empty() || room == 0 {
@@ -181,7 +181,7 @@ pub(super) fn close_prompt_segments(
             colors.text,
             colors.background,
         ),
-        StripSegment::new("[y/n]", colors.accent, colors.background),
+        StripSegment::new("[y/N]", colors.accent, colors.background),
     ]
 }
 
@@ -441,7 +441,7 @@ mod tests {
         let grid = Grid::new(8, 2, 10);
         let mut snapshot = snapshot_locked_grid(&grid);
         let segments = vec![StripSegment::new(
-            " Close pane? [y/n]",
+            " Close pane? [y/N]",
             COLORS.text,
             COLORS.background,
         )];
@@ -483,12 +483,12 @@ mod tests {
     fn close_prompt_names_the_programs_and_highlights_the_keys() {
         let one = ["vim".to_string()];
         let segments = close_prompt_segments("Close pane", &one, 80, COLORS);
-        assert_eq!(joined(&segments), " Close pane (vim)? [y/n]");
+        assert_eq!(joined(&segments), " Close pane (vim)? [y/N]");
         assert_eq!(segments[1].foreground, COLORS.accent);
 
         let two = ["vim".to_string(), "ssh".to_string()];
         let segments = close_prompt_segments("Close window", &two, 80, COLORS);
-        assert_eq!(joined(&segments), " Close window (vim, ssh)? [y/n]");
+        assert_eq!(joined(&segments), " Close window (vim, ssh)? [y/N]");
     }
 
     #[test]
@@ -496,15 +496,15 @@ mod tests {
         let names = ["sleep".to_string(), "htop".to_string()];
         // 29 columns, a pane beside a split: 8 columns remain for the names.
         let segments = close_prompt_segments("Close pane", &names, 29, COLORS);
-        assert_eq!(joined(&segments), " Close pane (sleep, …)? [y/n]");
+        assert_eq!(joined(&segments), " Close pane (sleep, …)? [y/N]");
         let mut snapshot = snapshot_locked_grid(&Grid::new(29, 2, 10));
         paint_strip(&mut snapshot, 1, &segments, COLORS.background);
-        assert_eq!(row_text(&snapshot, 1), " Close pane (sleep, …)? [y/n]");
+        assert_eq!(row_text(&snapshot, 1), " Close pane (sleep, …)? [y/N]");
 
         let segments = close_prompt_segments("Close pane", &names, 22, COLORS);
-        assert_eq!(joined(&segments), " Close pane (…)? [y/n]");
+        assert_eq!(joined(&segments), " Close pane (…)? [y/N]");
         let segments = close_prompt_segments("Close pane", &names, 21, COLORS);
-        assert_eq!(joined(&segments), " Close pane? [y/n]");
+        assert_eq!(joined(&segments), " Close pane? [y/N]");
     }
 
     #[test]
