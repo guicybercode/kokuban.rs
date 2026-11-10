@@ -154,8 +154,10 @@ Command arguments after `-e` are passed unchanged; use `sh -c` explicitly for
 pipelines or shell expansion. The command runs in the first pane; splits on
 macOS open the login shell. On macOS the status bar shows the program's name
 (`status_bar.show_shell`), and `Kokuban.app` ignores the `-psn_` argument that
-Finder adds. See [Omarchy installation and bindings](OMARCHY.md) to register
-Kokuban with `xdg-terminal-exec`. CI checks command launching under X11 and
+Finder adds. On Omarchy, `scripts/omarchy-install.sh` installs a source build,
+selects it through `xdg-terminal-exec` and adds the Hyprland `terminal` tag that
+Super+C/Super+V depend on; see [Omarchy installation and bindings](OMARCHY.md).
+CI checks command launching under X11 and
 headless Weston/Wayland; Hyprland integration still needs an on-device run.
 
 ### Option key on macOS
