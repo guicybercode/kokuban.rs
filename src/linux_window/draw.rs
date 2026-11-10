@@ -43,6 +43,9 @@ pub(super) struct GridSnapshot {
     pub(super) input_cursor: (usize, usize),
     pub(super) wrap_pending: bool,
     pub(super) auto_wrap: bool,
+    /// Rows covered by a window strip (search, close prompt). They are
+    /// painted again after the images so no kitty or sixel image hides them.
+    pub(super) strip_rows: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +111,7 @@ pub(super) fn snapshot_locked_grid(grid: &Grid) -> GridSnapshot {
         input_cursor: (grid.cursor_row, grid.cursor_col),
         wrap_pending: grid.is_wrap_pending(),
         auto_wrap: grid.auto_wrap,
+        strip_rows: Vec::new(),
     }
 }
 
@@ -448,149 +452,168 @@ pub(super) fn draw_grid_snapshot_in_band(
     let background_rows =
         background_rows.start.min(snapshot.rows)..background_rows.end.min(snapshot.rows);
 
-    // Kitty's lowest layer is behind non-default cell backgrounds. Ordinary
-    // negative z values are above backgrounds but below glyphs.
-    draw_images(frame, frame_size, images, |z| z < i32::MIN / 2);
-    for row in background_rows.clone() {
-        for column in 0..snapshot.columns {
-            let Some(cell) = snapshot.cell(row, column) else {
-                continue;
-            };
-            if cell.flags.contains(CellFlags::WIDE_CONT) {
-                continue;
-            }
-            let Some(origin) = band_origin(row, column) else {
-                continue;
-            };
-            // The caller initializes the whole frame or damaged band first.
-            if cell.bg == Color::Default && !cell.flags.contains(CellFlags::REVERSE) {
-                continue;
-            }
-            let width = if cell.flags.contains(CellFlags::WIDE) {
-                cell_size.0.saturating_mul(2)
-            } else {
-                cell_size.0
-            };
-            fill_rect(
-                frame,
-                frame_size,
-                origin,
-                (width, cell_size.1),
-                resolve_cell_colors(colors, cell).background,
-                u8::MAX,
-            );
-        }
-    }
-    draw_images(frame, frame_size, images, |z| {
-        (i32::MIN / 2..0).contains(&z)
-    });
-
-    for row in 0..snapshot.rows {
-        // Ink can overhang any number of rows, so keep looking up its actual
-        // bounds. Full repaints do not need these extra intersection checks.
-        let baseline = if partial {
-            cell_origin(row, 0, cell_dimensions)
-                .and_then(|(_, y)| rounded_f64_i32(f64::from(y) + f64::from(atlas.ascent)))
-        } else {
-            None
-        };
-        let underline_row = !partial || background_rows.contains(&row);
-        for column in 0..snapshot.columns {
-            let Some(cell) = snapshot.cell(row, column) else {
-                continue;
-            };
-            if cell.flags.contains(CellFlags::WIDE_CONT) {
-                continue;
-            }
-            let Some(origin) = cell_origin(row, column, cell_dimensions) else {
-                continue;
-            };
-            if !cell_content_is_visible(cell.flags) {
-                continue;
-            }
-
-            let has_content = cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0');
-            let builtin = if has_content {
-                builtin_cell_rects(cell, cell_size, atlas.scale_factor())
-            } else {
-                None
-            };
-            let glyph = if has_content && builtin.is_none() {
-                let glyph = atlas.get_or_insert_cell(cell);
-                let intersects = !partial
-                    || baseline
-                        .and_then(|y| y.checked_add(glyph.bearing_y))
-                        .is_some_and(|top| {
-                            i64::from(top) < i64::from(band.end)
-                                && i64::from(top) + i64::from(glyph.pixel_h) > i64::from(band.start)
-                        });
-                intersects.then_some(glyph)
-            } else {
-                None
-            };
-            // Underlines stay inside the cell box even when the glyph's ink
-            // misses the band; they must not be skipped along with that glyph.
-            let underline = underline_row && cell.underline_style != UnderlineStyle::None;
-            // Built-in shapes stay inside the cell box, like underlines.
-            let builtin = builtin.filter(|_| underline_row);
-            if glyph.is_none() && builtin.is_none() && !underline {
-                continue;
-            }
-            let resolved = resolve_cell_colors(colors, cell);
-            if let Some(rects) = builtin {
-                if let Some(origin) = band_origin(row, column) {
-                    draw_builtin_rects(
-                        frame,
-                        frame_size,
-                        &rects,
-                        origin,
-                        resolved.foreground,
-                        None,
-                    );
-                }
-            }
-            if let Some(glyph) = glyph {
-                let source = GlyphSource {
-                    pixels: &atlas.pixels,
-                    rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
-                    size: (atlas.width, atlas.height),
-                    ascent: atlas.ascent,
+    let paint_backgrounds = |frame: &mut [u32], rows: std::ops::Range<usize>| {
+        for row in rows {
+            for column in 0..snapshot.columns {
+                let Some(cell) = snapshot.cell(row, column) else {
+                    continue;
                 };
-                draw_cell_glyph_in_band(
-                    frame,
-                    frame_size,
-                    source,
-                    glyph,
-                    origin,
-                    resolved.foreground,
-                    offset,
-                );
-            }
-
-            if underline {
-                let background_width = if cell.flags.contains(CellFlags::WIDE) {
+                if cell.flags.contains(CellFlags::WIDE_CONT) {
+                    continue;
+                }
+                let Some(origin) = band_origin(row, column) else {
+                    continue;
+                };
+                // The caller initializes the whole frame or damaged band first.
+                if cell.bg == Color::Default && !cell.flags.contains(CellFlags::REVERSE) {
+                    continue;
+                }
+                let width = if cell.flags.contains(CellFlags::WIDE) {
                     cell_size.0.saturating_mul(2)
                 } else {
                     cell_size.0
                 };
-                let underline_color =
-                    resolve_cell_underline_color(colors, cell, resolved.foreground);
-                draw_cell_underline_in_band(
+                fill_rect(
                     frame,
                     frame_size,
                     origin,
-                    background_width,
-                    cell_size.1,
-                    atlas.ascent,
-                    cell.underline_style,
-                    underline_color,
-                    offset,
+                    (width, cell_size.1),
+                    resolve_cell_colors(colors, cell).background,
+                    u8::MAX,
                 );
             }
         }
-    }
+    };
+
+    // Kitty's lowest layer is behind non-default cell backgrounds. Ordinary
+    // negative z values are above backgrounds but below glyphs.
+    draw_images(frame, frame_size, images, |z| z < i32::MIN / 2);
+    paint_backgrounds(frame, background_rows.clone());
+    draw_images(frame, frame_size, images, |z| {
+        (i32::MIN / 2..0).contains(&z)
+    });
+
+    let paint_ink = |frame: &mut [u32], atlas: &mut GlyphAtlas, rows: std::ops::Range<usize>| {
+        for row in rows {
+            // Ink can overhang any number of rows, so keep looking up its actual
+            // bounds. Full repaints do not need these extra intersection checks.
+            let baseline = if partial {
+                cell_origin(row, 0, cell_dimensions)
+                    .and_then(|(_, y)| rounded_f64_i32(f64::from(y) + f64::from(atlas.ascent)))
+            } else {
+                None
+            };
+            let underline_row = !partial || background_rows.contains(&row);
+            for column in 0..snapshot.columns {
+                let Some(cell) = snapshot.cell(row, column) else {
+                    continue;
+                };
+                if cell.flags.contains(CellFlags::WIDE_CONT) {
+                    continue;
+                }
+                let Some(origin) = cell_origin(row, column, cell_dimensions) else {
+                    continue;
+                };
+                if !cell_content_is_visible(cell.flags) {
+                    continue;
+                }
+
+                let has_content = cell.grapheme.is_some() || (cell.c != ' ' && cell.c != '\0');
+                let builtin = if has_content {
+                    builtin_cell_rects(cell, cell_size, atlas.scale_factor())
+                } else {
+                    None
+                };
+                let glyph = if has_content && builtin.is_none() {
+                    let glyph = atlas.get_or_insert_cell(cell);
+                    let intersects = !partial
+                        || baseline
+                            .and_then(|y| y.checked_add(glyph.bearing_y))
+                            .is_some_and(|top| {
+                                i64::from(top) < i64::from(band.end)
+                                    && i64::from(top) + i64::from(glyph.pixel_h)
+                                        > i64::from(band.start)
+                            });
+                    intersects.then_some(glyph)
+                } else {
+                    None
+                };
+                // Underlines stay inside the cell box even when the glyph's ink
+                // misses the band; they must not be skipped along with that glyph.
+                let underline = underline_row && cell.underline_style != UnderlineStyle::None;
+                // Built-in shapes stay inside the cell box, like underlines.
+                let builtin = builtin.filter(|_| underline_row);
+                if glyph.is_none() && builtin.is_none() && !underline {
+                    continue;
+                }
+                let resolved = resolve_cell_colors(colors, cell);
+                if let Some(rects) = builtin {
+                    if let Some(origin) = band_origin(row, column) {
+                        draw_builtin_rects(
+                            frame,
+                            frame_size,
+                            &rects,
+                            origin,
+                            resolved.foreground,
+                            None,
+                        );
+                    }
+                }
+                if let Some(glyph) = glyph {
+                    let source = GlyphSource {
+                        pixels: &atlas.pixels,
+                        rgba_pixels: atlas.is_color(glyph).then_some(&atlas.rgba_pixels),
+                        size: (atlas.width, atlas.height),
+                        ascent: atlas.ascent,
+                    };
+                    draw_cell_glyph_in_band(
+                        frame,
+                        frame_size,
+                        source,
+                        glyph,
+                        origin,
+                        resolved.foreground,
+                        offset,
+                    );
+                }
+
+                if underline {
+                    let background_width = if cell.flags.contains(CellFlags::WIDE) {
+                        cell_size.0.saturating_mul(2)
+                    } else {
+                        cell_size.0
+                    };
+                    let underline_color =
+                        resolve_cell_underline_color(colors, cell, resolved.foreground);
+                    draw_cell_underline_in_band(
+                        frame,
+                        frame_size,
+                        origin,
+                        background_width,
+                        cell_size.1,
+                        atlas.ascent,
+                        cell.underline_style,
+                        underline_color,
+                        offset,
+                    );
+                }
+            }
+        }
+    };
+    paint_ink(frame, atlas, 0..snapshot.rows);
 
     draw_images(frame, frame_size, images, |z| z >= 0);
+    if !images.is_empty() {
+        // Window strips stay above every image layer: repaint their rows.
+        for &row in snapshot
+            .strip_rows
+            .iter()
+            .filter(|&&row| row < snapshot.rows)
+        {
+            paint_backgrounds(frame, row..row + 1);
+            paint_ink(frame, atlas, row..row + 1);
+        }
+    }
     if !draw_terminal_cursor {
         return;
     }

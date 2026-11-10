@@ -27,7 +27,7 @@ pub(super) struct StripSegment {
 }
 
 impl StripSegment {
-    fn new(text: impl Into<String>, foreground: Rgb, background: Rgb) -> Self {
+    pub(super) fn new(text: impl Into<String>, foreground: Rgb, background: Rgb) -> Self {
         Self {
             text: text.into(),
             foreground,
@@ -197,7 +197,8 @@ fn strip_cell(character: char, foreground: Rgb, background: Rgb, flags: CellFlag
 
 /// Replace `row` of the snapshot with the strip. Text that does not fit ends
 /// in an ellipsis; a wide character that would straddle the edge is dropped.
-/// The terminal cursor is hidden when it sat on that row.
+/// The terminal cursor is hidden when it sat on that row, and the row is
+/// drawn again after the pane's images so none of them covers the strip.
 pub(super) fn paint_strip(
     snapshot: &mut GridSnapshot,
     row: usize,
@@ -266,6 +267,9 @@ pub(super) fn paint_strip(
     }
     if snapshot.cursor.is_some_and(|cursor| cursor.row == row) {
         snapshot.cursor = None;
+    }
+    if !snapshot.strip_rows.contains(&row) {
+        snapshot.strip_rows.push(row);
     }
 }
 
@@ -427,6 +431,7 @@ mod tests {
         let blank = snapshot.cell(2, 11).unwrap();
         assert_eq!(blank.bg, Color::Rgb(244, 246, 240));
         assert_eq!(snapshot.cursor, None);
+        assert_eq!(snapshot.strip_rows, [2]);
 
         // A strip on another row leaves the cursor alone.
         let mut snapshot = snapshot_locked_grid(&grid);
