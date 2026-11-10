@@ -1083,13 +1083,14 @@ define_class!(
             let Some(window) = self.window() else {
                 return;
             };
-            if window_is_visible(window.occlusionState()) {
-                VIEW_STATE.with(|state| {
-                    if let Some(state) = state.borrow().as_ref() {
-                        state.request_render();
-                    }
-                });
-            }
+            // Hidden windows (minimized, covered, other Space, screen locked)
+            // stop drawing; becoming visible draws what arrived meanwhile.
+            let visible = window_is_visible(window.occlusionState());
+            VIEW_STATE.with(|state| {
+                if let Some(state) = state.borrow().as_ref() {
+                    state.render_scheduler.set_window_visible(visible);
+                }
+            });
         }
 
         #[unsafe(method(windowDidResignKey:))]
