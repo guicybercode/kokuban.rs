@@ -53,10 +53,12 @@ use winit::platform::x11::WindowAttributesExtX11;
 use winit::window::{Icon, ImePurpose, UserAttentionType, Window, WindowId};
 
 mod clipboard;
+mod close_confirm;
 mod damage;
 mod dispatch;
 mod draw;
 mod ime;
+mod overlay;
 mod pointer;
 mod sizing;
 mod status;
@@ -66,6 +68,9 @@ mod test_support;
 use clipboard::{
     apply_selection_to_snapshot, clipboard_action, pointer_button_is_local, primary_selection_text,
     selection_point_at_pointer, sync_selection, ClipboardAction, SelectionContext,
+};
+use close_confirm::{
+    close_answer, pane_close_prompt, window_close_prompt, CloseAnswer, ClosePrompt, CloseTarget,
 };
 use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
 use dispatch::{
@@ -83,6 +88,10 @@ use ime::{
     ime_cursor_area, ime_payload_from_event, ime_preedit_payload, layout_ime_preedit_for_snapshot,
     replace_ime_preedit, reveal_ime_input_viewport_locked, sync_ime_cursor_area_with,
     ImeCursorArea, ImePreedit, ImePreeditPayload,
+};
+use overlay::{
+    close_prompt_segments, keep_match_clear_of_strip, paint_strip, search_prompt, search_strip_row,
+    StripColors,
 };
 use pointer::{mouse_button_code_from_winit, PointerRouteState};
 use sizing::{
@@ -373,6 +382,8 @@ pub(crate) fn launch(
         redraw_pending,
         notifications,
         window_focused,
+        confirm_on_close_pane: config.confirm.on_close_pane,
+        confirm_on_quit: config.confirm.on_quit,
     });
     application.clipboard = clipboard;
     application.primary_selection = config.clipboard.primary_selection;
@@ -412,6 +423,14 @@ pub(crate) fn launch(
     }
 
     combine_launch_results(run_result, reader_join_result, finish_result)
+}
+
+fn xrgb_components(color: u32) -> (u8, u8, u8) {
+    (
+        ((color >> 16) & 0xff) as u8,
+        ((color >> 8) & 0xff) as u8,
+        (color & 0xff) as u8,
+    )
 }
 
 fn xrgb_from_hex(hex: &str) -> u32 {
@@ -458,6 +477,10 @@ struct LinuxWindowParams {
     redraw_pending: Arc<AtomicBool>,
     notifications: Arc<NotificationController>,
     window_focused: Arc<AtomicBool>,
+    /// `[confirm] on_close_pane` / `on_quit`: ask before closing a pane or
+    /// the window while a job runs in the foreground.
+    confirm_on_close_pane: bool,
+    confirm_on_quit: bool,
 }
 
 /// A clipboard paste requested while `pane` was focused; applied only if the
@@ -538,6 +561,10 @@ struct LinuxWindow {
     update_status: crate::update::SharedUpdateStatus,
     /// The last pane closed; the window exits after presenting one more frame.
     terminal_closed: bool,
+    confirm_on_close_pane: bool,
+    confirm_on_quit: bool,
+    /// Close waiting for y/N; keys and clicks go nowhere else meanwhile.
+    close_prompt: Option<ClosePrompt>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
     occluded: bool,
@@ -556,6 +583,9 @@ struct LinuxPaneActionHost {
     status_bar_height: f32,
     resize_step: f32,
     zoom: Option<ZoomDirection>,
+    /// Ask before closing a pane with a foreground job.
+    confirm_close_pane: bool,
+    close_prompt: Option<ClosePrompt>,
 }
 
 impl PaneActionHost for LinuxPaneActionHost {
@@ -580,9 +610,9 @@ impl PaneActionHost for LinuxPaneActionHost {
         self.zoom = Some(direction);
     }
 
-    fn confirm_close(&mut self, _id: PaneId, _pane: Option<&Pane>) -> bool {
-        // The confirmation dialog arrives with the status bar (Frente B2).
-        false
+    fn confirm_close(&mut self, id: PaneId, pane: Option<&Pane>) -> bool {
+        self.close_prompt = pane_close_prompt(self.confirm_close_pane, id, pane);
+        self.close_prompt.is_some()
     }
 }
 
@@ -675,6 +705,31 @@ fn search_key_from_winit(logical_key: &Key, modifiers: ModifiersState) -> Search
             .map_or(SearchKey::Ignore, SearchKey::Char),
         _ => SearchKey::Ignore,
     }
+}
+
+/// Give a key to the pane's open search, then keep the current match out
+/// from under the search strip. `None` when no search is open.
+fn handle_search_key(pane: &mut Pane, key: SearchKey) -> Option<SearchKeyOutcome> {
+    let outcome = pane.handle_search_key(key)?;
+    if let Some(search) = pane.search.as_ref() {
+        keep_match_clear_of_strip(search, &mut pane.grid);
+    }
+    Some(outcome)
+}
+
+/// Append committed IME text to the open search query; true when it changed.
+fn type_into_search(pane: &mut Pane, bytes: &[u8]) -> bool {
+    let mut changed = false;
+    for character in String::from_utf8_lossy(bytes).chars() {
+        if character.is_control() {
+            continue;
+        }
+        changed |= matches!(
+            handle_search_key(pane, SearchKey::Char(character)),
+            Some(SearchKeyOutcome::Changed)
+        );
+    }
+    changed
 }
 
 /// Shortcuts that must not fire again while the key is held.
@@ -774,6 +829,9 @@ impl LinuxWindow {
             window_focused: params.window_focused,
             update_status: Arc::new(Mutex::new(crate::update::UpdateStatus::Idle)),
             terminal_closed: false,
+            confirm_on_close_pane: params.confirm_on_close_pane,
+            confirm_on_quit: params.confirm_on_quit,
+            close_prompt: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
             occluded: false,
@@ -960,6 +1018,11 @@ impl LinuxWindow {
             .cell_dimensions
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let frame_size = (width.get(), height.get());
+        let strip_colors = StripColors::new(
+            self.colors.default_background(),
+            self.colors.resolve_foreground(Color::Default, false),
+            xrgb_components(self.divider_colors.focused),
+        );
         let (pane_frames, dividers, focused_index) = {
             // Match the reader's lock order: pane tree, then image store.
             let mut tree = lock_tree(&self.panes).map_err(|error| error.to_string())?;
@@ -989,7 +1052,8 @@ impl LinuxWindow {
                     &pane.grid,
                     &self.colors,
                 );
-                if let Some(search) = pane.search.as_ref() {
+                if let Some(search) = pane.search.as_mut() {
+                    let row = search_strip_row(search, &pane.grid);
                     apply_search_to_snapshot(
                         &mut snapshot,
                         search,
@@ -997,6 +1061,35 @@ impl LinuxWindow {
                         &self.colors,
                         self.divider_colors.focused,
                     );
+                    let prompt = search_prompt(search, snapshot.columns, strip_colors);
+                    paint_strip(
+                        &mut snapshot,
+                        row,
+                        &prompt.segments,
+                        strip_colors.background,
+                    );
+                    if id == focused {
+                        // Typed text and IME candidates belong to the query.
+                        snapshot.cursor = None;
+                        snapshot.input_cursor = (
+                            row,
+                            prompt.caret_column.min(snapshot.columns.saturating_sub(1)),
+                        );
+                    }
+                }
+                if let Some(prompt) = self
+                    .close_prompt
+                    .as_ref()
+                    .filter(|prompt| prompt.shown_in(focused) == id)
+                {
+                    let segments = close_prompt_segments(
+                        prompt.question(),
+                        &prompt.running,
+                        snapshot.columns,
+                        strip_colors,
+                    );
+                    let row = snapshot.rows.saturating_sub(1);
+                    paint_strip(&mut snapshot, row, &segments, strip_colors.background);
                 }
                 let images =
                     snapshot_images(&pane.kitty_handler, &store, &pane.grid, cell_dimensions);
@@ -1523,6 +1616,16 @@ impl LinuxWindow {
     /// the tree leaves to the window: focus reports, title, atlas for zoom,
     /// PTY sizes, retiring the closed pane and waking the reader.
     fn handle_pane_action(&mut self, event_loop: &ActiveEventLoop, action: PaneAction) {
+        self.apply_pane_action(event_loop, action, self.confirm_on_close_pane);
+    }
+
+    /// `ask_before_close` is false once the user confirmed the close prompt.
+    fn apply_pane_action(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        action: PaneAction,
+        ask_before_close: bool,
+    ) {
         let (Some(viewport), Some(cell_dimensions)) =
             (self.current_viewport(), self.cell_dimensions)
         else {
@@ -1534,6 +1637,8 @@ impl LinuxWindow {
             status_bar_height: self.status_bar_height,
             resize_step: self.resize_step,
             zoom: None,
+            confirm_close_pane: ask_before_close,
+            close_prompt: None,
         };
         // Hold the guard through a local handle: zoom rebuilds the atlas
         // (and other window fields) while the tree stays locked.
@@ -1547,6 +1652,20 @@ impl LinuxWindow {
             }
         };
         let outcome = apply_pane_action(&mut tree, action, &mut host);
+        if action == PaneAction::Search {
+            // A reopened search may land on a match under the strip.
+            if let Some(pane) = tree.focused_pane_mut() {
+                if let Some(search) = pane.search.as_ref() {
+                    keep_match_clear_of_strip(search, &mut pane.grid);
+                }
+            }
+        }
+        if let Some(prompt) = host.close_prompt.take() {
+            drop(tree);
+            self.close_prompt = Some(prompt);
+            self.request_redraw();
+            return;
+        }
         if outcome.terminate {
             dispatch_pane_focus_transition_locked(
                 &tree,
@@ -1617,6 +1736,32 @@ impl LinuxWindow {
         self.last_ime_cursor_area = None;
         self.apply_window_title();
         self.request_redraw();
+    }
+
+    /// Answer the open close prompt; a pane prompt only closes the pane it
+    /// was raised for, and only while that pane still has the focus.
+    fn answer_close_prompt(&mut self, event_loop: &ActiveEventLoop, answer: CloseAnswer) {
+        if answer == CloseAnswer::Ignore {
+            return;
+        }
+        let Some(prompt) = self.close_prompt.take() else {
+            return;
+        };
+        self.request_redraw();
+        if answer == CloseAnswer::Cancel {
+            return;
+        }
+        match prompt.target {
+            CloseTarget::Window => {
+                self.request_terminal_shutdown();
+                event_loop.exit();
+            }
+            CloseTarget::Pane(id) => match lock_tree(&self.panes).map(|tree| tree.focused == id) {
+                Ok(true) => self.apply_pane_action(event_loop, PaneAction::ClosePane, false),
+                Ok(false) => {}
+                Err(error) => self.fail(event_loop, error.to_string()),
+            },
+        }
     }
 
     /// Drop the window's bookkeeping for a pane that left the tree.
@@ -1818,8 +1963,23 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 }
             }
             WindowEvent::CloseRequested => {
-                self.request_terminal_shutdown();
-                event_loop.exit();
+                let prompt = if accepts_input {
+                    lock_tree(&self.panes)
+                        .ok()
+                        .and_then(|tree| window_close_prompt(self.confirm_on_quit, &tree))
+                } else {
+                    None
+                };
+                match prompt {
+                    Some(prompt) => {
+                        self.close_prompt = Some(prompt);
+                        self.request_redraw();
+                    }
+                    None => {
+                        self.request_terminal_shutdown();
+                        event_loop.exit();
+                    }
+                }
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
@@ -1899,6 +2059,18 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     button_code,
                     self.cell_dimensions,
                 );
+                if self.close_prompt.is_some() && state.is_pressed() {
+                    // A click must not move the focus or reach a program while
+                    // the close prompt waits for its answer.
+                    self.pointer_route.record_button_dispatch(
+                        device_id,
+                        state,
+                        button_code,
+                        false,
+                        cell_dimensions,
+                    );
+                    return;
+                }
                 let position = self.pointer_route.position_for(device_id);
                 if state.is_pressed() {
                     if let Some(position) = position {
@@ -2211,6 +2383,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                         return;
                     }
                 };
+                if self.close_prompt.is_some() {
+                    return;
+                }
                 let result = lock_tree(&self.panes)
                     .map_err(KeyboardInputError::Grid)
                     .and_then(|mut tree| {
@@ -2219,6 +2394,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                                 viewport_changed: false,
                             });
                         };
+                        if pane.search.is_some() {
+                            // Composed text extends the query, never the shell.
+                            let changed = type_into_search(pane, &bytes);
+                            return Ok(KeyboardInputOutcome::Ignored {
+                                viewport_changed: changed,
+                            });
+                        }
                         let (grid, input) = pane.grid_and_input();
                         dispatch_encoded_terminal_input_locked(grid, Some(bytes), |bytes| {
                             input.queue_input(bytes);
@@ -2236,6 +2418,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 ..
             } => {
                 if !accepts_input {
+                    return;
+                }
+                if self.close_prompt.is_some() {
+                    if !is_synthetic && event.state.is_pressed() && !event.repeat {
+                        let answer = close_answer(&event.logical_key, self.modifiers);
+                        self.answer_close_prompt(event_loop, answer);
+                    }
                     return;
                 }
                 if !is_synthetic && event.state.is_pressed() {
@@ -2263,10 +2452,10 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     }
                     let search_outcome = lock_tree(&self.panes).map(|mut tree| {
                         tree.focused_pane_mut().and_then(|pane| {
-                            pane.handle_search_key(search_key_from_winit(
-                                &event.logical_key,
-                                self.modifiers,
-                            ))
+                            handle_search_key(
+                                pane,
+                                search_key_from_winit(&event.logical_key, self.modifiers),
+                            )
                         })
                     });
                     match search_outcome {
@@ -2486,6 +2675,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 self.apply_window_title();
             }
             LinuxEvent::PaneExited(id) => {
+                if self
+                    .close_prompt
+                    .as_ref()
+                    .is_some_and(|prompt| prompt.asks_to_close_pane(id))
+                {
+                    // Its job and shell are gone: nothing is left to confirm.
+                    self.close_prompt = None;
+                }
                 self.forget_pane(id);
                 self.update_ime_preedit(None);
                 self.last_ime_cursor_area = None;
@@ -2552,7 +2749,8 @@ mod tests {
         apply_search_to_snapshot, arm_grid_redraw, begin_grid_redraw, divider_rectangle,
         layout_viewport, pack_cell_dimensions, pane_action_ignores_repeat, pane_local_position,
         pane_viewport, search_key_from_winit, sync_pane_metrics, terminal_color_query_value,
-        unpack_cell_dimensions, GridAccessError, MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
+        type_into_search, unpack_cell_dimensions, xrgb_components, GridAccessError,
+        MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS,
     };
     use crate::grid::cell::Color;
     use crate::grid::Grid;
@@ -2677,6 +2875,41 @@ mod tests {
             touches_attention: false,
         };
         assert_eq!(divider_rectangle(&horizontal), ((0, 297), (800, 6)));
+    }
+
+    #[test]
+    fn packed_colors_unpack_to_their_components() {
+        assert_eq!(xrgb_components(0x00b5_312c), (0xb5, 0x31, 0x2c));
+        assert_eq!(xrgb_components(0xff00_0000), (0, 0, 0));
+    }
+
+    #[test]
+    fn ime_commits_extend_only_an_open_search() {
+        let command: Vec<std::ffi::OsString> = ["/bin/sh", "-c", "read value"]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let mut tree = PaneTree::new(
+            20,
+            4,
+            100,
+            KittyHandlerOptions::from_megabytes(1, false),
+            GraphicsSupport {
+                kitty: false,
+                sixel: false,
+            },
+            std::sync::Arc::new(|| {}),
+            &command,
+        )
+        .expect("IME search test should spawn its PTY");
+        let pane = tree.focused_pane_mut().unwrap();
+        assert!(!type_into_search(pane, "x".as_bytes()));
+        assert!(pane.search.is_none());
+
+        pane.search = Some(SearchState::new(String::new()));
+        assert!(type_into_search(pane, "日本\n\u{7}".as_bytes()));
+        assert_eq!(pane.search.as_ref().unwrap().query, "日本");
+        assert!(!type_into_search(pane, "\r".as_bytes()));
     }
 
     #[test]

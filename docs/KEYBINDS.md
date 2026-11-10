@@ -60,7 +60,11 @@ The pane, zoom, prompt and search bindings can be remapped under `[keybind]` on 
 
 The Linux window dispatches the `[keybind.linux]` table below: splits, close, focus, resize, zoom, prompt navigation, scrollback search and the attention jump, on the same pane tree as macOS. Super is left to the window manager, and none of the defaults collides with the fixed `Ctrl+Shift+C/V/A`, `Ctrl+Insert`, `Shift+Insert` and `Shift+PageUp/PageDown/Home/End` inputs above. A click focuses the pane under the pointer; dividers next to the focused pane, or to one that received a BEL or notification while unwatched, are drawn in hanko red.
 
-Still macOS-only: the status bar, so Linux shows neither the search prompt text (matches are highlighted in the pane while the search is open and keys go to the query), the ● attention mark nor the prompt indicator; and the close confirmation dialog, so `Ctrl+Shift+W` closes the pane immediately.
+While the search is open, a strip over the pane's last row shows the query, a block caret and `current/total` or `no matches` in hanko red; typed and IME-composed text goes to the query, never to the shell. The strip keeps its row while `Enter`/`Shift+Enter` move between matches: a match that would land under it is scrolled one line clear instead. Only a match on the last line of the live screen, with nothing below to scroll to, moves the strip to the first row, where it stays until the search closes. The strip is drawn above kitty and sixel images.
+
+`Ctrl+Shift+W` and the window's close button ask first when a program other than the shell holds the pane's terminal in the foreground (an editor, `ssh`, a build; detected with `tcgetpgrp` on the PTY), naming it in a strip such as `Close pane (vim)? [y/N]`. Only `y` closes; `n`, `Esc` and `Enter` (the default `N`) cancel and keep every PTY; other keys and clicks are ignored until then. An idle shell closes at once. `[confirm] on_close_pane = false` and `on_quit = false` turn the questions off. A program started with `-e` is the pane's own process and does not count as a job.
+
+Still macOS-only: the status bar, so Linux shows neither the ● attention mark nor the prompt indicator.
 
 | Action              | Default Linux keybind   |
 |---------------------|-------------------------|

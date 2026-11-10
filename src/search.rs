@@ -58,6 +58,10 @@ pub struct SearchState {
     pub query: String,
     pub matches: Vec<SearchMatch>,
     pub current: Option<usize>,
+    /// Linux: a faixa da busca passou para a primeira linha do painel e fica
+    /// lá até a busca fechar, para não pular de posição entre resultados.
+    #[cfg(target_os = "linux")]
+    pub strip_at_top: bool,
     rows_seen: usize,
 }
 
