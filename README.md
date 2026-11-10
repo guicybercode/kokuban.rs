@@ -69,9 +69,10 @@ macOS is the primary desktop target; Linux follows the Omarchy roadmap and share
 |---|---|---|
 | Renderer | Metal GPU | Software rasterizer (winit + softbuffer, X11/Wayland) |
 | Panes (split, focus, resize, close) and font zoom | Yes | Yes (`[keybind.linux]`) |
-| Status bar and close confirmation | Yes | No (next) |
+| Status bar | Yes | No (next) |
+| Close confirmation | Yes (`[confirm]`) | Only while a program other than the shell runs in the foreground (`[confirm]`) |
 | Prompt marks | Indicator and navigation | Navigation only |
-| Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Matches highlighted (`Ctrl+Shift+F`); no prompt text yet |
+| Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Yes (`Ctrl+Shift+F`, query and match count in a strip over the pane) |
 | Attention mark | ● and red dividers (`Cmd+Shift+A`) | Red dividers (`Ctrl+Shift+N`); no ● yet |
 | IME / text composition | In progress | Yes (preedit) |
 | Kitty animation | No (static images only) | Yes (bounded cache; mpv video) |
