@@ -19,6 +19,43 @@ pub(super) struct StripColors {
     pub(super) accent: Rgb,
 }
 
+/// WCAG AA minimum for normal-size text.
+const AA_CONTRAST: f64 = 4.5;
+
+/// WCAG 2 contrast ratio between two sRGB colors, from 1 to 21.
+pub(super) fn contrast_ratio(first: Rgb, second: Rgb) -> f64 {
+    fn channel(value: u8) -> f64 {
+        let value = f64::from(value) / 255.0;
+        if value <= 0.040_45 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    fn luminance((red, green, blue): Rgb) -> f64 {
+        0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue)
+    }
+    let (first, second) = (luminance(first), luminance(second));
+    (first.max(second) + 0.05) / (first.min(second) + 0.05)
+}
+
+impl StripColors {
+    /// The accent marks the keys and "no matches"; a theme whose accent
+    /// would fall under AA on the strip falls back to the strip's text color.
+    pub(super) fn new(text: Rgb, background: Rgb, accent: Rgb) -> Self {
+        let accent = if contrast_ratio(accent, background) >= AA_CONTRAST {
+            accent
+        } else {
+            text
+        };
+        Self {
+            text,
+            background,
+            accent,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StripSegment {
     pub(super) text: String,
@@ -392,6 +429,23 @@ mod tests {
     }
 
     #[test]
+    fn the_factory_accent_passes_aa_on_the_strip_and_weak_accents_fall_back() {
+        // Factory (blackboard) theme: the strip is chalk #f4f6f0 with board
+        // #1f3a2a text; "no matches" and [y/N] use hanko red #b5312c.
+        let (board, chalk, hanko) = ((31, 58, 42), (244, 246, 240), (181, 49, 44));
+        let ratio = super::contrast_ratio(hanko, chalk);
+        assert!((5.60..5.62).contains(&ratio), "{ratio}");
+        assert!((11.3..11.4).contains(&super::contrast_ratio(board, chalk)));
+        assert_eq!(StripColors::new(board, chalk, hanko).accent, hanko);
+        // A light theme (dark text on a light background) gets a dark strip,
+        // where hanko red would fall under 4.5:1: use the strip's text color.
+        let dark = (34, 34, 34);
+        let light = (250, 250, 250);
+        assert!(super::contrast_ratio(hanko, dark) < 4.5);
+        assert_eq!(StripColors::new(light, dark, hanko).accent, light);
+    }
+
+    #[test]
     fn capped_results_are_marked_with_a_plus() {
         let mut search = SearchState::new("x".to_string());
         search.matches = vec![
@@ -404,6 +458,16 @@ mod tests {
         ];
         search.current = Some(MAX_MATCHES - 1);
         assert!(prompt_text(&search_prompt(&search, 40, COLORS)).ends_with("10000/10000+"));
+        // Beside a split (29 columns) the counter still fits whole and the
+        // query keeps 11 columns; a 14-column pane drops the counter.
+        let prompt = search_prompt(&search, 29, COLORS);
+        assert_eq!(prompt_text(&prompt), " /x   10000/10000+");
+        search.current = Some(0);
+        assert_eq!(
+            prompt_text(&search_prompt(&search, 29, COLORS)),
+            " /x   1/10000+"
+        );
+        assert_eq!(prompt_text(&search_prompt(&search, 14, COLORS)), " /x ");
     }
 
     #[test]

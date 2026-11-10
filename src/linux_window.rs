@@ -1005,11 +1005,11 @@ impl LinuxWindow {
             .cell_dimensions
             .ok_or_else(|| "redraw requested before Linux glyph metrics were ready".to_string())?;
         let frame_size = (width.get(), height.get());
-        let strip_colors = StripColors {
-            text: self.colors.default_background(),
-            background: self.colors.resolve_foreground(Color::Default, false),
-            accent: xrgb_components(self.divider_colors.focused),
-        };
+        let strip_colors = StripColors::new(
+            self.colors.default_background(),
+            self.colors.resolve_foreground(Color::Default, false),
+            xrgb_components(self.divider_colors.focused),
+        );
         let (pane_frames, dividers, focused_index) = {
             // Match the reader's lock order: pane tree, then image store.
             let mut tree = lock_tree(&self.panes).map_err(|error| error.to_string())?;
