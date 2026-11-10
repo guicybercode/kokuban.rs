@@ -972,60 +972,7 @@ define_class!(
 
         #[unsafe(method(viewDidChangeBackingProperties))]
         fn view_did_change_backing_properties(&self) {
-            VIEW_STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    if let Some(window) = self.window() {
-                        let new_scale = window.backingScaleFactor() as f32;
-                        if (new_scale - state.scale_factor).abs() > 0.01 {
-                            match GlyphAtlas::new(
-                                &state.font_family,
-                                state.font_size,
-                                new_scale,
-                            ) {
-                                Ok(replacement) => {
-                                    let cell_w = replacement.cell_width;
-                                    let cell_h = replacement.cell_height;
-                                    let status_bar_height = if state.status_bar_enabled {
-                                        (cell_h * 1.5).ceil()
-                                    } else {
-                                        0.0
-                                    };
-                                    let backing_size =
-                                        self.convertSizeToBacking(self.bounds().size);
-
-                                    log::info!("Scale factor changed to {new_scale}");
-                                    let mut atlas = state.atlas.lock().unwrap();
-                                    let mut tree = state.pane_tree.lock().unwrap();
-                                    let mut replacement = replacement;
-                                    replacement.set_ligatures(atlas.ligatures_enabled());
-                                    *atlas = replacement;
-                                    update_pane_geometry(
-                                        &mut tree,
-                                        cell_w,
-                                        cell_h,
-                                        status_bar_height,
-                                        backing_size,
-                                    );
-                                    drop(tree);
-                                    drop(atlas);
-
-                                    state.scale_factor = new_scale;
-                                    state.status_bar_height = status_bar_height;
-                                    state.metal_layer.setContentsScale(new_scale as f64);
-                                    state.metal_layer.setDrawableSize(backing_size);
-                                    state.request_render();
-                                }
-                                Err(error) => log::error!(
-                                    "Failed to rebuild glyph atlas for scale {new_scale}: {error}; \
-                                     keeping scale {}",
-                                    state.scale_factor
-                                ),
-                            }
-                        }
-                    }
-                }
-            });
+            sync_backing_scale(self);
         }
 
         #[unsafe(method(setFrameSize:))]
@@ -1256,6 +1203,64 @@ fn deliver_key_event(event: &NSEvent) {
     if !handle_search_key(event, event.keyCode(), key_modifiers) {
         forward_key_event_to_pane(event);
     }
+}
+
+/// Rebuild the glyph atlas, pane geometry and Metal layer when the window's
+/// backing scale differs from the one the atlas was rasterized for.
+fn sync_backing_scale(view: &TerminalView) {
+    let Some(window) = view.window() else {
+        return;
+    };
+    let reported = window.backingScaleFactor();
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+        let Some(new_scale) = backing_scale_change(state.scale_factor, reported) else {
+            return;
+        };
+        match GlyphAtlas::new(&state.font_family, state.font_size, new_scale) {
+            Ok(mut replacement) => {
+                let cell_w = replacement.cell_width;
+                let cell_h = replacement.cell_height;
+                let status_bar_height = if state.status_bar_enabled {
+                    (cell_h * 1.5).ceil()
+                } else {
+                    0.0
+                };
+                let backing_size = view.convertSizeToBacking(view.bounds().size);
+
+                log::info!("Scale factor changed to {new_scale}");
+                let mut atlas = state.atlas.lock().unwrap();
+                let mut tree = state.pane_tree.lock().unwrap();
+                replacement.set_ligatures(atlas.ligatures_enabled());
+                *atlas = replacement;
+                update_pane_geometry(&mut tree, cell_w, cell_h, status_bar_height, backing_size);
+                drop(tree);
+                drop(atlas);
+
+                state.scale_factor = new_scale;
+                state.status_bar_height = status_bar_height;
+                state.metal_layer.setContentsScale(f64::from(new_scale));
+                state.metal_layer.setDrawableSize(backing_size);
+                state.request_render();
+            }
+            Err(error) => log::error!(
+                "Failed to rebuild glyph atlas for scale {new_scale}: {error}; keeping scale {}",
+                state.scale_factor
+            ),
+        }
+    });
+}
+
+/// The scale to switch to when AppKit reports `reported` for a window whose
+/// atlas uses `current`; `None` keeps the current scale (same value, or a
+/// value no display can have).
+fn backing_scale_change(current: f32, reported: f64) -> Option<f32> {
+    let reported = reported as f32;
+    (reported.is_finite() && reported > 0.0 && (reported - current).abs() > 0.01)
+        .then_some(reported)
 }
 
 /// Send one key event to the focused pane with that pane's current input mode.
@@ -2289,6 +2294,7 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
 #[cfg(test)]
 mod tests {
     use super::search_key_from_mac_event;
+    use super::{backing_scale_change, mac_key_route, search_text_keys, MacKeyRoute};
     use super::{
         bracketed_paste_len, dispatch_window_focus_transition_with, encode_clipboard_paste,
         encode_macos_forwarded_wheel, focus_report_bytes, mac_key_equivalent_route,
@@ -2296,7 +2302,6 @@ mod tests {
         MacScrollPhase, MacScrollSample, MacScrollState, MacScrollbackAction, BRACKETED_PASTE_END,
         BRACKETED_PASTE_START,
     };
-    use super::{mac_key_route, search_text_keys, MacKeyRoute};
     use crate::grid::MouseEncoding;
     use crate::input::keybind::KeyModifiers;
     use crate::input::keyboard::{
@@ -3276,5 +3281,17 @@ mod tests {
         }
         assert_eq!(search.query, "ação");
         assert_eq!(search.matches.len(), 1);
+    }
+
+    #[test]
+    fn backing_scale_changes_only_for_a_different_valid_scale() {
+        assert_eq!(backing_scale_change(2.0, 1.0), Some(1.0));
+        assert_eq!(backing_scale_change(1.0, 2.0), Some(2.0));
+        assert_eq!(backing_scale_change(2.0, 3.0), Some(3.0));
+        assert_eq!(backing_scale_change(2.0, 2.0), None);
+        assert_eq!(backing_scale_change(2.0, 2.005), None);
+        for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(backing_scale_change(2.0, invalid), None, "{invalid}");
+        }
     }
 }
