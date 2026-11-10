@@ -73,6 +73,12 @@ empty), and removes only the marked Kokuban block from the Hyprland file.
 Omarchy's defaults under `/usr/share/omarchy` or `~/.local/share/omarchy` are
 never edited.
 
+Configuration files that are symbolic links (for example into a dotfiles
+repository) stay links: the script edits the file they point at. It stops before
+changing anything if such a link is broken, or if the Hyprland file has the
+`>>> kokuban terminal tag >>>` line without the matching
+`<<< kokuban terminal tag <<<` line; the error names the file and line to fix.
+
 Omarchy's session environment includes `~/.local/bin` in `PATH`. Confirm
 `command -v kokuban` finds the newly installed executable. The installed
 launcher uses its absolute path; with a customized session, also include the
