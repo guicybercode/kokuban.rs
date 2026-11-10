@@ -31,6 +31,13 @@ show_shell = true
 show_cwd = true
 show_pane_index = true
 
+[confirm]
+# Ask before closing a pane or the window. On Linux the question only appears
+# while a program other than the shell (an editor, ssh, a build) runs in the
+# foreground; an idle shell closes at once.
+on_close_pane = true
+on_quit = true
+
 [update]
 # Check GitHub for a newer release in the background after launch.
 # Install it with `kokuban --update` or, on macOS, from the app menu.

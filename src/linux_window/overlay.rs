@@ -1,5 +1,5 @@
-//! One-row strips painted over a pane snapshot, such as the scrollback
-//! search prompt. A strip replaces the cells of one grid row, so
+//! One-row strips painted over a pane snapshot: the scrollback search prompt
+//! and the close confirmation. A strip replaces the cells of one grid row, so
 //! the normal glyph path, frame damage and IME placement all apply to it.
 
 use super::draw::GridSnapshot;
@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthChar;
 pub(super) type Rgb = (u8, u8, u8);
 
 /// Strip palette: the pane's default colors swapped, so the strip reads as
-/// chrome on any theme, plus the hanko accent for "no matches".
+/// chrome on any theme, plus the hanko accent for keys and "no matches".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct StripColors {
     pub(super) text: Rgb,
@@ -148,6 +148,43 @@ pub(super) fn search_strip_row(search: &SearchState, grid: &Grid) -> usize {
     }
 }
 
+/// " Close pane (vim)? [y/n]": only the program names shrink, to an
+/// ellipsis or out of the row, so the question and the keys stay visible.
+pub(super) fn close_prompt_segments(
+    question: &str,
+    running: &[String],
+    columns: usize,
+    colors: StripColors,
+) -> Vec<StripSegment> {
+    // " " + question + " (" + names + ")" + "? " + "[y/n]".
+    let room = columns.saturating_sub(text_width(question) + 11);
+    let names = running.join(", ");
+    let names = if names.is_empty() || room == 0 {
+        String::new()
+    } else if text_width(&names) <= room {
+        format!(" ({names})")
+    } else {
+        let mut kept = String::new();
+        let mut used = 0;
+        for character in names.chars() {
+            used += character.width().unwrap_or(0);
+            if used + 1 > room {
+                break;
+            }
+            kept.push(character);
+        }
+        format!(" ({kept}{ELLIPSIS})")
+    };
+    vec![
+        StripSegment::new(
+            format!(" {question}{names}? "),
+            colors.text,
+            colors.background,
+        ),
+        StripSegment::new("[y/n]", colors.accent, colors.background),
+    ]
+}
+
 fn strip_cell(character: char, foreground: Rgb, background: Rgb, flags: CellFlags) -> Cell {
     Cell {
         c: character,
@@ -234,7 +271,10 @@ pub(super) fn paint_strip(
 
 #[cfg(test)]
 mod tests {
-    use super::{paint_strip, search_prompt, search_strip_row, StripColors, StripSegment};
+    use super::{
+        close_prompt_segments, paint_strip, search_prompt, search_strip_row, StripColors,
+        StripSegment,
+    };
     use crate::grid::cell::{CellFlags, Color};
     use crate::grid::{CursorShape, Grid};
     use crate::linux_window::draw::{snapshot_locked_grid, CursorSnapshot, GridSnapshot};
@@ -430,6 +470,41 @@ mod tests {
             Some("e\u{301}")
         );
         assert_eq!(snapshot.cell(0, 1).unwrap().c, 'x');
+    }
+
+    fn joined(segments: &[StripSegment]) -> String {
+        segments
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn close_prompt_names_the_programs_and_highlights_the_keys() {
+        let one = ["vim".to_string()];
+        let segments = close_prompt_segments("Close pane", &one, 80, COLORS);
+        assert_eq!(joined(&segments), " Close pane (vim)? [y/n]");
+        assert_eq!(segments[1].foreground, COLORS.accent);
+
+        let two = ["vim".to_string(), "ssh".to_string()];
+        let segments = close_prompt_segments("Close window", &two, 80, COLORS);
+        assert_eq!(joined(&segments), " Close window (vim, ssh)? [y/n]");
+    }
+
+    #[test]
+    fn narrow_close_prompts_shrink_only_the_program_names() {
+        let names = ["sleep".to_string(), "htop".to_string()];
+        // 29 columns, a pane beside a split: 8 columns remain for the names.
+        let segments = close_prompt_segments("Close pane", &names, 29, COLORS);
+        assert_eq!(joined(&segments), " Close pane (sleep, …)? [y/n]");
+        let mut snapshot = snapshot_locked_grid(&Grid::new(29, 2, 10));
+        paint_strip(&mut snapshot, 1, &segments, COLORS.background);
+        assert_eq!(row_text(&snapshot, 1), " Close pane (sleep, …)? [y/n]");
+
+        let segments = close_prompt_segments("Close pane", &names, 22, COLORS);
+        assert_eq!(joined(&segments), " Close pane (…)? [y/n]");
+        let segments = close_prompt_segments("Close pane", &names, 21, COLORS);
+        assert_eq!(joined(&segments), " Close pane? [y/n]");
     }
 
     #[test]

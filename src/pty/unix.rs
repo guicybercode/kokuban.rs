@@ -198,6 +198,15 @@ impl Pty {
         self.master().as_raw_fd()
     }
 
+    /// Foreground process group of the terminal when it is not the program
+    /// Kokuban started (the shell or the `-e` command): a job the shell
+    /// handed the terminal to, such as an editor, `ssh` or a build. `None`
+    /// while that program itself is in the foreground or the query fails.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn foreground_job(&self) -> Option<Pid> {
+        foreground_job_group(self.child_pid, tcgetpgrp(self.master()).ok())
+    }
+
     #[allow(dead_code)]
     pub fn wait_readable(&self, timeout: Duration) -> std::io::Result<bool> {
         let started = Instant::now();
@@ -303,6 +312,14 @@ impl Pty {
     fn master(&self) -> &OwnedFd {
         self.master.as_ref().expect("PTY master is available")
     }
+}
+
+/// The foreground group counts as a job only when it is a real group other
+/// than the one the spawned program leads (it calls `setsid`, so its group
+/// id is its pid).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn foreground_job_group(child: Pid, foreground: Option<Pid>) -> Option<Pid> {
+    foreground.filter(|group| group.as_raw() > 0 && *group != child)
 }
 
 fn resize_with_ioctl<I, E>(
@@ -1126,11 +1143,11 @@ unsafe fn child_errno() -> libc::c_int {
 mod tests {
     use super::{
         child_environment, child_stage_name, child_startup_status_with, classify_child_wait,
-        classify_readable_events, cleanup_reported_child_failure_with, handoff_child_reap_with,
-        poll_timeout_for, resize_with_ioctl, resolve_command, select_shell, set_cloexec,
-        terminate_and_reap_with, wait_any_readable_or_woken, wait_any_readable_or_woken_with,
-        wait_for_child_reap_with, wait_readable_or_cancelled_with, wait_readable_with,
-        write_all_cancellable_with, write_all_with, write_child_stage_with,
+        classify_readable_events, cleanup_reported_child_failure_with, foreground_job_group,
+        handoff_child_reap_with, poll_timeout_for, resize_with_ioctl, resolve_command,
+        select_shell, set_cloexec, terminate_and_reap_with, wait_any_readable_or_woken,
+        wait_any_readable_or_woken_with, wait_for_child_reap_with, wait_readable_or_cancelled_with,
+        wait_readable_with, write_all_cancellable_with, write_all_with, write_child_stage_with,
         CancellableWriteOutcome, ChildWaitState, Pty, PtyReadiness, ReadPollResult,
     };
     use crate::pty::PtyError;
@@ -1201,6 +1218,69 @@ mod tests {
     #[test]
     fn pty_can_be_shared_with_a_reader_thread() {
         assert_send_sync::<Pty>();
+    }
+
+    #[test]
+    fn foreground_job_ignores_the_spawned_program_and_invalid_groups() {
+        let child = Pid::from_raw(4242);
+        assert_eq!(foreground_job_group(child, None), None);
+        assert_eq!(foreground_job_group(child, Some(child)), None);
+        assert_eq!(foreground_job_group(child, Some(Pid::from_raw(0))), None);
+        assert_eq!(foreground_job_group(child, Some(Pid::from_raw(-1))), None);
+        assert_eq!(
+            foreground_job_group(child, Some(Pid::from_raw(4243))),
+            Some(Pid::from_raw(4243))
+        );
+    }
+
+    fn spawn_bash(script: &str) -> Pty {
+        let program = CString::new("/bin/bash").unwrap();
+        let argv = ["bash", "-c", script]
+            .into_iter()
+            .map(|argument| CString::new(argument).unwrap())
+            .collect();
+        Pty::spawn_prepared(
+            80,
+            24,
+            program,
+            argv,
+            test_environment(),
+            "test".to_string(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn idle_shell_in_the_foreground_is_not_a_job() {
+        let pty = spawn_bash("printf '__IDLE_READY__'; read value");
+        assert_eq!(read_until(&pty, b"__IDLE_READY__"), b"__IDLE_READY__");
+        assert_eq!(pty.foreground_job(), None);
+    }
+
+    #[test]
+    fn job_control_hands_the_terminal_to_a_foreground_job() {
+        // `set -m` gives the job its own process group and the terminal, as an
+        // interactive shell does; `; true` keeps bash from exec'ing `sleep`.
+        let pty = spawn_bash("set -m; printf '__JOB_READY__'; sleep 30; true");
+        assert_eq!(read_until(&pty, b"__JOB_READY__"), b"__JOB_READY__");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let job = loop {
+            if let Some(job) = pty.foreground_job() {
+                assert_ne!(job, pty.child_pid);
+                // The group can take the terminal between fork and exec.
+                #[cfg(target_os = "linux")]
+                let started = std::fs::read_to_string(format!("/proc/{job}/comm"))
+                    .is_ok_and(|name| name.trim_end() == "sleep");
+                #[cfg(not(target_os = "linux"))]
+                let started = true;
+                if started {
+                    break job;
+                }
+            }
+            assert!(Instant::now() < deadline, "sleep never took the terminal");
+            thread::sleep(Duration::from_millis(10));
+        };
+        assert_ne!(job, pty.child_pid);
     }
 
     #[test]

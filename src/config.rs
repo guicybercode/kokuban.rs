@@ -852,4 +852,20 @@ step = 5
         assert!(parsed.notifications.enabled);
         assert!(parsed.notifications.command.is_none());
     }
+
+    #[test]
+    fn close_confirmation_defaults_on_and_each_question_can_be_turned_off() {
+        let shipped: Config = toml::from_str(include_str!("../kokuban.toml"))
+            .expect("shipped kokuban.toml must parse");
+        assert!(shipped.confirm.on_close_pane && shipped.confirm.on_quit);
+        let default = Config::default();
+        assert!(default.confirm.on_close_pane && default.confirm.on_quit);
+
+        let panes_only: Config = toml::from_str("[confirm]\non_close_pane = false\n").unwrap();
+        assert!(!panes_only.confirm.on_close_pane);
+        assert!(panes_only.confirm.on_quit);
+        let quit_only: Config = toml::from_str("[confirm]\non_quit = false\n").unwrap();
+        assert!(quit_only.confirm.on_close_pane);
+        assert!(!quit_only.confirm.on_quit);
+    }
 }

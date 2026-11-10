@@ -51,6 +51,7 @@ use winit::platform::x11::WindowAttributesExtX11;
 use winit::window::{Icon, ImePurpose, UserAttentionType, Window, WindowId};
 
 mod clipboard;
+mod close_confirm;
 mod damage;
 mod dispatch;
 mod draw;
@@ -65,6 +66,9 @@ mod test_support;
 use clipboard::{
     apply_selection_to_snapshot, clipboard_action, selection_point_at_pointer, sync_selection,
     ClipboardAction, SelectionContext,
+};
+use close_confirm::{
+    close_answer, pane_close_prompt, window_close_prompt, CloseAnswer, ClosePrompt, CloseTarget,
 };
 use damage::{frame_damage, scene_for_buffer_age, PresentedScene, MAX_PRESENTED_SCENES};
 use dispatch::{
@@ -83,7 +87,7 @@ use ime::{
     replace_ime_preedit, reveal_ime_input_viewport_locked, sync_ime_cursor_area_with,
     ImeCursorArea, ImePreedit, ImePreeditPayload,
 };
-use overlay::{paint_strip, search_prompt, search_strip_row, StripColors};
+use overlay::{close_prompt_segments, paint_strip, search_prompt, search_strip_row, StripColors};
 use pointer::{mouse_button_code_from_winit, PointerRouteState};
 use sizing::{
     atlas_cell_dimensions, configured_terminal_dimensions, create_glyph_atlas, drawable_dimensions,
@@ -373,6 +377,8 @@ pub(crate) fn launch(
         redraw_pending,
         notifications,
         window_focused,
+        confirm_on_close_pane: config.confirm.on_close_pane,
+        confirm_on_quit: config.confirm.on_quit,
     });
     application.clipboard = clipboard;
     application.theme_watcher = theme_watcher;
@@ -465,6 +471,10 @@ struct LinuxWindowParams {
     redraw_pending: Arc<AtomicBool>,
     notifications: Arc<NotificationController>,
     window_focused: Arc<AtomicBool>,
+    /// `[confirm] on_close_pane` / `on_quit`: ask before closing a pane or
+    /// the window while a job runs in the foreground.
+    confirm_on_close_pane: bool,
+    confirm_on_quit: bool,
 }
 
 /// A clipboard paste requested while `pane` was focused; applied only if the
@@ -538,6 +548,10 @@ struct LinuxWindow {
     update_status: crate::update::SharedUpdateStatus,
     /// The last pane closed; the window exits after presenting one more frame.
     terminal_closed: bool,
+    confirm_on_close_pane: bool,
+    confirm_on_quit: bool,
+    /// Close waiting for y/n; keys and clicks go nowhere else meanwhile.
+    close_prompt: Option<ClosePrompt>,
     modifiers: ModifiersState,
     last_window_focus: Option<bool>,
     occluded: bool,
@@ -556,6 +570,9 @@ struct LinuxPaneActionHost {
     status_bar_height: f32,
     resize_step: f32,
     zoom: Option<ZoomDirection>,
+    /// Ask before closing a pane with a foreground job.
+    confirm_close_pane: bool,
+    close_prompt: Option<ClosePrompt>,
 }
 
 impl PaneActionHost for LinuxPaneActionHost {
@@ -580,9 +597,9 @@ impl PaneActionHost for LinuxPaneActionHost {
         self.zoom = Some(direction);
     }
 
-    fn confirm_close(&mut self, _id: PaneId, _pane: Option<&Pane>) -> bool {
-        // The confirmation dialog arrives with the status bar (Frente B2).
-        false
+    fn confirm_close(&mut self, id: PaneId, pane: Option<&Pane>) -> bool {
+        self.close_prompt = pane_close_prompt(self.confirm_close_pane, id, pane);
+        self.close_prompt.is_some()
     }
 }
 
@@ -786,6 +803,9 @@ impl LinuxWindow {
             window_focused: params.window_focused,
             update_status: Arc::new(Mutex::new(crate::update::UpdateStatus::Idle)),
             terminal_closed: false,
+            confirm_on_close_pane: params.confirm_on_close_pane,
+            confirm_on_quit: params.confirm_on_quit,
+            close_prompt: None,
             modifiers: ModifiersState::empty(),
             last_window_focus: None,
             occluded: false,
@@ -1030,6 +1050,20 @@ impl LinuxWindow {
                             prompt.caret_column.min(snapshot.columns.saturating_sub(1)),
                         );
                     }
+                }
+                if let Some(prompt) = self
+                    .close_prompt
+                    .as_ref()
+                    .filter(|prompt| prompt.shown_in(focused) == id)
+                {
+                    let segments = close_prompt_segments(
+                        prompt.question(),
+                        &prompt.running,
+                        snapshot.columns,
+                        strip_colors,
+                    );
+                    let row = snapshot.rows.saturating_sub(1);
+                    paint_strip(&mut snapshot, row, &segments, strip_colors.background);
                 }
                 let images =
                     snapshot_images(&pane.kitty_handler, &store, &pane.grid, cell_dimensions);
@@ -1503,6 +1537,16 @@ impl LinuxWindow {
     /// the tree leaves to the window: focus reports, title, atlas for zoom,
     /// PTY sizes, retiring the closed pane and waking the reader.
     fn handle_pane_action(&mut self, event_loop: &ActiveEventLoop, action: PaneAction) {
+        self.apply_pane_action(event_loop, action, self.confirm_on_close_pane);
+    }
+
+    /// `ask_before_close` is false once the user confirmed the close prompt.
+    fn apply_pane_action(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        action: PaneAction,
+        ask_before_close: bool,
+    ) {
         let (Some(viewport), Some(cell_dimensions)) =
             (self.current_viewport(), self.cell_dimensions)
         else {
@@ -1514,6 +1558,8 @@ impl LinuxWindow {
             status_bar_height: self.status_bar_height,
             resize_step: self.resize_step,
             zoom: None,
+            confirm_close_pane: ask_before_close,
+            close_prompt: None,
         };
         // Hold the guard through a local handle: zoom rebuilds the atlas
         // (and other window fields) while the tree stays locked.
@@ -1527,6 +1573,12 @@ impl LinuxWindow {
             }
         };
         let outcome = apply_pane_action(&mut tree, action, &mut host);
+        if let Some(prompt) = host.close_prompt.take() {
+            drop(tree);
+            self.close_prompt = Some(prompt);
+            self.request_redraw();
+            return;
+        }
         if outcome.terminate {
             dispatch_pane_focus_transition_locked(
                 &tree,
@@ -1597,6 +1649,32 @@ impl LinuxWindow {
         self.last_ime_cursor_area = None;
         self.apply_window_title();
         self.request_redraw();
+    }
+
+    /// Answer the open close prompt; a pane prompt only closes the pane it
+    /// was raised for, and only while that pane still has the focus.
+    fn answer_close_prompt(&mut self, event_loop: &ActiveEventLoop, answer: CloseAnswer) {
+        if answer == CloseAnswer::Ignore {
+            return;
+        }
+        let Some(prompt) = self.close_prompt.take() else {
+            return;
+        };
+        self.request_redraw();
+        if answer == CloseAnswer::Cancel {
+            return;
+        }
+        match prompt.target {
+            CloseTarget::Window => {
+                self.request_terminal_shutdown();
+                event_loop.exit();
+            }
+            CloseTarget::Pane(id) => match lock_tree(&self.panes).map(|tree| tree.focused == id) {
+                Ok(true) => self.apply_pane_action(event_loop, PaneAction::ClosePane, false),
+                Ok(false) => {}
+                Err(error) => self.fail(event_loop, error.to_string()),
+            },
+        }
     }
 
     /// Drop the window's bookkeeping for a pane that left the tree.
@@ -1798,8 +1876,23 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 }
             }
             WindowEvent::CloseRequested => {
-                self.request_terminal_shutdown();
-                event_loop.exit();
+                let prompt = if accepts_input {
+                    lock_tree(&self.panes)
+                        .ok()
+                        .and_then(|tree| window_close_prompt(self.confirm_on_quit, &tree))
+                } else {
+                    None
+                };
+                match prompt {
+                    Some(prompt) => {
+                        self.close_prompt = Some(prompt);
+                        self.request_redraw();
+                    }
+                    None => {
+                        self.request_terminal_shutdown();
+                        event_loop.exit();
+                    }
+                }
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
@@ -1879,6 +1972,18 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                     button_code,
                     self.cell_dimensions,
                 );
+                if self.close_prompt.is_some() && state.is_pressed() {
+                    // A click must not move the focus or reach a program while
+                    // the close prompt waits for its answer.
+                    self.pointer_route.record_button_dispatch(
+                        device_id,
+                        state,
+                        button_code,
+                        false,
+                        cell_dimensions,
+                    );
+                    return;
+                }
                 let position = self.pointer_route.position_for(device_id);
                 if state.is_pressed() {
                     if let Some(position) = position {
@@ -2165,6 +2270,9 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                         return;
                     }
                 };
+                if self.close_prompt.is_some() {
+                    return;
+                }
                 let result = lock_tree(&self.panes)
                     .map_err(KeyboardInputError::Grid)
                     .and_then(|mut tree| {
@@ -2197,6 +2305,13 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 ..
             } => {
                 if !accepts_input {
+                    return;
+                }
+                if self.close_prompt.is_some() {
+                    if !is_synthetic && event.state.is_pressed() && !event.repeat {
+                        let answer = close_answer(&event.logical_key, self.modifiers);
+                        self.answer_close_prompt(event_loop, answer);
+                    }
                     return;
                 }
                 if !is_synthetic && event.state.is_pressed() {
@@ -2447,6 +2562,14 @@ impl ApplicationHandler<LinuxEvent> for LinuxWindow {
                 self.apply_window_title();
             }
             LinuxEvent::PaneExited(id) => {
+                if self
+                    .close_prompt
+                    .as_ref()
+                    .is_some_and(|prompt| prompt.asks_to_close_pane(id))
+                {
+                    // Its job and shell are gone: nothing is left to confirm.
+                    self.close_prompt = None;
+                }
                 self.forget_pane(id);
                 self.update_ime_preedit(None);
                 self.last_ime_cursor_area = None;
