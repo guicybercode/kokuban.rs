@@ -232,8 +232,21 @@ CONF
   fi
 }
 
+# Refuse a file where a begin marker has no end marker after it: stripping the
+# block would otherwise drop everything from that line to the end of the file.
+check_markers() {
+  local path="$1" line
+  line="$(awk -v begin="$MARK_BEGIN" -v end="$MARK_END" '
+    index($0, begin) { if (!open) open = NR; next }
+    open && index($0, end) { open = 0 }
+    END { if (open) print open }
+  ' "$path")"
+  [[ -z "$line" ]] ||
+    fail "$path, line $line, starts a Kokuban block ('$MARK_BEGIN') that never ends ('$MARK_END' is missing after it); nothing was changed. Put the end line back after Kokuban's rule, or delete the incomplete block by hand, and run this script again."
+}
+
 # Print the file without a previously installed block (and the blank line the
-# installer put before it).
+# installer put before it). check_markers must have accepted the file.
 strip_block() {
   awk -v begin="$MARK_BEGIN" -v end="$MARK_END" '
     index($0, begin) { skipping = 1; held = 0; next }
@@ -241,7 +254,7 @@ strip_block() {
     { if (held) { print ""; held = 0 }
       if ($0 == "") { held = 1; next }
       print }
-    END { if (held) print "" }
+    END { if (held) print ""; if (skipping) exit 1 }
   ' "$1"
 }
 
@@ -253,6 +266,7 @@ tag_kokuban() {
   fi
   format="${entry%% *}"
   path="${entry#* }"
+  check_markers "$path"
   content="$(strip_block "$path")"
   [[ -n "$content" ]] && content+=$'\n\n'
   content+="$(hypr_block "$format")"$'\n'
@@ -265,6 +279,7 @@ untag_kokuban() {
   for format in lua conf; do
     path="$hypr_dir/hyprland.$format"
     [[ -f "$path" ]] && grep -qF "$MARK_BEGIN" "$path" || continue
+    check_markers "$path"
     content="$(strip_block "$path")"
     [[ -n "$content" ]] && content+=$'\n'
     replace_file "$path" "$content"
@@ -308,8 +323,14 @@ remove_files() {
 
 # Refuse, before the first change, every file the action could not edit safely.
 preflight() {
-  local entry path
-  [[ "$action" == install ]] || return 0
+  local entry path format
+  if [[ "$action" == uninstall ]]; then
+    for format in lua conf; do
+      path="$hypr_dir/hyprland.$format"
+      [[ -f "$path" ]] && check_markers "$path"
+    done
+    return 0
+  fi
   if $set_default; then
     edit_target "$(preference_target)" >/dev/null || exit 1
   fi
@@ -317,6 +338,7 @@ preflight() {
     path="${entry#* }"
     path="$(edit_target "$path")" || exit 1
     [[ -f "$path" ]] || fail "$path does not exist; it must be Hyprland's entry file"
+    check_markers "$path"
   fi
 }
 

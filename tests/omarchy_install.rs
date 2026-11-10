@@ -456,3 +456,57 @@ fn a_broken_link_is_refused_before_changing_the_home() {
         assert_eq!(home.files(), before, "{link}");
     }
 }
+
+#[test]
+fn a_begin_marker_without_its_end_is_refused_before_changing_the_home() {
+    // The end line was deleted by hand; stripping from the begin marker would
+    // drop the user's configuration that follows it.
+    let lua = format!(
+        "{USER_LUA}\n-- >>> kokuban terminal tag >>>\n{LUA_RULE}\n\
+         require(\"hypr.bindings\")\n-- keep this line\n"
+    );
+    let conf = "source = ~/.config/hypr/looknfeel.conf\n\
+                # >>> kokuban terminal tag >>>\n\
+                bind = SUPER, Return, exec, kokuban\n";
+    for (file, contents, line) in [
+        (".config/hypr/hyprland.lua", lua.as_str(), 8),
+        (".config/hypr/hyprland.conf", conf, 2),
+    ] {
+        for arguments in [vec![], vec!["uninstall"]] {
+            let home = Home::new();
+            home.write(file, contents);
+            home.write(".config/xdg-terminals.list", &format!("{DESKTOP_ID}\n"));
+            let before = home.files();
+            let output = home.run(&arguments);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!output.status.success(), "{file} {arguments:?}");
+            assert!(
+                stderr.contains(&format!("line {line},"))
+                    && stderr.contains("<<< kokuban terminal tag <<<")
+                    && stderr.contains("nothing was changed"),
+                "{file} {arguments:?}: {stderr}"
+            );
+            assert_eq!(home.files(), before, "{file} {arguments:?}");
+        }
+    }
+}
+
+#[test]
+fn a_complete_block_written_by_hand_is_replaced_and_the_rest_kept() {
+    let home = Home::new();
+    let lua = format!(
+        "{USER_LUA}\n-- >>> kokuban terminal tag >>>\n-- old rule\n\
+         -- <<< kokuban terminal tag <<<\nrequire(\"hypr.after\")\n"
+    );
+    home.write(".config/hypr/hyprland.lua", &lua);
+    home.run_ok(&["--no-default"]);
+    let installed = home.read(".config/hypr/hyprland.lua");
+    assert!(installed.contains("require(\"hypr.after\")"), "{installed}");
+    assert!(!installed.contains("-- old rule"), "{installed}");
+    assert_eq!(installed.matches(LUA_RULE).count(), 1);
+    home.run_ok(&["uninstall"]);
+    assert_eq!(
+        home.read(".config/hypr/hyprland.lua"),
+        format!("{USER_LUA}require(\"hypr.after\")\n")
+    );
+}
