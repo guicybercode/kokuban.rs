@@ -2,7 +2,7 @@
 
 ![Kokuban brand](docs/screenshots/kokuban-brand.png)
 
-Kokuban is a native Rust terminal for macOS and Linux with its own VT parser, Metal and software rendering, Kitty and Sixel graphics, and a chalkboard theme out of the box.
+A small, native terminal with a chalkboard look, inline images, and nothing you didn't ask for.
 
 https://github.com/user-attachments/assets/4769ed61-12ed-4bb9-817f-5f3ee06c3238
 
@@ -146,8 +146,4 @@ Kokuban v0.4 (Cargo version 0.4.0) is the current release, validated on macOS an
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. Send vulnerabilities through the private channel in [SECURITY.md](SECURITY.md); ordinary bugs can use [GitHub issues](https://github.com/guicybercode/kokuban.rs/issues). When writing about or building on Kokuban, link to [guicybercode/kokuban.rs](https://github.com/guicybercode/kokuban.rs) and identify the version or commit you used; [CITATION.cff](CITATION.cff) provides citation metadata.
 
-Starting with v0.2, Kokuban's original code and documentation use the [BSD-4-Clause license](LICENSE). Redistributed source and binaries must retain the required copyright notice, conditions and disclaimer. Advertising materials mentioning features or use of the software must display this acknowledgment:
-
-> This product includes software developed by the Kokuban contributors.
-
-Running Kokuban by itself does not require a public announcement. Citation metadata does not replace the license's required notices. The historical v0.1 release remains under its published MIT license. Third-party code, content and assets retain their own licenses, including the derived Unicode tables under MIT and the Contributor Covenant code of conduct under CC-BY-4.0. Release archives include third-party notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).
+Kokuban's original code and documentation use the [BSD-3-Clause license](LICENSE). Redistributed source and binaries must retain the required copyright notice, conditions and disclaimer. Neither the copyright holder's name nor the names of its contributors may be used to endorse or promote products derived from this software without permission. The advertising acknowledgment previously required by BSD-4-Clause no longer applies. The historical v0.1 release remains under its published MIT license. Third-party code, content and assets retain their own licenses, including the derived Unicode tables under MIT and the Contributor Covenant code of conduct under CC-BY-4.0. Release archives include third-party notices. Learn more in [ABOUT.md](ABOUT.md) and [third-party licensing](docs/THIRD_PARTY.md).
