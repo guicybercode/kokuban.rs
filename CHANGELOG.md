@@ -1,9 +1,17 @@
 # Changelog
 
-## Unreleased
+## v0.5 — não lançada
+
+Not released yet: there is no `v0.5` tag, GitHub release or Homebrew update, and the download links in the README still point to v0.4. The Git tag will be `v0.5`; the Cargo package version is already `0.5.0`. Linux panes, search, close confirmation, PRIMARY selection and the Omarchy installer; macOS text input through the system input method.
+
+### Validation scope
+
+- **Em teste** (implemented and covered by automated tests, not yet confirmed on real hardware): macOS IME composition (dead keys, kana/kanji, pinyin, emoji picker), rendering on Retina displays (backing scale 2×), and the Omarchy integration on a physical Hyprland session (`scripts/omarchy-install.sh`, the `terminal` tag, Super+C/Super+V, fcitx5/IBus).
+- Wayland was validated headless only: sway 1.10.1 (fractional scale, pointer cells, CLIPBOARD and PRIMARY through `wlr-data-control`, text-input-v3 with a protocol-level input method) and Weston 14 (integer scale, launch). X11 runs under Xvfb in CI.
 
 ### Added
 
+- macOS text input through the system input method: `TerminalView` implements `NSTextInputClient`, so dead keys, kana/kanji, pinyin and the emoji picker commit composed text to the PTY, the pre-edit is drawn underlined at the cursor cell without touching the grid, and the candidate window follows the cursor; `option_as_alt` decides whether Option goes to the input method or acts as Meta. Real typing is **em teste** (see the validation scope above).
 - Linux search strip: while `Ctrl+Shift+F` is open, the pane's last row shows the query with a block caret and `current/total` or `no matches`, above any kitty or sixel image; it keeps its row while moving between matches (a match under it is scrolled one line clear, and only a match on the live screen's last line moves it to the first row for the rest of the search); IME commits extend the query instead of reaching the shell.
 - Linux close confirmation: closing a pane (`Ctrl+Shift+W`) or the window while a program other than the shell runs in the PTY foreground (`tcgetpgrp`) asks `Close pane (vim)? [y/N]` in a strip over the pane; only `y` closes, `n`/`Esc`/`Enter` keep the PTYs. Idle shells close at once; `[confirm] on_close_pane` and `on_quit` turn it off.
 - Panes on Linux: the winit/softbuffer window shares the macOS pane tree. `Ctrl+Shift+D`/`Ctrl+Shift+E` split, `Ctrl+Shift+W` closes, `Ctrl+Shift+H/J/K/L` move the focus, `Ctrl+Alt+Shift+H/J/K/L` resize, `Ctrl+Shift+F` searches the scrollback (matches highlighted in the pane), `Ctrl+Shift+N` jumps to a pane with attention, `Ctrl+Shift+↑/↓` navigate prompt marks and `Ctrl+Shift++/-/0` zoom the font; all remappable under `[keybind.linux]`. Each pane owns its PTY (with its own `TIOCSWINSZ` cells and pixels), a click focuses the pane under the pointer, dividers turn hanko red next to the focused pane or one asking for attention, and a shell exiting closes only its pane. One shared `terminal-reader` thread now serves every pane on both platforms. The status bar remains macOS-only.
