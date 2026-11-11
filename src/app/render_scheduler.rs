@@ -1,6 +1,8 @@
 //! macOS frame scheduling: frames run on the main dispatch queue only when
 //! requested, at most once per frame interval, instead of a repeating timer
-//! waking the process 60 times per second while idle.
+//! waking the process 60 times per second while idle. While the window is not
+//! visible the frame callback still runs (titles, attention, clipboard,
+//! shutdown) but skips drawing, and nothing retries until it is shown again.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,18 +40,44 @@ pub(super) struct RenderScheduler {
     dirty: Arc<AtomicBool>,
     scheduled: AtomicBool,
     last_frame: Mutex<Option<Instant>>,
-    frame: Box<dyn Fn() + Send + Sync>,
+    /// Whether the window is on screen; starts true so a missing occlusion
+    /// notification can never stop drawing.
+    visible: AtomicBool,
+    frame: Box<dyn Fn(FrameMode) + Send + Sync>,
+}
+
+/// What the frame callback should do this time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FrameMode {
+    /// Draw dirty content and run the main-thread housekeeping.
+    Draw,
+    /// Window hidden: housekeeping only, content stays dirty for later.
+    Hidden,
 }
 
 impl RenderScheduler {
-    /// `frame` runs on the main thread; it renders when `dirty` is set.
-    pub(super) fn new(dirty: Arc<AtomicBool>, frame: Box<dyn Fn() + Send + Sync>) -> Arc<Self> {
+    /// `frame` runs on the main thread; with `FrameMode::Draw` it renders
+    /// when `dirty` is set.
+    pub(super) fn new(
+        dirty: Arc<AtomicBool>,
+        frame: Box<dyn Fn(FrameMode) + Send + Sync>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             dirty,
             scheduled: AtomicBool::new(false),
             last_frame: Mutex::new(None),
+            visible: AtomicBool::new(true),
             frame,
         })
+    }
+
+    /// Record the window's occlusion state; becoming visible draws the
+    /// current content, since output may have arrived while it was hidden.
+    pub(super) fn set_window_visible(self: &Arc<Self>, visible: bool) {
+        self.visible.store(visible, Ordering::Release);
+        if visible {
+            self.request_render();
+        }
     }
 
     /// Mark content changed and schedule one frame; safe from any thread.
@@ -107,9 +135,11 @@ impl RenderScheduler {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(now);
         // Release before the frame so requests made while rendering schedule again.
         self.scheduled.store(false, Ordering::Release);
-        (self.frame)();
-        // Animations and unavailable drawables leave content dirty: retry next interval.
-        if self.dirty.load(Ordering::Relaxed) {
+        let mode = frame_mode(self.visible.load(Ordering::Acquire));
+        (self.frame)(mode);
+        // Animations and unavailable drawables leave content dirty: retry next
+        // interval, but only on screen; showing the window requests a frame.
+        if retry_after_frame(mode, self.dirty.load(Ordering::Relaxed)) {
             self.request_frame();
         }
     }
@@ -122,6 +152,19 @@ extern "C" fn run_scheduled_frame(context: *mut c_void) {
     scheduler.run_on_main_thread();
 }
 
+fn frame_mode(visible: bool) -> FrameMode {
+    if visible {
+        FrameMode::Draw
+    } else {
+        FrameMode::Hidden
+    }
+}
+
+/// A hidden window never polls for a drawable, so it causes no wakeups.
+fn retry_after_frame(mode: FrameMode, dirty: bool) -> bool {
+    mode == FrameMode::Draw && dirty
+}
+
 /// Time to wait so frames start at least one interval apart.
 fn frame_delay(last_frame: Option<Instant>, now: Instant) -> Duration {
     last_frame.map_or(Duration::ZERO, |last| {
@@ -131,7 +174,9 @@ fn frame_delay(last_frame: Option<Instant>, now: Instant) -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use super::{frame_delay, RenderScheduler, FRAME_INTERVAL};
+    use super::{
+        frame_delay, frame_mode, retry_after_frame, FrameMode, RenderScheduler, FRAME_INTERVAL,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -154,7 +199,7 @@ mod tests {
 
     #[test]
     fn concurrent_requests_claim_one_schedule_until_released() {
-        let scheduler = RenderScheduler::new(Arc::new(AtomicBool::new(false)), Box::new(|| {}));
+        let scheduler = RenderScheduler::new(Arc::new(AtomicBool::new(false)), Box::new(|_| {}));
         let claims: usize = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..8)
                 .map(|_| {
@@ -171,5 +216,60 @@ mod tests {
         scheduler.scheduled.store(false, Ordering::Release);
         assert!(scheduler.try_claim_schedule());
         assert!(!scheduler.try_claim_schedule());
+    }
+
+    #[test]
+    fn hidden_windows_skip_drawing_and_never_retry() {
+        assert_eq!(frame_mode(true), FrameMode::Draw);
+        assert_eq!(frame_mode(false), FrameMode::Hidden);
+        assert!(retry_after_frame(FrameMode::Draw, true));
+        assert!(!retry_after_frame(FrameMode::Draw, false));
+        assert!(!retry_after_frame(FrameMode::Hidden, true));
+        assert!(!retry_after_frame(FrameMode::Hidden, false));
+    }
+
+    #[test]
+    fn hidden_frame_runs_housekeeping_and_leaves_content_dirty_unscheduled() {
+        use std::sync::Mutex;
+
+        let dirty = Arc::new(AtomicBool::new(true));
+        let modes = Arc::new(Mutex::new(Vec::new()));
+        let frame_dirty = dirty.clone();
+        let frame_modes = modes.clone();
+        let scheduler = RenderScheduler::new(
+            dirty.clone(),
+            Box::new(move |mode| {
+                frame_modes.lock().unwrap().push(mode);
+                if mode == FrameMode::Draw {
+                    frame_dirty.store(false, Ordering::Relaxed);
+                }
+            }),
+        );
+
+        // Hidden: the callback runs without drawing and nothing is re-queued.
+        scheduler.visible.store(false, Ordering::Release);
+        assert!(scheduler.try_claim_schedule());
+        Arc::clone(&scheduler).run_on_main_thread();
+        assert_eq!(*modes.lock().unwrap(), vec![FrameMode::Hidden]);
+        assert!(dirty.load(Ordering::Relaxed));
+        assert!(!scheduler.scheduled.load(Ordering::Acquire));
+
+        // Visible again: the next frame draws the pending content.
+        scheduler.visible.store(true, Ordering::Release);
+        *scheduler.last_frame.lock().unwrap() = None;
+        assert!(scheduler.try_claim_schedule());
+        Arc::clone(&scheduler).run_on_main_thread();
+        assert_eq!(
+            *modes.lock().unwrap(),
+            vec![FrameMode::Hidden, FrameMode::Draw]
+        );
+        assert!(!dirty.load(Ordering::Relaxed));
+        assert!(!scheduler.scheduled.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn schedulers_start_visible() {
+        let scheduler = RenderScheduler::new(Arc::new(AtomicBool::new(false)), Box::new(|_| {}));
+        assert!(scheduler.visible.load(Ordering::Acquire));
     }
 }

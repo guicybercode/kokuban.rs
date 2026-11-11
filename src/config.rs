@@ -870,6 +870,33 @@ step = 5
     }
 
     #[test]
+    fn option_as_alt_selects_each_side_and_rejects_unknown_values() {
+        use super::OptionAsAlt;
+
+        assert_eq!(Config::default().input.option_as_alt, OptionAsAlt::Both);
+        for (value, expected) in [
+            ("both", OptionAsAlt::Both),
+            ("left", OptionAsAlt::Left),
+            ("right", OptionAsAlt::Right),
+            ("none", OptionAsAlt::None),
+        ] {
+            let config: Config =
+                toml::from_str(&format!("[input]\noption_as_alt = \"{value}\"\n")).unwrap();
+            assert_eq!(config.input.option_as_alt, expected, "{value}");
+        }
+        for invalid in ["Left", "esquerda", "true"] {
+            assert!(
+                toml::from_str::<Config>(&format!("[input]\noption_as_alt = \"{invalid}\"\n"))
+                    .is_err(),
+                "{invalid} must be rejected"
+            );
+        }
+
+        let shipped: Config = toml::from_str(include_str!("../kokuban.toml")).unwrap();
+        assert_eq!(shipped.input.option_as_alt, OptionAsAlt::Both);
+    }
+
+    #[test]
     fn close_confirmation_defaults_on_and_each_question_can_be_turned_off() {
         let shipped: Config = toml::from_str(include_str!("../kokuban.toml"))
             .expect("shipped kokuban.toml must parse");
