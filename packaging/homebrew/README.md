@@ -18,6 +18,11 @@ resolves it). The copies in the tap are not edited by hand.
   (the release binary needs glibc 2.39) and installs the desktop entry and icon. Homebrew
   reads the version from the download URL, so the tag appears literally in each `url`.
 
+Both files keep pointing at the latest **published** tag. While a release is being
+prepared on `main` (v0.5 at the moment, Cargo version `0.5.0`) they stay on v0.4:
+the new tag has no assets or checksums yet, and `scripts/update-homebrew.sh` moves
+them once it does.
+
 ## Updating for a new release
 
 After `gh release create vX.Y ...` has published the assets and their `.sha256` files:

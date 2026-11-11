@@ -9,9 +9,14 @@ packages can be reviewed first.
 ## 1. Prepare `main`
 
 - [ ] Bump the version in `Cargo.toml` (and `Cargo.lock`), `CITATION.cff` and the
-      supported-versions table in `SECURITY.md`.
-- [ ] Turn `## Unreleased` in `CHANGELOG.md` into `## vX.Y — YYYY-MM-DD` and start
-      a fresh empty `## Unreleased` above it.
+      supported-versions table in `SECURITY.md`. The Cargo version may be bumped
+      while the release is prepared on `main` (v0.5 did); `CITATION.cff`, with its
+      `date-released`, and `SECURITY.md` describe the published release, so change
+      them only in the release PR.
+- [ ] Turn `## Unreleased` (or a prepared `## vX.Y — não lançada`) in `CHANGELOG.md`
+      into `## vX.Y — YYYY-MM-DD` and start a fresh empty `## Unreleased` above it.
+      Move every item still marked **em teste** to the validation scope or confirm it
+      on hardware first.
 - [ ] Update the version in the README install commands and in `docs/INSTALL.md`
       (download URLs, `git clone --branch`).
 - [ ] Open a PR, let CI pass, merge it.

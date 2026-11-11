@@ -35,9 +35,18 @@ tar -xzf kokuban-v0.4-x86_64-unknown-linux-gnu.tar.gz
 ./kokuban-v0.4-x86_64-unknown-linux-gnu/kokuban
 ```
 
-Ubuntu runtime dependencies: `sudo apt install --yes libfontconfig1 libfreetype6 fonts-dejavu-core libx11-6 libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0`
+Ubuntu runtime dependencies (X11 and Wayland): `sudo apt install --yes libfontconfig1 libfreetype6 fonts-dejavu-core libx11-6 libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0 libwayland-client0 libxkbcommon0`. On Wayland the clipboard needs a compositor with `ext-data-control-v1` or `wlr-data-control` (Hyprland and sway have it); elsewhere it falls back to XWayland. See [Linux display and clipboard](docs/INSTALL.md#linux-display-and-clipboard).
 
-**From source** (Rust 1.94.1 via [rustup](https://rustup.rs/)):
+**Omarchy** (Arch + Hyprland) builds from source and registers itself as the terminal; the script also adds the Hyprland `terminal` tag that makes Super+C/Super+V copy and paste:
+
+```sh
+sudo pacman -S --needed rustup base-devel pkgconf fontconfig freetype2
+rustup toolchain install 1.94.1 --profile minimal
+git clone https://github.com/guicybercode/kokuban.rs.git && cd kokuban.rs
+rustup run 1.94.1 cargo build --release --locked && scripts/omarchy-install.sh
+```
+
+**From source** (Rust 1.94.1 via [rustup](https://rustup.rs/); clone `main` instead of the tag for the unreleased v0.5 features):
 
 ```sh
 git clone --branch v0.4 --depth 1 https://github.com/guicybercode/kokuban.rs.git && cd kokuban.rs
@@ -63,21 +72,24 @@ cargo build --release --locked
 
 ## Platform support
 
-macOS is the primary desktop target; Linux follows the Omarchy roadmap and shares the parser, grid, graphics and protocol work. Windows is not supported.
+macOS is the primary desktop target; Linux follows the Omarchy roadmap and shares the parser, grid, graphics and protocol work. Windows is not supported. The table describes `main` (v0.5, not released yet); **em teste** means implemented and covered by automated tests but not yet confirmed on real hardware.
 
 | | macOS | Linux |
 |---|---|---|
 | Renderer | Metal GPU | Software rasterizer (winit + softbuffer, X11/Wayland) |
+| HiDPI | Backing scale of the display the window is on; Retina **em teste** | Integer and fractional scale (`wp_fractional_scale_v1`, headless sway and Weston) |
 | Panes (split, focus, resize, close) and font zoom | Yes | Yes (`[keybind.linux]`) |
 | Status bar | Yes | No (next) |
 | Close confirmation | Yes (`[confirm]`) | Only while a program other than the shell runs in the foreground (`[confirm]`) |
 | Prompt marks | Indicator and navigation | Navigation only |
 | Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Yes (`Ctrl+Shift+F`, query and match count in a strip over the pane) |
 | Attention mark | ● and red dividers (`Cmd+Shift+A`) | Red dividers (`Ctrl+Shift+N`); no ● yet |
-| IME / text composition | In progress | Yes (preedit) |
+| IME / text composition | `NSTextInputClient` (dead keys, kana/kanji, emoji picker), also in the `Cmd+F` search; **em teste** | Yes (preedit, text-input-v3); fcitx5/IBus on Hyprland **em teste** |
+| Hidden window | Drawing paused while minimized, covered, on another Space or locked; energy saving **em teste** | Drawing skipped while the compositor reports the window occluded |
+| Clipboard | System pasteboard, OSC 52 writes | CLIPBOARD and PRIMARY (middle click) on X11 and Wayland data-control, OSC 52 writes |
 | Kitty animation | No (static images only) | Yes (bounded cache; mpv video) |
-| Omarchy integration | n/a | Yes |
-| Install channel | DMG with `Kokuban.app` (ad-hoc signed), `--update` | tar.gz, `--update` |
+| Omarchy integration | n/a | `scripts/omarchy-install.sh`, live palette, `terminal` tag for Super+C/V; on a physical Hyprland session **em teste** |
+| Install channel | DMG with `Kokuban.app` (ad-hoc signed), Homebrew cask and formula, `--update` | tar.gz, Homebrew formula (source build), `--update` |
 
 ## Theme
 
@@ -132,7 +144,7 @@ allow_file_transfer = false
 
 ## Omarchy
 
-Kokuban works as the Omarchy terminal: `kokuban --working-directory="$HOME" -e nvim`, `xdg-terminal-exec` registration, live palette updates and the system monospace font.
+Kokuban works as the Omarchy terminal: `kokuban --working-directory="$HOME" -e nvim`, `xdg-terminal-exec` registration, live palette updates (current Omarchy publishes the theme under `~/.local/state/omarchy/current`, older releases under `~/.config/omarchy/current`) and the system monospace font. `scripts/omarchy-install.sh` installs a source build under `~/.local`, puts Kokuban first in `xdg-terminals.list` and tags its windows `terminal` in Hyprland, which current Omarchy needs to send `Ctrl+Shift+C/V` for Super+C/Super+V; `scripts/omarchy-install.sh uninstall` removes only what it added. Headless Wayland checks pass; a run on a physical Omarchy machine is still **em teste**.
 See [docs/OMARCHY.md](docs/OMARCHY.md) for installation and bindings.
 
 ## Name
@@ -141,7 +153,7 @@ See [docs/OMARCHY.md](docs/OMARCHY.md) for installation and bindings.
 
 ## Status
 
-Kokuban v0.4 (Cargo version 0.4.0) is the current release, validated on macOS and Ubuntu 24.04 CI; v0.5 is being prepared on `main` and tracked in the [roadmap](docs/ROADMAP.md). The exact scope and open items of v0.4 are in the changelog's [validation scope](CHANGELOG.md#validation-scope-and-limits).
+Kokuban v0.4 (Cargo version 0.4.0) is the current release, validated on macOS and Ubuntu 24.04 CI. v0.5 (Cargo version 0.5.0 on `main`) is **not released yet**; its changes and the items still **em teste** are in the [changelog](CHANGELOG.md) and the [roadmap](docs/ROADMAP.md). The exact scope and open items of v0.4 are in the changelog's [validation scope](CHANGELOG.md#validation-scope-and-limits).
 
 ## Community and license
 

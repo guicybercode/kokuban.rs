@@ -31,7 +31,7 @@ Installed with Homebrew, upgrade with `brew upgrade` rather than `kokuban --upda
 
 ## Run a downloaded release
 
-The [v0.4 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4) is an early desktop release. Download the archive (or, on a Mac, the disk image) for your computer and its matching `.sha256` file. Neither Rust nor Python is required to run the binary. Python is used only by development tools retained in the source repository; those tools and raw benchmark snapshots are omitted from the application archives.
+The [v0.4 release](https://github.com/guicybercode/kokuban.rs/releases/tag/v0.4) is an early desktop release and the latest published one: v0.5 (Cargo version 0.5.0) is being prepared on `main` and has no release assets yet, so the commands below use v0.4. To try v0.5 now, [build `main` from source](#build-and-run-from-source). Download the archive (or, on a Mac, the disk image) for your computer and its matching `.sha256` file. Neither Rust nor Python is required to run the binary. Python is used only by development tools retained in the source repository; those tools and raw benchmark snapshots are omitted from the application archives.
 
 | Computer | Archive |
 | --- | --- |
@@ -46,8 +46,19 @@ The Linux binary requires compatible glibc and system libraries; Ubuntu 24.04 is
 ```sh
 sudo apt update
 sudo apt install --yes libfontconfig1 libfreetype6 fonts-dejavu-core \
-  libx11-6 libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0
+  libx11-6 libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0 \
+  libwayland-client0 libxkbcommon0
 ```
+
+Only Fontconfig and FreeType are linked; the X11 and Wayland libraries are opened at run time, so `ldd` does not list them. The X11 set (`libx11-6` through `libxkbcommon-x11-0`) is needed for an X11 session or XWayland, the last two for native Wayland. On Arch and Omarchy the same libraries are `fontconfig freetype2 libx11 libxcursor libxi libxkbcommon-x11 wayland libxkbcommon` plus a font such as `ttf-dejavu`; Omarchy already has them.
+
+### Linux display and clipboard
+
+Kokuban follows winit's default: the Wayland backend when `WAYLAND_DISPLAY` is set, otherwise X11 (`DISPLAY`, including XWayland). On Wayland it draws its own client-side decorations when the compositor does not provide server-side ones.
+
+The clipboard runs in-process; the `wl-clipboard` package (`wl-copy`/`wl-paste`) is not needed by Kokuban, only by `scripts/linux-wayland-smoke.py` and handy for checking the clipboard from a shell. On Wayland, copy and paste need a compositor with a data-control protocol, `ext-data-control-v1` or `wlr-data-control` (Hyprland and sway have it); PRIMARY selection and middle-click paste need `ext-data-control-v1` or `wlr-data-control` version 2. Without data-control (GNOME, Weston) Kokuban uses the X11 clipboard through XWayland, so `DISPLAY` must be set. Turn PRIMARY off with `[clipboard] primary_selection = false`. Details are in [Keybinds](KEYBINDS.md).
+
+Wayland coverage is headless: sway 1.10.1 (fractional scale, pointer cells, CLIPBOARD, PRIMARY, text-input-v3) and Weston 14. A physical Hyprland session is **em teste**; see the [Omarchy validation scope](OMARCHY.md#validation-scope).
 
 In the directory containing the downloaded archive and checksum:
 
@@ -93,7 +104,7 @@ On macOS the app menu also has **Check for Updates…** and **Install Update…*
 
 Turn the automatic check off with `check_on_startup = false` under `[update]` in `kokuban.toml`, or set `KOKUBAN_NO_UPDATE_CHECK=1`.
 
-Homebrew installs are updated with `brew upgrade --cask kokuban` instead (see [Homebrew (macOS and Linux)](#homebrew-macos-and-linux)).
+Homebrew installs are updated with `brew upgrade kokuban.rs` or `brew upgrade --cask kokuban` instead (see [Homebrew (macOS and Linux)](#homebrew-macos-and-linux)).
 
 ## Build and run from source
 
@@ -102,8 +113,11 @@ Install Git and Rust through [rustup](https://rustup.rs/). The verified toolchai
 On Linux, install the runtime dependencies above plus the build tools:
 
 ```sh
-sudo apt install --yes build-essential pkg-config libfontconfig1-dev libfreetype6-dev
+sudo apt install --yes build-essential pkg-config libfontconfig1-dev libfreetype6-dev   # Ubuntu
+sudo pacman -S --needed rustup base-devel pkgconf fontconfig freetype2                    # Arch, Omarchy
 ```
+
+No Wayland or X11 development packages are needed: those libraries are loaded at run time.
 
 On macOS, install Xcode Command Line Tools if needed:
 
@@ -121,7 +135,7 @@ rustup run 1.94.1 cargo build --release --locked
 ./target/release/kokuban
 ```
 
-To work on the development version, clone `main` instead; see [CONTRIBUTING.md](../CONTRIBUTING.md). The executable is `target/release/kokuban`. You can select a different shell with an absolute executable path:
+To work on the development version (v0.5, not released yet), clone `main` instead; see [CONTRIBUTING.md](../CONTRIBUTING.md). The executable is `target/release/kokuban`. You can select a different shell with an absolute executable path:
 
 ```sh
 KOKUBAN_SHELL=/bin/bash ./target/release/kokuban
@@ -158,7 +172,45 @@ Finder adds. On Omarchy, `scripts/omarchy-install.sh` installs a source build,
 selects it through `xdg-terminal-exec` and adds the Hyprland `terminal` tag that
 Super+C/Super+V depend on; see [Omarchy installation and bindings](OMARCHY.md).
 CI checks command launching under X11 and
-headless Weston/Wayland; Hyprland integration still needs an on-device run.
+headless Weston/Wayland; Hyprland integration on a physical machine is still
+**em teste**.
+
+### Omarchy
+
+Build on the Omarchy machine and run the installer from the repository root:
+
+```sh
+sudo pacman -S --needed rustup base-devel pkgconf fontconfig freetype2
+rustup toolchain install 1.94.1 --profile minimal
+rustup run 1.94.1 cargo build --release --locked
+scripts/omarchy-install.sh            # --no-default, --no-hypr, --binary PATH, --hypr-format lua|conf
+scripts/omarchy-install.sh uninstall  # remove only what install added
+```
+
+It installs `~/.local/bin/kokuban`, the icon and the desktop entry, puts
+Kokuban first in `xdg-terminals.list` (Super+Return and `omarchy-launch-tui`
+go through `xdg-terminal-exec`) and tags Kokuban windows `terminal` in
+`~/.config/hypr/hyprland.lua` (current Omarchy) or `hyprland.conf` (older
+releases). On current Omarchy, Super+C/Super+V send `Ctrl+Shift+C/V` only to
+windows with that tag and plain `Ctrl+C/V` to everything else, so without the
+tag Super+C interrupts the shell. Hyprland reloads the file by itself; windows
+opened afterwards carry the tag. The theme is read from `~/.local/state/omarchy/current`
+and, on older releases, `~/.config/omarchy/current`. Details and the manual
+steps are in [OMARCHY.md](OMARCHY.md).
+
+### macOS text input and displays
+
+Typing goes through the macOS input method (`NSTextInputClient`): dead keys,
+kana/kanji, pinyin and the emoji picker commit composed text, and the pre-edit
+is drawn at the cursor; with `Cmd+F` open, composed text goes to the search
+query. The glyph atlas follows the backing scale of the display the window
+opens on. While the window is minimized, fully covered, on another Space or
+behind a locked screen, Kokuban stops drawing (titles, attention marks and
+OSC 52 are still handled) and redraws when it is shown again, to save energy.
+All three are **em teste**: they have automated tests and a Kotoeri check of
+the candidate window position, but real typing with each input method, Retina
+displays and the energy saving have not been confirmed on hardware yet. Please report problems in
+[GitHub issues](https://github.com/guicybercode/kokuban.rs/issues).
 
 ### Option key on macOS
 
@@ -175,7 +227,9 @@ before copying explicit colors or a font family into your configuration.
 
 ## Troubleshooting startup
 
-- **No Linux display:** start it inside an X11 or Wayland desktop session. A headless SSH session without a display cannot open the window. X11 has automated runtime coverage; Wayland remains less validated.
+- **No Linux display:** start it inside an X11 or Wayland desktop session. A headless SSH session without a display cannot open the window. X11 has automated runtime coverage under Xvfb; Wayland is covered headless under sway and Weston, not yet on a physical Hyprland session.
+- **Copy or paste does nothing on Wayland:** the compositor lacks `ext-data-control-v1`/`wlr-data-control` and `DISPLAY` is unset; see [Linux display and clipboard](#linux-display-and-clipboard).
+- **Super+C interrupts the program on Omarchy:** the Hyprland `terminal` tag is missing; run `scripts/omarchy-install.sh` (or add the rule from [OMARCHY.md](OMARCHY.md#join-omarchys-terminal-window-rules)) and open a new window.
 - **Missing Linux library:** install the runtime packages above. Libraries opened dynamically may not appear in `ldd` output.
 - **Missing font:** install `fonts-dejavu-core` on Linux. Install `fonts-noto-color-emoji` for the emoji fallback exercised by CI. macOS includes Menlo and Apple Color Emoji.
 - **Shell fails to start:** set `KOKUBAN_SHELL` to an absolute, executable shell path without command-line arguments.
