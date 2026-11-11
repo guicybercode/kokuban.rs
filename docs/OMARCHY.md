@@ -37,12 +37,20 @@ the old directory, without leaving an alias.
 ## Install and select
 
 Build on the Omarchy machine with the Rust toolchain, compiler tools, pkg-config,
-Fontconfig, and FreeType installed:
+Fontconfig, and FreeType installed. Wayland, xkbcommon and the X11 libraries are
+opened at run time and are already part of Omarchy; no `-dev` packages are needed:
 
 ```sh
-cargo build --locked --release
+sudo pacman -S --needed rustup base-devel pkgconf fontconfig freetype2
+rustup toolchain install 1.94.1 --profile minimal
+rustup run 1.94.1 cargo build --locked --release
 scripts/omarchy-install.sh
 ```
+
+Copy and paste go through Hyprland's data-control protocol inside Kokuban; the
+`wl-clipboard` package is not required. The steps below have passed headless
+checks only; on a physical Omarchy machine they are **em teste** (see
+[Validation scope](#validation-scope)).
 
 The script works on both generations and only touches files in your home:
 

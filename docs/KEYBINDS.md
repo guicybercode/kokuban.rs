@@ -19,7 +19,7 @@ Linux supports these clipboard and selection actions:
 
 Ordinary `Ctrl+C` and `Ctrl+V` remain application input. Paste honors bracketed-paste mode, normalizes line endings, removes embedded control characters, and rejects oversized text instead of truncating it. Copy and encoded paste are limited to 1 MiB. Clipboard access runs in the background; accepted repeated paste requests retain their order.
 
-Omarchy maps `Super+C` and `Super+V` to the supported Insert shortcuts; see [Omarchy clipboard bindings](OMARCHY.md#use-the-existing-omarchy-bindings) for the integration and validation scope.
+On current Omarchy, `Super+C` and `Super+V` send `Ctrl+Shift+C`/`Ctrl+Shift+V` to windows tagged `terminal` (`scripts/omarchy-install.sh` adds the tag for Kokuban) and older releases send `Ctrl+Insert`/`Shift+Insert`; both pairs are supported. See [Omarchy clipboard bindings](OMARCHY.md#use-the-existing-omarchy-bindings) for the integration and validation scope.
 
 A drag selection also becomes the PRIMARY selection, which other X11 and Wayland applications paste with their middle button; a plain click does not replace it. Set `[clipboard] primary_selection = false` to keep both the selection and the middle button out of PRIMARY. While an application tracks the mouse, the middle button is reported to it unless `Shift` is held.
 
