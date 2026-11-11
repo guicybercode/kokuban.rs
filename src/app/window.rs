@@ -905,18 +905,17 @@ define_class!(
                 return;
             }
 
-            // Busca aberta: as teclas vão para a consulta, não para o shell.
-            if !has_cmd && handle_search_key(event, key_code, key_modifiers) {
-                return;
-            }
-
             // Cmd keys are handled in performKeyEquivalent
             if has_cmd {
                 return;
             }
 
+            // Busca aberta: as teclas vão para a consulta, não para o shell
+            // (`deliver_key_event` e `ime_commit_text` escolhem o destino).
+            let search_open = focused_search_open();
+
             // Exact Shift+PageUp/Down/Home/End: viewport scrolling
-            if let Some(action) = mac_scrollback_action(key_code, key_modifiers) {
+            if let Some(action) = mac_scrollback_action(key_code, key_modifiers).filter(|_| !search_open) {
                 let handled = VIEW_STATE.with(|state| {
                     let mut state = state.borrow_mut();
                     if let Some(state) = state.as_mut() {
@@ -957,76 +956,34 @@ define_class!(
             let has_ctrl = modifiers.contains(NSEventModifierFlags::Control);
             let named_key =
                 terminal_key_from_key_code(key_code, modifiers.contains(NSEventModifierFlags::Shift)).is_some();
-            if composing || (!has_ctrl && !option_meta && !named_key) {
+            if mac_key_route(composing, has_ctrl, option_meta, named_key) == MacKeyRoute::InputMethod {
                 PENDING_KEY_EVENT.with(|pending| *pending.borrow_mut() = Some(event.retain()));
                 let events = NSArray::from_slice(&[event]);
                 self.interpretKeyEvents(&events);
                 // Nothing claimed the event (no text, no command): send it as before.
                 if let Some(event) = PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take()) {
-                    forward_key_event_to_pane(&event);
+                    deliver_key_event(&event);
                 }
                 return;
             }
 
-            forward_key_event_to_pane(event);
+            deliver_key_event(event);
         }
 
         #[unsafe(method(viewDidChangeBackingProperties))]
         fn view_did_change_backing_properties(&self) {
-            VIEW_STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                if let Some(state) = state.as_mut() {
-                    if let Some(window) = self.window() {
-                        let new_scale = window.backingScaleFactor() as f32;
-                        if (new_scale - state.scale_factor).abs() > 0.01 {
-                            match GlyphAtlas::new(
-                                &state.font_family,
-                                state.font_size,
-                                new_scale,
-                            ) {
-                                Ok(replacement) => {
-                                    let cell_w = replacement.cell_width;
-                                    let cell_h = replacement.cell_height;
-                                    let status_bar_height = if state.status_bar_enabled {
-                                        (cell_h * 1.5).ceil()
-                                    } else {
-                                        0.0
-                                    };
-                                    let backing_size =
-                                        self.convertSizeToBacking(self.bounds().size);
+            sync_backing_scale(self);
+        }
 
-                                    log::info!("Scale factor changed to {new_scale}");
-                                    let mut atlas = state.atlas.lock().unwrap();
-                                    let mut tree = state.pane_tree.lock().unwrap();
-                                    let mut replacement = replacement;
-                                    replacement.set_ligatures(atlas.ligatures_enabled());
-                                    *atlas = replacement;
-                                    update_pane_geometry(
-                                        &mut tree,
-                                        cell_w,
-                                        cell_h,
-                                        status_bar_height,
-                                        backing_size,
-                                    );
-                                    drop(tree);
-                                    drop(atlas);
-
-                                    state.scale_factor = new_scale;
-                                    state.status_bar_height = status_bar_height;
-                                    state.metal_layer.setContentsScale(new_scale as f64);
-                                    state.metal_layer.setDrawableSize(backing_size);
-                                    state.request_render();
-                                }
-                                Err(error) => log::error!(
-                                    "Failed to rebuild glyph atlas for scale {new_scale}: {error}; \
-                                     keeping scale {}",
-                                    state.scale_factor
-                                ),
-                            }
-                        }
-                    }
-                }
-            });
+        // The atlas starts at `NSScreen::mainScreen`'s scale, but the window
+        // can open on another display; match its backing scale as soon as the
+        // view joins it instead of relying on a later backing notification.
+        #[unsafe(method(viewDidMoveToWindow))]
+        fn view_did_move_to_window(&self) {
+            // SAFETY: forwards to NSView's implementation on the main thread;
+            // the selector takes no arguments and returns void.
+            let _: () = unsafe { msg_send![super(self), viewDidMoveToWindow] };
+            sync_backing_scale(self);
         }
 
         #[unsafe(method(setFrameSize:))]
@@ -1118,6 +1075,24 @@ define_class!(
             dispatch_window_focus_transition(true);
         }
 
+        // A frame presented before the window reached the screen can be lost,
+        // leaving a new window empty until the next key press: draw the
+        // current grid again whenever AppKit reports the window as visible.
+        #[unsafe(method(windowDidChangeOcclusionState:))]
+        fn window_did_change_occlusion_state(&self, _notification: &NSNotification) {
+            let Some(window) = self.window() else {
+                return;
+            };
+            // Hidden windows (minimized, covered, other Space, screen locked)
+            // stop drawing; becoming visible draws what arrived meanwhile.
+            let visible = window_is_visible(window.occlusionState());
+            VIEW_STATE.with(|state| {
+                if let Some(state) = state.borrow().as_ref() {
+                    state.render_scheduler.set_window_visible(visible);
+                }
+            });
+        }
+
         #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _notification: &NSNotification) {
             // A pre-edit cannot survive losing the key window: drop it on both sides.
@@ -1145,9 +1120,10 @@ define_class!(
 
         #[unsafe(method(doCommandBySelector:))]
         fn do_command_by_selector(&self, _selector: objc2::runtime::Sel) {
-            // Arrows, Enter, Tab, Escape, Backspace...: the terminal owns them.
+            // Arrows, Enter, Tab, Escape, Backspace...: the terminal (or the
+            // open search) owns them.
             if let Some(event) = PENDING_KEY_EVENT.with(|pending| pending.borrow_mut().take()) {
-                forward_key_event_to_pane(&event);
+                deliver_key_event(&event);
             }
         }
 
@@ -1227,6 +1203,101 @@ define_class!(
     }
 );
 
+/// Where a key press goes first: the input method (text, dead keys, CJK
+/// composition) or straight to the key encoders (Ctrl, Meta, named keys).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacKeyRoute {
+    InputMethod,
+    Direct,
+}
+
+/// While text is being composed every key belongs to the input method.
+fn mac_key_route(
+    composing: bool,
+    has_ctrl: bool,
+    option_meta: bool,
+    named_key: bool,
+) -> MacKeyRoute {
+    if composing || (!has_ctrl && !option_meta && !named_key) {
+        MacKeyRoute::InputMethod
+    } else {
+        MacKeyRoute::Direct
+    }
+}
+
+/// A key the input method did not turn into text: the open search of the
+/// focused pane takes it, otherwise the pane's terminal does.
+fn deliver_key_event(event: &NSEvent) {
+    let key_modifiers = key_modifiers_from_appkit(event.modifierFlags());
+    if !handle_search_key(event, event.keyCode(), key_modifiers) {
+        forward_key_event_to_pane(event);
+    }
+}
+
+/// Whether any part of the window is on screen (not minimized, hidden,
+/// fully covered or on another Space).
+fn window_is_visible(occlusion: NSWindowOcclusionState) -> bool {
+    occlusion.contains(NSWindowOcclusionState::Visible)
+}
+
+/// Rebuild the glyph atlas, pane geometry and Metal layer when the window's
+/// backing scale differs from the one the atlas was rasterized for.
+fn sync_backing_scale(view: &TerminalView) {
+    let Some(window) = view.window() else {
+        return;
+    };
+    let reported = window.backingScaleFactor();
+    VIEW_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return;
+        };
+        let Some(new_scale) = backing_scale_change(state.scale_factor, reported) else {
+            return;
+        };
+        match GlyphAtlas::new(&state.font_family, state.font_size, new_scale) {
+            Ok(mut replacement) => {
+                let cell_w = replacement.cell_width;
+                let cell_h = replacement.cell_height;
+                let status_bar_height = if state.status_bar_enabled {
+                    (cell_h * 1.5).ceil()
+                } else {
+                    0.0
+                };
+                let backing_size = view.convertSizeToBacking(view.bounds().size);
+
+                log::info!("Scale factor changed to {new_scale}");
+                let mut atlas = state.atlas.lock().unwrap();
+                let mut tree = state.pane_tree.lock().unwrap();
+                replacement.set_ligatures(atlas.ligatures_enabled());
+                *atlas = replacement;
+                update_pane_geometry(&mut tree, cell_w, cell_h, status_bar_height, backing_size);
+                drop(tree);
+                drop(atlas);
+
+                state.scale_factor = new_scale;
+                state.status_bar_height = status_bar_height;
+                state.metal_layer.setContentsScale(f64::from(new_scale));
+                state.metal_layer.setDrawableSize(backing_size);
+                state.request_render();
+            }
+            Err(error) => log::error!(
+                "Failed to rebuild glyph atlas for scale {new_scale}: {error}; keeping scale {}",
+                state.scale_factor
+            ),
+        }
+    });
+}
+
+/// The scale to switch to when AppKit reports `reported` for a window whose
+/// atlas uses `current`; `None` keeps the current scale (same value, or a
+/// value no display can have).
+fn backing_scale_change(current: f32, reported: f64) -> Option<f32> {
+    let reported = reported as f32;
+    (reported.is_finite() && reported > 0.0 && (reported - current).abs() > 0.01)
+        .then_some(reported)
+}
+
 /// Send one key event to the focused pane with that pane's current input mode.
 fn forward_key_event_to_pane(event: &NSEvent) {
     VIEW_STATE.with(|state| {
@@ -1275,12 +1346,21 @@ fn ime_commit_text(text: &str) {
             state.marked_text = None;
             let mut tree = state.pane_tree.lock().unwrap();
             if let Some(pane) = tree.focused_pane_mut() {
-                pane.grid.scroll_to_bottom();
-                if pane.selection.is_active() {
-                    pane.selection.clear();
-                }
-                if !text.is_empty() {
-                    pane.queue_input(text.as_bytes().to_vec());
+                if pane.search.is_some() {
+                    // Texto composto (acentos, kana) vai para a consulta aberta.
+                    for key in search_text_keys(text) {
+                        if pane.handle_search_key(key).is_none() {
+                            break;
+                        }
+                    }
+                } else {
+                    pane.grid.scroll_to_bottom();
+                    if pane.selection.is_active() {
+                        pane.selection.clear();
+                    }
+                    if !text.is_empty() {
+                        pane.queue_input(text.as_bytes().to_vec());
+                    }
                 }
             }
             drop(tree);
@@ -1373,13 +1453,37 @@ fn search_key_from_mac_event(
         KEY_TAB => SearchKey::Ignore,
         _ if ctrl => SearchKey::Ignore,
         _ => {
-            // Setas e teclas de função chegam como caracteres de uso
-            // privado (U+F700..U+F8FF) e não entram na consulta.
-            let typed = characters?
-                .chars()
-                .find(|c| !c.is_control() && !('\u{F700}'..='\u{F8FF}').contains(c))?;
+            let typed = characters?.chars().find(|c| is_search_text_char(*c))?;
             SearchKey::Char(typed)
         }
+    })
+}
+
+/// Setas e teclas de função chegam como caracteres de uso privado
+/// (U+F700..U+F8FF) e, como os de controle, não entram na consulta.
+fn is_search_text_char(character: char) -> bool {
+    !character.is_control() && !('\u{F700}'..='\u{F8FF}').contains(&character)
+}
+
+/// Caracteres de `text` que entram na consulta, na ordem digitada.
+fn search_text_keys(text: &str) -> Vec<SearchKey> {
+    text.chars()
+        .filter(|c| is_search_text_char(*c))
+        .map(SearchKey::Char)
+        .collect()
+}
+
+/// Se o painel focado está com a busca aberta.
+fn focused_search_open() -> bool {
+    VIEW_STATE.with(|state| {
+        state.borrow().as_ref().is_some_and(|state| {
+            state
+                .pane_tree
+                .lock()
+                .unwrap()
+                .focused_pane()
+                .is_some_and(|pane| pane.search.is_some())
+        })
     })
 }
 
@@ -1401,13 +1505,9 @@ fn handle_search_key(event: &NSEvent, key_code: u16, modifiers: KeyModifiers) ->
         let characters = event.characters().map(|s| s.to_string());
         let typed: Vec<SearchKey> =
             match search_key_from_mac_event(key_code, modifiers, characters.as_deref()) {
-                Some(SearchKey::Char(_)) => characters
-                    .as_deref()
-                    .unwrap_or_default()
-                    .chars()
-                    .filter(|c| !c.is_control() && !('\u{F700}'..='\u{F8FF}').contains(c))
-                    .map(SearchKey::Char)
-                    .collect(),
+                Some(SearchKey::Char(_)) => {
+                    search_text_keys(characters.as_deref().unwrap_or_default())
+                }
                 Some(key) => vec![key],
                 None => return true,
             };
@@ -2229,6 +2329,9 @@ pub(super) fn create_terminal_view(params: TerminalViewParams<'_>) -> Retained<T
 #[cfg(test)]
 mod tests {
     use super::search_key_from_mac_event;
+    use super::{
+        backing_scale_change, mac_key_route, search_text_keys, window_is_visible, MacKeyRoute,
+    };
     use super::{
         bracketed_paste_len, dispatch_window_focus_transition_with, encode_clipboard_paste,
         encode_macos_forwarded_wheel, focus_report_bytes, mac_key_equivalent_route,
@@ -3156,6 +3259,118 @@ mod tests {
                 search_key_from_mac_event(key_code, modifiers, characters),
                 expected,
                 "key code {key_code} {modifiers:?} {characters:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn key_route_sends_text_to_the_input_method_and_chords_direct() {
+        // (composing, ctrl, option as Meta, named key)
+        for (composing, ctrl, meta, named, expected) in [
+            // Plain text, and Option that is not Meta (the other side, or
+            // "none"), compose through the input method.
+            (false, false, false, false, MacKeyRoute::InputMethod),
+            (false, true, false, false, MacKeyRoute::Direct),
+            (false, false, true, false, MacKeyRoute::Direct),
+            (false, false, false, true, MacKeyRoute::Direct),
+            // Enter, Esc and Ctrl+C during composition belong to the input
+            // method, so they never reach the PTY alongside the commit.
+            (true, false, false, true, MacKeyRoute::InputMethod),
+            (true, true, false, false, MacKeyRoute::InputMethod),
+            (true, false, true, false, MacKeyRoute::InputMethod),
+        ] {
+            assert_eq!(
+                mac_key_route(composing, ctrl, meta, named),
+                expected,
+                "composing={composing} ctrl={ctrl} meta={meta} named={named}"
+            );
+        }
+    }
+
+    #[test]
+    fn composed_text_becomes_search_characters_in_order() {
+        use crate::grid::Grid;
+        use crate::parser::ansi::Utf8Parser;
+        use crate::search::{SearchKey, SearchState};
+
+        assert_eq!(
+            search_text_keys("ção"),
+            vec![
+                SearchKey::Char('ç'),
+                SearchKey::Char('ã'),
+                SearchKey::Char('o')
+            ]
+        );
+        assert_eq!(
+            search_text_keys("漢\u{F700}\r字"),
+            vec![SearchKey::Char('漢'), SearchKey::Char('字')]
+        );
+        assert!(search_text_keys("").is_empty());
+
+        // A dead key commit ("´" then "a" -> "á") reaches the query and finds the row.
+        let mut grid = Grid::new(20, 3, 100);
+        Utf8Parser::new().feed("ação já\r\n".as_bytes(), &mut grid);
+        let mut search = SearchState::new(String::new());
+        for commit in ["a", "ç", "ã", "o"] {
+            for key in search_text_keys(commit) {
+                search.handle_key(key, &mut grid);
+            }
+        }
+        assert_eq!(search.query, "ação");
+        assert_eq!(search.matches.len(), 1);
+    }
+
+    #[test]
+    fn backing_scale_changes_only_for_a_different_valid_scale() {
+        assert_eq!(backing_scale_change(2.0, 1.0), Some(1.0));
+        assert_eq!(backing_scale_change(1.0, 2.0), Some(2.0));
+        assert_eq!(backing_scale_change(2.0, 3.0), Some(3.0));
+        assert_eq!(backing_scale_change(2.0, 2.0), None);
+        assert_eq!(backing_scale_change(2.0, 2.005), None);
+        for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(backing_scale_change(2.0, invalid), None, "{invalid}");
+        }
+    }
+
+    /// Selectors `TerminalView` itself overrides (not inherited from NSView).
+    fn terminal_view_own_selectors() -> Vec<String> {
+        use objc2::ClassType;
+        super::TerminalView::class()
+            .instance_methods()
+            .iter()
+            .map(|method| method.name().name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn occlusion_visibility_follows_the_visible_bit_only() {
+        use objc2_app_kit::NSWindowOcclusionState;
+        assert!(window_is_visible(NSWindowOcclusionState::Visible));
+        assert!(window_is_visible(NSWindowOcclusionState(
+            NSWindowOcclusionState::Visible.0 | 1 << 20
+        )));
+        assert!(!window_is_visible(NSWindowOcclusionState(0)));
+        assert!(!window_is_visible(NSWindowOcclusionState(1 << 20)));
+    }
+
+    #[test]
+    fn terminal_view_redraws_when_the_window_becomes_visible() {
+        let selectors = terminal_view_own_selectors();
+        assert!(
+            selectors
+                .iter()
+                .any(|name| name == "windowDidChangeOcclusionState:"),
+            "TerminalView must observe occlusion changes: {selectors:?}"
+        );
+    }
+
+    #[test]
+    fn terminal_view_tracks_backing_scale_when_joining_a_window() {
+        let selectors = terminal_view_own_selectors();
+        for selector in ["viewDidMoveToWindow", "viewDidChangeBackingProperties"] {
+            assert!(
+                selectors.iter().any(|name| name == selector),
+                "TerminalView must override {selector}: {selectors:?}"
             );
         }
     }

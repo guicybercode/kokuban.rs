@@ -221,8 +221,9 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
         window.setHasShadow(true);
     }
 
-    // Frames run on the main queue only when requested (at most 60 Hz). The
-    // callback also applies window titles and termination requested elsewhere.
+    // Frames run on the main queue only when requested (at most 60 Hz) and
+    // draw only while the window is visible. The callback also applies window
+    // titles and termination requested elsewhere, hidden or not.
     let frame_dirty = dirty.clone();
     let frame_should_close = should_close.clone();
     let frame_notifications = notifications.clone();
@@ -231,7 +232,7 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
     let frame_window_number = window.windowNumber();
     let render_scheduler = render_scheduler::RenderScheduler::new(
         dirty.clone(),
-        Box::new(move || {
+        Box::new(move |mode| {
             if frame_should_close.load(Ordering::Acquire) {
                 let mtm = MainThreadMarker::new().expect("frames run on the main thread");
                 NSApplication::sharedApplication(mtm).terminate(None);
@@ -240,7 +241,9 @@ pub fn launch(config: Config, options: LaunchOptions) -> Result<(), GlyphAtlasEr
             window::apply_pending_user_attention(frame_notifications.as_ref());
             window::apply_pending_clipboard_write(&frame_clipboard_write);
             window::sync_window_title(frame_window_number);
-            window::render_if_dirty(&frame_dirty);
+            if mode == render_scheduler::FrameMode::Draw {
+                window::render_if_dirty(&frame_dirty);
+            }
         }),
     );
 

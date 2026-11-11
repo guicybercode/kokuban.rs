@@ -36,6 +36,13 @@
 - macOS applies the configured ANSI palette and the configured cursor color follows the text color.
 - README states macOS-first and lists platform support explicitly.
 
+### Fixed
+
+- macOS: with scrollback search open, dead keys and input-method text (`´` + `a` on ABNT2, Option+e with `option_as_alt = "none"`, kana to kanji) now reach the query instead of being dropped.
+- macOS: a new window draws the shell prompt as soon as it becomes visible instead of staying empty until the first key press.
+- macOS: the glyph atlas matches the backing scale of the display the window actually opens on, not only the main screen's.
+- macOS: drawing pauses while the window is minimized, fully covered, on another Space or behind a locked screen; titles, attention marks, OSC 52 and shutdown are still handled, and the window redraws when shown again.
+
 ## v0.4 — 2026-09-28
 
 Self-update, macOS installer and desktop responsiveness update. The Git tag is `v0.4`; the Cargo package version is `0.4.0`.
