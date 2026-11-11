@@ -77,14 +77,15 @@ macOS is the primary desktop target; Linux follows the Omarchy roadmap and share
 | | macOS | Linux |
 |---|---|---|
 | Renderer | Metal GPU | Software rasterizer (winit + softbuffer, X11/Wayland) |
-| HiDPI | Backing scale of the screen; Retina **em teste** | Integer and fractional scale (`wp_fractional_scale_v1`, headless sway and Weston) |
+| HiDPI | Backing scale of the display the window is on; Retina **em teste** | Integer and fractional scale (`wp_fractional_scale_v1`, headless sway and Weston) |
 | Panes (split, focus, resize, close) and font zoom | Yes | Yes (`[keybind.linux]`) |
 | Status bar | Yes | No (next) |
 | Close confirmation | Yes (`[confirm]`) | Only while a program other than the shell runs in the foreground (`[confirm]`) |
 | Prompt marks | Indicator and navigation | Navigation only |
 | Scrollback search | Yes (`Cmd+F`, prompt in the status bar) | Yes (`Ctrl+Shift+F`, query and match count in a strip over the pane) |
 | Attention mark | ● and red dividers (`Cmd+Shift+A`) | Red dividers (`Ctrl+Shift+N`); no ● yet |
-| IME / text composition | `NSTextInputClient` (dead keys, kana/kanji, emoji picker); **em teste** | Yes (preedit, text-input-v3); fcitx5/IBus on Hyprland **em teste** |
+| IME / text composition | `NSTextInputClient` (dead keys, kana/kanji, emoji picker), also in the `Cmd+F` search; **em teste** | Yes (preedit, text-input-v3); fcitx5/IBus on Hyprland **em teste** |
+| Hidden window | Drawing paused while minimized, covered, on another Space or locked; energy saving **em teste** | Drawing skipped while the compositor reports the window occluded |
 | Clipboard | System pasteboard, OSC 52 writes | CLIPBOARD and PRIMARY (middle click) on X11 and Wayland data-control, OSC 52 writes |
 | Kitty animation | No (static images only) | Yes (bounded cache; mpv video) |
 | Omarchy integration | n/a | `scripts/omarchy-install.sh`, live palette, `terminal` tag for Super+C/V; on a physical Hyprland session **em teste** |

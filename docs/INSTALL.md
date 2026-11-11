@@ -202,10 +202,14 @@ steps are in [OMARCHY.md](OMARCHY.md).
 
 Typing goes through the macOS input method (`NSTextInputClient`): dead keys,
 kana/kanji, pinyin and the emoji picker commit composed text, and the pre-edit
-is drawn at the cursor. The glyph atlas follows the screen's backing scale.
-Both are **em teste**: they have automated tests and a Kotoeri check of the
-candidate window position, but real typing with each input method and Retina
-displays have not been confirmed on hardware yet. Please report problems in
+is drawn at the cursor; with `Cmd+F` open, composed text goes to the search
+query. The glyph atlas follows the backing scale of the display the window
+opens on. While the window is minimized, fully covered, on another Space or
+behind a locked screen, Kokuban stops drawing (titles, attention marks and
+OSC 52 are still handled) and redraws when it is shown again, to save energy.
+All three are **em teste**: they have automated tests and a Kotoeri check of
+the candidate window position, but real typing with each input method, Retina
+displays and the energy saving have not been confirmed on hardware yet. Please report problems in
 [GitHub issues](https://github.com/guicybercode/kokuban.rs/issues).
 
 ### Option key on macOS

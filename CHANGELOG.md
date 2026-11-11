@@ -6,7 +6,7 @@ Not released yet: there is no `v0.5` tag, GitHub release or Homebrew update, and
 
 ### Validation scope
 
-- **Em teste** (implemented and covered by automated tests, not yet confirmed on real hardware): macOS IME composition (dead keys, kana/kanji, pinyin, emoji picker), rendering on Retina displays (backing scale 2×), and the Omarchy integration on a physical Hyprland session (`scripts/omarchy-install.sh`, the `terminal` tag, Super+C/Super+V, fcitx5/IBus).
+- **Em teste** (implemented and covered by automated tests, not yet confirmed on real hardware): macOS IME composition (dead keys, kana/kanji, pinyin, emoji picker), including composed text in the `Cmd+F` search prompt; rendering on Retina displays (backing scale 2×, taken from the display the window opens on); the macOS energy saving of pausing drawing while the window is hidden (no wakeup or battery measurement yet); and the Omarchy integration on a physical Hyprland session (`scripts/omarchy-install.sh`, the `terminal` tag, Super+C/Super+V, fcitx5/IBus).
 - Wayland was validated headless only: sway 1.10.1 (fractional scale, pointer cells, CLIPBOARD and PRIMARY through `wlr-data-control`, text-input-v3 with a protocol-level input method) and Weston 14 (integer scale, launch). X11 runs under Xvfb in CI.
 
 ### Added
@@ -46,10 +46,10 @@ Not released yet: there is no `v0.5` tag, GitHub release or Homebrew update, and
 
 ### Fixed
 
-- macOS: with scrollback search open, dead keys and input-method text (`´` + `a` on ABNT2, Option+e with `option_as_alt = "none"`, kana to kanji) now reach the query instead of being dropped.
+- macOS: with scrollback search open, dead keys and input-method text (`´` + `a` on ABNT2, Option+e with `option_as_alt = "none"`, kana to kanji) now reach the query instead of being dropped. Real typing is **em teste**.
 - macOS: a new window draws the shell prompt as soon as it becomes visible instead of staying empty until the first key press.
-- macOS: the glyph atlas matches the backing scale of the display the window actually opens on, not only the main screen's.
-- macOS: drawing pauses while the window is minimized, fully covered, on another Space or behind a locked screen; titles, attention marks, OSC 52 and shutdown are still handled, and the window redraws when shown again.
+- macOS: the glyph atlas matches the backing scale of the display the window actually opens on, not only the main screen's. Retina hardware is **em teste**.
+- macOS: drawing pauses while the window is minimized, fully covered, on another Space or behind a locked screen; titles, attention marks, OSC 52 and shutdown are still handled, and the window redraws when shown again. The energy saving is **em teste**: covered by scheduler tests, not yet measured on a Mac.
 
 ## v0.4 — 2026-09-28
 
