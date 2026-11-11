@@ -72,7 +72,10 @@ class KokubanRs < Formula
 
         Kokuban opens the system's X11 or Wayland libraries at run time and needs a
         monospace font. On Ubuntu:
-          sudo apt install fonts-dejavu-core libx11-6 libxcursor1 libx11-xcb1 libxi6 libxkbcommon-x11-0
+          sudo apt install fonts-dejavu-core libx11-6 libxcursor1 libx11-xcb1 libxi6 \\
+            libxkbcommon-x11-0 libwayland-client0 libxkbcommon0
+        On Wayland, copy and paste need a compositor with ext-data-control-v1 or
+        wlr-data-control (Hyprland, sway); otherwise they go through XWayland.
       EOS
     end
     s
